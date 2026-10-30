@@ -83,10 +83,35 @@ final class Radios {
     return effect != null ? effect : bluetooth.setting(key, value);
   }
 
+  /**
+   * One simulator cycle. Each radio runs on its own: one that fails (an app callback that throws,
+   * say) is reported once as an {@code error} event and does not hold up the others or the cycle.
+   */
   void cycle() {
-    network.cycle();
-    wifi.cycle();
-    bluetooth.cycle();
+    guard("network", network::cycle);
+    guard("wifi", wifi::cycle);
+    guard("bluetooth", bluetooth::cycle);
+  }
+
+  private String lastFailure;
+
+  private void guard(String radio, Runnable step) {
+    try {
+      step.run();
+    } catch (RuntimeException e) {
+      String message = radio + ": " + e;
+      if (message.equals(lastFailure)) return;
+      lastFailure = message;
+      StackTraceElement[] frames = e.getStackTrace();
+      protocol.event(
+          "error",
+          new Protocol.Json()
+              .put("kind", radio)
+              .put("message", String.valueOf(e))
+              .put("at", frames.length > 0 ? frames[0].toString() : null)
+              .object());
+      e.printStackTrace();
+    }
   }
 
   /**

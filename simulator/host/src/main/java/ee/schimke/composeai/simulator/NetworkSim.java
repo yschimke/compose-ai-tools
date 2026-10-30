@@ -392,29 +392,28 @@ final class NetworkSim {
 
   /**
    * A legacy {@code NetworkInfo}, named as a device names it ({@code WIFI}, {@code MOBILE} /
-   * {@code LTE}), through the framework's hidden constructor; Robolectric's leaves the names null.
+   * {@code LTE}); Robolectric's leaves the names null.
    */
   static NetworkInfo info(int type, int subtype, boolean connected) {
-    NetworkInfo.DetailedState detailed =
-        connected ? NetworkInfo.DetailedState.CONNECTED : NetworkInfo.DetailedState.DISCONNECTED;
-    try {
-      NetworkInfo info =
-          NetworkInfo.class
-              .getConstructor(int.class, int.class, String.class, String.class)
-              .newInstance(type, subtype, typeName(type), subtypeName(subtype));
-      NetworkInfo.class
-          .getMethod("setDetailedState", NetworkInfo.DetailedState.class, String.class, String.class)
-          .invoke(info, detailed, null, null);
-      NetworkInfo.class.getMethod("setIsAvailable", boolean.class).invoke(info, true);
-      return info;
-    } catch (ReflectiveOperationException | RuntimeException e) {
-      return ShadowNetworkInfo.newInstance(
-          detailed,
-          type,
-          subtype,
-          true,
-          connected ? NetworkInfo.State.CONNECTED : NetworkInfo.State.DISCONNECTED);
+    NetworkInfo info =
+        ShadowNetworkInfo.newInstance(
+            connected ? NetworkInfo.DetailedState.CONNECTED : NetworkInfo.DetailedState.DISCONNECTED,
+            type,
+            subtype,
+            true,
+            connected ? NetworkInfo.State.CONNECTED : NetworkInfo.State.DISCONNECTED);
+    // Robolectric's shadow answers type and state; the names are the framework's own fields.
+    for (String[] field :
+        new String[][] {{"mTypeName", typeName(type)}, {"mSubtypeName", subtypeName(subtype)}}) {
+      try {
+        java.lang.reflect.Field f = NetworkInfo.class.getDeclaredField(field[0]);
+        f.setAccessible(true);
+        f.set(info, field[1]);
+      } catch (ReflectiveOperationException | RuntimeException e) {
+        // Left unnamed.
+      }
     }
+    return info;
   }
 
   private static String typeName(int type) {
