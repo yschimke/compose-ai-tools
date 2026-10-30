@@ -276,6 +276,8 @@ internal object CliFlagValidation {
           "--jar",
           "--no-providers",
           "--java",
+          "--pair",
+          "--pair-qualifiers",
           "--prepare",
           "--verbose",
           "-v",

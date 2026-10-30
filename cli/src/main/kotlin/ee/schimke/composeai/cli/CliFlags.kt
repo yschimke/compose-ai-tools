@@ -219,6 +219,8 @@ internal object CliFlags {
       "--sdk",
       "--jar",
       "--java",
+      "--pair",
+      "--pair-qualifiers",
       // bundle externalize
       "--res-out",
       "--ext",

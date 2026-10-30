@@ -639,6 +639,23 @@ final class Navigator {
     return array;
   }
 
+  /**
+   * The running instance of manifest service [component], created as a bind would create it, for
+   * {@link DataLayer} to deliver a Wearable event to; null before the session's navigator exists.
+   * Main thread only.
+   */
+  static Service serviceFor(ComponentName component) {
+    Navigator navigator = current;
+    if (navigator == null) return null;
+    boolean created = !navigator.services.containsKey(component);
+    Running running =
+        navigator.runningOrCreate(component, new Intent().setComponent(component));
+    if (created) {
+      navigator.protocol.event("service", navigator.describe(component, running, "created"));
+    }
+    return running.controller.get();
+  }
+
   private Running runningOrCreate(ComponentName component, Intent intent) {
     Running running = services.get(component);
     if (running != null) return running;

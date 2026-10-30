@@ -81,19 +81,30 @@ internal class LaunchCommand(private val args: List<String>) {
     val converterJars = listOf(hostJar) + dex2jarJars
     val cache = ApkConversionCache(composeAiCacheDir("simulator"))
     val stamp = ApkConversionCache.converterStamp(converterJars, androidJar)
-    val entry =
-      cache.ensure(apk, stamp) { out ->
-        System.err.println("compose-preview launch: converting ${apk.name} (once per APK)")
-        convert(java, converterJars, apk, out, androidJar)
+    fun classesOf(apk: File): File {
+      val entry =
+        cache.ensure(apk, stamp) { out ->
+          System.err.println("compose-preview launch: converting ${apk.name} (once per APK)")
+          convert(java, converterJars, apk, out, androidJar)
+        }
+      if (verbose || !entry.cached) {
+        System.err.println(
+          "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"}: " +
+            "${entry.classesJar} ${entry.summary}"
+        )
       }
-    if (verbose || !entry.cached) {
-      System.err.println(
-        "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"}: " +
-          "${entry.classesJar} ${entry.summary}"
-      )
+      return entry.classesJar
     }
+    val pair =
+      args
+        .flagValue("--pair")
+        ?.let { File(it).absoluteFile }
+        ?.also { if (!it.isFile) fail("no such APK to pair: $it") }
+    val classes = classesOf(apk)
+    val pairClasses = pair?.let { classesOf(it) }
     if ("--prepare" in args) {
-      println(entry.classesJar.absolutePath)
+      println(classes.absolutePath)
+      pairClasses?.let { println(it.absolutePath) }
       return
     }
 
@@ -104,32 +115,69 @@ internal class LaunchCommand(private val args: List<String>) {
           "headless."
       )
     }
-    val command =
+    val options =
+      Options(
+        sdk =
+          (args.flagValue("--sdk")?.toIntOrNull() ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
+            AndroidBundleLaunch.MIN_SDK,
+            AndroidBundleLaunch.MAX_SDK,
+          ),
+        qualifiers = args.flagValue("--qualifiers") ?: DEFAULT_QUALIFIERS,
+        fontScale = args.flagValue("--font-scale"),
+        headless = headless,
+        control = control != null,
+        installProviders = "--no-providers" !in args,
+        showAgent = "--hide-agent" !in args,
+      )
+    val extraJars = args.flagValuesAll("--jar").map { File(it) }
+    fun commandFor(apk: File, classes: File, options: Options) =
       simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
         apk = apk,
-        classes = listOf(entry.classesJar) + args.flagValuesAll("--jar").map { File(it) },
-        options =
-          Options(
-            sdk =
-              (args.flagValue("--sdk")?.toIntOrNull() ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
-                AndroidBundleLaunch.MIN_SDK,
-                AndroidBundleLaunch.MAX_SDK,
-              ),
-            qualifiers = args.flagValue("--qualifiers") ?: DEFAULT_QUALIFIERS,
-            fontScale = args.flagValue("--font-scale"),
-            headless = headless,
-            control = control != null,
-            installProviders = "--no-providers" !in args,
-            showAgent = "--hide-agent" !in args,
-          ),
+        classes = listOf(classes) + extraJars,
+        options = options,
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
-    if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-    val exit = ProcessBuilder(command).inheritIO().runTiedToLauncher()
+    if (pair == null || pairClasses == null) {
+      val command = commandFor(apk, classes, options)
+      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+      val exit = ProcessBuilder(command).inheritIO().runTiedToLauncher()
+      exitProcess(exit)
+    }
+
+    val hub =
+      DataLayerHub(
+          log = { if (verbose) System.err.println("compose-preview launch: datalayer hub: $it") }
+        )
+        .start()
+    val phone = commandFor(apk, classes, options.copy(dataLayer = DataLayerNode(hub.port, PHONE)))
+    val watch =
+      commandFor(
+        pair,
+        pairClasses,
+        options.copy(
+          qualifiers = args.flagValue("--pair-qualifiers") ?: DEFAULT_WATCH_QUALIFIERS,
+          dataLayer = DataLayerNode(hub.port, WATCH),
+        ),
+      )
+    if (verbose) {
+      System.err.println("compose-preview launch: phone: ${phone.joinToString(" ")}")
+      System.err.println("compose-preview launch: watch: ${watch.joinToString(" ")}")
+    }
+    val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
+    hub.close()
     exitProcess(exit)
+  }
+
+  /** A paired simulator's node of the simulated Wearable Data Layer. */
+  data class DataLayerNode(val hubPort: Int, val device: String) {
+    val nodeId: String
+      get() = "$device-sim"
+
+    val displayName: String
+      get() = "Simulated ${device.replaceFirstChar { it.uppercase() }}"
   }
 
   /** Simulator settings that become system properties of the launched JVM. */
@@ -142,6 +190,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val installProviders: Boolean,
     /** Draw the control channel's taps, swipes and commands over the window. */
     val showAgent: Boolean = true,
+    /** Set for each simulator of `--pair`: the hub both connect to. */
+    val dataLayer: DataLayerNode? = null,
   )
 
   private fun convert(
@@ -206,6 +256,13 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     const val DEFAULT_QUALIFIERS = "w360dp-h640dp-hdpi"
 
+    /** The `--pair` APK's display: a small round watch. */
+    const val DEFAULT_WATCH_QUALIFIERS = "w227dp-h227dp-round-watch-xhdpi"
+
+    /** The two simulators of `--pair`, as the control channel's `device` names them. */
+    const val PHONE = "phone"
+    const val WATCH = "watch"
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -233,6 +290,11 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
+      options.dataLayer?.let {
+        properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
+        properties["composeai.simulator.datalayer.node"] = it.nodeId
+        properties["composeai.simulator.datalayer.name"] = it.displayName
+      }
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -288,6 +350,12 @@ internal class LaunchCommand(private val args: List<String>) {
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).
         --no-providers        Do not create the manifest's content providers at startup.
+        --pair <watch.apk>    Also run a Wear OS APK in a second simulator, paired with this
+                              one over a simulated Wearable Data Layer: messages, requests,
+                              data items and capabilities cross between the two apps. With
+                              --control stdio, a command's "device":"watch" sends it to the
+                              watch, and every output line carries its "device".
+        --pair-qualifiers <q> The paired watch's display (default $DEFAULT_WATCH_QUALIFIERS).
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.
         --verbose, -v         Print the cache entry and the launched command.

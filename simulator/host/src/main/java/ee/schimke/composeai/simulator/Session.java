@@ -87,6 +87,7 @@ final class Session {
     this.ui = ui;
     this.protocol = protocol;
     this.navigator = new Navigator(app, protocol);
+    DataLayer.attach(protocol);
   }
 
   void start() {
@@ -219,6 +220,14 @@ final class Session {
         return new Protocol.Json().put("notifications", Notifications.all(app)).object();
       case "components":
         return components();
+      case "dataLayer":
+        {
+          JSONObject state = DataLayer.describeCurrent();
+          if (state == null) {
+            throw new IllegalStateException("no data layer: launch with --pair <other.apk>");
+          }
+          return state;
+        }
       case "hierarchy":
         {
           List<Hierarchy.Node> windows = snapshot();

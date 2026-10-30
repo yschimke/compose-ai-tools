@@ -67,12 +67,14 @@ final class SimulatorSandbox {
 
     ShadowProviders shadowProviders = injector.getInstance(ShadowProviders.class);
     ClassHandlerBuilder classHandlerBuilder = injector.getInstance(ClassHandlerBuilder.class);
-    ShadowMap shadowMap =
+    ShadowMap.Builder shadows =
         shadowProviders
             .getBaseShadowMap()
             .newBuilder()
-            .addShadowClasses(SimulatorShadowContextImpl.class)
-            .build();
+            .addShadowClasses(SimulatorShadowContextImpl.class);
+    // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
+    if (DataLayerLink.enabled()) shadows.addShadowClasses(ShadowWearable.class);
+    ShadowMap shadowMap = shadows.build();
     androidSandbox.replaceShadowMap(shadowMap);
     ClassHandler classHandler =
         classHandlerBuilder.build(
@@ -117,6 +119,7 @@ final class SimulatorSandbox {
         .doNotInstrumentPackage("android.support.test")
         .doNotInstrumentPackage("android.R");
     builder.doNotInstrumentClass("android.app.RecoverableSecurityException");
+    if (DataLayerLink.enabled()) builder.addInstrumentedClass(ShadowWearable.WEARABLE);
     builder
         .addInstrumentedPackage("dalvik.")
         .addInstrumentedPackage("libcore.")

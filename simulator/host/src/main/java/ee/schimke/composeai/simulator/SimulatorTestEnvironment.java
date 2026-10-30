@@ -63,6 +63,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Connectivity.connect(app);
       bluetoothOn(app);
       Navigator.registerBindableServices(app);
+      DataLayer.start(app);
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
     }

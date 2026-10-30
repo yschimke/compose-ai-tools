@@ -9,6 +9,7 @@ compose-preview launch app-debug.apk                               # a window
 compose-preview launch app-debug.apk --control stdio               # a window an agent drives
 compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
 compose-preview launch app-debug.apk --prepare                     # convert and cache only
+compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -170,6 +171,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `qualifiers` | `value` (e.g. `+land`, `+night`) | a configuration change on the top activity |
+| `dataLayer` | | with `--pair`: this node, its peers and their capabilities, every data item |
 | `quit` | | exits |
 
 A **selector** is any of `text` / `desc` (exact), `textContains` / `descContains` (case-insensitive),
@@ -181,6 +183,17 @@ An **intent** is `{"action","data","type","package","component","categories","fl
 `component` takes `pkg/cls`, `pkg/.Cls`, `.Cls` or a class name; `flags` an int or names
 (`"NEW_TASK"`, `"CLEAR_TOP"`); an extra's JSON type picks its Java type, or
 `{"type":"long","value":1}` names it (`string int long float double boolean uri string[] int[]`).
+
+## A paired phone and watch
+
+`--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
+`--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
+`Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
+simulator instead of Play services, so messages, requests, data items and capabilities cross
+between the apps and reach their listeners and manifest `WearableListenerService`s. With
+`--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
+`device`, and each crossing is a `datalayer` event. A prototype; the design, evidence and what is
+missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
 
 ## Constraints
 
@@ -200,7 +213,7 @@ What does not, or not yet:
 
 - **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
 - **Google Play services, Maps, billing, DRM** — not present in Robolectric's framework; their
-  APIs report `SERVICE_INVALID`. Firebase starts, and its backends answer as they would any
+  APIs report `SERVICE_INVALID` (the Wearable Data Layer is simulated under `--pair`). Firebase starts, and its backends answer as they would any
   unregistered client.
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
