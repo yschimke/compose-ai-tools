@@ -107,6 +107,8 @@ final class BluetoothSim {
     current = this;
     BluetoothAdapter adapter = adapter();
     if (adapter != null) lastState = adapter.getState();
+    // Launched in airplane mode: Bluetooth is off, and comes back when airplane mode ends.
+    onBeforeAirplane = true;
   }
 
   static BluetoothSim current() {
@@ -652,10 +654,18 @@ final class BluetoothSim {
     UUID uuid = AdvertisingData.uuid(c.getString("characteristic"));
     byte[] value = AdvertisingData.bytes(c.get("value"));
     int delivered = 0;
+    int unsubscribed = 0;
     ShadowBluetoothDevice device = Shadow.extract(p.device);
     for (BluetoothGatt gatt : device.getBluetoothGatts()) {
       ShadowBluetoothGatt shadow = Shadow.extract(gatt);
       if (!shadow.isConnected() || shadow.getGattCallback() == null) continue;
+      // As a peripheral sends only to clients that enabled it, and the stack hands it only to
+      // a client that registered for it.
+      if (shadow instanceof SimulatorShadowBluetoothGatt
+          && !((SimulatorShadowBluetoothGatt) shadow).subscriptions.isSubscribed(uuid)) {
+        unsubscribed++;
+        continue;
+      }
       for (BluetoothGattService service : gatt.getServices()) {
         BluetoothGattCharacteristic ch = service.getCharacteristic(uuid);
         if (ch == null) continue;
@@ -670,6 +680,7 @@ final class BluetoothSim {
     }
     return new Protocol.Json()
         .put("delivered", delivered)
+        .put("notSubscribed", unsubscribed)
         .put("value", AdvertisingData.hex(value))
         .object();
   }

@@ -22,6 +22,9 @@ public class SimulatorShadowBluetoothGatt extends ShadowBluetoothGatt {
 
   @RealObject private BluetoothGatt gatt;
 
+  /** What this client has subscribed to; {@link BluetoothSim} notifies only those. */
+  final GattSubscriptions subscriptions = new GattSubscriptions();
+
   @Implementation(minSdk = Build.VERSION_CODES.O)
   @Override
   protected boolean discoverServices() {
@@ -61,6 +64,8 @@ public class SimulatorShadowBluetoothGatt extends ShadowBluetoothGatt {
   @Implementation(minSdk = Build.VERSION_CODES.O)
   @Override
   protected boolean writeDescriptor(BluetoothGattDescriptor descriptor) {
+    subscriptions.descriptorWritten(
+        characteristicOf(descriptor), descriptor.getUuid(), descriptor.getValue());
     BluetoothSim.gattEvent(
         gatt, "writeDescriptor", descriptorTarget(descriptor), descriptor.getValue());
     return super.writeDescriptor(descriptor);
@@ -69,6 +74,7 @@ public class SimulatorShadowBluetoothGatt extends ShadowBluetoothGatt {
   @Implementation(minSdk = Build.VERSION_CODES.TIRAMISU)
   @Override
   protected int writeDescriptor(BluetoothGattDescriptor descriptor, byte[] value) {
+    subscriptions.descriptorWritten(characteristicOf(descriptor), descriptor.getUuid(), value);
     BluetoothSim.gattEvent(gatt, "writeDescriptor", descriptorTarget(descriptor), value);
     return super.writeDescriptor(descriptor, value);
   }
@@ -77,9 +83,15 @@ public class SimulatorShadowBluetoothGatt extends ShadowBluetoothGatt {
   @Override
   protected boolean setCharacteristicNotification(
       BluetoothGattCharacteristic characteristic, boolean enable) {
+    subscriptions.setNotification(characteristic.getUuid(), enable);
     BluetoothSim.gattEvent(
         gatt, enable ? "subscribe" : "unsubscribe", characteristic.getUuid(), null);
     return super.setCharacteristicNotification(characteristic, enable);
+  }
+
+  private static java.util.UUID characteristicOf(BluetoothGattDescriptor descriptor) {
+    BluetoothGattCharacteristic ch = descriptor.getCharacteristic();
+    return ch == null ? null : ch.getUuid();
   }
 
   /** A CCCD write names the characteristic it subscribes to. */
