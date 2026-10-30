@@ -179,7 +179,7 @@ final class NotificationStream {
   /** Why a device would not show [item], or null when it would. */
   String whyHidden(Item item) {
     if (Build.VERSION.SDK_INT >= 33
-        && app.getApplicationInfo().targetSdkVersion >= 33
+        && Permissions.targetSdk(app) >= 33
         && app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED) {
       return "POST_NOTIFICATIONS denied";
