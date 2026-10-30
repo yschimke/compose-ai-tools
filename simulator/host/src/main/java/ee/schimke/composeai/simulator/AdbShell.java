@@ -306,7 +306,7 @@ final class AdbShell {
       case "stopservice":
         return intentCommand("stopService", a, false);
       case "broadcast":
-        return intentCommand("broadcast", a, false);
+        return debugSurface(intentCommand("broadcast", a, false));
       case "force-stop":
       case "kill":
         {
@@ -324,6 +324,32 @@ final class AdbShell {
       default:
         throw new UnsupportedException("am " + sub + " is not supported");
     }
+  }
+
+  /** The Wear OS system UI's debug broadcast, which Android Studio's Wear run configurations send. */
+  static final String DEBUG_SURFACE = "com.google.android.wearable.app.DEBUG_SURFACE";
+
+  /**
+   * {@code am broadcast -a DEBUG_SURFACE --es operation <op> …}: Android Studio's tile, Wear Widget
+   * and watch face launches. On a device the system UI receives it; here it becomes the {@code
+   * debugSurface} command, which {@code Session} runs against the tiles carousel or the home screen.
+   * Any other broadcast is returned as it was.
+   */
+  @SuppressWarnings("unchecked")
+  static Map<String, Object> debugSurface(Map<String, Object> broadcast) {
+    Map<String, Object> intent = (Map<String, Object>) broadcast.get("intent");
+    if (!DEBUG_SURFACE.equals(intent.get("action"))) return broadcast;
+    Map<String, Object> extras =
+        (Map<String, Object>) intent.getOrDefault("extras", new LinkedHashMap<>());
+    Map<String, Object> command = cmd("debugSurface");
+    Object operation = extras.get("operation");
+    if (operation == null) throw new UnsupportedException("DEBUG_SURFACE needs --es operation");
+    command.put("operation", ((Map<String, Object>) operation).get("value"));
+    for (Map.Entry<String, Object> extra : extras.entrySet()) {
+      if (extra.getKey().equals("operation")) continue;
+      command.put(extra.getKey(), ((Map<String, Object>) extra.getValue()).get("value"));
+    }
+    return command;
   }
 
   /**

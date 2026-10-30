@@ -58,6 +58,17 @@ internal enum class ApkFormFactor(
     /** Detects [apk]'s form factor; [PHONE] when nothing marks it, or it cannot be read. */
     fun detect(apk: File): ApkFormFactor = inspect(apk).formFactor
 
+    /** [apk]'s manifest `package`, or null when it cannot be read. */
+    fun packageOf(apk: File): String? = runCatching {
+      ZipFile(apk).use { zip ->
+        zip.getEntry("AndroidManifest.xml")?.let {
+          ManifestSignals.read(zip.getInputStream(it).readBytes()).packageName
+        }
+      }
+    }
+      .getOrNull()
+      ?.ifEmpty { null }
+
     /**
      * [apk]'s form factor and its projected (glasses) activity, if it declares one; [PHONE] and no
      * activity when nothing marks it, or it cannot be read.
@@ -77,16 +88,6 @@ internal enum class ApkFormFactor(
       }
     }
       .getOrDefault(Detected(PHONE, null))
-
-    /** [apk]'s application id from its binary manifest, or null when it cannot be read. */
-    fun packageOf(apk: File): String? = runCatching {
-      ZipFile(apk).use { zip ->
-        zip.getEntry("AndroidManifest.xml")?.let { entry ->
-          ManifestSignals.read(zip.getInputStream(entry).readBytes()).packageName.ifEmpty { null }
-        }
-      }
-    }
-      .getOrNull()
 
     private val DEX = Regex("""classes\d*\.dex""")
 
@@ -150,7 +151,7 @@ internal data class ManifestSignals(
   val features: Set<String> = emptySet(),
   val requiredFeatures: Set<String> = emptySet(),
   val projectedActivities: List<String> = emptyList(),
-  /** The manifest's `package`, the application id. */
+  /** The manifest's `package`; empty when it has none. */
   val packageName: String = "",
 ) {
   companion object {

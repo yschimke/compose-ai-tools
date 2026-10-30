@@ -1,4 +1,10 @@
 [versions]
+# Android Studio's emulator gRPC contract (`emulator_controller.proto`, generated stubs), which
+# `launch --adb` serves so Studio's Running Devices window can show and drive the simulator; grpc is
+# pinned to the release that artifact was built against.
+android-emulator-proto = "32.5.0"
+grpc = "1.69.1"
+protobuf-java = "3.25.5"
 # Held at 2.4.0: CodeQL's Kotlin extractor doesn't support 2.4.10 yet — it aborts with
 # `Kotlin version too new`, which fails the `Analyze (java-kotlin)` job as a configuration error
 # and leaves the repo's main language unscanned. Bump once the CodeQL bundle catches up (the
@@ -237,8 +243,8 @@ compose-remote = "1.0.0-alpha22"
 json-org = "20250517"
 # Only as `:simulator-host` test fixtures: the real Task classes the simulator's Wearable clients
 # complete (at run time they are the app's own copy).
-play-services-tasks = "18.4.0"
-play-services-basement = "18.9.0"
+play-services-tasks = "18.4.1"
+play-services-basement = "18.12.0"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.7.0"
@@ -551,6 +557,11 @@ composeai-preview-daemon = "3.27.0"
 rcplayers = "2.21.0"
 
 [libraries]
+android-emulator-proto = { module = "com.android.tools.emulator:proto", version.ref = "android-emulator-proto" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf-java" }
 
 # Wire contracts consumed from compose-preview-contracts (see `composeai-contracts`).
 #
