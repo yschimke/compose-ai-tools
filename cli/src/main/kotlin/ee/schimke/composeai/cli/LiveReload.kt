@@ -153,8 +153,15 @@ internal class LiveReload(
         deleteRecursively()
         mkdirs()
       }
-    // The previous generations' overlays belong to simulators already replaced.
-    workDir.listFiles { f -> f.isDirectory && f != dir }?.forEach { it.deleteRecursively() }
+    // Older generations' overlays belong to simulators already replaced; the last one's may still
+    // be loading classes until this reload replaces it.
+    workDir
+      .listFiles { f ->
+        f.isDirectory &&
+          f.name.startsWith("reload-") &&
+          (f.name.removePrefix("reload-").toIntOrNull() ?: 0) < generation - 1
+      }
+      ?.forEach { it.deleteRecursively() }
     var overlay: File? = null
     if (changed.isNotEmpty() || resourceIds) {
       overlay = File(dir, "classes").apply { mkdirs() }
@@ -172,7 +179,19 @@ internal class LiveReload(
     val resourceApk =
       if (resources) {
         val linked = linkedResourcesFile() ?: return rebuild("no linked resources found", build)
-        File(dir, "resources.apk").also { mergeResources(launchedApk, linked, it) }
+        // One file per resource state, so a later class-only reload names the same resource APK
+        // (and a standby prepared for it still fits).
+        File(
+            workDir,
+            "resources-${now.linkedResources.toULong().toString(16)}-${launchedApk.nameWithoutExtension}.apk",
+          )
+          .also { merged ->
+            if (!merged.isFile) {
+              val partial = File(merged.path + ".partial")
+              mergeResources(launchedApk, linked, partial)
+              partial.renameTo(merged)
+            }
+          }
       } else launchedApk
     pending = state
     return Plan.Overlay(

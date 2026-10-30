@@ -52,9 +52,18 @@ internal class SimulatorSupervisor(
   private val extraCommand: ((SimulatorSupervisor, String, JsonObject) -> JsonObject?)? = null,
   /** Whether the session outlives an app that exits on its own (live reload: fix and reload). */
   private val outliveExits: Boolean = false,
+  /**
+   * Keep a standby simulator JVM prepared up to the app's own code (`:simulator-host`'s `Standby`),
+   * so a `restart` or class `reload` skips the JVM, Robolectric's sandbox and the framework's
+   * setup. It costs a second JVM's memory while idle.
+   */
+  private val standby: Boolean = false,
 ) {
 
-  /** What a simulator JVM runs: the APK, its classes (overlays first), and extra properties. */
+  /**
+   * What a simulator JVM runs: the APK, its classes (overlay directories first, the APK's converted
+   * jar last), and extra properties.
+   */
   data class Launch(
     val apk: File,
     val classes: List<File>,
@@ -66,6 +75,11 @@ internal class SimulatorSupervisor(
     private set
 
   @Volatile private var current: Child? = null
+  /** The prepared standby, its launch and the overlay directory its class path names. */
+  @Volatile private var spare: Spare? = null
+
+  private class Spare(val child: Child, val launch: Launch, val slot: File)
+
   private val worker = Executors.newSingleThreadExecutor { r ->
     Thread(r, "simulator-${device ?: "control"}").apply { isDaemon = true }
   }
@@ -75,7 +89,9 @@ internal class SimulatorSupervisor(
 
   /** Starts the first simulator. Its `ready` goes out as the session's. */
   fun start() {
-    current = spawn(launch, first = true)
+    val first = spawn(launch, first = true)
+    current = first
+    if (standby) first.ready.thenRun { worker.execute { prepareSpare() } }
   }
 
   /** An event of the CLI's own on the control channel, such as the APK's `conversion`. */
@@ -109,6 +125,7 @@ internal class SimulatorSupervisor(
   /** Ends the session: the simulator is asked to exit (stdin closed), then ended. */
   fun close() {
     worker.execute {
+      dropSpare()
       current?.stop()
       finished.complete(current?.process?.exitValueOrNull() ?: 0)
     }
@@ -118,6 +135,7 @@ internal class SimulatorSupervisor(
   /** Ends the simulator immediately (the launcher is going away). */
   fun destroy() {
     current?.let { destroyTree(it.process) }
+    dropSpare()
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -210,7 +228,15 @@ internal class SimulatorSupervisor(
           next.properties + (snapshot?.let { mapOf(RESTORE_PROPERTY to it.path) } ?: emptyMap())
       )
     val spawnStart = System.nanoTime()
-    val child = spawn(withData, first = false)
+    val warm = takeSpare(next)
+    val child =
+      if (warm != null) {
+        warm.child.promote(
+          withData.properties.filterKeys { it == RESTORE_PROPERTY } +
+            (ASKED_PROPERTY to "${System.currentTimeMillis()}")
+        )
+        warm.child
+      } else spawn(withData, first = false)
     current = child
     val ready =
       try {
@@ -228,8 +254,10 @@ internal class SimulatorSupervisor(
     snapshot?.deleteRecursively()
     launch = next
     val startMs = elapsed(spawnStart)
+    prepareSpare()
     val result = buildJsonObject {
       put("reason", reason)
+      put("standby", warm != null)
       put("keptData", kept)
       put("snapshotMs", snapshotMs)
       put("stopMs", stopMs)
@@ -250,20 +278,84 @@ internal class SimulatorSupervisor(
 
   // ---------------------------------------------------------------------------------------------
 
-  private fun spawn(launch: Launch, first: Boolean): Child {
+  /**
+   * Starts a standby for the next restart of [launch], unless one is waiting: the same APK and
+   * converted classes, with an empty overlay directory of its own in front, which a reload fills
+   * just before telling it to go.
+   */
+  private fun prepareSpare() {
+    if (!standby || spare?.child?.process?.isAlive == true) return
+    val slot = Files.createTempDirectory("compose-preview-standby").toFile()
+    val spareLaunch =
+      launch.copy(
+        classes = listOf(slot, launch.classes.last()),
+        properties = launch.properties - RESTORE_PROPERTY + (STANDBY_PROPERTY to "true"),
+      )
+    spare = Spare(spawn(spareLaunch, first = false, standby = true), spareLaunch, slot)
+  }
+
+  /**
+   * The standby, if it can run [next]: the same APK and converted jar, and only directories in
+   * front of the jar, which are copied into its overlay directory. Otherwise it is ended.
+   */
+  private fun takeSpare(next: Launch): Spare? {
+    val candidate = spare ?: return null
+    spare = null
+    val overlays = next.classes.dropLast(1)
+    val fits =
+      candidate.child.process.isAlive &&
+        candidate.launch.apk == next.apk &&
+        candidate.launch.classes.last() == next.classes.last() &&
+        overlays.all { it.isDirectory } &&
+        candidate.launch.properties - STANDBY_PROPERTY == next.properties - RESTORE_PROPERTY
+    if (!fits) {
+      candidate.retire()
+      return null
+    }
+    // A standby still starting is taken all the same: it is further along than a new JVM.
+    val prepared = runCatching {
+      candidate.child.prepared.get(READY_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+    }
+    if (prepared.isFailure) {
+      candidate.retire()
+      return null
+    }
+    for (overlay in overlays) overlay.copyRecursively(candidate.slot, overwrite = true)
+    return candidate
+  }
+
+  private fun Spare.retire() {
+    child.retired = true
+    destroyTree(child.process)
+    slot.deleteRecursively()
+  }
+
+  private fun dropSpare() {
+    spare?.retire()
+    spare = null
+  }
+
+  private fun spawn(launch: Launch, first: Boolean, standby: Boolean = false): Child {
     val stamped =
       launch.copy(
         properties = launch.properties + (LAUNCHED_PROPERTY to "${System.currentTimeMillis()}")
       )
     val builder = ProcessBuilder(command(stamped))
     if (!control) builder.redirectInput(ProcessBuilder.Redirect.INHERIT)
-    val child = Child(builder.start(), first)
+    val child = Child(builder.start(), first, standby)
     child.pump()
     return child
   }
 
-  private inner class Child(val process: Process, private val first: Boolean) {
+  private inner class Child(
+    val process: Process,
+    private val first: Boolean,
+    /** Waiting to be told to go; its log is held back until then. */
+    @Volatile private var standby: Boolean = false,
+  ) {
     val ready = CompletableFuture<JsonObject>()
+    /** A standby's `standby` event: prepared, and waiting for [promote]. */
+    val prepared = CompletableFuture<Unit>()
     val pending: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val internal = ConcurrentHashMap<String, CompletableFuture<Reply>>()
     private val stdin = BufferedWriter(OutputStreamWriter(process.outputStream, Charsets.UTF_8))
@@ -275,6 +367,7 @@ internal class SimulatorSupervisor(
           lines.forEach(::onLine)
         }
         ready.completeExceptionally(IllegalStateException("the simulator exited (${exit()})"))
+        prepared.completeExceptionally(IllegalStateException("the standby exited (${exit()})"))
         internal.values.forEach { it.complete(Reply.Failed("the simulator exited")) }
       }
       daemon("simulator-err-${device ?: "app"}") {
@@ -284,12 +377,13 @@ internal class SimulatorSupervisor(
               stderrTail.addLast(line)
               while (stderrTail.size > TAIL_LINES) stderrTail.removeFirst()
             }
-            log(prefix(line))
+            if (!standby) log(prefix(line))
           }
         }
       }
       process.onExit().thenRun {
-        if (retired) return@thenRun
+        // A standby, or a simulator already replaced, ends without ending the session.
+        if (retired || (!first && current !== this)) return@thenRun
         failPending("the simulator exited (${exit()})")
         if (outliveExits && current === this) {
           lastFailure = "it exited (${exit()})"
@@ -327,12 +421,27 @@ internal class SimulatorSupervisor(
         }
         pending.remove(id)
       }
+      if (json.string("event") == "standby") {
+        prepared.complete(Unit)
+        return
+      }
       if (json.string("event") == "ready") {
         ready.complete(JsonObject(json.filterKeys { it != "event" }))
         // A replacement's ready is folded into the restart's reply and `restarted` event.
         if (!first) return
       }
       emitRaw(line)
+    }
+
+    /** Tells a standby to go on, with [properties] (the data to restore, when it was asked). */
+    fun promote(properties: Map<String, String>) {
+      standby = false
+      write(
+        JsonObject(
+            mapOf("go" to JsonObject(properties.mapValues { (_, value) -> JsonPrimitive(value) }))
+          )
+          .toString()
+      )
     }
 
     fun write(line: String) {
@@ -424,6 +533,10 @@ internal class SimulatorSupervisor(
     const val RESTORE_PROPERTY = "composeai.simulator.restoreData"
     /** `:simulator-host`'s `Startup.CLI_PROPERTY`. */
     const val LAUNCHED_PROPERTY = "composeai.simulator.t.launched"
+    /** When a standby was asked to take over: its `startup.totalMs` counts from here. */
+    const val ASKED_PROPERTY = "composeai.simulator.t.asked"
+    /** `:simulator-host`'s `Standby.PROPERTY`. */
+    const val STANDBY_PROPERTY = "composeai.simulator.standby"
 
     private const val SNAPSHOT_TIMEOUT_MS = 60_000L
     private const val READY_TIMEOUT_MS = 300_000L

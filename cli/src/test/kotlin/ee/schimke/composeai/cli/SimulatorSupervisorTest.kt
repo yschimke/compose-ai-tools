@@ -20,7 +20,15 @@ class SimulatorSupervisorTest {
   private val fake =
     """
     echo "simulator for $1" >&2
-    echo "{\"event\":\"ready\",\"apk\":\"$1\",\"restore\":\"$2\",\"startup\":{\"totalMs\":7}}"
+    restore="$2"
+    warm=false
+    if [ "$3" = "true" ]; then
+      echo '{"event":"standby"}'
+      IFS= read -r go || exit 0
+      restore=$(printf '%s' "${'$'}go" | sed -n 's/.*"composeai.simulator.restoreData":"\([^"]*\)".*/\1/p')
+      warm=true
+    fi
+    echo "{\"event\":\"ready\",\"apk\":\"$1\",\"restore\":\"${'$'}restore\",\"warm\":${'$'}warm,\"startup\":{\"totalMs\":7}}"
     while IFS= read -r line; do
       id=$(printf '%s' "${'$'}line" | sed -n 's/.*"id":\("[^"]*"\|[0-9]*\).*/\1/p')
       case "${'$'}line" in
@@ -37,6 +45,7 @@ class SimulatorSupervisorTest {
   private fun supervisor(
     device: String? = null,
     extra: ((SimulatorSupervisor, String, JsonObject) -> JsonObject?)? = null,
+    standby: Boolean = false,
   ) =
     SimulatorSupervisor(
       device = device,
@@ -49,12 +58,14 @@ class SimulatorSupervisorTest {
           "fake",
           launch.apk.path,
           launch.properties[SimulatorSupervisor.RESTORE_PROPERTY].orEmpty(),
+          launch.properties[SimulatorSupervisor.STANDBY_PROPERTY].orEmpty(),
         )
       },
       emit = { line -> out.add(Json.parseToJsonElement(line).jsonObject) },
       log = {},
       control = true,
       extraCommand = extra,
+      standby = standby,
     )
 
   private fun next(): JsonObject = out.poll(20, TimeUnit.SECONDS) ?: error("no output")
@@ -129,5 +140,26 @@ class SimulatorSupervisorTest {
       nextWith("id", "7")["result"]!!.jsonObject["apk"]!!.jsonPrimitive.content,
     )
     supervisor.close()
+  }
+
+  @Test
+  fun `a standby takes over a restart, with the data, and another is prepared`() {
+    val supervisor = supervisor(standby = true)
+    supervisor.start()
+    nextWith("event", "ready")
+
+    supervisor.submit("""{"id":1,"cmd":"restart"}""")
+    val first = nextWith("id", "1")["result"]!!.jsonObject
+    assertEquals("true", first["standby"]!!.jsonPrimitive.content)
+    val info = first["info"]!!.jsonObject
+    assertEquals("true", info["warm"]!!.jsonPrimitive.content)
+    assertTrue(info["restore"]!!.jsonPrimitive.content.contains("compose-preview-data"))
+
+    supervisor.submit("""{"id":2,"cmd":"restart","keepData":false}""")
+    val second = nextWith("id", "2")["result"]!!.jsonObject
+    assertEquals("true", second["standby"]!!.jsonPrimitive.content)
+    assertEquals("", second["info"]!!.jsonObject["restore"]!!.jsonPrimitive.content)
+    supervisor.close()
+    assertEquals(0, supervisor.awaitExit())
   }
 }

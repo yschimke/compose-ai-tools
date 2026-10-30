@@ -6,6 +6,7 @@ import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.awt.GraphicsEnvironment
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
@@ -45,6 +46,8 @@ internal class LaunchCommand(private val args: List<String>) {
     if (control != null && control != "stdio") fail("--control supports only `stdio`")
     val live = liveReload()
     val liveWatch = "--live" in args
+    // A warm JVM waiting for the next restart: worth its memory when restarts are the loop.
+    val standby = "--no-standby" !in args && ("--standby" in args || live != null)
     if (liveWatch && live == null) fail("--live needs --project <dir>: the build to reload from")
     val apk =
       CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
@@ -224,7 +227,7 @@ internal class LaunchCommand(private val args: List<String>) {
       )
 
     /** The APK (and its converted classes) under every live-reload overlay. */
-    var base = conversion
+    val bases = ConcurrentHashMap<SimulatorSupervisor, Conversion>()
 
     /**
      * `reload`: compiles the project and restarts the app on the result — changed classes over the
@@ -234,7 +237,9 @@ internal class LaunchCommand(private val args: List<String>) {
       val start = System.nanoTime()
       val keepData = command.boolean("keepData") ?: (command.boolean("clearData") != true)
       val plan =
-        synchronized(live) { live.prepare(base.apk, full = command.boolean("full") == true) }
+        synchronized(live) {
+          live.prepare(bases.getValue(supervisor).apk, full = command.boolean("full") == true)
+        }
       fun JsonObject.with(vararg extra: Pair<String, kotlinx.serialization.json.JsonElement>) =
         JsonObject(
           this +
@@ -256,7 +261,7 @@ internal class LaunchCommand(private val args: List<String>) {
             supervisor.restart(
               SimulatorSupervisor.Launch(
                 plan.resourceApk,
-                listOfNotNull(plan.overlay) + base.entry.classesJar,
+                listOfNotNull(plan.overlay) + bases.getValue(supervisor).entry.classesJar,
               ),
               keepData,
               reason = "reload",
@@ -278,7 +283,7 @@ internal class LaunchCommand(private val args: List<String>) {
         }
         is LiveReload.Plan.Rebuild -> {
           val converted = conversionOf(plan.apk)
-          base = converted
+          bases[supervisor] = converted
           val restarted =
             supervisor.restart(
               SimulatorSupervisor.Launch(plan.apk, listOf(converted.entry.classesJar)),
@@ -311,7 +316,7 @@ internal class LaunchCommand(private val args: List<String>) {
         }
       }
       val converted = conversionOf(next)
-      base = converted
+      bases[supervisor] = converted
       val restarted =
         supervisor.restart(
           SimulatorSupervisor.Launch(next, listOf(converted.entry.classesJar)),
@@ -344,16 +349,21 @@ internal class LaunchCommand(private val args: List<String>) {
             when (cmd) {
               "update" -> update(supervisor, json)
               "reload" ->
-                live?.let { reload(it, supervisor, json) }
+                live?.takeIf { device != WATCH }?.let { reload(it, supervisor, json) }
                   ?: throw IllegalStateException(
-                    "reload needs a launch with --project <dir>, the app's Gradle build"
+                    if (live != null) "reload is the phone's: --project builds the phone app"
+                    else "reload needs a launch with --project <dir>, the app's Gradle build"
                   )
               else -> null
             }
           },
           outliveExits = live != null,
+          standby = standby && control != null,
         )
-        .also { it.event(conversion.event()) }
+        .also {
+          bases[it] = conversion
+          it.event(conversion.event())
+        }
     }
 
     val dataLayerMode = args.flagValue("--data-layer")
@@ -440,7 +450,9 @@ internal class LaunchCommand(private val args: List<String>) {
           dataLayer = DataLayerNode(hub.port, WATCH),
         ),
       )
+    if (live != null && liveWatch) watch(live, phone)
     val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
+    live?.close()
     hub.close()
     exitProcess(exit)
   }

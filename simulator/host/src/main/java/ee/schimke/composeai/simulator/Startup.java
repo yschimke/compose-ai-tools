@@ -24,6 +24,8 @@ final class Startup {
   static final String PROVIDERS = "providers";
   static final String APPLICATION = "application";
   static final String READY = "ready";
+  /** When a standby simulator was told to go: its launch, as far as the CLI is concerned. */
+  static final String GO = "go";
 
   /** How many files of a predecessor's data {@link AppFiles#restore} put back. */
   static final String RESTORED_PROPERTY = "composeai.simulator.restoredFiles";
@@ -45,13 +47,25 @@ final class Startup {
     long sandbox = time(SANDBOX, main);
     long application = time(APPLICATION, sandbox);
     long ready = time(READY, application);
+    String go = System.getProperty(PREFIX + GO);
     JSONObject out = new JSONObject();
     try {
-      out.put("jvmMs", Math.max(0, main - launched));
-      out.put("sandboxMs", Math.max(0, sandbox - main));
-      out.put("applicationMs", Math.max(0, application - sandbox));
-      out.put("firstActivityMs", Math.max(0, ready - application));
-      out.put("totalMs", Math.max(0, ready - launched));
+      if (go != null) {
+        // A standby: everything up to the go was paid before anyone asked.
+        long goAt = Long.parseLong(go);
+        long asked = time(PREFIX + "asked", goAt);
+        out.put("standby", true);
+        out.put("preparedMs", Math.max(0, time("standby", goAt) - launched));
+        out.put("applicationMs", Math.max(0, application - goAt));
+        out.put("firstActivityMs", Math.max(0, ready - application));
+        out.put("totalMs", Math.max(0, ready - asked));
+      } else {
+        out.put("jvmMs", Math.max(0, main - launched));
+        out.put("sandboxMs", Math.max(0, sandbox - main));
+        out.put("applicationMs", Math.max(0, application - sandbox));
+        out.put("firstActivityMs", Math.max(0, ready - application));
+        out.put("totalMs", Math.max(0, ready - launched));
+      }
       String restored = System.getProperty(RESTORED_PROPERTY);
       if (restored != null) out.put("restoredFiles", Integer.parseInt(restored));
     } catch (JSONException e) {
