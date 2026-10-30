@@ -11,6 +11,7 @@ compose-preview launch app-debug.apk --control stdio --headless    # the agent, 
 compose-preview launch app-debug.apk --prepare                     # convert and cache only
 compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
 compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
+compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -176,15 +177,17 @@ simulator.
 Replies are `{"id":…,"ok":true,"result":{…}}` or `{"id":…,"ok":false,"error":"…"}`; an exception
 the app throws while handling a command becomes an error reply, and the simulator keeps running.
 Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `newIntent` /
-`destroyed`, or `empty` when the last one finishes), `service`, `providers`, `permissions`, `log`
-(while `logcat` follows), and `error` for an intent the app sent that nothing handles.
+`destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
+finishes), `service`, `providers`, `permissions`, `log` (while `logcat` follows), `error` for an
+intent the app sent that nothing handles, and with `--launcher` `home`, `widget` and `shortcut`
+(see [Home screen and widgets](#home-screen-and-widgets)).
 
 Commands run in order. Those that change the UI answer after `settleMs` of simulated time (default
 250), so a `tap` followed by a `screenshot` sees the result; any command takes `settleMs`.
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity |
+| `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
@@ -194,10 +197,10 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `longPress` | as `tap`, `durationMs`? | |
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
-| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up |
+| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
-| `launch` | `display`? | starts the launcher activity |
+| `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
 | `clearData` | | `forceStop`, deletes the app's data and external files, resets permissions |
 | `finish` | `display`? | finishes the top activity without a key press |
@@ -231,6 +234,13 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
 | `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
 | `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
+| `home` | | with `--launcher`: the app goes to the background and the home screen shows; returns the grid and what is on it |
+| `drawer` | `action`? (`open` / `close`) | the app drawer |
+| `shortcuts` | `action`? (`list` / `open`), `activity`? | the app's static, dynamic and pinned shortcuts; `open` shows a launcher icon's long-press popup |
+| `shortcut` | `shortcutId` | opens a shortcut, as tapping it in the popup does |
+| `widgets` | | the app's widget providers (sizes, spans, resize mode, configure, preview) and the widgets placed |
+| `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
+| `picker` | `action`? (`open` / `close`) | the widget picker |
 | `quit` | | exits |
 
 ### Display, fold and device state
@@ -321,6 +331,132 @@ An **intent** is `{"action","data","type","package","component","categories","fl
 (`"NEW_TASK"`, `"CLEAR_TOP"`); an extra's JSON type picks its Java type, or
 `{"type":"long","value":1}` names it (`string int long float double boolean uri component null
 string[] int[]`).
+
+### Home screen and widgets
+
+`launch --launcher` puts a home screen under the app, as a phone's launcher sits under every app,
+so the app can be left and returned to and its **app widgets** placed, sized, updated and tapped
+the way a device's launcher does it. `--widget <provider>` (repeatable; implies `--launcher`)
+starts with one placed: the app starts once, then the home screen comes forward with the widget.
+
+![The app, HOME, the icon tapped (the same task comes back), and the icon's shortcuts](design/evidence/simulator-launch/launcher-home.png)
+
+**The home screen** is an activity of the simulator's (`PhoneHome`), plain `android.view` with no
+Compose, since the app's Compose is the only one on the sandbox's class path. It sits at the
+bottom of the default display's back stack, and `Navigator` moves between it and the app as the
+system does:
+
+- `home` or `key HOME` stops the app's top activity (`onPause`, `onStop`) and shows the home
+  screen; nothing is destroyed. Back from the app's root also lands there (`empty` follows).
+- Tapping the app's icon (or `launch`) brings its task forward (`onRestart`, `onResume`) when it
+  runs that activity at its root, else starts it. Any activity started while the home screen
+  shows (a widget's click, a shortcut) goes into the app's task, over the home screen.
+- `forceStop` and `CLEAR_TASK` leave the home screen alone. `am start -c
+  android.intent.category.HOME` and `input keyevent HOME` go home too.
+
+The grid follows the display: cells of 72dp, 8dp apart (the preview runtime's launcher grid, so a
+4×2 widget is 312×152dp in a `@Preview` and here), as many as fit — 4×6 on the default 360×640dp
+phone, 5×9 on the `phone` preset, 7×3 turned to landscape — centred. The app's launchable
+activities (`<activity-alias>`es included) are icons on the bottom row and in the drawer (`drawer`,
+the Apps handle, or a swipe up). A resize, rotation or fold re-flows it (`home` `reflowed` event):
+what no longer fits moves, and a widget that has to shrink is told its new size.
+
+**Shortcuts.** A long press on an icon (or `shortcuts` `open`) shows the activity's static
+shortcuts (`android.app.shortcuts` metadata, parsed through the app's resources) and its dynamic
+ones (`ShortcutManager`), then Widgets when the app has any. Opening one starts its intents with
+`NEW_TASK | CLEAR_TASK` on the first. A shortcut the app pins with `requestPinShortcut` becomes an
+icon on the home screen (`shortcut` `pinned` event); Robolectric's `ShortcutManager` pins it
+without a confirm sheet.
+
+**Widgets.** The app's providers come from its manifest: receivers handling `APPWIDGET_UPDATE`
+with `android.appwidget.provider` metadata, the `<appwidget-provider>` XML parsed through the
+app's resources into an `AppWidgetProviderInfo` (sizes, target cells, resize limits and mode,
+category, features, configure activity, preview, description, update period). `:simulator-host`
+replaces Robolectric's `AppWidgetManager` shadow, so `getAppWidgetIds`, `getAppWidgetInfo`,
+`getAppWidgetOptions`, `updateAppWidget`, `partiallyUpdateAppWidget`,
+`notifyAppWidgetViewDataChanged`, `requestPinAppWidget` and `setWidgetPreview` answer from the
+home screen's widgets, as `AppWidgetService` does on a device. Adding one does what the system and
+a launcher do between them:
+
+1. **Bind** a new id (`widget` `bound` event), with the size options it will get.
+2. **Broadcast** `APPWIDGET_ENABLED` for a provider's first widget, then `APPWIDGET_UPDATE`,
+   through `Navigator` to the app's own receiver; Glance's `GlanceAppWidgetReceiver` takes the
+   same path.
+3. **Configure**, if the provider has a configure activity: it starts over the home screen for a
+   result with `EXTRA_APPWIDGET_ID`. `RESULT_OK` places the widget, anything else removes it
+   (`APPWIDGET_DELETED`, then `APPWIDGET_DISABLED` for the last). `WIDGET_FEATURE_CONFIGURATION_OPTIONAL`
+   skips it unless `"configure":true`; `reconfigure` (or Settings on the resize frame) re-runs it
+   for a `WIDGET_FEATURE_RECONFIGURABLE` widget.
+4. **Size** it: `APPWIDGET_OPTIONS_CHANGED` with `OPTION_APPWIDGET_MIN_WIDTH` / `MAX_WIDTH` /
+   `MIN_HEIGHT` / `MAX_HEIGHT` and `OPTION_APPWIDGET_SIZES`, the size it is drawn at, so a
+   responsive `RemoteViews(Map<SizeF, RemoteViews>)` picks its layout.
+5. **Draw** what the app passes to `updateAppWidget` in an `AppWidgetHostView` on the grid —
+   the framework's own, not Robolectric's shadow of it, so layouts are picked by size, partial
+   updates merge, and errors show the error view — and redraw on every update (`widget`
+   `updated` event with the layout, whether it was partial, the update count and a `reason`).
+
+The span is `targetCellWidth` × `targetCellHeight` when set, else from `minWidth` / `minHeight`;
+`resize` stays within `minResize*` / `maxResize*` along the axes `resizeMode` allows. `widget
+update` sends `APPWIDGET_UPDATE`, as a launcher refresh does; `updatePeriodMillis` ticks follow the
+simulated clock (at least 30 minutes, as the system clamps it). An update's `reason` is the home
+screen's last prompt to that widget within ten simulated seconds (`bind`, `update`, `options`,
+`click`, `configure`), else `app`: the app updating on its own, from a worker, a broadcast or its
+UI. It is a best guess; the system does not say.
+
+![The picker, a widget placed from it, its resize frame, and resized by its handle](design/evidence/simulator-launch/launcher-widget-resize.png)
+
+**Taps.** The home screen installs the interaction handler a launcher does, so a view's
+`setOnClickPendingIntent`, a compound button's `setOnCheckedChangeResponse` (with
+`EXTRA_CHECKED`), and a collection row's fill-in intent under the list's
+`setPendingIntentTemplate` are sent as the system sends them, through `Navigator`: an activity
+onto the app's task, a broadcast to runtime and manifest receivers, a service started (`widget`
+`clicked` event, with the intent). Glance's actions are this underneath: `actionRunCallback`
+reaches Glance's `ActionCallbackBroadcastReceiver`, the callback runs, and the `update()` it calls
+recomposes the widget in a Glance session worker (WorkManager) and arrives as an `updated` event
+with reason `click`.
+
+![A Glance widget's actionRunCallback counting taps](design/evidence/simulator-launch/launcher-glance-callback.png)
+
+**Collections.** For `setRemoteAdapter` with a `RemoteViewsService`, the service is bound through
+`Navigator` (a `service` `bound` event) and its `RemoteViewsFactory` driven in-process:
+`onDataSetChanged`, `getCount`, `getViewAt`, each row flagged as a collection child and wrapped as
+the device's adapter wraps it, so the template click finds the row's fill-in intent.
+`notifyAppWidgetViewDataChanged` reloads it (`dataChanged` event). `RemoteCollectionItems` (and
+Glance's lazy lists, which use them) need no service and just inflate.
+
+![A collection widget: configure, a row toggled, the list scrolled, the title opening the app](design/evidence/simulator-launch/launcher-collection.png)
+
+**The picker and pinning.** `picker` (or Widgets in the wallpaper's or an icon's long-press menu)
+lists the providers with label, span, description and preview: the generated preview the app set
+with `setWidgetPreview` (API 35), else its `previewLayout` inflated, else its `previewImage`, else
+the app's icon, as Launcher3 picks. A long press on a preview places the widget. The app's
+`requestPinAppWidget` brings the home screen forward with a confirm sheet (`widget`
+`pinRequested` event); `widget` `pin` with `"answer":"accept"` (or tapping Add) places the widget
+and sends the success callback with `EXTRA_APPWIDGET_ID` filled in, `"reject"` drops it.
+
+![requestPinAppWidget's sheet, the widget pinned, the drawer, and the grid re-flowed in landscape](design/evidence/simulator-launch/launcher-pin-drawer.png)
+
+`hierarchy`, `find` and `tap` see the home screen's views, each with a `sim:id/…` resource id:
+`icon`, `shortcut_icon`, `drawer_handle`, `drawer`, `drawer_icon`, `shortcuts`, `shortcut`,
+`shortcut_widgets`, `home_menu`, `home_widgets`, `widget` (its description names the widget, id
+and span), `widget_resize`, `widget_resize_handle`, `widget_remove`, `widget_reconfigure`,
+`picker`, `picker_preview`, `pin_sheet`, `pin_accept`, `pin_reject`. A widget's own views appear
+under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widget's button.
+
+```
+→ {"cmd":"home"}
+→ {"cmd":"widget","action":"add","provider":"TaskListWidgetReceiver"}
+← {"event":"widget","state":"configuring","widgetId":1,"configure":"…TaskListConfigureActivity"}
+→ {"cmd":"tap","textContains":"work"}
+← {"event":"widget","state":"configured","widgetId":1,"spanX":3,"spanY":3,…}
+→ {"cmd":"tap","textContains":"Work task 2"}
+← {"event":"widget","state":"clicked","widgetId":1,"sent":{"kind":"broadcast",…}}
+← {"event":"widget","state":"updated","widgetId":1,"partial":true,"reason":"click",…}
+→ {"cmd":"widget","action":"resize","widgetId":1,"spanX":4,"spanY":4}
+```
+
+`id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
+belongs to the default display: a secondary display gets no launcher.
 
 ### adb equivalents
 
@@ -431,8 +567,9 @@ What does not, or not yet:
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
-  see [adb equivalents](#adb-equivalents)); `launch` while running pushes a new launcher
-  instance rather than bringing the task forward; `HOME` does nothing.
+  see [adb equivalents](#adb-equivalents)). Without `--launcher`, `launch` while running pushes a
+  new launcher instance rather than bringing the task forward, and `HOME` does nothing; there are
+  no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
 - **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
@@ -463,8 +600,13 @@ What does not, or not yet:
   [design/SIMULATOR_WEAR_LAUNCHER.md](design/SIMULATOR_WEAR_LAUNCHER.md)). Ambient mode is not entered (no
   `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
   `SERVICE_INVALID`, as Play services' other APIs do.
-- **Home screen.** No launcher: leaving the app's root finishes it, and app widgets are not hosted
-  (the plan: [design/SIMULATOR_PHONE_LAUNCHER.md](design/SIMULATOR_PHONE_LAUNCHER.md)).
+- **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
+  own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
+  keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).
+  A pin request brings the home screen forward rather than showing its sheet over the app, and
+  `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
+  framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
+  where this sandbox refuses the host.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not

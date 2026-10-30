@@ -38,7 +38,10 @@ import org.robolectric.android.controller.ServiceController;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowActivity;
 import org.robolectric.shadows.ShadowApplication;
+import org.robolectric.shadows.ShadowBroadcastPendingResult;
 import org.robolectric.shadows.ShadowService;
+import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 /**
  * Makes the app's own component traffic happen, which Robolectric otherwise only records.
@@ -67,6 +70,12 @@ final class Navigator {
     final int displayId;
     /** Paused and stopped because another activity went on top of it. */
     boolean stopped;
+
+    /**
+     * The simulator's own home screen ({@code --launcher}), not the app's: it stays at the bottom
+     * of the default display, and force-stops and {@code CLEAR_TASK} leave it alone.
+     */
+    boolean system;
 
     Entry(
         ActivityController<? extends Activity> controller,
@@ -142,6 +151,17 @@ final class Navigator {
     return null;
   }
 
+  /** The session's navigator, for the simulator's own system UI. */
+  static Navigator current() {
+    return current;
+  }
+
+  /** Whether display [displayId] has an activity of the app's own, rather than only the home. */
+  boolean hasAppActivity(int displayId) {
+    for (Entry entry : stack) if (entry.displayId == displayId && !entry.system) return true;
+    return false;
+  }
+
   /** The window tokens of activities stopped under another, which are not on screen. */
   Set<Object> hiddenWindowTokens() {
     Set<Object> hidden = new HashSet<>();
@@ -187,7 +207,7 @@ final class Navigator {
       } catch (PackageManager.NameNotFoundException e) {
         // Not in the manifest: handles nothing.
       }
-      if ((handled & changes) == changes) {
+      if (entry.system || (handled & changes) == changes) {
         entry.controller.configurationChange(config, metrics);
       } else {
         relaunch(entry);
@@ -309,6 +329,10 @@ final class Navigator {
   JSONObject startActivity(Intent intent, int requestCode, Bundle options) {
     int displayId = launchDisplay(options);
     ComponentName component = resolveActivity(intent);
+    // An app activity started while the home screen shows goes into the app's task, which comes
+    // forward over the home screen, as a launcher's NEW_TASK start does on a device. One the home
+    // screen starts for a result (a widget's configure activity) goes over it, and returns to it.
+    if (requestCode < 0) leaveHome(displayId);
     ComponentName implementation = targetOfAlias(component);
     Class<? extends Activity> type = loadClass(implementation.getClassName(), Activity.class);
     Intent launch = new Intent(intent).setComponent(component);
@@ -316,7 +340,7 @@ final class Navigator {
 
     if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0) {
       for (Entry entry : new ArrayList<>(stack)) {
-        if (entry.displayId != displayId) continue;
+        if (entry.displayId != displayId || entry.system) continue;
         stack.remove(entry);
         destroy(entry);
       }
@@ -371,6 +395,84 @@ final class Navigator {
     return describe(entry, "resumed");
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // The home screen
+
+  /**
+   * Puts [activity], the simulator's home screen, at the bottom of the default display's stack and
+   * creates it, resumed if nothing of the app's is there yet. It is not the app's, so it is built
+   * directly rather than through the app's component factory.
+   */
+  Entry startHome(Activity activity, Intent intent) {
+    ActivityController<? extends Activity> controller = ActivityController.of(activity, intent);
+    controller.setup();
+    Entry entry = new Entry(controller, intent, null, -1, Display.DEFAULT_DISPLAY);
+    entry.system = true;
+    stack.addLast(entry);
+    if (stack.peekFirst() != entry) {
+      controller.pause();
+      controller.saveInstanceState(new Bundle()).stop();
+      entry.stopped = true;
+    }
+    protocol.event("activity", describe(entry, entry.stopped ? "stopped" : "resumed"));
+    return entry;
+  }
+
+  /** The home screen's entry, or null without {@code --launcher}. */
+  Entry home() {
+    for (Entry entry : stack) if (entry.system) return entry;
+    return null;
+  }
+
+  /**
+   * {@code HOME}: the app's top activity on the default display is paused and stopped, as the app
+   * goes to the background, and the home screen comes forward. Nothing is destroyed.
+   */
+  JSONObject goHome() {
+    Entry home = home();
+    if (home == null) throw new IllegalStateException("no home screen: launch with --launcher");
+    Entry top = top(Display.DEFAULT_DISPLAY);
+    if (top == home) return describe(home, "resumed");
+    if (top != null && !top.stopped) {
+      top.controller.pause();
+      top.controller.saveInstanceState(new Bundle()).stop();
+      top.stopped = true;
+      protocol.event("activity", describe(top, "stopped"));
+    }
+    stack.remove(home);
+    stack.push(home);
+    bringBack(home);
+    protocol.event("activity", describe(home, "resumed"));
+    return describe(home, "resumed");
+  }
+
+  /**
+   * Brings the app's task on the default display forward over the home screen, as tapping the
+   * icon of a running app does: its top activity restarts and resumes ({@code onRestart}, {@code
+   * onStart}, {@code onResume}). Returns null when the app has no activity there to bring back.
+   */
+  JSONObject bringAppForward() {
+    if (!hasAppActivity(Display.DEFAULT_DISPLAY)) return null;
+    leaveHome(Display.DEFAULT_DISPLAY);
+    Entry top = top(Display.DEFAULT_DISPLAY);
+    if (top.stopped) bringBack(top);
+    protocol.event("activity", describe(top, "resumed"));
+    return describe(top, "resumed");
+  }
+
+  /** The home screen on [displayId], if on top, is stopped and moved under the app's task. */
+  private void leaveHome(int displayId) {
+    Entry top = top(displayId);
+    if (top == null || !top.system) return;
+    if (!top.stopped) {
+      top.controller.pause();
+      top.controller.saveInstanceState(new Bundle()).stop();
+      top.stopped = true;
+    }
+    stack.remove(top);
+    stack.addLast(top);
+  }
+
   /**
    * What {@code am force-stop} can do in one process: destroys every activity, top first, and
    * every service. The application object, its singletons and threads stay; there is no second
@@ -378,11 +480,17 @@ final class Navigator {
    */
   JSONObject forceStop() {
     JSONArray activities = new JSONArray();
-    while (!stack.isEmpty()) {
-      Entry entry = stack.pop();
+    for (Entry entry : new ArrayList<>(stack)) {
+      if (entry.system) continue;
+      stack.remove(entry);
       destroy(entry);
       activities.put(entry.activity().getClass().getName());
       protocol.event("activity", describe(entry, "destroyed"));
+    }
+    Entry home = home();
+    if (home != null && home.stopped && activities.length() > 0) {
+      bringBack(home);
+      protocol.event("activity", describe(home, "resumed"));
     }
     JSONArray stopped = new JSONArray();
     for (Map.Entry<ComponentName, Running> e : new ArrayList<>(services.entrySet())) {
@@ -404,6 +512,9 @@ final class Navigator {
     Entry top = top(displayId);
     if (top == null) {
       throw new IllegalStateException("no activity is running on display " + displayId);
+    }
+    if (top.system) {
+      throw new IllegalStateException("the home screen is showing; it does not finish");
     }
     top.activity().finish();
     reapFinishedActivities();
@@ -438,6 +549,9 @@ final class Navigator {
       if (resumed != null) {
         if (resumed.stopped) bringBack(resumed);
         protocol.event("activity", describe(resumed, "resumed"));
+        if (resumed.system && !hasAppActivity(before.getKey())) {
+          protocol.event("activity", new Protocol.Json().put("state", "empty").object());
+        }
       } else if (stack.isEmpty()) {
         protocol.event("activity", new Protocol.Json().put("state", "empty").object());
       }
@@ -574,6 +688,7 @@ final class Navigator {
    */
   private Activity requesterOf(String[] names, int requestCode) {
     for (Entry entry : stack) {
+      if (entry.system) continue;
       ShadowActivity shadow = Shadow.extract(entry.activity());
       ShadowActivity.PermissionsRequest last = shadow.getLastRequestedPermission();
       if (last != null
@@ -619,13 +734,15 @@ final class Navigator {
 
   JSONObject describe(Entry entry, String state) {
     Activity activity = entry.activity();
-    return new Protocol.Json()
-        .put("state", state)
-        .put("activity", activity.getClass().getName())
-        .put("intent", Intents.toJson(activity.getIntent()))
-        .put("title", activity.getTitle() == null ? null : activity.getTitle().toString())
-        .put("display", entry.displayId)
-        .object();
+    Protocol.Json json =
+        new Protocol.Json()
+            .put("state", state)
+            .put("activity", activity.getClass().getName())
+            .put("intent", Intents.toJson(activity.getIntent()))
+            .put("title", activity.getTitle() == null ? null : activity.getTitle().toString())
+            .put("display", entry.displayId);
+    if (entry.system) json.put("system", true);
+    return json.object();
   }
 
   JSONArray describeStack() {
@@ -836,6 +953,20 @@ final class Navigator {
     return result;
   }
 
+  /**
+   * Binds the service [intent] names for the simulator's own system UI, as a command's bind does,
+   * and returns what its {@code onBind} returned: a launcher showing a widget's collection talks to
+   * the {@code RemoteViewsService}'s factory in-process through it.
+   */
+  IBinder bindForHost(Intent intent) {
+    ComponentName component = resolveService(intent);
+    Running running = runningOrCreate(component, intent);
+    IBinder binder = running.controller.get().onBind(intent);
+    running.bindings++;
+    protocol.event("service", describe(component, running, "bound"));
+    return binder;
+  }
+
   JSONObject unbindService(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = services.get(component);
@@ -966,7 +1097,22 @@ final class Navigator {
           instantiate(
               () -> factory().instantiateReceiver(app.getClassLoader(), receiver.name, intent));
       if (intent.getAction() == null) {
-        // An explicit broadcast with no action cannot be matched by a filter; call it directly.
+        // An explicit broadcast with no action cannot be matched by a filter; call it directly,
+        // with the pending result a delivery carries, so a receiver that calls goAsync() (Glance's
+        // action receiver does) gets one rather than null.
+        BroadcastReceiver.PendingResult result =
+            ReflectionHelpers.callStaticMethod(
+                ShadowBroadcastPendingResult.class,
+                "create",
+                ClassParameter.from(int.class, 0),
+                ClassParameter.from(String.class, null),
+                ClassParameter.from(Bundle.class, null),
+                ClassParameter.from(boolean.class, false));
+        // Hidden: BroadcastReceiver.setPendingResult.
+        ReflectionHelpers.callInstanceMethod(
+            instance,
+            "setPendingResult",
+            ClassParameter.from(BroadcastReceiver.PendingResult.class, result));
         instance.onReceive(app, new Intent(intent));
       } else {
         register(instance, intent);

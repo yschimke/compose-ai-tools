@@ -333,6 +333,35 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `a launcher launch passes the home screen and the widgets to place`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            launcher = true,
+            widgets = listOf("WeatherAppWidgetReceiver", "com.example.CounterWidgetReceiver"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launcher=true" in command)
+    assertTrue(
+      "-Dcomposeai.simulator.widgets=WeatherAppWidgetReceiver;com.example.CounterWidgetReceiver" in
+        command
+    )
+  }
+
+  @Test
   fun `a max heap becomes the simulator jvm's -Xmx`() {
     val command =
       LaunchCommand.simulatorCommand(
@@ -355,6 +384,30 @@ class LaunchCommandTest {
       )
     assertTrue("-Xmx2g" in command)
     assertTrue(command.indexOf("-Xmx2g") < command.indexOf("-cp"))
+  }
+
+  @Test
+  fun `no home screen without --launcher`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launcher") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.widgets") })
   }
 
   @Test

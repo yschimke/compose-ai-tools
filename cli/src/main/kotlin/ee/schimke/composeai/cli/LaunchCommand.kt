@@ -165,6 +165,8 @@ internal class LaunchCommand(private val args: List<String>) {
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
         displays = args.flagValuesAll("--display"),
+        launcher = "--launcher" in args || args.flagValuesAll("--widget").isNotEmpty(),
+        widgets = args.flagValuesAll("--widget"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
     fun commandFor(apk: File, classes: File, options: Options) =
@@ -253,6 +255,10 @@ internal class LaunchCommand(private val args: List<String>) {
      * options: `1280x720@xhdpi,name=TV,type=external`.
      */
     val displays: List<String> = emptyList(),
+    /** A home screen under the app (`--launcher`): HOME, icons, shortcuts and app widgets. */
+    val launcher: Boolean = false,
+    /** Widget providers placed on the home screen at launch (`--widget`, repeatable). */
+    val widgets: List<String> = emptyList(),
   )
 
   private fun convert(
@@ -367,6 +373,10 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.displays.isNotEmpty()) {
         properties["composeai.simulator.displays"] = options.displays.joinToString(";")
       }
+      if (options.launcher) properties["composeai.simulator.launcher"] = "true"
+      if (options.widgets.isNotEmpty()) {
+        properties["composeai.simulator.widgets"] = options.widgets.joinToString(";")
+      }
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -428,6 +438,12 @@ internal class LaunchCommand(private val args: List<String>) {
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
                               own window; Presentation and launch-display activities use it.
+        --launcher            A home screen under the app: HOME and Back from the app's root
+                              go there, its icons reopen the app, a long press shows its
+                              shortcuts, and the app's widgets are placed, sized, updated and
+                              tapped there as a phone's launcher does.
+        --widget <provider>   Start with the app's widget <provider> (a receiver class or its
+                              short name) on the home screen (repeatable; implies --launcher).
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: the JVM's,
                               a quarter of the machine's memory, for each of a pair).
