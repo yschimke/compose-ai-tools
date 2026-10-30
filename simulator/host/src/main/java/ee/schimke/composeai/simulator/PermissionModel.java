@@ -120,7 +120,8 @@ final class PermissionModel {
               "BLUETOOTH_ADVERTISE",
               "NEARBY_WIFI_DEVICES",
               "UWB_RANGING",
-              "RANGING"),
+              "RANGING",
+              "ACCESS_LOCAL_NETWORK"),
           group("READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"));
 
   /** Platform runtime permissions newer than API 30, and the API that added each. */
@@ -144,6 +145,8 @@ final class PermissionModel {
     }
     SINCE.put(VISUAL_USER_SELECTED, 34);
     SINCE.put("android.permission.RANGING", 36);
+    // Android 17; before it, local network access rides on NEARBY_WIFI_DEVICES.
+    SINCE.put("android.permission.ACCESS_LOCAL_NETWORK", 37);
   }
 
   private static Set<String> group(String... names) {
@@ -173,6 +176,7 @@ final class PermissionModel {
               "BLUETOOTH_SCAN",
               "BODY_SENSORS",
               "BODY_SENSORS_BACKGROUND",
+              "BODY_TRACKING",
               "CALL_PHONE",
               "CAMERA",
               "EYE_TRACKING_COARSE",

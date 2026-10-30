@@ -305,7 +305,22 @@ public class PermissionModelTest {
     assertTrue(PermissionModel.isPlatformRuntime(CAMERA));
     assertFalse(PermissionModel.isPlatformRuntime(INTERNET));
     assertFalse(PermissionModel.isPlatformRuntime("android.permission.FOREGROUND_SERVICE"));
+    assertTrue(PermissionModel.isPlatformRuntime("android.permission.BODY_TRACKING"));
     assertFalse(PermissionModel.isPlatform("com.example.permission.C2D_MESSAGE"));
+  }
+
+  @Test
+  public void localNetworkIsAskedFrom37AndGroupedWithNearbyDevices() {
+    String local = "android.permission.ACCESS_LOCAL_NETWORK";
+    List<String> manifest = Arrays.asList(local, SCAN);
+    PermissionModel m36 = new PermissionModel(manifest, n -> true, 36, 36);
+    assertEquals(How.IGNORED, m36.triage(new String[] {local}).get(0).how);
+    PermissionModel m37 = new PermissionModel(manifest, n -> true, 37, 37);
+    assertEquals(How.DIALOG, m37.triage(new String[] {local}).get(0).how);
+    request(m37, GRANT, SCAN);
+    List<Decision> ds = m37.triage(new String[] {local});
+    assertEquals(How.GROUP_GRANTED, ds.get(0).how);
+    assertTrue(ds.get(0).granted);
   }
 
   @Test(expected = IllegalArgumentException.class)
