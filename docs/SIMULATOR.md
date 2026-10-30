@@ -884,7 +884,20 @@ and configuration are paid, which is more than half of a launch. The standby is 
 data to restore; `startup` then reports `standby: true` and `preparedMs`. A new standby is prepared
 after each restart. It costs a second JVM's memory while it waits: about 400 MB idle.
 
-TIMINGS_TABLE
+Measured on a shared 15 GB host with other simulators running, each from the conversion cache,
+keeping the app's data:
+
+| | Probe app (Views, 7,578 classes) | Sunflower (Compose, Hilt, Room; 19,540 classes, `--sdk 36`) |
+| --- | --- | --- |
+| Launch to `ready` | 7.9 s | 6.8 to 12.0 s |
+| `restart` | 10.7 s | 7.1 to 7.5 s |
+| `restart` with `--standby` | 4.9 to 5.7 s | 3.7 to 3.8 s |
+| `update` to an APK in the cache | 12.6 s | 6.7 s |
+
+A cold Sunflower restart's `startup` is 0.2 s of JVM, 1.2 s of sandbox, 3.7 s to
+`Application.onCreate()` returning and 1.5 s to the first frame. From a standby it is 0.9 s and
+2.3 s, with the rest paid ahead. Snapshotting and restoring the data takes about 30 ms, and
+stopping the old JVM 0.4 s. A waiting standby holds about 390 MB.
 
 Why a new JVM rather than a new class loader in this one: Robolectric's sandbox and the framework's
 classes belong to a class loader, so a fresh sandbox costs almost what a fresh JVM does. Starting the
