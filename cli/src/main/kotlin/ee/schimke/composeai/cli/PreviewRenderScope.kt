@@ -70,8 +70,11 @@ internal object PreviewRenderScope {
     rowAware: Boolean = true,
     filesDir: java.io.File? = null,
     ids: Set<String>? = null,
+    /** `--function`: exact function name ([previewIdMatchesRequest]). */
+    function: String? = null,
   ): Scope {
-    if (exactId == null && filter == null && previewRef == null && ids == null) return FULL
+    if (exactId == null && filter == null && previewRef == null && ids == null && function == null)
+      return FULL
     if (manifests.isEmpty()) return FULL
 
     val selected = linkedSetOf<String>()
@@ -94,6 +97,7 @@ internal object PreviewRenderScope {
             exactIdExists = exactIdExists,
             rowAware = rowAware,
             ids = ids,
+            function = function,
           )
         if (
           !mayOwnRequestedRow &&
@@ -106,6 +110,7 @@ internal object PreviewRenderScope {
                 className = preview.className,
                 functionName = preview.functionName,
                 ids = ids,
+                function = function,
               )
             }
         )

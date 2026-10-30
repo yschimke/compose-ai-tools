@@ -32,6 +32,7 @@ this index as the map of everything else.
 - [RENDER_ASSERTIONS.md](RENDER_ASSERTIONS.md) — declaring properties a render must hold to (a font, a required role) and checking them against the data-product sidecars a render already writes.
 - [DEVICE_FRAMES.md](DEVICE_FRAMES.md) · [LOTTIE_PREVIEWS.md](LOTTIE_PREVIEWS.md) · [notifications.md](notifications.md) — shipped feature guides.
 - [APP_TOURS.md](APP_TOURS.md) — app-level previews: real activities (hero image), intents, scripted multi-step tours.
+- [SIMULATOR.md](SIMULATOR.md) — `compose-preview launch`: an APK in Robolectric's simulator, as a window or a JSON-lines control channel (navigation, services, broadcasts, providers).
 
 ## Integration & distribution
 
@@ -81,6 +82,7 @@ The `design/` tree holds the specs the code actually depends on:
 - [design/RELEASE_TRAINS.md](design/RELEASE_TRAINS.md) — **measurement + proposal**: this repository publishes 94 Maven artifacts on a line that releases ~6 times a day, and 96.7% of what it uploads is a version-bumped rebuild of identical code (117 module-changes against 3,572 module-publications over 38 releases). Measures each lever: a change-detection guard on the publish (−15.8%, implemented in reporting mode), splitting the publish into five cadence-based trains (−45.7%), and why skipping is unsafe until the CLI names the Maven version it was built against rather than assuming its own.
 - [design/REMOTE_COMPOSE_JSON.md](design/REMOTE_COMPOSE_JSON.md) — **normative**: the Remote Compose JSON format is *two* formats, and every mistake in this area starts by conflating them. Authoring JSON is a source language AndroidX's `RemoteComposeJsonParser` compiles to `.rc`; document JSON is this repository's operation-level projection of a compiled document, for reading and diffing, which nothing reads back. Covers why the dump rides AndroidX's own `Serializable` hook rather than a hand-written binary reader (a reader against a format with no checksums does not break when it drifts — it keeps parsing, wrongly), why ids travelling as NaN payloads force every non-finite float to be a string, why the codec is deliberately *not* in the Gradle plugin, and the trap where `parseToByteBuffer("{}")` succeeds and returns a playable document that renders blank with nothing anywhere reporting an error.
 - [design/SPATIAL_SCENE_CONTRACT.md](design/SPATIAL_SCENE_CONTRACT.md) — the XR scene wire format (schema-generated Kotlin/TS/C++ mirrors).
+- [design/REMOTE_COMPOSE_XR.md](design/REMOTE_COMPOSE_XR.md) — exploratory: Remote Compose documents in XR — a drag-rotatable cube defined wholly in a document, a 2D document projected onto a wall via SpatialScene, and the player/host API and GPU path that would make both efficient.
 - [design/DAEMON_LAUNCH_SCHEMA.md](design/DAEMON_LAUNCH_SCHEMA.md) — **normative**: the `daemon-launch.json` contract and the `checkDaemonLaunchSchema` gate that holds its four representations, in two languages across three Gradle builds, to one shape. What each of the ten rules catches, the allowlist discipline, and the two reachability notes that decide whether the gate actually runs on a PR.
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
 - [design/OUTPUT_REPOSITORIES.md](design/OUTPUT_REPOSITORIES.md) — **measurement + proposal**:
@@ -124,4 +126,4 @@ not as separate docs — read them next to the code.
 
 - [Offline deployment](OFFLINE.md) — `COMPOSE_PREVIEW_NO_NETWORK`, the one switch that refuses every outbound path of the CLI, which directories to pre-provision, and how to verify nothing is fetched.
 
-- [Native preview targets and artifact exports](design/BAZEL_PREVIEW_TARGETS.md) — Bazel/Blaze macro proposal and patterns from Gradle, Buck2, and Maven.
+- [Native preview targets and artifact exports](design/BAZEL_PREVIEW_TARGETS.md) — Bazel macro proposal and patterns from Gradle, Buck2, and Maven.

@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
@@ -152,6 +153,21 @@ abstract class DaemonBootstrapTask : DefaultTask() {
 
   // -------------------------------------------------------------------------------------------
 
+  // --- Source watch -----------------------------------------------------------------------------
+  //
+  // What the module is built from, so a tool that notices edits on its own looks where the build
+  // reads (see [SourceWatch]). Paths, not file inputs: nothing here is read, and an empty list is
+  // just "unknown" to the reader.
+
+  /** Kotlin and Java source directories of the variant the daemon serves. */
+  @get:Input abstract val watchSourceDirs: ListProperty<String>
+
+  /** Resource directories compiled into its previews. */
+  @get:Input abstract val watchResourceDirs: ListProperty<String>
+
+  /** Build scripts and version catalogs whose edits change its classpath. */
+  @get:Input abstract val watchBuildFiles: ListProperty<String>
+
   /** `<module>/build/compose-previews/daemon-launch.json`. */
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
@@ -179,11 +195,21 @@ abstract class DaemonBootstrapTask : DefaultTask() {
         workingDirectory = workingDirectory.get(),
         manifestPath = manifestPath.get(),
         btaCompile = assembleBtaCompileConfig(),
+        sourceWatch = assembleSourceWatch(),
       )
 
     val out = outputFile.get().asFile
     out.parentFile?.mkdirs()
     out.writeText(JSON.encodeToString(descriptor))
+  }
+
+  /** The [SourceWatch], or null when the wiring found nothing for any of its lists. */
+  private fun assembleSourceWatch(): SourceWatch? {
+    val sources = watchSourceDirs.getOrElse(emptyList()).distinct()
+    val resources = watchResourceDirs.getOrElse(emptyList()).distinct()
+    val buildFiles = watchBuildFiles.getOrElse(emptyList()).distinct()
+    if (sources.isEmpty() && resources.isEmpty() && buildFiles.isEmpty()) return null
+    return SourceWatch(sources, resources, buildFiles)
   }
 
   /**

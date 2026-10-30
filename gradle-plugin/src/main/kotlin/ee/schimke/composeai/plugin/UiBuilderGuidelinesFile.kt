@@ -183,7 +183,7 @@ internal object UiBuilderGuidelinesFile {
   private val packs = ConcurrentHashMap<String, ByteArray>()
 
   private val http: OkHttpClient by lazy {
-    OkHttpClient.Builder().callTimeout(30, TimeUnit.SECONDS).build()
+    SharedOkHttpClient.client.newBuilder().callTimeout(30, TimeUnit.SECONDS).build()
   }
 
   private fun fetchPack(url: String): ByteArray {

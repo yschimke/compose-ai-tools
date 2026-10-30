@@ -94,6 +94,10 @@ CLEAN_MARKER: str = "<!-- a11y-report:clean -->"
 
 # `findings.json`'s `scope` when the run checked only the previews a PR changed.
 CHANGED_PREVIEWS_SCOPE: str = "changed-previews"
+# How a scoped PR comment names the set it checked (the count line in the comment).
+SCOPED_SET_DESCRIPTION = "checked (changed renders, plus previews in files this PR edits)"
+# Above this many entries a roster states a count instead of listing names.
+ROSTER_LIST_MAX = 30
 
 
 def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
@@ -846,6 +850,10 @@ def cmd_comment(args: argparse.Namespace) -> int:
             f"not re-checked.",
             "",
         ])
+        # Kept for the record but folded away: none of it is about this PR, and listed in full it
+        # read as a findings report on every PR whose run hit a daemon failure.
+        if preserved:
+            lines.extend(["<details>", "<summary>Baseline findings (carried over)</summary>", ""])
         for entry in preserved:
             variant = entry.get("variant")
             header_suffix = f" · `{variant}`" if variant else ""
@@ -856,6 +864,8 @@ def cmd_comment(args: argparse.Namespace) -> int:
             lines.append("")
             lines.extend(_findings_table(entry["findings"]))
             lines.append("")
+        if preserved:
+            lines.extend(["</details>", ""])
         sys.stdout.write("\n".join(lines).rstrip() + "\n")
         return 0
 
@@ -871,7 +881,10 @@ def cmd_comment(args: argparse.Namespace) -> int:
         sys.stdout.write("\n".join(lines).rstrip() + "\n")
         return 0
 
-    scope_text = "this PR changed" if scoped else ""
+    # A scoped run checks the previews whose render this PR changed AND every preview in a source
+    # file it edits, so its count is routinely larger than the preview diff's; say which set it is
+    # rather than calling them all "changed".
+    scope_text = SCOPED_SET_DESCRIPTION if scoped else ""
     lines.extend([
         f"{err} error(s) · {warn} warning(s) · {info} info "
         f"across {len(entries)} preview(s){' ' + scope_text if scope_text else ''}.",
@@ -880,7 +893,7 @@ def cmd_comment(args: argparse.Namespace) -> int:
 
     if findings_count == 0:
         lines.append(
-            "No accessibility findings on the previews this PR changed."
+            "No accessibility findings on the checked previews."
             if scoped else "No accessibility findings."
         )
         lines.append("")
@@ -912,13 +925,17 @@ def cmd_comment(args: argparse.Namespace) -> int:
         # reviewers can still confirm the tool covered the full preview set
         # without scrolling past 100+ unchanged tables.
         label = "Unchanged" if baseline_loaded or not scoped else "No findings"
-        lines.append("<details>")
-        lines.append(f"<summary>{label} ({len(unchanged)} preview(s))</summary>")
-        lines.append("")
-        for entry in sorted(unchanged, key=lambda e: (e["module"], e["functionName"])):
-            lines.append(f"- `{entry['functionName']}`")
-        lines.append("")
-        lines.append("</details>")
+        if len(unchanged) <= ROSTER_LIST_MAX:
+            lines.append("<details>")
+            lines.append(f"<summary>{label} ({len(unchanged)} preview(s))</summary>")
+            lines.append("")
+            for entry in sorted(unchanged, key=lambda e: (e["module"], e["functionName"])):
+                lines.append(f"- `{entry['functionName']}`")
+            lines.append("")
+            lines.append("</details>")
+        else:
+            # A whole catalog's roster is most of the comment and nobody reads it.
+            lines.append(f"_{label}: {len(unchanged)} preview(s)._")
         lines.append("")
 
     sys.stdout.write("\n".join(lines).rstrip() + "\n")

@@ -371,38 +371,10 @@ the same way the extension's own release stamps its version, so nothing in the t
 
 ## Snapshots
 
-`snapshot.yml` is **manual-only** — the push-to-`main` trigger is disabled,
-so no snapshot is published automatically. Run **Publish snapshot** from the
-Actions tab against the ref you want. It computes the next patch-SNAPSHOT
-version from `git describe` (e.g. last tag `v0.3.3` → `0.3.4-SNAPSHOT`) and
-publishes to the Central snapshots repository:
-
-```
-https://central.sonatype.com/repository/maven-snapshots/
-```
-
-Snapshots are unsigned, so they only need `MAVEN_CENTRAL_USERNAME` /
-`MAVEN_CENTRAL_PASSWORD`.
-
-For pre-merge testing, run it from the branch you want to test. Branch
-runs publish the same Maven artifacts with a branch-qualified version by
-default:
-
-```
-<next-patch>-<branch-name>-<short-sha>-SNAPSHOT
-```
-
-For example, a run from `feature/layout-data` at `abc1234` after
-`v0.8.12` publishes `0.8.13-feature-layout-data-abc1234-SNAPSHOT`.
-The workflow also accepts an optional `suffix` input if you need a
-shorter coordinate, for example `issue-612` →
-`0.8.13-issue-612-SNAPSHOT`.
-
-This branch-qualified coordinate is what makes snapshots usable for
-testing in other projects before the PR merges. The older documented
-main-only coordinate is still published from pushes to `main`, but it is
-not enough for PR testing because every branch would otherwise publish
-to the same `0.8.13-SNAPSHOT` version.
+Nothing publishes snapshots. The `snapshot.yml` workflow was removed: every upload counts against
+the Central Portal's deployment quotas, and nothing consumed snapshots routinely. To test a
+downstream project against unreleased code, `publishToMavenLocal` and resolve from `mavenLocal()`
+([DEVELOPMENT.md](DEVELOPMENT.md)), or `includeBuild` this checkout.
 
 ## Consuming the artifacts
 
@@ -438,38 +410,6 @@ pluginManagement {
 }
 ```
 
-**Consuming snapshots:** add the Central snapshots repo:
-
-```kotlin
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-        maven("https://central.sonatype.com/repository/maven-snapshots/") {
-            mavenContent { snapshotsOnly() }
-        }
-    }
-}
-```
-
-Then reference a `-SNAPSHOT` version:
-
-```kotlin
-plugins {
-    id("ee.schimke.composeai.preview") version "0.3.4-SNAPSHOT"
-}
-```
-
-For a branch snapshot, use the version printed in the workflow summary,
-for example:
-
-```kotlin
-plugins {
-    id("ee.schimke.composeai.preview") version "0.8.13-feature-layout-data-abc1234-SNAPSHOT"
-}
-```
-
 ### CLI
 
 Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/releases):
@@ -477,9 +417,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.68.6.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-2.74.1.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-2.68.6/bin/compose-preview list
+./compose-preview-2.74.1/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
@@ -511,5 +451,5 @@ assets all live there. Nothing in this repository's release produces one.
 
 The single source of truth for the **release version** is [`.release-please-manifest.json`](../.release-please-manifest.json) at the repo root (maintained by release-please). The build scripts resolve `version` in this order:
 
-1. `PLUGIN_VERSION` env var — set by `release.yml` from the git tag (`v0.3.3` → `0.3.3`) and by `snapshot.yml` from `git describe`.
+1. `PLUGIN_VERSION` env var — set by `release.yml` from the git tag (`v0.3.3` → `0.3.3`).
 2. Otherwise: next-patch `-SNAPSHOT` derived from the manifest — e.g. manifest `0.3.3` ⇒ local version `0.3.4-SNAPSHOT`. Keeps local `publishToMavenLocal` ahead of the last published release without any manual bump.

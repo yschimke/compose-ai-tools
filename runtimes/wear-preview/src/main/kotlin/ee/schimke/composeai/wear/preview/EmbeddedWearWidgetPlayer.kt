@@ -37,7 +37,7 @@ internal val EMBEDDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
     "androidx.compose.remote.player.core.RemoteDocument",
     "androidx.compose.ui.Modifier",
     "ee.schimke.composeai.rcembedded.player.RcImageLoader",
-    "kotlin.jvm.functions.Function1",
+    "boolean",
     "kotlin.jvm.functions.Function2",
     "kotlin.jvm.functions.Function3",
     "int",
@@ -61,14 +61,63 @@ internal fun embeddedPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean
   .getOrDefault(false)
 
 /**
- * Whether [facade] declares [EMBEDDED_PLAYER_ENTRY_POINT] as `public static void` taking exactly
- * [parameters] — the compiled `invokestatic …V` call fails to link otherwise.
+ * Whether [facade] declares [name] as `public static void` taking exactly [parameters] — the
+ * compiled `invokestatic …V` call fails to link otherwise.
  */
-internal fun declaresEntryPoint(facade: Class<*>, parameters: List<String>): Boolean =
+internal fun declaresEntryPoint(
+  facade: Class<*>,
+  parameters: List<String>,
+  name: String = EMBEDDED_PLAYER_ENTRY_POINT,
+): Boolean =
   facade.declaredMethods.any { method ->
-    method.name == EMBEDDED_PLAYER_ENTRY_POINT &&
+    method.name == name &&
       method.parameterTypes.map { it.name } == parameters &&
       method.returnType == Void.TYPE &&
       Modifier.isStatic(method.modifiers) &&
       Modifier.isPublic(method.modifiers)
   }
+
+/**
+ * The state-taking `RcPlayer` overload `SeededCmpWearWidgetPlayer` calls to draw a document with
+ * seeded named values (#401). Gated separately from [EMBEDDED_PLAYER_ENTRY_POINT]: a player that
+ * lacks it still draws unseeded widgets, and a seed then goes unreported rather than failing to
+ * link.
+ */
+internal const val SEEDED_PLAYER_FACADE = "ee.schimke.composeai.rcembedded.player.RcPlayerKt"
+
+internal const val SEEDED_PLAYER_ENTRY_POINT = "RcPlayer"
+
+/** Parameter types of that overload as this module's call site links them; see the test. */
+internal val SEEDED_PLAYER_ENTRY_POINT_PARAMETERS: List<String> =
+  listOf(
+    "ee.schimke.composeai.rcembedded.player.RcPlayerState",
+    "androidx.compose.ui.Modifier",
+    "ee.schimke.composeai.rcembedded.player.RcImageLoader",
+    "boolean",
+    "kotlin.jvm.functions.Function2",
+    "kotlin.jvm.functions.Function3",
+    "ee.schimke.composeai.rcembedded.player.CustomPluginRegistry",
+    "androidx.collection.IntObjectMap",
+    "androidx.collection.IntObjectMap",
+    "ee.schimke.composeai.rcembedded.player.RcTypefaceResolver",
+    "int",
+    "androidx.compose.runtime.Composer",
+    "int",
+    "int",
+    "int",
+  )
+
+/** Whether [classLoader] carries the [SEEDED_PLAYER_ENTRY_POINT] overload this module links. */
+internal fun seededPlayerEntryPointPresent(classLoader: ClassLoader?): Boolean = runCatching {
+  declaresEntryPoint(
+    Class.forName(SEEDED_PLAYER_FACADE, false, classLoader),
+    SEEDED_PLAYER_ENTRY_POINT_PARAMETERS,
+    SEEDED_PLAYER_ENTRY_POINT,
+  )
+}
+  .getOrDefault(false)
+
+/** [seededPlayerEntryPointPresent] for this runtime's classloader, resolved once. */
+internal val seededEmbeddedPlayerAvailable: Boolean by lazy {
+  seededPlayerEntryPointPresent(WearWidgetPreviewPlayer::class.java.classLoader)
+}

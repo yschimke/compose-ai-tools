@@ -12,9 +12,16 @@ import org.gradle.api.tasks.TaskAction
 /**
  * Generates `RobolectricRenderTest_ShardN` subclasses (one per shard) in Java. Each subclass
  * declares its own static `@Parameters` method that calls `PreviewManifestLoader.loadShard(N,
- * shardCount)`, so the `ParameterizedRobolectricTestRunner` sees a distinct parameter set per
- * class. Gradle's test fork distribution happens at the class level, so N classes → N parallel JVMs
- * when `maxParallelForks = N`.
+ * shardCount)`, so the runner sees a distinct parameter set per class. Gradle's test fork
+ * distribution happens at the class level, so N classes → N parallel JVMs when `maxParallelForks =
+ * N`.
+ *
+ * Each shard runs under renderer-android's `DedupingParameterizedRobolectricTestRunner` (the same
+ * runner the unsharded `RobolectricRenderTest` uses), not Robolectric's own
+ * `ParameterizedRobolectricTestRunner`: Robolectric's instrumentation can write a repeated
+ * LocalVariableTable row into a prebuilt class, which HotSpot's verifier then rejects with
+ * `ClassFormatError`, and the deduping runner strips those rows (#6230). The `@Parameters`
+ * annotation is still Robolectric's, which is what that runner reads.
  *
  * Java (not Kotlin) deliberately: avoids pulling a Kotlin compiler into the plugin's
  * generated-source path. `javac --release 21` is enough since the base class is a plain JVM class
@@ -50,7 +57,7 @@ abstract class GenerateRenderShardsTask : DefaultTask() {
                 | * plugin, so every shard's sandbox key matches and each fork reuses
                 | * its cached sandbox across its slice of previews.
                 | */
-                |@RunWith(ParameterizedRobolectricTestRunner.class)
+                |@RunWith(DedupingParameterizedRobolectricTestRunner.class)
                 |public class $className extends RobolectricRenderTestBase {
                 |    @SuppressWarnings({"unchecked", "rawtypes"})
                 |    public $className(RenderPreviewEntry preview, List previewArgs) {

@@ -21,7 +21,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 internal class AgentAccessClient(
   baseUrl: String,
   private val client: OkHttpClient =
-    OkHttpClient.Builder()
+    SharedOkHttpClient.client
+      .newBuilder()
       .followRedirects(false)
       .followSslRedirects(false)
       .callTimeout(30, TimeUnit.SECONDS)

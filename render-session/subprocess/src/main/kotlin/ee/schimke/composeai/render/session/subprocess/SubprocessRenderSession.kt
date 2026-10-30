@@ -87,6 +87,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
       shutdownTimeout = config.shutdownTimeout,
       attachDataProducts = config.attachDataProducts,
       factory = factory,
+      bootProgress = config.logSink,
     )
   }
 
@@ -201,6 +202,11 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     shutdownTimeout: Duration?,
     factory: DaemonClientFactory,
     attachDataProducts: List<String>? = null,
+    /**
+     * Where a daemon's boot is reported while `initialize` waits on it (compose-ai-tools#6114), or
+     * null to wait silently, as before. Either way this returns once the daemon can render.
+     */
+    bootProgress: ((String) -> Unit)? = null,
   ): RenderSession {
     val spawn =
       try {
@@ -222,14 +228,30 @@ public object SubprocessRenderSessions : RenderSessionFactory {
 
     val initializeResult: InitializeResult =
       try {
-        client.initialize(
-          workspaceRoot = canonicalRoot.absolutePath,
-          moduleId = descriptor.modulePath,
-          moduleProjectDir = descriptor.workingDirectory,
-          attachDataProducts = attachDataProducts,
-          maxRenderMs = maxRenderTime?.inWholeMilliseconds,
-          timeout = initializeTimeout,
-        )
+        if (bootProgress == null) {
+          client.initialize(
+            workspaceRoot = canonicalRoot.absolutePath,
+            moduleId = descriptor.modulePath,
+            moduleProjectDir = descriptor.workingDirectory,
+            attachDataProducts = attachDataProducts,
+            maxRenderMs = maxRenderTime?.inWholeMilliseconds,
+            timeout = initializeTimeout,
+          )
+        } else {
+          // Answered early, the daemon reports its sandbox boot instead of going silent for the
+          // ten or more seconds a cold Robolectric start takes; the call still returns only once
+          // it can render. A daemon that predates the capability answers late, as before.
+          client.initializeWithBootProgress(
+            workspaceRoot = canonicalRoot.absolutePath,
+            moduleId = descriptor.modulePath,
+            moduleProjectDir = descriptor.workingDirectory,
+            attachDataProducts = attachDataProducts,
+            maxRenderMs = maxRenderTime?.inWholeMilliseconds,
+            timeout = initializeTimeout,
+          ) { progress ->
+            BootProgressLines.describe(descriptor.modulePath, progress)?.let(bootProgress)
+          }
+        }
       } catch (e: Exception) {
         runCatching { spawn.shutdown() }
         throw RenderSessionException(

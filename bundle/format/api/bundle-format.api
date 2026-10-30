@@ -50,6 +50,12 @@ public final class ee/schimke/composeai/bundle/AndroidBundleResources$Extracted 
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/bundle/AndroidRClassUnion {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/AndroidRClassUnion;
+	public final fun union (Ljava/io/File;Ljava/util/List;Ljava/io/File;)Ljava/io/File;
+	public final fun widen (Ljava/util/List;Ljava/util/List;)Ljava/util/List;
+}
+
 public final class ee/schimke/composeai/bundle/BundleClasspathHydration {
 	public static final field INSTANCE Lee/schimke/composeai/bundle/BundleClasspathHydration;
 	public final fun hydrate (Ljava/io/File;Ljava/io/File;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;)Ljava/io/File;

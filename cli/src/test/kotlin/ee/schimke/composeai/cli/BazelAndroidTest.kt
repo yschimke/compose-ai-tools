@@ -370,7 +370,7 @@ class BazelAndroidTest {
       val property = DaemonSidecarProvision.sidecarProperty("lib-daemon-android")
       val previous = System.getProperty(property)
       System.setProperty(property, sidecar.absolutePath)
-      fun descriptor(sandboxCount: Int?) =
+      fun descriptor(sandboxCount: Int?, pngOnly: Boolean = false) =
         DaemonLaunchBuilder.decode(
           prepareBazelDaemon(
               artifacts,
@@ -378,12 +378,13 @@ class BazelAndroidTest {
               root,
               bazelClockPackages(BazelBuildConfig(), artifacts.android),
               sandboxCount,
+              pngOnly,
             )
             .readText()
         )
       val (prepared, oneShot) =
         try {
-          descriptor(null) to descriptor(oneShotSandboxCount(1))
+          descriptor(null) to descriptor(oneShotSandboxCount(1), pngOnly = true)
         } finally {
           if (previous == null) System.clearProperty(property)
           else System.setProperty(property, previous)
@@ -395,7 +396,13 @@ class BazelAndroidTest {
       // A long-lived daemon keeps the daemon's own pool; a one-shot render of one preview boots
       // one sandbox rather than five (compose-ai-tools#5945).
       assertNull(prepared.systemProperties["composeai.daemon.sandboxCount"])
+      // The wire version `initialize` sends, and slot 0 answering it while a pool boots (#6114).
+      assertEquals("2", prepared.systemProperties["composeai.daemon.protocolVersion"])
+      assertEquals("true", prepared.systemProperties["composeai.daemon.backgroundSandboxBoot"])
       assertEquals("1", oneShot.systemProperties["composeai.daemon.sandboxCount"])
+      // A PNG-only render runs no post-capture extractor (#6104); `prepare` keeps them all.
+      assertNull(prepared.systemProperties["composeai.daemon.postCaptureKinds"])
+      assertEquals("none", oneShot.systemProperties["composeai.daemon.postCaptureKinds"])
     }
 
   @Test

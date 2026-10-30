@@ -21,9 +21,9 @@ script; see [BUCK.md](BUCK.md).
 
 Gradle settings (`settings.gradle.kts` / `settings.gradle`) win within a workspace,
 with the existing wrapper fallback. Otherwise `MODULE.bazel`, `WORKSPACE[.bazel]`,
-`.blazerc`, or BUILD files select the Bazel-family driver. Nested workspaces and
+or BUILD files select the Bazel-family driver. Nested workspaces and
 repository boundaries prevent selecting an unrelated outer build. Use
-`--build-system gradle|bazel|blaze` to override a mixed checkout and `--project`
+`--build-system gradle|bazel|buck` to override a mixed checkout and `--project`
 to select a workspace from elsewhere. `list`/`show --json` use the same versioned
 CLI response on both paths, including capture paths, hashes and changed state.
 
@@ -53,6 +53,25 @@ Patterns are expanded with `query`, filtered by `kind()` to the rules the aspect
 Set `targetKinds` (a `kind()` regex) for other rules,
 such as an internal macro's rule class. The filter matters: a `...` pattern also matches genrules
 and tests, and the aspect fails on a rule without `JavaInfo`.
+
+A pattern's matches are then narrowed to packages that could declare a preview: a match whose
+package has no `.kt` / `.java` source mentioning `Preview` is skipped, and the skipped packages are
+named on stderr. In a workspace split into many small libraries this keeps `//app/...` from building
+the data, view-model and app-wiring libraries, and their whole transitive graphs, just to find no
+previews. A package is its directory down to the next `BUILD` file; external-repository targets and
+labels named explicitly are never skipped, and a pattern whose every match would be skipped builds
+them all. When a target turns out to hold no previews, the error names the packages below it whose
+sources do mention `Preview`.
+
+The selected targets are then built twice, and the second build is the expensive one. The first
+asks only for each target's own jars (the aspect's `compose_preview_project` group). A target whose
+jars reference no Preview annotation is dropped there, named on stderr, before its resources are
+linked or its runtime closure built. A top-level wiring library then costs its own compilation,
+not the link and hundreds of runtime jars. The check reads class bytes for `Preview`, which a
+`@Preview` and the usual multi-preview annotations (`@PreviewLightDark`, `@WearPreviewDevices`)
+put there. It misses a target whose only previews use a multi-preview annotation declared in
+another target and named without `Preview`. An aspect that predates the group reports no jars, so
+every target is kept and built as before. `"projectOutputGroup": null` skips the first build.
 
 Every selected target builds in one invocation, so Bazel analyses the graph once. The selection
 is then **one module**, named by what you asked for (`//app/...`, or `//pkg:all` for a package).
@@ -97,7 +116,7 @@ repeating labels:
 {
   "schemaVersion": 1,
   "target": "//app:ui",
-  "buildCommand": ["blaze"],
+  "buildCommand": ["bazelisk"],
   "buildArgs": ["--config=desktop"]
 }
 ```
@@ -111,18 +130,40 @@ or, for every UI library under `//app` except the legacy tree:
 }
 ```
 
+### Distribution defaults
+
+A repackaged CLI, or a wrapper distribution, can supply defaults for every key of
+`bazel.json` without patching source. The configuration is merged at the JSON level,
+key by key, lowest precedence first:
+
+1. the classpath resource `/ee/schimke/composeai/cli/bazel-defaults.json` (upstream
+   releases bundle none);
+2. the file the `COMPOSE_PREVIEW_BAZEL_CONFIG` environment variable names (a missing
+   file is an error);
+3. the workspace's `.compose-preview/bazel.json`, or the `--config` file;
+4. CLI flags: `--build-command`, `--aspect`, `--bazel-arg` (appended to `buildArgs`).
+
+A later layer's key replaces the earlier value whole — a list or object is not
+appended to or merged into. So a workspace `bazel.json` of `{"target": "//app:ui"}`
+inherits a distribution's `buildCommand`, `buildArgs`, `queryArgs`, `providers` and
+`digestXattr`, and `bazel init --android` sees bundled `providers` before
+`bazel.json` exists. Buck2's `buck.json` reads no defaults layer.
+
+### The build command
+
 The executable is chosen in this order, and the first match wins:
 
 1. `--build-command`;
-2. `buildCommand` in `.compose-preview/bazel.json` — commit it to make the choice
-   predictable for everyone;
-3. `--build-system blaze`;
-4. the `COMPOSE_PREVIEW_BUILD_COMMAND` environment variable;
-5. `.blazerc` in the workspace root selects `blaze`;
-6. `.bazelversion` with `bazelisk` on PATH selects `bazelisk`, which honours the pin;
-7. the first of `bazel`, `bazelisk`, `blaze` on PATH.
+2. `buildCommand` in `.compose-preview/bazel.json` (or `--config`) — commit it to
+   make the choice predictable for everyone;
+3. the `COMPOSE_PREVIEW_BUILD_COMMAND` environment variable;
+4. `buildCommand` from a defaults layer (`COMPOSE_PREVIEW_BAZEL_CONFIG`, then the
+   bundled `bazel-defaults.json`);
+5. `.bazelversion` with `bazelisk` on PATH selects `bazelisk`, which honours the pin;
+6. the first of `bazel`, `bazelisk` on PATH.
 
-A detected choice (steps 4–7) is reported on stderr with its reason, as is every
+A custom Bazel wrapper or distribution is named by one of the first four; no
+workspace marker selects one. A detected choice (steps 3, 5 and 6) is reported on stderr with its reason, as is every
 choice under `--verbose`. The driver never runs a candidate merely to detect it.
 
 Ignore generated `.compose-preview/bazel/` and `.compose-preview/outputs/`, but
@@ -165,7 +206,8 @@ or a file selected explicitly with `--config <file>`:
   "aspect": "//.compose-preview/bazel:runtime.bzl%compose_preview_aspect",
   "installAspect": true,
   "metadataOutputGroup": "compose_preview_metadata",
-  "runtimeOutputGroup": "compose_preview_runtime"
+  "runtimeOutputGroup": "compose_preview_runtime",
+  "projectOutputGroup": "compose_preview_project"
 }
 ```
 
@@ -187,6 +229,16 @@ version or wrapper might reject. Flags worth configuring:
 | `--norun_validations` | Validation actions say nothing about renderability; skipping them shortens the build. |
 | `--tool_tag=compose-preview` | Attributes these invocations in build-event and remote-execution logs. |
 
+Expanding a pattern (`//app/...`) or a directory runs `bazel query` before the
+build. It gets the Starlark language flags from `buildArgs` —
+`--[no]check_bzl_visibility`, `--[no]incompatible_*`, `--[no]experimental_*`,
+`--[no]enable_bzlmod` and `--[no]enable_workspace` — because a `query` and a
+`build` that disagree on them make Bazel discard its analysis cache, once for
+each, on every run. A forwarded flag that `query` rejects (some `incompatible_`
+and `experimental_` flags are build-only) is dropped with a warning and the
+query run again. To choose exactly what `query` gets, set `queryArgs`, which is
+then passed verbatim and never retried.
+
 BEP outputs reported with a non-`file` URI (for example `bytestream://` from a
 remote cache) are resolved through their `pathPrefix` and `name` against
 `info execution_root`; only an output that is absent there fails.
@@ -207,10 +259,11 @@ package is unwelcome (large monorepos, repository policy), either:
 Setting `"installAspect": false` makes this a hard rule: if the default package is
 missing the driver fails instead of creating it.
 
-For Blaze testing, change `buildCommand` to the approved executable/wrapper and
-select the supported provider load/aspect. The direct adapter expects
+For a custom Bazel wrapper or distribution, change `buildCommand` to the approved
+executable/wrapper (or bundle it in `bazel-defaults.json`) and select the supported
+provider load/aspect. The direct adapter expects
 `build`, `info execution_root`, JSON BEP with named sets/output groups, and
-command-line aspects. **Public Bazel is tested; Blaze compatibility needs internal
+command-line aspects. **Public Bazel is tested; a custom distribution needs its own
 validation.** An IDE installation is unnecessary. Historical IntelliJ
 `render_jars` output is a candidate input, but it still needs a small wrapper to
 produce the metadata below; changing the output-group name alone cannot recover
@@ -286,6 +339,48 @@ metadata and descriptor live under `.compose-preview/outputs/<target-config-hash
 or `--out <dir>`. Prepared files use a `build/compose-previews/` subdirectory
 so the existing result/state consumers work unchanged. Each run rebuilds/discovers; there is no independent stale cache.
 
+A `prepare --out <dir>` also records how it was run in `<dir>/.compose-preview/prepare-origin.json`:
+the workspace, targets, config and flags. A later `bazel prepare --project <dir>` with no target or
+config of its own, which is how `compose-preview-mcp` refreshes a registered directory after a source
+edit, repeats that invocation in the original workspace and writes to the same `<dir>`. It does not
+treat the staged directory as a workspace of its own. One target's directory under a multi-target
+`--out` finds the record one level up. A prepare from `--artifacts` builds nothing and records
+nothing.
+
+### Host cache, and content-addressed output trees
+
+Between runs the CLI keeps host-side memos under `${XDG_CACHE_HOME:-~/.cache}/composeai/bazel-host/`:
+which runtime jars classpath pruning drops, each dependency jar's SHA-256, the level an
+`android.jar` declares, and a target's discovery result. Each per-file value is keyed on a stamp of
+the file (size, mtime, ctime and inode), and a value recorded within 3 s of the file's last change is
+not trusted, as git does for its index. `COMPOSE_PREVIEW_BAZEL_HOST_CACHE=0` turns the cache off.
+`--keep-daemon` (`COMPOSE_PREVIEW_KEEP_DAEMON=1`, `"keepDaemon": true`) additionally keeps the
+render daemon warm for `daemonIdleTimeoutSeconds` (default 300).
+
+A content-addressed output tree, such as a CAS-backed FUSE `bazel-out` that remounts
+`bazel-out/<config>/bin` on every build, gives every file a fresh mtime, ctime and inode although its
+bytes did not change, so every jar misses and is scanned and hashed again. If that filesystem
+publishes each file's content digest as an extended attribute, name it:
+
+```json
+{ "digestXattr": "user.checksum.sha256" }
+```
+
+or `COMPOSE_PREVIEW_BAZEL_DIGEST_XATTR=user.checksum.sha256` (the leading `user.` is optional). The
+variable wins over `bazel.json`, since the mount is a property of the machine rather than the
+workspace; set it empty to turn a committed `digestXattr` off. A file whose attribute reads back is
+then stamped by its size and the attribute's bytes, which are treated as opaque (ASCII or binary,
+any hash) and never as the file's SHA-256, which is still computed once per stamp. A digest stamp is
+trusted at once: it names the content, so the 3 s window, which exists for coarse timestamps, does
+not apply. It also memoises where the unix stamp cannot (Windows). A file without the attribute
+(workspace and external jars outside the mounted subtree) keeps the unix stamp. `--verbose` names
+the attribute in use and, at exit, how many stamps were digest-keyed and how many memo lookups hit.
+
+Name only an attribute the filesystem derives from the file's content, normally the one passed to
+Bazel's `--unix_digest_hash_attribute_name`. An unrelated attribute that does not change with the
+bytes would serve stale classpath and fingerprint results, which is why the CLI never probes for
+common names on its own.
+
 The aspect requests metadata and runtime output groups. JavaInfo supplies the
 transitive closure, including `runtime_deps`, without traversing every rule and
 emitting unrelated previews. BEP identifies/materializes the output; BEP alone
@@ -320,7 +415,8 @@ selected `android_library` / `kt_android_library` targets with the Android aspec
 `@rules_compose_preview` when `MODULE.bazel` declares it (under its `repo_name`, if set), and
 otherwise the copy it bundles (below) when the `rules_android` and `rules_java` that copy loads are
 visible under those names (declared in `MODULE.bazel`, or defined in `WORKSPACE`), or `providers`
-points it elsewhere. A workspace with neither, such as a Blaze one, keeps the JVM-only selection:
+points it elsewhere. A workspace with neither, such as a `WORKSPACE`-only one without those
+repositories, keeps the JVM-only selection:
 set `aspect` (or `providers`) to render its Android targets.
 A target an Android library `exports` belongs to that library and is not built on its own:
 rules_kotlin's `kt_android_library` is an `android_library` exporting the `_kt` and `_base`
@@ -533,7 +629,7 @@ Build the CLI branch once in `compose-ai-tools`:
 scripts/agent-gradle.sh :cli:installDist
 cli/build/install/compose-preview/bin/compose-preview bazel init --project /path/to/workspace
 cli/build/install/compose-preview/bin/compose-preview bazel render \
-  --project /path/to/workspace --target //app:ui --build-command blaze
+  --project /path/to/workspace --target //app:ui --build-command bazelisk
 ```
 
 Run init with the approved `--java-info-load` when the default rules_java load is

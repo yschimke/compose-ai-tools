@@ -2,7 +2,6 @@ package ee.schimke.composeai.plugin
 
 import java.io.File
 import java.time.Duration
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.gradle.api.logging.Logger
 
@@ -56,7 +55,8 @@ object DeviceArtPrefetch {
     // older copy (`Job.invokeOnCompletion$default NoSuchMethodError`).
     val timeout = Duration.ofSeconds(20)
     val client =
-      OkHttpClient.Builder()
+      SharedOkHttpClient.client
+        .newBuilder()
         .connectTimeout(timeout)
         .readTimeout(timeout)
         .callTimeout(timeout)

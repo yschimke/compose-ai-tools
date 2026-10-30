@@ -124,8 +124,9 @@ internal fun bazelAndroidAspectContents(providers: Map<String, String>): Map<Str
 }
 
 /**
- * The name a bundled file is installed under. The package file is `BUILD`, which Bazel and Blaze
- * both read (some Blaze deployments read no `BUILD.bazel`); the resource keeps its own name.
+ * The name a bundled file is installed under. The package file is `BUILD`, which every Bazel
+ * distribution reads (some older or custom ones read no `BUILD.bazel`); the resource keeps its own
+ * name.
  */
 internal fun installedBazelFileName(resource: String): String =
   if (resource == "BUILD.bazel") "BUILD" else resource
@@ -206,7 +207,7 @@ internal fun installCliOwnedFiles(
   directory.mkdirs()
   contents.forEach { (name, text) ->
     val file = directory.resolve(name)
-    if (file !in kept && (!file.isFile || file.readText() != text)) file.writeText(text)
+    if (file !in kept) writeIfChanged(file, text)
     if (name.endsWith(".sh") && file.isFile) file.setExecutable(true)
   }
   val removed = retired.filter { name ->

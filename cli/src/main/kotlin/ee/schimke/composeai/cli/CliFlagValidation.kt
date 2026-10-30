@@ -10,6 +10,9 @@ internal object CliFlagValidation {
     setOf(
       "--module",
       "--filter",
+      "--function",
+      "--help",
+      "-h",
       "--id",
       "--preview",
       "--verbose",
@@ -182,6 +185,9 @@ internal object CliFlagValidation {
 
   private val bazelFlags =
     setOf(
+      "--keep-daemon",
+      "--sandbox-count",
+      "--function",
       "--no-render",
       "--reuse-renders",
       "--bundle",
@@ -259,6 +265,23 @@ internal object CliFlagValidation {
             "--overrides",
             "--baseline-dir",
           ),
+      "launch" to
+        setOf(
+          "--control",
+          "--headless",
+          "--hide-agent",
+          "--qualifiers",
+          "--font-scale",
+          "--sdk",
+          "--jar",
+          "--no-providers",
+          "--java",
+          "--prepare",
+          "--verbose",
+          "-v",
+          "--help",
+          "-h",
+        ),
       "a11y" to reportFlags,
       "guidelines" to guidelinesFlags,
       "review" to guidelinesFlags,
@@ -422,7 +445,18 @@ internal object CliFlagValidation {
         ),
       // Union of what `compile` / `dump` / `header` read, and only that: `rc` reads no project, so
       // `commandBase` flags would be silently discarded (as with `devices`).
-      "rc" to setOf("--help", "-h", "--output", "-o", "--compact", "--json"),
+      "rc" to
+        setOf(
+          "--help",
+          "-h",
+          "--output",
+          "-o",
+          "--compact",
+          "--json",
+          "--serve-url",
+          "--serve-token",
+          "--name",
+        ),
       // Union of the nested subcommands' options; positional dispatch is BundleCommand's concern.
       "bundle" to
         commandBase +

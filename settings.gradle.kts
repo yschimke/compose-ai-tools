@@ -1,8 +1,17 @@
 pluginManagement {
   includeBuild("build-logic")
   repositories {
+    // Google Maven first, scoped to its own groups, so AGP and androidx never reach the plugin
+    // portal or Central: under load those answer a miss with HTTP 429, which fails the build,
+    // instead of the 404 that would have moved on to Google.
+    google {
+      mavenContent {
+        includeGroupAndSubgroups("androidx")
+        includeGroupAndSubgroups("com.android")
+        includeGroupAndSubgroups("com.google")
+      }
+    }
     gradlePluginPortal()
-    google()
     mavenCentral()
   }
 }
@@ -45,6 +54,15 @@ dependencyResolutionManagement {
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
+    // The CMP/Wasm Remote Compose player's browser bundle, `rc-player-wasm.zip` on every
+    // yschimke/rc-players release (the asset name carries no version). It used to come from Central
+    // as `rc-player-wasm-dist`, which stopped at 2.17.5. Fenced to this one module.
+    ivy("https://github.com/yschimke/rc-players/releases/download") {
+      name = "rcPlayerWasmRelease"
+      patternLayout { artifact("v[revision]/[module].[ext]") }
+      content { includeModule("ee.schimke.composeai", "rc-player-wasm") }
+      metadataSources { artifact() }
+    }
     // All three Remote Compose groups come from ONE build id, group-scoped and snapshots-only, so
     // the trio can't skew and nothing else can drift onto an unreviewed snapshot.
     // docs/build-scripts/SETTINGS.md#remote-compose-lane
@@ -186,6 +204,12 @@ include(":gradle-preview-driver")
 project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 include(":bundle-viewer")
+
+// `compose-preview launch`: the Java plugin and APK converter that run beside Robolectric's
+// simulator in the launched JVM, staged into the CLI distribution as `lib-simulator/`.
+include(":simulator-host")
+
+project(":simulator-host").projectDir = file("simulator/host")
 
 include(":notification-preview-runtime")
 

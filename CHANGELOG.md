@@ -1,5 +1,238 @@
 # Changelog
 
+## [2.74.1](https://github.com/yschimke/compose-ai-tools/compare/v2.74.0...v2.74.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* adopt compose-preview-daemon 3.26.0 ([#6234](https://github.com/yschimke/compose-ai-tools/issues/6234)) ([5a025db](https://github.com/yschimke/compose-ai-tools/commit/5a025db5cc501b390f016a790dd339875d95ef80))
+* **bazel:** replay a staged prepare for a matching --target and quote stderr on failure ([#6232](https://github.com/yschimke/compose-ai-tools/issues/6232)) ([f250d32](https://github.com/yschimke/compose-ai-tools/commit/f250d3276214f95c3fed2a03060bdc7f45d78376))
+* **deps:** update dependency @design-parity/export-driver to v1.17.0 ([#6227](https://github.com/yschimke/compose-ai-tools/issues/6227)) ([2bfa1d8](https://github.com/yschimke/compose-ai-tools/commit/2bfa1d87de43a864a284257e5162118b037cbf0c))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.8.2 ([#6233](https://github.com/yschimke/compose-ai-tools/issues/6233)) ([f105783](https://github.com/yschimke/compose-ai-tools/commit/f1057830de653c25e62e7e373b8bc4f93bbb3f89))
+* **deps:** update dependency org.jetbrains.kotlinx:kotlinx-serialization-json to v1.12.0 ([#6235](https://github.com/yschimke/compose-ai-tools/issues/6235)) ([c6ec66b](https://github.com/yschimke/compose-ai-tools/commit/c6ec66b234fa0cce2a3394963e82639f64f2dd28))
+
+## [2.74.0](https://github.com/yschimke/compose-ai-tools/compare/v2.73.2...v2.74.0) (2026-10-24)
+
+
+### Features
+
+* add the cmp-android lane to the rc-compare parity wall ([#6223](https://github.com/yschimke/compose-ai-tools/issues/6223)) ([8541aa9](https://github.com/yschimke/compose-ai-tools/commit/8541aa93ee270f910e43b6af656edba3520a7f18))
+* **bazel:** treat build integration purely as Bazel and add bazel-defaults.json layer ([#6216](https://github.com/yschimke/compose-ai-tools/issues/6216)) ([8100ccb](https://github.com/yschimke/compose-ai-tools/commit/8100ccbf38c7de9f0e12bedbc9f26d5e639e0117))
+
+
+### Bug Fixes
+
+* adopt compose-preview-daemon 3.25.1 ([#6222](https://github.com/yschimke/compose-ai-tools/issues/6222)) ([da96ddc](https://github.com/yschimke/compose-ai-tools/commit/da96ddc7832b8322395c4976d2a49ff7199de1a1))
+* **deps:** update dependency org.ow2.asm:asm to v9.11.1 ([#6220](https://github.com/yschimke/compose-ai-tools/issues/6220)) ([e0ab12f](https://github.com/yschimke/compose-ai-tools/commit/e0ab12fda0074adafc992bd3168e2f1f9cc4cd36))
+* **deps:** update dependency org.ow2.asm:asm-commons to v9.11.1 ([#6221](https://github.com/yschimke/compose-ai-tools/issues/6221)) ([d5452b7](https://github.com/yschimke/compose-ai-tools/commit/d5452b75c225cd759cae1f4e7f722aff5e0ca1d8))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.25.0 ([#6218](https://github.com/yschimke/compose-ai-tools/issues/6218)) ([a1903aa](https://github.com/yschimke/compose-ai-tools/commit/a1903aae1fb4a3e33d7a67e376ee92d94741ba87))
+
+## [2.73.2](https://github.com/yschimke/compose-ai-tools/compare/v2.73.1...v2.73.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **plugin:** reuse the configuration cache across discoveries ([#6212](https://github.com/yschimke/compose-ai-tools/issues/6212)) ([51c94a7](https://github.com/yschimke/compose-ai-tools/commit/51c94a79f8b410ca2d4b7fdcf71a2c148a439e40))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.3 ([#6214](https://github.com/yschimke/compose-ai-tools/issues/6214)) ([690966e](https://github.com/yschimke/compose-ai-tools/commit/690966eb035ba83170849a2b9c396b5ebd48ccbd))
+
+## [2.73.1](https://github.com/yschimke/compose-ai-tools/compare/v2.73.0...v2.73.1) (2026-10-24)
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.2 ([#6208](https://github.com/yschimke/compose-ai-tools/issues/6208)) ([18a00cc](https://github.com/yschimke/compose-ai-tools/commit/18a00ccb0e13f476812310c2ddd9080415dbe52f))
+
+## [2.73.0](https://github.com/yschimke/compose-ai-tools/compare/v2.72.1...v2.73.0) (2026-10-23)
+
+
+### Features
+
+* **cli:** add `rc upload` to share a Remote Compose document ([#6198](https://github.com/yschimke/compose-ai-tools/issues/6198)) ([231c72a](https://github.com/yschimke/compose-ai-tools/commit/231c72a2657928558771b91e25ac195e67dbf6dd))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.5 ([#6205](https://github.com/yschimke/compose-ai-tools/issues/6205)) ([94a0cdc](https://github.com/yschimke/compose-ai-tools/commit/94a0cdc9cc44f4ecb81f7f39836fd3ac9c3850cf))
+
+
+### Performance Improvements
+
+* adopt compose-preview-daemon 3.24.1 ([#6204](https://github.com/yschimke/compose-ai-tools/issues/6204)) ([325cc2f](https://github.com/yschimke/compose-ai-tools/commit/325cc2f4cf415a9a7ef94dc2a461e20b39b5ee91))
+
+## [2.72.1](https://github.com/yschimke/compose-ai-tools/compare/v2.72.0...v2.72.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* publish sourceWatch from Bazel and Buck2 prepare ([#6194](https://github.com/yschimke/compose-ai-tools/issues/6194)) ([1528b4a](https://github.com/yschimke/compose-ai-tools/commit/1528b4af0dfe06393608e665ee0215708748ca86))
+* watch each Bazel source's package, not its directory ([#6197](https://github.com/yschimke/compose-ai-tools/issues/6197)) ([efd7ace](https://github.com/yschimke/compose-ai-tools/commit/efd7ace3e973c720bac3812a39b0372f33f52fdd))
+
+## [2.72.0](https://github.com/yschimke/compose-ai-tools/compare/v2.71.0...v2.72.0) (2026-10-23)
+
+
+### Features
+
+* **wear-preview:** HostFramedWearWidgetDocument leaves the host frame to the device ([#6187](https://github.com/yschimke/compose-ai-tools/issues/6187)) ([3f7e9f2](https://github.com/yschimke/compose-ai-tools/commit/3f7e9f26500b4515cc4c7b2912ce90874262bbc9))
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to 3.24.0 and contracts to 3.38.0 ([#6191](https://github.com/yschimke/compose-ai-tools/issues/6191)) ([b128d11](https://github.com/yschimke/compose-ai-tools/commit/b128d11249bba959c53e6ffe5ef091880eb11afb))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.38.0 ([#6186](https://github.com/yschimke/compose-ai-tools/issues/6186)) ([9f895cc](https://github.com/yschimke/compose-ai-tools/commit/9f895cc9d97a77f201328403354a6be487d0c1d1))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.4 ([#6188](https://github.com/yschimke/compose-ai-tools/issues/6188)) ([d89073e](https://github.com/yschimke/compose-ai-tools/commit/d89073e8c49aa2f777bbc40acc7985a57b98331e))
+* **deps:** update tapmoc to v0.5.0 ([#6159](https://github.com/yschimke/compose-ai-tools/issues/6159)) ([4ee9889](https://github.com/yschimke/compose-ai-tools/commit/4ee98893ca9c484207e21b0dd611abff40c7dddf))
+
+## [2.71.0](https://github.com/yschimke/compose-ai-tools/compare/v2.70.7...v2.71.0) (2026-10-22)
+
+
+### Features
+
+* publish each module's source dirs in the daemon descriptor ([#6184](https://github.com/yschimke/compose-ai-tools/issues/6184)) ([dae5d15](https://github.com/yschimke/compose-ai-tools/commit/dae5d15e474dcf0d14a455ea81b250eb72f52aa4))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.22.0 ([#6092](https://github.com/yschimke/compose-ai-tools/issues/6092)) ([c827256](https://github.com/yschimke/compose-ai-tools/commit/c8272565aefdaa8686f539d8afc8d3823ebb4e19))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.1 ([#6179](https://github.com/yschimke/compose-ai-tools/issues/6179)) ([3efcc8e](https://github.com/yschimke/compose-ai-tools/commit/3efcc8e3bf3082709e129d02ac55c5d87bbf201a))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.2 ([#6181](https://github.com/yschimke/compose-ai-tools/issues/6181)) ([0d48c08](https://github.com/yschimke/compose-ai-tools/commit/0d48c0870f94c1b4a6b1c5d0c571d63c4254c8b6))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.3 ([#6183](https://github.com/yschimke/compose-ai-tools/issues/6183)) ([754c17f](https://github.com/yschimke/compose-ai-tools/commit/754c17f73a18d85bc41da2534cf1544ae2e6e667))
+* give the in-process compiler the consumer's Kotlin version ([#6182](https://github.com/yschimke/compose-ai-tools/issues/6182)) ([abd49e8](https://github.com/yschimke/compose-ai-tools/commit/abd49e89531cc8b3db6f8e32ce3ea6fe9dc68af6))
+
+## [2.70.7](https://github.com/yschimke/compose-ai-tools/compare/v2.70.6...v2.70.7) (2026-10-21)
+
+
+### Bug Fixes
+
+* refuse certificates from the CVE-2026-111943 CAs ([#6171](https://github.com/yschimke/compose-ai-tools/issues/6171)) ([94c6711](https://github.com/yschimke/compose-ai-tools/commit/94c6711c458579bfb8bf2e83f99875f2a5eb5f9b))
+* render with compose-preview-daemon 3.21.4 ([#6177](https://github.com/yschimke/compose-ai-tools/issues/6177)) ([0cbfe73](https://github.com/yschimke/compose-ai-tools/commit/0cbfe73d051a0534479c90af153931a42c9fb402))
+
+
+### Performance Improvements
+
+* pass buildArgs' Starlark language flags to bazel query ([#6176](https://github.com/yschimke/compose-ai-tools/issues/6176)) ([8f2ee82](https://github.com/yschimke/compose-ai-tools/commit/8f2ee829b70070cd87d557e4ecef9c745fa0776f))
+
+## [2.70.6](https://github.com/yschimke/compose-ai-tools/compare/v2.70.5...v2.70.6) (2026-10-20)
+
+
+### Performance Improvements
+
+* build a Bazel target's own jars first and skip one with no Preview ([#6167](https://github.com/yschimke/compose-ai-tools/issues/6167)) ([c7fca0f](https://github.com/yschimke/compose-ai-tools/commit/c7fca0f4260464e49e3c0135bf784ea4044fb055))
+
+## [2.70.5](https://github.com/yschimke/compose-ai-tools/compare/v2.70.4...v2.70.5) (2026-10-20)
+
+
+### Bug Fixes
+
+* prepare a staged bazel --out directory again from its origin ([#6166](https://github.com/yschimke/compose-ai-tools/issues/6166)) ([92cad8e](https://github.com/yschimke/compose-ai-tools/commit/92cad8e1fed5868c31d43a2dca7ac3fcc35b9189))
+* render with compose-preview-daemon 3.21.3 ([#6163](https://github.com/yschimke/compose-ai-tools/issues/6163)) ([e0cc130](https://github.com/yschimke/compose-ai-tools/commit/e0cc130d577cdda6c55dd5238599ac5161300049))
+
+
+### Performance Improvements
+
+* skip Bazel pattern matches whose package holds no preview ([#6164](https://github.com/yschimke/compose-ai-tools/issues/6164)) ([e1fa979](https://github.com/yschimke/compose-ai-tools/commit/e1fa9798407faa283296541d65c657aedcef6418))
+
+## [2.70.4](https://github.com/yschimke/compose-ai-tools/compare/v2.70.3...v2.70.4) (2026-10-20)
+
+
+### Performance Improvements
+
+* compare kept-daemon dependency jars by FUSE content digest ([#6155](https://github.com/yschimke/compose-ai-tools/issues/6155)) ([b14f5e5](https://github.com/yschimke/compose-ai-tools/commit/b14f5e51b0501be5a2d34a0edd8494e8e07a2c04))
+
+## [2.70.3](https://github.com/yschimke/compose-ai-tools/compare/v2.70.2...v2.70.3) (2026-10-20)
+
+
+### Performance Improvements
+
+* key bazel host-cache stamps on a FUSE content-digest xattr ([#6151](https://github.com/yschimke/compose-ai-tools/issues/6151)) ([cbfb22f](https://github.com/yschimke/compose-ai-tools/commit/cbfb22fff12e6d9606143f938c02abe839d76e27))
+
+## [2.70.2](https://github.com/yschimke/compose-ai-tools/compare/v2.70.1...v2.70.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.17.0 ([#6145](https://github.com/yschimke/compose-ai-tools/issues/6145)) ([3fc8893](https://github.com/yschimke/compose-ai-tools/commit/3fc88934fda4e9c1765768276908ab6bb0eec7d1))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.199 ([#6143](https://github.com/yschimke/compose-ai-tools/issues/6143)) ([af2e9a3](https://github.com/yschimke/compose-ai-tools/commit/af2e9a370612dffbc4c4f4e1d4455ec86506be4a))
+* render with compose-preview-daemon 3.21.1 ([#6148](https://github.com/yschimke/compose-ai-tools/issues/6148)) ([124a1d7](https://github.com/yschimke/compose-ai-tools/commit/124a1d74710c2f533961fdb0771fd8507a4ac36c))
+
+## [2.70.1](https://github.com/yschimke/compose-ai-tools/compare/v2.70.0...v2.70.1) (2026-10-20)
+
+
+### Performance Improvements
+
+* reuse classpath pruning, jar hashes and discovery across warm bazel renders ([#6141](https://github.com/yschimke/compose-ai-tools/issues/6141)) ([30f544b](https://github.com/yschimke/compose-ai-tools/commit/30f544b850d1844253690b1f9fe941e48b313768))
+
+## [2.70.0](https://github.com/yschimke/compose-ai-tools/compare/v2.69.3...v2.70.0) (2026-10-19)
+
+
+### Features
+
+* report the daemon's sandbox boot while initialize waits on it ([#6137](https://github.com/yschimke/compose-ai-tools/issues/6137)) ([e177c08](https://github.com/yschimke/compose-ai-tools/commit/e177c0823b935760463e7fd2686bd64c2ff71831))
+
+## [2.69.3](https://github.com/yschimke/compose-ai-tools/compare/v2.69.2...v2.69.3) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.37.0 ([#6134](https://github.com/yschimke/compose-ai-tools/issues/6134)) ([6a9a756](https://github.com/yschimke/compose-ai-tools/commit/6a9a756b937564a8327e378a31bc9706bafbfc10))
+* render with compose-preview-daemon 3.20.1 ([#6132](https://github.com/yschimke/compose-ai-tools/issues/6132)) ([763be93](https://github.com/yschimke/compose-ai-tools/commit/763be936e9d92c32b9a0358b570b6d669d4f5194))
+
+## [2.69.2](https://github.com/yschimke/compose-ai-tools/compare/v2.69.1...v2.69.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* serve's bundle daemon widens the app's R classes with the daemon's fields ([#6128](https://github.com/yschimke/compose-ai-tools/issues/6128)) ([d303ff2](https://github.com/yschimke/compose-ai-tools/commit/d303ff2065264e004565dd57515bbf12ffa59452))
+
+## [2.69.1](https://github.com/yschimke/compose-ai-tools/compare/v2.69.0...v2.69.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **android:** widen the app's R classes with the renderer's fields ([#6125](https://github.com/yschimke/compose-ai-tools/issues/6125)) ([481ff7f](https://github.com/yschimke/compose-ai-tools/commit/481ff7fa57b560d2c09da5e9696ba990e6658f50))
+* bazel --output names every preview once across targets, and --function selects everywhere ([#6124](https://github.com/yschimke/compose-ai-tools/issues/6124)) ([ed51386](https://github.com/yschimke/compose-ai-tools/commit/ed51386d998f379a655bcab1087689bc470b9794))
+* bazel CLI output placement, --function, --help and race-free aspect install ([#6121](https://github.com/yschimke/compose-ai-tools/issues/6121)) ([752e8e5](https://github.com/yschimke/compose-ai-tools/commit/752e8e587348531512b91b009669e1c615b1afdd))
+* Bazel daemon descriptors name protocol 2 and boot a pool in the background ([#6122](https://github.com/yschimke/compose-ai-tools/issues/6122)) ([7b8d63e](https://github.com/yschimke/compose-ai-tools/commit/7b8d63e49c8b25ee8fd887fc8c793134dc0f8e4b))
+* bazel daemon stop returns once the daemon has gone ([#6123](https://github.com/yschimke/compose-ai-tools/issues/6123)) ([499a069](https://github.com/yschimke/compose-ai-tools/commit/499a069ccf30b76fe5a8ba60b74d58103b54cc5e))
+* bundle the rules_compose_preview 0.1.0-rc.16 Android aspect ([#6127](https://github.com/yschimke/compose-ai-tools/issues/6127)) ([5884a9b](https://github.com/yschimke/compose-ai-tools/commit/5884a9b4354e13680343e22f45193d008a96f3fb))
+* render with compose-preview-daemon 3.20.0 ([#6126](https://github.com/yschimke/compose-ai-tools/issues/6126)) ([8ccb29e](https://github.com/yschimke/compose-ai-tools/commit/8ccb29e552e76b68f08ebe4ade1e6d9c981d49ad))
+
+
+### Performance Improvements
+
+* scan runtime jars in parallel and stop at the first deciding entry ([#6118](https://github.com/yschimke/compose-ai-tools/issues/6118)) ([9d0b081](https://github.com/yschimke/compose-ai-tools/commit/9d0b0814286e6d6787122f62bcdddb19f9a025ff))
+
+## [2.69.0](https://github.com/yschimke/compose-ai-tools/compare/v2.68.8...v2.69.0) (2026-10-19)
+
+
+### Features
+
+* keep a warm Bazel render daemon across runs with --keep-daemon ([#6108](https://github.com/yschimke/compose-ai-tools/issues/6108)) ([84eb8d8](https://github.com/yschimke/compose-ai-tools/commit/84eb8d852e0a194bd39359f1d12182c705a704d2))
+
+## [2.68.8](https://github.com/yschimke/compose-ai-tools/compare/v2.68.7...v2.68.8) (2026-10-19)
+
+
+### Performance Improvements
+
+* skip post-capture data products for a one-shot Bazel render ([#6105](https://github.com/yschimke/compose-ai-tools/issues/6105)) ([249d058](https://github.com/yschimke/compose-ai-tools/commit/249d058e024753d7b24a3bcbac8b94b9a4c58198))
+
+## [2.68.7](https://github.com/yschimke/compose-ai-tools/compare/v2.68.6...v2.68.7) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to 3.18.9 ([#6103](https://github.com/yschimke/compose-ai-tools/issues/6103)) ([8cbd1e9](https://github.com/yschimke/compose-ai-tools/commit/8cbd1e9b6121bd4c8f541f9cdc87ccf1bf55eb24))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.16.1 ([#6097](https://github.com/yschimke/compose-ai-tools/issues/6097)) ([d6d6e78](https://github.com/yschimke/compose-ai-tools/commit/d6d6e78926f2007d6e7def098f7b6de842776235))
+* **deps:** update dependency io.github.classgraph:classgraph to v4.8.198 ([#6099](https://github.com/yschimke/compose-ai-tools/issues/6099)) ([26d702a](https://github.com/yschimke/compose-ai-tools/commit/26d702a49dda0c58d44cd06a8f325e52828842e7))
+* frame named override cache keys unambiguously ([#6102](https://github.com/yschimke/compose-ai-tools/issues/6102)) ([aabfb07](https://github.com/yschimke/compose-ai-tools/commit/aabfb07047e6f30f9c0f33ab38814b0b968df3a3))
+
 ## [2.68.6](https://github.com/yschimke/compose-ai-tools/compare/v2.68.5...v2.68.6) (2026-10-18)
 
 

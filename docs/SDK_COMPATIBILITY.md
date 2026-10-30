@@ -6,11 +6,17 @@ and which are expected-to-fail with the reason each one fails.
 
 A nightly workflow ([`.github/workflows/sdk-matrix.yml`](../.github/workflows/sdk-matrix.yml))
 exercises every cell listed below against the synthetic
-[`:samples:sdk-matrix`](../samples/sdk-matrix) module — a single `@Preview` composable that
+[`:samples:sdk-matrix`](../samples/sdk-matrix) module — a `@Preview` composable that
 renders the runtime-observed `Build.VERSION.SDK_INT`, `Build.VERSION.RELEASE`, and
 `applicationInfo.targetSdkVersion` so each cell's captured PNG is self-documenting. The
 workflow's job summary surfaces a pass/fail table; the aggregator job fails if any cell's
 outcome drifts from the expectation below.
+
+The module also carries three batch previews (`BatchPreviews.kt`), each a flat primary colour with a
+letter on it. A cell only passes if [`scripts/sdk_matrix_pixel_check.py`](../scripts/sdk_matrix_pixel_check.py)
+reads every one back with its own background and label: on SDK 37 every preview after the first of a
+render JVM once came back a uniform `#FAFAFA` frame with no error ([#6229](https://github.com/yschimke/compose-ai-tools/issues/6229)),
+so a green render task alone proved nothing.
 
 ## How the two known failure modes interact
 

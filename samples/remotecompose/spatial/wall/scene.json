@@ -1,0 +1,36 @@
+{
+    "version": 1,
+    "units": "dp",
+    "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteWallCardPreview",
+    "camera": {
+        "kind": "orbit",
+        "target": { "x": 20, "y": 0, "z": 0 },
+        "distance": 720,
+        "yawDeg": 12,
+        "pitchDeg": -8
+    },
+    "panels": [
+        {
+            "id": "wall-card",
+            "label": "RemoteWallCard on the wall",
+            "poseInRoot": {
+                "translation": { "x": -130, "y": 40, "z": -220 },
+                "rotation": { "x": 0, "y": 0.21644, "z": 0, "w": 0.97630 }
+            },
+            "sizeDp": { "width": 320, "height": 200 },
+            "texture": "wall-card.png"
+        },
+        {
+            "id": "cube",
+            "label": "RemoteCube3d, transparent, in front",
+            "poseInRoot": {
+                "translation": { "x": 170, "y": -50, "z": 120 },
+                "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+            },
+            "sizeDp": { "width": 240, "height": 240 },
+            "texture": "cube.png"
+        }
+    ],
+    "orbiters": [],
+    "environment": { "kind": "gradient", "preset": "warm-room" }
+}

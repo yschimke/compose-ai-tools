@@ -235,23 +235,31 @@ class BazelBuildTest {
       }
       val config =
         BazelBuildConfig(
-          buildCommand = listOf("blaze-wrapper", "literal argument"),
+          buildCommand = listOf("bazel-wrapper", "literal argument"),
           startupArgs = listOf("--server=internal"),
           buildArgs = listOf("--config=desktop"),
           aspect = "//tools:preview.bzl%preview",
           metadataOutputGroup = "internal_metadata",
           runtimeOutputGroup = "render_jars",
+          projectOutputGroup = "internal_project",
         )
       assertEquals("//:app", build.collect(root, "//:app", config, 19).metadata.target)
+      // The target's own jars first (#6162); the aspect reports none, so the target stays in.
       assertEquals(
-        listOf("blaze-wrapper", "literal argument", "--server=internal", "build"),
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "build"),
         calls[0].take(4),
       )
-      assertTrue("--output_groups=internal_metadata,render_jars" in calls[0])
+      assertTrue("--output_groups=internal_project" in calls[0])
       assertEquals(
-        listOf("blaze-wrapper", "literal argument", "--server=internal", "info", "execution_root"),
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "info", "execution_root"),
         calls[1],
       )
+      assertEquals(
+        listOf("bazel-wrapper", "literal argument", "--server=internal", "build"),
+        calls[2].take(4),
+      )
+      assertTrue("--output_groups=internal_metadata,render_jars" in calls[2])
+      assertTrue("--config=desktop" in calls[2])
     } finally {
       root.deleteRecursively()
     }
@@ -278,13 +286,13 @@ class BazelBuildTest {
         build.expandTargets(
           root,
           listOf("//app/...", "//lib:all", "-//app/legacy/..."),
-          BazelBuildConfig(buildCommand = listOf("blaze")),
+          BazelBuildConfig(buildCommand = listOf("bazel-wrapper")),
           9,
         ),
       )
       assertEquals(
         listOf(
-          "blaze",
+          "bazel-wrapper",
           "query",
           "(kind('(kt_jvm_library|kt_jvm_binary|java_library|java_binary)', " +
             "\"//app/...\" + \"//lib:all\")) - \"//app/legacy/...\"",
@@ -398,7 +406,8 @@ class BazelBuildTest {
   fun `the Android aspect is rules_compose_preview's when the module declares it`() {
     val root = Files.createTempDirectory("bazel-android-aspect").toFile()
     try {
-      // No MODULE.bazel (a Blaze workspace): no aspect it can load, so the selection stays JVM.
+      // No MODULE.bazel (a WORKSPACE-only project): no aspect it can load, so the selection stays
+      // JVM.
       assertNull(detectAndroidAspect(root))
       // The bundled copy needs both repositories its shims load, under their own names.
       root
@@ -497,15 +506,261 @@ class BazelBuildTest {
         build.collectAll(root, targets, BazelBuildConfig(), 9, skipWithoutMetadata = true)
 
       assertEquals(listOf("//app:ui", "//app:model"), collected.map { it.metadata.target })
+      // One invocation for every target's own jars (#6162), one for the runtime of those kept:
+      // the aspect reported no project jars here, so all of them.
       val builds = calls.filter { "build" in it }
-      assertEquals(1, builds.size)
-      assertEquals(targets, builds.single().takeLast(3))
+      assertEquals(2, builds.size)
+      builds.forEach { assertEquals(targets, it.takeLast(3)) }
       // Named explicitly, the same target is a requirement.
       assertFailsWith<IllegalStateException> {
         build.collectAll(root, targets, BazelBuildConfig(), 9)
       }
       assertFailsWith<IllegalArgumentException> {
         build.collectAll(root, listOf("//app/..."), BazelBuildConfig(), 9)
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  /** A jar holding one class file whose bytes are [classBytes]. */
+  private fun jar(file: File, classBytes: String): File = file.apply {
+    java.util.zip.ZipOutputStream(outputStream()).use { zip ->
+      zip.putNextEntry(java.util.zip.ZipEntry("com/example/Screen.class"))
+      zip.write(classBytes.toByteArray())
+      zip.closeEntry()
+    }
+  }
+
+  @Test
+  fun `a target whose own jars reference no Preview is dropped before its runtime is built`() {
+    val root = Files.createTempDirectory("bazel-project-group").toFile()
+    try {
+      jar(root.resolve("ui.jar"), "Landroidx/compose/ui/tooling/preview/Preview;")
+      jar(root.resolve("wiring.jar"), "Lcom/example/MainActivity;")
+      fun metadata(target: String, jar: String) =
+        root.resolve("$jar.json").apply {
+          writeText(
+            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar)))
+          )
+        }
+      val builds = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("build" in argv) {
+          builds += argv
+          val project = "--output_groups=compose_preview_project" in argv
+          File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+            .writeText(
+              (if (project)
+                  listOf(
+                    completed("//app:ui", "ui", "compose_preview_project"),
+                    eventSet("ui", listOf(root.resolve("ui.jar"))),
+                    completed("//app:wiring", "wiring", "compose_preview_project"),
+                    eventSet("wiring", listOf(root.resolve("wiring.jar"))),
+                  )
+                else
+                  listOf(
+                    completed("//app:ui", "meta"),
+                    eventSet("meta", listOf(metadata("//app:ui", "ui.jar"))),
+                  ))
+                .joinToString("\n")
+            )
+          ""
+        } else root.absolutePath + "\n"
+      }
+
+      val collected =
+        build.collectAll(
+          root,
+          listOf("//app:ui", "//app:wiring"),
+          BazelBuildConfig(),
+          9,
+          skipWithoutMetadata = true,
+        )
+
+      assertEquals(listOf("//app:ui"), collected.map { it.metadata.target })
+      assertEquals(2, builds.size)
+      assertEquals(listOf("//app:ui", "//app:wiring"), builds[0].takeLast(2))
+      // Only the target that can hold a preview is linked and has its runtime built.
+      assertTrue(
+        "--output_groups=compose_preview_metadata,compose_preview_runtime" in builds[1],
+        builds[1].toString(),
+      )
+      assertEquals("//app:ui", builds[1].last())
+
+      // Named alone, a target with none builds nothing more: the caller reports no previews.
+      builds.clear()
+      assertEquals(
+        emptyList(),
+        build.collectAll(root, listOf("//app:wiring"), BazelBuildConfig(), 9),
+      )
+      assertEquals(1, builds.size)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `an aspect without the project group, or the group switched off, keeps every target`() {
+    val root = Files.createTempDirectory("bazel-project-group-absent").toFile()
+    try {
+      // Would be dropped if the group had reported it.
+      jar(root.resolve("wiring.jar"), "Lcom/example/MainActivity;")
+      val metadata =
+        root.resolve("wiring.json").apply {
+          writeText(
+            bazelJson.encodeToString(
+              BazelArtifacts("//app:wiring", "config", listOf("wiring.jar"), listOf("wiring.jar"))
+            )
+          )
+        }
+      val builds = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("build" in argv) {
+          builds += argv
+          // An older aspect: the project group is unknown, so it reports nothing for it.
+          File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
+            .writeText(
+              listOf(completed("//app:wiring", "meta"), eventSet("meta", listOf(metadata)))
+                .joinToString("\n")
+            )
+          ""
+        } else root.absolutePath + "\n"
+      }
+      assertEquals(
+        listOf("//app:wiring"),
+        build.collectAll(root, listOf("//app:wiring"), BazelBuildConfig(), 9).map {
+          it.metadata.target
+        },
+      )
+      assertEquals(2, builds.size)
+
+      builds.clear()
+      build.collectAll(
+        root,
+        listOf("//app:wiring"),
+        BazelBuildConfig(projectOutputGroup = null),
+        9,
+      )
+      assertEquals(1, builds.size)
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a jar is read for Preview by its class bytes, and kept when unreadable`() {
+    val root = Files.createTempDirectory("bazel-preview-jars").toFile()
+    try {
+      val preview = jar(root.resolve("a.jar"), "Lcom/google/android/horologist/WearPreviewDevices;")
+      val none = jar(root.resolve("b.jar"), "Lcom/example/Main;")
+      val broken = root.resolve("c.jar").apply { writeText("not a zip") }
+      assertTrue(BazelPreviewJars.mayHoldPreviews(listOf(none, preview)))
+      assertTrue(!BazelPreviewJars.mayHoldPreviews(listOf(none)))
+      assertTrue(BazelPreviewJars.mayHoldPreviews(listOf(none, broken)))
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `query gets the Starlark language flags of buildArgs, and only those`() {
+    assertEquals(
+      listOf(
+        "--nocheck_bzl_visibility",
+        "--incompatible_disallow_empty_glob=false",
+        "--experimental_google_legacy_api",
+        "--noenable_workspace",
+        "--experimental_builtins_bzl_path",
+        "%bundled%",
+        "--experimental_builtins_injection_override",
+        "-foo",
+      ),
+      bazelQueryLanguageArgs(
+        listOf(
+          "--config=desktop",
+          "--nocheck_bzl_visibility",
+          "--remote_download_outputs=toplevel",
+          "--incompatible_disallow_empty_glob=false",
+          "--experimental_google_legacy_api",
+          "--noenable_workspace",
+          "--jobs",
+          "8",
+          "--experimental_builtins_bzl_path",
+          "%bundled%",
+          "--experimental_builtins_injection_override",
+          "-foo",
+          "--keep_going",
+        )
+      ),
+    )
+  }
+
+  @Test
+  fun `every query runs with the build's language flags, or the configured queryArgs`() {
+    val root = Files.createTempDirectory("bazel-query-args").toFile()
+    try {
+      root.resolve("app").mkdirs()
+      root.resolve("app/BUILD.bazel").writeText("")
+      val queries = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        if ("query" in argv) {
+          queries += argv
+          "//app:ui\n"
+        } else ""
+      }
+      val config = BazelBuildConfig(buildArgs = listOf("--nocheck_bzl_visibility", "--jobs=8"))
+      build.expandTargets(root, listOf("//app/..."), config, 9)
+      build.selectTargets(root, root.resolve("app"), config, 9)
+      build.splitAndroid(root, listOf("//app:ui"), config, 9)
+      assertTrue(queries.size >= 3, queries.toString())
+      queries.forEach {
+        assertEquals(listOf("bazel", "query", "--nocheck_bzl_visibility"), it.take(3))
+        assertTrue("--jobs=8" !in it, it.toString())
+      }
+
+      queries.clear()
+      build.expandTargets(
+        root,
+        listOf("//app/..."),
+        config.copy(queryArgs = listOf("--check_bzl_visibility=false")),
+        9,
+      )
+      assertEquals(
+        listOf("bazel", "query", "--check_bzl_visibility=false"),
+        queries.single().take(3),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a forwarded flag query rejects is dropped and the query run again`() {
+    val root = Files.createTempDirectory("bazel-query-retry").toFile()
+    try {
+      val queries = mutableListOf<List<String>>()
+      val build = BazelBuild { argv, _, _ ->
+        queries += argv
+        if ("--incompatible_build_only" in argv) {
+          throw BazelCommandFailed(BAZEL_COMMAND_LINE_ERROR, "Unrecognized option")
+        }
+        "//app:ui\n"
+      }
+      val config = BazelBuildConfig(buildArgs = listOf("--incompatible_build_only"))
+      assertEquals(listOf("//app:ui"), build.expandTargets(root, listOf("//app/..."), config, 9))
+      assertEquals(2, queries.size)
+      assertEquals(listOf("bazel", "query"), queries.last().take(2))
+      assertTrue("--incompatible_build_only" !in queries.last())
+
+      // A configured queryArgs is the user's choice: its failure is reported, not retried.
+      assertFailsWith<BazelCommandFailed> {
+        build.expandTargets(
+          root,
+          listOf("//app/..."),
+          BazelBuildConfig(queryArgs = listOf("--incompatible_build_only")),
+          9,
+        )
       }
     } finally {
       root.deleteRecursively()
@@ -565,6 +820,7 @@ class BazelBuildTest {
       val merged = assertNotNull(mergeBazelArtifacts("//app/...", listOf(ui, model)))
 
       assertEquals("//app/...", merged.metadata.target)
+      assertEquals(listOf("//app:ui", "//app:model"), merged.memberTargets)
       assertEquals(listOf("ui.jar", "model.jar"), merged.projectJars.map { it.name })
       assertEquals(
         listOf("ui.jar", "compose.jar", "shared.jar", "model.jar", "json.jar"),
@@ -630,7 +886,7 @@ class BazelBuildTest {
   }
 
   @Test
-  fun `the JVM aspect package file is BUILD, and an earlier CLI's BUILD_bazel moves to it`() {
+  fun `the JVM aspect package file is BUILD, and an earlier CLI's BUILD_bazel stays beside it`() {
     val root = Files.createTempDirectory("bazel-build-file").toFile()
     try {
       val dir = root.resolve(".compose-preview/bazel")
@@ -638,21 +894,22 @@ class BazelBuildTest {
       assertTrue(dir.resolve("BUILD").isFile)
       assertTrue(!dir.resolve("BUILD.bazel").exists())
 
-      // What 2.67 and earlier installed: BUILD.bazel, which some Blaze deployments do not read.
+      // What 2.67 and earlier installed: BUILD.bazel, which some custom Bazel distributions do not
+      // read. It
+      // gains a BUILD and is never removed: a concurrent build may be reading it (#6115).
       val bundled = dir.resolve("BUILD").readText()
       dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
       migrateBazelAspectBuildFile(root)
       assertEquals(bundled, dir.resolve("BUILD").readText())
-      assertTrue(!dir.resolve("BUILD.bazel").exists())
-
-      // An unedited copy beside the current BUILD (an older CLI run after a newer one) just goes.
-      dir.resolve("BUILD.bazel").writeText(bundled)
-      migrateBazelAspectBuildFile(root)
-      assertTrue(!dir.resolve("BUILD.bazel").exists())
+      assertEquals(bundled, dir.resolve("BUILD.bazel").readText())
+      // And installing beside it is fine and leaves both untouched.
+      val stamp = dir.resolve("BUILD").lastModified()
       installBazelAspect(root)
+      assertTrue(dir.resolve("BUILD.bazel").isFile)
+      assertEquals(stamp, dir.resolve("BUILD").lastModified())
 
       // A hand-edited one stays.
-      dir.resolve("BUILD").renameTo(dir.resolve("BUILD.bazel"))
+      dir.resolve("BUILD").delete()
       dir.resolve("BUILD.bazel").appendText("# local\n")
       migrateBazelAspectBuildFile(root)
       assertTrue(dir.resolve("BUILD.bazel").isFile)
@@ -764,7 +1021,10 @@ class BazelBuildTest {
         "@@canonical+//app:app",
         build.collect(root, "@alias//app", BazelBuildConfig(), 10).metadata.target,
       )
-      assertTrue("@@canonical+//app:app" in calls.single { "build" in it })
+      // The project-jar build first (#6162), then the runtime build: both on the canonical label.
+      val builds = calls.filter { "build" in it }
+      assertEquals(2, builds.size)
+      assertTrue(builds.all { "@@canonical+//app:app" in it }, builds.toString())
     } finally {
       root.deleteRecursively()
     }

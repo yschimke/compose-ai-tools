@@ -190,6 +190,63 @@ no card and no design-kit node, it only supplies the bytes. An authored recordin
 that **no** component claims renders and is then dropped at the join; the export
 warns when it finds one.
 
+## Recording a timeline the preview drives itself
+
+`@AnimatedPreview` and `@InteractionPreview` stop at 5 s and 10 s. Some recordings tell a longer
+story made of several changes, each driven by the host: a door opening, then dusk falling for
+three simulated hours, then the door closing. Put that story in the preview and record it with
+`compose-preview record`. You don't need to step frames by hand.
+
+1. **The preview owns the timeline.** Drive state from a `LaunchedEffect` with `delay()`. A
+   recording runs on the virtual frame clock, so every `delay` lands exactly where you put it,
+   on every run:
+
+   ```kotlin
+   @Preview(widthDp = 360, heightDp = 300) // pin both: every frame shares one canvas
+   @Composable
+   fun GarageAtDusk() {
+     var open by remember { mutableStateOf(false) }
+     var elevation by remember { mutableStateOf(14f) }
+     LaunchedEffect(Unit) {
+       delay(1_000); open = true
+       delay(2_500)
+       for (step in sunset) { elevation = step; delay(45) } // three hours in four seconds
+       delay(800); open = false
+     }
+     CardHost(snapshot = states(open, elevation))
+   }
+   ```
+
+2. **Drive the host's inputs, not its outputs.** When the composable under test is a host,
+   change what the host reads, and let it derive the rest. For example, a Remote Compose player
+   fed named values computed from a data snapshot: change the snapshot. If you hand-build the
+   values the host would push, you record your copy of the host rather than the host itself.
+
+3. **The script only sets the length.** With no input to inject, two probes are enough:
+
+   ```json
+   [
+     { "tMs": 0, "kind": "recording.probe", "label": "start" },
+     { "tMs": 11000, "kind": "recording.probe", "label": "end" }
+   ]
+   ```
+
+   ```shell
+   compose-preview record --preview GarageAtDusk --script length.json --out garage.apng
+   ```
+
+4. **Choose the size, and the format for where it goes.** The cost is the number of frames times
+   their size. An 11 s recording at the default 30 fps and full scale is 331 frames; for a 360 dp
+   card that comes to a 40 MB APNG. `--fps 12 --scale 0.6` makes the same story 133 frames and
+   9 MB.
+
+   APNG is the default here, lossless and in full colour. For a chat app or an issue comment,
+   ask for MP4 with `--out garage.mp4`, which needs `ffmpeg` on `PATH`. It plays inline in
+   Slack, and is about 200 KB for the same recording.
+
+   Encoding waits a minute plus two seconds for every million pixels across the frames, up to
+   half an hour. A long recording at full scale therefore still finishes, just not quickly.
+
 ## Companion products
 
 - [Scroll captures](../scroll) — `render/scroll/gif` for motion driven by scrolling rather than by a pointer or the component itself.

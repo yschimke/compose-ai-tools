@@ -558,6 +558,19 @@ class ServeOverridesTest {
   }
 
   @Test
+  fun `cache keys cannot confuse string contents with additional named values`() {
+    for (prefix in listOf("knob.", "rc.")) {
+      val one = ok(mapOf("${prefix}a" to "string:x);b=StringValue(value=y"))
+      val two = ok(mapOf("${prefix}a" to "string:x", "${prefix}b" to "string:y"))
+      assertNotEquals(
+        ServeOverrides.cacheKey("preview.A", one),
+        ServeOverrides.cacheKey("preview.A", two),
+        "ambiguous $prefix values",
+      )
+    }
+  }
+
+  @Test
   fun `cache key is knob-order independent`() {
     val a = ok(mapOf("knob.label" to "string:Hi", "knob.count" to "int:2"))
     val b = ok(mapOf("knob.count" to "int:2", "knob.label" to "string:Hi"))
