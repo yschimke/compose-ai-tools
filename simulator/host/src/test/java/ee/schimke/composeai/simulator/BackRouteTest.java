@@ -1,6 +1,8 @@
 package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +30,13 @@ public class BackRouteTest {
   public void nothingInTheAppWantingBackLeavesItToTheActivity() {
     // The activity's own default callback would ask the (absent) system server to finish it.
     assertEquals(BackRoute.ACTIVITY, BackRoute.of(false, true, true));
+  }
+
+  @Test
+  public void aHeldBackIsRoutedLikeAPressedOne() {
+    assertTrue(BackRoute.isSystemBack(4, false));
+    assertTrue(BackRoute.isSystemBack(4, true));
+    assertFalse(BackRoute.isSystemBack(66, false));
   }
 
   @Test

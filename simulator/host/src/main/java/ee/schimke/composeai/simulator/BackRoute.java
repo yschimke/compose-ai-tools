@@ -17,6 +17,17 @@ enum BackRoute {
   /** {@code KEYCODE_BACK} into the focused window's view tree. */
   KEY;
 
+  /** {@code KeyEvent.KEYCODE_BACK}, kept here so the routing is testable without android.jar. */
+  static final int KEYCODE_BACK = 4;
+
+  /**
+   * Whether key [keyCode] is Back for {@link SystemBack} to route: pressed or held, since a device
+   * intercepts a held Back for an opted-in window too and invokes its callback once, on release.
+   */
+  static boolean isSystemBack(int keyCode, boolean longPress) {
+    return keyCode == KEYCODE_BACK;
+  }
+
   /**
    * [systemWindow]: the focused window is a home activity's own, which takes Back whatever the app
    * opted in to (it runs in the app's process, so it shares the app's opt-in). [hasCallback]: the

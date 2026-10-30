@@ -746,8 +746,9 @@ final class Session {
       home.goHome();
       return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
     }
-    if (code == KeyEvent.KEYCODE_BACK && !longPress) {
-      // The system's too: an opted-in window hears it as its OnBackInvokedCallback, not a key.
+    if (BackRoute.isSystemBack(code, longPress)) {
+      // The system's too: an opted-in window hears it as its OnBackInvokedCallback, not a key,
+      // held or not (a long press is one Back, delivered on the release).
       JSONObject routed = SystemBack.dispatch(navigator, displayId);
       if (routed != null) return routed.put("keyCode", code);
     }
