@@ -914,6 +914,17 @@ shows its children, not the summary.
   person could;
 - Back, HOME, a swipe up, or a tap below the list closes the shade.
 
+A **media player** stands in for a player's `MediaStyle` notification (platform or AndroidX),
+under the tiles as Android 13+ shows it: its art (the large icon) behind the title and artist, and
+its actions as the player's buttons, the compact ones first. A button sends that action, as a
+press in the template would; a tap opens its content intent. It is drawn from the notification,
+not a `MediaSession`: Robolectric's sessions are stubs, so a controller has no metadata or playback
+state to read, and the player follows the notification as the app posts it again. Ids:
+`media_player` (the key), `media_title`, `media_action` (`<key>/<index>`). The sample's
+`NotificationDemoReceiver` posts one with the action `com.example.sampleandroid.POST_MEDIA`.
+
+![A player in the shade; Pause and Next pressed, as the app re-posts it](design/evidence/simulator-launch/phone-media.png)
+
 A **heads-up** card shows the heads-up view of a newly posted notification on a high-importance
 channel for five seconds, while the shade is closed: a tap opens it, a sideways swipe dismisses it,
 a swipe up puts it away, and a reply action opens the shade at its reply field.
@@ -1740,7 +1751,7 @@ What does not, or not yet:
   where this sandbox refuses the host.
 - **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
   recents screen, notification history, snooze or per-channel settings in the shade, conversation
-  or bubble sections, media controls, or Do Not Disturb; one keyboard layout (US QWERTY, no
+  or bubble sections, media output switching or a seek bar, or Do Not Disturb; one keyboard layout (US QWERTY, no
   suggestions, emoji, voice or IME switcher); no pattern or password lock, fingerprint
   unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
   when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not

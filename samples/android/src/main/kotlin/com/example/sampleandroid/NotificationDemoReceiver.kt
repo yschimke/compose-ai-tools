@@ -24,6 +24,9 @@ import androidx.annotation.RequiresApi
  * reply is added to the conversation, as a messaging app answers it; "Mark as read" and "Archive"
  * cancel theirs.
  *
+ * [ACTION_POST_MEDIA] posts a player's `MediaStyle` notification instead, whose controls come back
+ * here too.
+ *
  * Driven by the simulator's `broadcast` command with [ACTION_POST], as the docs' shade example
  * does; not exported, so only the app and the simulator reach it. API 31+ (mutable reply intents),
  * which is all the simulator runs.
@@ -40,6 +43,21 @@ class NotificationDemoReceiver : BroadcastReceiver() {
         if (reply != null) manager.notify(ID_CHAT, chat(context, reply))
       }
       ACTION_DONE -> manager.cancel(intent.getIntExtra(EXTRA_ID, 0))
+      ACTION_POST_MEDIA -> {
+        manager.createNotificationChannel(
+          NotificationChannel(CHANNEL_MEDIA, "Playback", NotificationManager.IMPORTANCE_LOW)
+        )
+        manager.notify(ID_MEDIA, media(context, playing = true, track = 0))
+      }
+      ACTION_MEDIA ->
+        manager.notify(
+          ID_MEDIA,
+          media(
+            context,
+            playing = intent.getBooleanExtra(EXTRA_PLAYING, true),
+            track = intent.getIntExtra(EXTRA_TRACK, 0),
+          ),
+        )
     }
   }
 
@@ -149,6 +167,64 @@ class NotificationDemoReceiver : BroadcastReceiver() {
       .build()
   }
 
+  /**
+   * A player's `MediaStyle` notification: previous, play or pause, next, each a broadcast back here
+   * that posts it again with the new state, as a media app's service would.
+   */
+  private fun media(context: Context, playing: Boolean, track: Int): Notification {
+    val (title, artist) = TRACKS[Math.floorMod(track, TRACKS.size)]
+    val art = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+    Canvas(art)
+      .drawRect(
+        0f,
+        0f,
+        256f,
+        256f,
+        Paint().apply {
+          shader =
+            LinearGradient(
+              0f,
+              0f,
+              256f,
+              256f,
+              0xFF5E35B1.toInt(),
+              if (track % 2 == 0) 0xFFD81B60.toInt() else 0xFF00897B.toInt(),
+              Shader.TileMode.CLAMP,
+            )
+        },
+      )
+    fun control(icon: Int, label: String, nextPlaying: Boolean, nextTrack: Int, code: Int) =
+      Notification.Action.Builder(
+          Icon.createWithResource(context, icon),
+          label,
+          PendingIntent.getBroadcast(
+            context,
+            100 + code,
+            Intent(context, NotificationDemoReceiver::class.java)
+              .setAction(ACTION_MEDIA)
+              .putExtra(EXTRA_PLAYING, nextPlaying)
+              .putExtra(EXTRA_TRACK, nextTrack),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+          ),
+        )
+        .build()
+    return Notification.Builder(context, CHANNEL_MEDIA)
+      .setSmallIcon(android.R.drawable.ic_media_play)
+      .setContentTitle(title)
+      .setContentText(artist)
+      .setLargeIcon(art)
+      .setContentIntent(open(context))
+      .setOngoing(playing)
+      .addAction(control(android.R.drawable.ic_media_previous, "Previous", playing, track - 1, 0))
+      .addAction(
+        if (playing) control(android.R.drawable.ic_media_pause, "Pause", false, track, 1)
+        else control(android.R.drawable.ic_media_play, "Play", true, track, 1)
+      )
+      .addAction(control(android.R.drawable.ic_media_next, "Next", playing, track + 1, 2))
+      .setStyle(Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2))
+      .build()
+  }
+
   private fun download(context: Context): Notification =
     Notification.Builder(context, CHANNEL_UPDATES)
       .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -184,6 +260,13 @@ class NotificationDemoReceiver : BroadcastReceiver() {
 
   companion object {
     const val ACTION_POST = "com.example.sampleandroid.POST_NOTIFICATIONS"
+    const val ACTION_POST_MEDIA = "com.example.sampleandroid.POST_MEDIA"
+    private const val ACTION_MEDIA = "com.example.sampleandroid.MEDIA"
+    private const val EXTRA_PLAYING = "playing"
+    private const val EXTRA_TRACK = "track"
+    private const val CHANNEL_MEDIA = "playback"
+    private const val ID_MEDIA = 5
+    private val TRACKS = listOf("Midnight City" to "M83", "Wait" to "M83", "Outro" to "M83")
     private const val ACTION_REPLY = "com.example.sampleandroid.REPLY"
     private const val ACTION_DONE = "com.example.sampleandroid.DONE"
     private const val EXTRA_ID = "id"
