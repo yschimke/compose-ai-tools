@@ -49,10 +49,19 @@ final class ScreenPolicy {
     }
   }
 
-  /** What one change asks of the system. */
+  /**
+   * What one change asks of the system, in the order the fields are listed: the wrist-tilt event
+   * first, then the screen and the app.
+   */
   static final class Transition {
     final State from;
     final State to;
+    /**
+     * A wrist-tilt gesture event goes to the sensor's listeners before anything else, as the
+     * sensor fires before the system wakes the screen: an app hears it while still in ambient,
+     * before {@code onExitAmbient} (where it may unregister its listener).
+     */
+    boolean wristTilt;
     /** {@code ACTION_SCREEN_OFF}: the screen stopped being interactive. */
     boolean screenOff;
     /** {@code ACTION_SCREEN_ON}: it is interactive again. */
@@ -181,6 +190,16 @@ final class ScreenPolicy {
     state = target;
     if (target == State.AMBIENT) nextUpdate = now + AMBIENT_UPDATE_MS;
     if (target == State.ON) lastInput = now;
+    return t;
+  }
+
+  /**
+   * A wrist tilt: on a watch the gesture sensor reports it first ({@link Transition#wristTilt}),
+   * then the screen wakes, so it reaches the app even when the screen is already on.
+   */
+  Transition tilt(boolean appOnTop, boolean ambientReady, long now) {
+    Transition t = to(State.ON, appOnTop, ambientReady, now);
+    t.wristTilt = wear;
     return t;
   }
 

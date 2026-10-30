@@ -90,10 +90,7 @@ final class ScreenPower {
       case "ambient":
         return ambient(c);
       case "tilt":
-        {
-          JSONObject result = wake("tilt");
-          return result.put("wristTiltListeners", tilt());
-        }
+        return tilt();
       case "wake":
         return wake("wake");
       case "palm":
@@ -232,7 +229,7 @@ final class ScreenPower {
   }
 
   /** Delivers one wrist-tilt event; returns how many listeners had registered for it. */
-  private int tilt() {
+  private int deliverWristTilt() {
     if (wristTilt == null) return 0;
     ShadowSensorManager sensors = sensorManager();
     int listening = 0;
@@ -250,13 +247,40 @@ final class ScreenPower {
   }
 
   private JSONObject to(ScreenPolicy.State target, String reason) {
+    List<AmbientClients.Client> ready = ready();
+    return apply(
+        policy.to(target, appOnTop(), !ready.isEmpty(), SystemClock.uptimeMillis()), ready, reason);
+  }
+
+  /** The wrist-tilt gesture: its sensor event, then the wake it causes. */
+  private JSONObject tilt() {
+    List<AmbientClients.Client> ready = ready();
+    return apply(
+        policy.tilt(appOnTop(), !ready.isEmpty(), SystemClock.uptimeMillis()), ready, "tilt");
+  }
+
+  private boolean appOnTop() {
     Navigator.Entry top = navigator.top();
-    boolean appOnTop = top != null && !top.system;
-    List<AmbientClients.Client> ready =
-        appOnTop ? AmbientClients.ready(top.activity()) : java.util.Collections.emptyList();
-    ScreenPolicy.Transition t =
-        policy.to(target, appOnTop, !ready.isEmpty(), SystemClock.uptimeMillis());
-    if (!t.changed()) return describe();
+    return top != null && !top.system;
+  }
+
+  /** The top activity's ambient clients that are ready to enter ambient. */
+  private List<AmbientClients.Client> ready() {
+    return appOnTop()
+        ? AmbientClients.ready(navigator.top().activity())
+        : java.util.Collections.emptyList();
+  }
+
+  private JSONObject apply(
+      ScreenPolicy.Transition t, List<AmbientClients.Client> ready, String reason) {
+    ScreenPolicy.State target = t.to;
+    // Before the screen changes: an ambient app hears the gesture while still in ambient.
+    Integer tiltListeners = t.wristTilt ? deliverWristTilt() : null;
+    if (!t.changed()) {
+      JSONObject state = describe();
+      if (tiltListeners != null) put(state, "wristTiltListeners", tiltListeners);
+      return state;
+    }
     // The display changes first, so the app's callbacks read the state they are about.
     power(target);
     if (t.exitAmbient) {
@@ -284,13 +308,19 @@ final class ScreenPower {
     }
     if (t.screenOn) navigator.broadcast(new Intent(Intent.ACTION_SCREEN_ON));
     JSONObject state = describe();
+    put(state, "reason", reason);
+    put(state, "from", t.from.id());
+    protocol.event("screen", state);
+    if (tiltListeners != null) put(state, "wristTiltListeners", tiltListeners);
+    return state;
+  }
+
+  private static void put(JSONObject json, String key, Object value) {
     try {
-      state.put("reason", reason).put("from", t.from.id());
+      json.put(key, value);
     } catch (JSONException e) {
       throw new IllegalStateException(e);
     }
-    protocol.event("screen", state);
-    return state;
   }
 
   private void updateAmbient() {
