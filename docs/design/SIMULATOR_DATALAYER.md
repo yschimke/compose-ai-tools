@@ -73,7 +73,7 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `getDataItems` / `getDataItem` / `deleteDataItems` | over every node's items, with `*` / node hosts and literal / prefix filters |
 | assets | `Asset.createFromBytes` bytes travel with the item; `getFdForAsset` streams them |
 | `NodeClient.getCompanionPackageForNode` | `com.google.android.wearable.app`, the Wear OS app, as on a device (not the peer app's package) |
-| `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`); Horologist's `isAvailable()` asks it |
+| `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`; every overload); Horologist's `isAvailable()` asks it. Play services itself is reported installed in every launch ([`SIMULATOR.md`](../SIMULATOR.md#google-play-services)) |
 | `RemoteActivityHelper.startRemoteActivity` | its `REMOTE_INTENT` broadcast to the Wear OS app is taken here and sent as an `activity` frame; the other node starts the intent (or, for `http(s)` / `market:` with no app activity, answers OK as its browser or Play Store would) and its `activityResult` answers the app's `ResultReceiver` |
 | `RemoteAuthClient.sendAuthorizationRequest` (watch) | the bind to the Wear OS app's OAuth service connects (`WearCompanion`); the request reaches the phone as an `oauth` event, and `{"cmd":"dataLayer","oauthResponse":"<redirect URL>"}` on the phone stands in for the browser's redirect, which reaches the app's callback |
 | `BridgingManager.setConfig` (watch) | the bind connects; the config is reported as a `bridging` event |
