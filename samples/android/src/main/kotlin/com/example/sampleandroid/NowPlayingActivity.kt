@@ -46,7 +46,7 @@ class NowPlayingActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      MaterialTheme {
+      SampleTheme {
         var progress by remember { mutableFloatStateOf(0f) }
         var edge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
         PredictiveBackHandler { events ->

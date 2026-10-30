@@ -9,7 +9,7 @@
             android:name="com.example.sampleandroid.MainActivity"
             android:exported="true"
             android:icon="@drawable/ic_settings"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            android:theme="@style/Theme.Sample">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -26,7 +26,7 @@
             android:name="com.example.sampleandroid.NowPlayingActivity"
             android:enableOnBackInvokedCallback="true"
             android:exported="true"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            android:theme="@style/Theme.Sample">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -88,7 +88,7 @@
             android:name="com.example.sampleandroid.ChatActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+            android:theme="@style/Theme.Sample" />
         <!-- Posts the notifications the simulator's phone shade is shown with (docs/SIMULATOR.md). -->
         <receiver android:name="com.example.sampleandroid.NotificationDemoReceiver"
             android:exported="false" />

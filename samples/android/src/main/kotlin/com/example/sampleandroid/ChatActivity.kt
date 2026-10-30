@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,8 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,10 +40,7 @@ class ChatActivity : ComponentActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     setContent {
-      // Follows the system's dark theme (`cmd uimode night yes`, Android Studio's Dark Theme).
-      MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
-      ) {
+      SampleTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
           val messages = remember { mutableStateListOf("Are we still on for lunch?") }
           var draft by remember { mutableStateOf("") }

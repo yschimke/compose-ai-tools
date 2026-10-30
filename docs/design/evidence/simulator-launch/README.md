@@ -393,3 +393,11 @@ controls; expand brings it back resumed; its own button enters again (`enterPict
 `pip {op: close}` destroys it.
 
 ![Player, PiP, controls, expanded, button, closed](phone-pip.png)
+
+## The sample in dark mode
+
+![Home and Now Playing light; Home, Now Playing and Chat dark](sample-dark-mode.png)
+
+`samples/android`'s screens follow the system's dark theme (`SampleTheme`, and `Theme.Sample` with
+a `values-night` variant for the window). Over `--control stdio --headless`: Home and Now Playing,
+then `qualifiers +night` (Now Playing recreated dark), a new `MainActivity`, and `ChatActivity`.
