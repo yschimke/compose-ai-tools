@@ -241,6 +241,10 @@ compose-remote = "1.0.0-alpha22"
 # it — a `NoClassDefFoundError: org/json/JSONObject` at the first compile is what its absence looks
 # like, not a resolution failure.
 json-org = "20250517"
+# Only as `:simulator-host` test fixtures: the real Task classes the simulator's Wearable clients
+# complete (at run time they are the app's own copy).
+play-services-tasks = "18.4.0"
+play-services-basement = "18.12.0"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.7.0"
@@ -766,6 +770,8 @@ wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }
 json-org = { module = "org.json:json", version.ref = "json-org" }
+play-services-tasks = { module = "com.google.android.gms:play-services-tasks", version.ref = "play-services-tasks" }
+play-services-basement = { module = "com.google.android.gms:play-services-basement", version.ref = "play-services-basement" }
 compose-remote-tooling-preview = { module = "androidx.compose.remote:remote-tooling-preview", version.ref = "compose-remote" }
 compose-remote-creation = { module = "androidx.compose.remote:remote-creation", version.ref = "compose-remote" }
 compose-remote-creation-compose = { module = "androidx.compose.remote:remote-creation-compose", version.ref = "compose-remote" }

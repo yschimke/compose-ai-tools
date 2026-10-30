@@ -80,7 +80,10 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `PhoneTypeHelper.getPhoneDeviceType` (watch) | `DEVICE_TYPE_ANDROID`, from `Settings.Global` `paired_device_os_type` |
 | `PackageManager.hasSystemFeature("android.hardware.type.watch")` | true on a watch display, paired or not |
 | `com.google.wear.Sdk` (watch, API 34+) | the simulator's stand-in for the Wear OS system library, `WEAR_SDK_INT` 0, so androidx.wear takes its pre-Wear-SDK paths |
-| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while paired; its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `ChannelClient` | `openChannel` sends a `channelOpen` frame; the peer's `ChannelCallback`s and `CHANNEL_EVENT` services get `onChannelOpened`; each write to the output stream is a `channelData` frame (64 KiB at most) that the peer's input stream reads in order; closing the output is `channelEof` (the peer's `onInputClosed`, this side's `onOutputClosed`); `close` is `channelClose` (`CLOSE_REASON_LOCAL_CLOSE` here, `REMOTE_CLOSE` there); a peer that leaves closes its channels with `DISCONNECTED`. `sendFile` / `receiveFile` stream a file (`file:` or a content URI) through the same pipe ([`ChannelPipes`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/ChannelPipes.java), [`DataLayerChannels`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DataLayerChannels.java)) |
+| every client's `Task` | never complete when the app gets it: completed by a post to the main looper, as Play services' binder answer is ([`DeferredTasks`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DeferredTasks.java)); a `sendRequest`'s answer or timeout, which arrives on the hub's reader or a timer thread, is posted to the main looper too |
+| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while a peer is connected (paired, or an agent's `connect`) and `STATUS_UNAVAILABLE` otherwise, each registered listener told again on every connect and disconnect ([`PeerPresence`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/PeerPresence.java)); its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `CompanionDeviceManager` | each peer is an association of the app (a stable locally administered MAC from its node id, its display name, `DEVICE_PROFILE_WATCH` on the phone); `associate()` is answered by the `companion` command's policy, from the peers and the Bluetooth devices in range ([`CompanionDevices`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/CompanionDevices.java)) |
 | `ACTION_TIME_TICK` | sent each time the wall clock enters a new minute, so Wear Compose's `TimeText` moves (either form factor) |
 
 **Delivery** runs on the receiving app's main looper: the live listeners the app added (with
@@ -167,7 +170,7 @@ paired on `--sdk 35`. Each API in both directions where it has two:
 | `BridgingManager.setConfig` | works, reported (it looped forever before: see below) |
 | `ConfirmationActivity` `OPEN_ON_PHONE_ANIMATION` | works, an ordinary activity of the app |
 | `WatchFaceConfigIntentHelper` | works (pure intent extras) |
-| `ChannelClient.openChannel` | fails, `API_UNAVAILABLE` (not simulated) |
+| `ChannelClient.openChannel` | fails, `API_UNAVAILABLE` (not simulated then; see [Channels and tasks](#evidence-channels-and-tasks)) |
 
 | Phone → watch | Watch → phone |
 | --- | --- |
@@ -239,6 +242,60 @@ Watch") rather than `robolectric`, which the sample writes into its proto data.
 | Phone, `startCompanion` | ![NO_COMPANION_FOUND](evidence/simulator-datalayer/horologist-phone-companion-before.png) | ![the Pixel Watch app](evidence/simulator-datalayer/horologist-phone-companion-after.png) |
 | Phone, Install Tile prompt | ![no watch found](evidence/simulator-datalayer/horologist-install-tile-before.png) | ![the prompt](evidence/simulator-datalayer/horologist-install-tile-after.png) |
 | Watch, launch and 8 minutes later | ![11:02](evidence/simulator-datalayer/horologist-clock-before-1.png) ![still 11:02](evidence/simulator-datalayer/horologist-clock-before-2.png) | ![12:08](evidence/simulator-datalayer/horologist-clock-after-1.png) ![12:17](evidence/simulator-datalayer/horologist-clock-after-2.png) |
+
+## Evidence: channels and tasks
+
+A throwaway probe pair (not committed): a phone and a Wear app, play-services-wearable 19.0.0, a
+global `ChannelCallback`, and a `WearableListenerService` with a `CHANNEL_EVENT` filter, run paired
+on `--sdk 35`. The peer echoes what it reads on `/probe/echo` and `receiveFile`s `/probe/file`.
+
+| Probe | Before | After |
+| --- | --- | --- |
+| `tasks`: 24 calls on the main thread across `DataClient`, `MessageClient`, `NodeClient`, `CapabilityClient`, `ChannelClient` and `checkApiAvailability`; is each task complete when it returns? | the `ChannelClient` call failed the run (`API_UNAVAILABLE`, 17) | 23 incomplete on return, all 24 completed later; the one complete on return is `checkApiAvailability` (`ShadowGoogleApiAvailability`'s `Tasks.forResult`, not a client) |
+| `chopen`: `openChannel`, write, close the output, read the reply | `API_UNAVAILABLE` | `reply=echo:ping from phone` (and from the watch) |
+| `chfile`: `sendFile` 200,000 bytes, `receiveFile` on the peer | `API_UNAVAILABLE` | received 200,000 bytes, same SHA-256 prefix (`8f9d1bf4`) |
+| `openChannel` to an unknown node | `API_UNAVAILABLE` | `TARGET_NODE_NOT_CONNECTED` (4000) |
+| callbacks | none | `onChannelOpened` on the main thread and in the service; `onInputClosed` / `onOutputClosed` `NORMAL` as each stream ends; `onChannelClosed` `LOCAL_CLOSE` on the closer, `REMOTE_CLOSE` on the peer |
+
+With `--data-layer agent` (the watch alone): `channelOpen` / `channelWrite` "hi from the agent" /
+`channelEof` reached the probe's callback and service, which read 17 bytes and echoed them back as
+`channelData` / `channelEof` send events; the app's own `openChannel` to the agent showed as a
+`channelOpen` send event, and the agent's `disconnect` closed it with `CLOSE_REASON_DISCONNECTED`,
+failing the app's blocked read.
+
+| Before (phone) | After (phone) | After (watch) |
+| --- | --- | --- |
+| ![channels before](evidence/simulator-launch/pair-channels-before-phone.png) | ![channels after, phone](evidence/simulator-launch/pair-channels-after-phone.png) | ![channels after, watch](evidence/simulator-launch/pair-channels-after-watch.png) |
+
+No app in the test set uses channels: `dexdump` of Home Assistant, MeshCore, Confetti and the
+Horologist datalayer, media and sample APKs finds `getChannelClient` only in Play services' own
+`Wearable`, and Horologist 0.8.3's `datalayer`, `datalayer-grpc`, `-phone` and `-watch` libraries
+do not call it.
+
+## Evidence: companion devices and remote-interaction status
+
+The same probe pair as for channels (wear-remote-interactions 1.2.0), `--sdk 35`:
+
+| Probe | Before | After |
+| --- | --- | --- |
+| phone `getMyAssociations()` / `getAssociations()` | empty | `#1 36:3E:D6:01:31:76 'Simulated Watch'`, `DEVICE_PROFILE_WATCH` |
+| phone `associate(DEVICE_PROFILE_WATCH)` | never answered (timed out after 15 s) | `onAssociationCreated` with the watch's association (the same one, not a second) |
+| watch `getMyAssociations()` | empty | `#1 4A:A7:45:8A:A4:EC 'Simulated Phone'`, no profile |
+| watch `RemoteActivityHelper.availabilityStatus` | `STATUS_AVAILABLE` (3) while paired, from the launch flag; nothing on a change | 3 while a peer is connected, and listeners hear each change |
+
+The watch alone with `--data-layer agent`: `availabilityStatus` went 1 (no peer) → 3 on `connect` →
+1 on `disconnect`, each heard by one collecting listener. The agent's phone became association #1.
+With `{"cmd":"companion","policy":"ask"}`, each `associate()` was a `companion` event with
+`state: chooser`. Answering `accept` with an address the chooser did not list created `#2
+C0:FF:EE:00:00:42` and answered `onAssociationCreated`; answering `reject` answered `onFailure`.
+
+| Before (phone) | After (phone) | Watch, agent mode |
+| --- | --- | --- |
+| ![before](evidence/simulator-launch/pair-companion-before-phone.png) | ![after](evidence/simulator-launch/pair-companion-after-phone.png) | ![agent](evidence/simulator-launch/agent-companion-status-watch.png) |
+
+No app in the test set calls `associate()`. MeshCore's phone reads `getMyAssociations()` to observe
+its saved BLE radio's presence, and matches by MAC, so the seeded watch association does not
+change what it does.
 
 ## Evidence: MeshCore
 
@@ -319,8 +376,9 @@ services' own. Now Play services is installed (25.42.34) and every overload agre
   `getAllCapabilities` (`FILTER_REACHABLE` vs `FILTER_ALL`) are ignored, since every peer is
   reachable; `onPeerConnected` / `onConnectedNodes` are not delivered; `getNodeId` answers
   null.
-- **`ChannelClient`** (streams between nodes) is not simulated; `getChannelClient` still returns
-  Play services' real client, which fails with `API_UNAVAILABLE` (17).
+- **`ChannelClient`** has no flow control (a writer never blocks on a slow reader; the bytes
+  queue in the reader's memory) and the deprecated `ChannelApi` / `Channel` (`GoogleApiClient`)
+  and its `WearableListenerService` overloads are not simulated, as with the other `*Api`s.
 - **Wear SDK services.** Only `RemoteInteractionsManager` is simulated; `Sdk.getWearManager`
   answers null for any other.
 - **Things only the system does.** No browser or Play Store opens a remote `https:` / `market:`
@@ -340,7 +398,8 @@ services' own. Now Play services is installed (25.42.34) and every overload agre
   CLI starts exactly two.
 - **Driving it from the control channel** is `--data-layer agent` ([`../SIMULATOR.md`](../SIMULATOR.md)):
   one simulator, with the agent playing its peers through the same frames the hub relays
-  (`DataLayerAgent`). `ChannelClient` streams are not among them.
+  (`DataLayerAgent`), channels included (`channelOpen`, `channelWrite`, `channelEof`,
+  `channelClose`).
 - **MeshCore's own handshake** (above) needs `horologist_phone`, which its phone does not
   declare; the simulator surfaces that rather than papering over it.
 
@@ -351,6 +410,5 @@ The prototype covers what both apps use. To make it the default for `launch --pa
 | Work | Estimate |
 | --- | --- |
 | Fidelity gaps above, with unit tests over a fake link | 1–2 days |
-| `ChannelClient` (pipes over the hub) | 2 days |
 | Minified APKs (mapping-file lookup of `Wearable` and the clients) | 2–3 days |
 | MCP server / `docs/SIMULATOR.md` integration of the paired session | 1 day |

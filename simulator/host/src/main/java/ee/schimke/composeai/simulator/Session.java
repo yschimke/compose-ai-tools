@@ -117,6 +117,7 @@ final class Session {
             : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
+    CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
   }
 
@@ -303,6 +304,8 @@ final class Session {
         return components();
       case "debugSurface":
         return debugSurface(c);
+      case "companion":
+        return CompanionDevices.command(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);
@@ -837,6 +840,12 @@ final class Session {
       home.goHome();
       return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
     }
+    if (BackRoute.isSystemBack(code, longPress)) {
+      // The system's too: an opted-in window hears it as its OnBackInvokedCallback, not a key,
+      // held or not (a long press is one Back, delivered on the release).
+      JSONObject routed = SystemBack.dispatch(navigator, displayId);
+      if (routed != null) return routed.put("keyCode", code);
+    }
     long now = SystemClock.uptimeMillis();
     inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0), displayId);
     if (longPress) {
@@ -866,7 +875,9 @@ final class Session {
       return new Protocol.Json().put("keyCode", code).put("longPress", true).object();
     }
     inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0), displayId);
-    return new Protocol.Json().put("keyCode", code).object();
+    Protocol.Json reply = new Protocol.Json().put("keyCode", code);
+    if (code == KeyEvent.KEYCODE_BACK) reply.put("via", "key");
+    return reply.object();
   }
 
   private JSONObject text(String text, int displayId) {

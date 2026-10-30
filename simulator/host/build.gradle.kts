@@ -88,6 +88,65 @@ dependencies {
   testImplementation(libs.dex2jar.tools)
 }
 
+// Play services' real Task classes, for the tests that check the simulator's Wearable clients
+// complete their tasks on a later turn of the main looper, as Play services does. AARs: only their
+// `classes.jar` goes on the test class path.
+val gmsTestAars =
+  configurations.create("gmsTestAars") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
+dependencies {
+  for (aar in listOf(libs.play.services.tasks, libs.play.services.basement)) {
+    addProvider<MinimalExternalModuleDependency, ExternalModuleDependency>("gmsTestAars", aar) {
+      artifact { type = "aar" }
+    }
+  }
+}
+
+/** Each AAR's `classes.jar`, as `<aar name>.jar`. */
+@CacheableTask
+abstract class UnpackAarClasses : DefaultTask() {
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.NAME_ONLY)
+  abstract val aars: ConfigurableFileCollection
+  @get:OutputDirectory abstract val jars: DirectoryProperty
+
+  @TaskAction
+  fun unpack() {
+    val dir =
+      jars.get().asFile.apply {
+        deleteRecursively()
+        mkdirs()
+      }
+    for (aar in aars.files) {
+      ZipFile(aar).use { zip ->
+        val entry = zip.getEntry("classes.jar") ?: return@use
+        zip.getInputStream(entry).use { input ->
+          File(dir, aar.name.removeSuffix(".aar") + ".jar").outputStream().use { input.copyTo(it) }
+        }
+      }
+    }
+  }
+}
+
+val unpackGmsTestJars =
+  tasks.register<UnpackAarClasses>("unpackGmsTestJars") {
+    aars.from(gmsTestAars)
+    jars.set(layout.buildDirectory.dir("gms-test-jars"))
+  }
+
+dependencies {
+  // Their listener overloads name `Activity`; the tests never load it.
+  testCompileOnly(files(androidJar))
+  testImplementation(
+    files(unpackGmsTestJars.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() })
+      .builtBy(unpackGmsTestJars)
+  )
+}
+
 // `NetworkGate` reaches into `java.net`'s socket and resolver internals, as the launched simulator
 // JVM lets it (`LaunchCommand` opens the package there too).
 tasks.withType<Test>().configureEach { jvmArgs("--add-opens=java.base/java.net=ALL-UNNAMED") }
