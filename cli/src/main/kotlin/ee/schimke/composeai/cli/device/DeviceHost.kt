@@ -7,6 +7,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.SecureRandom
 import java.util.Base64
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * `launch --adb`: brings a [VirtualDevice] up behind the three doors an emulator has — the adb
@@ -63,6 +65,19 @@ internal class DeviceHost(
         ". `adb devices` lists it; `adb connect localhost:${config.adbPort}` if it does not."
     )
     registerWithAdbServer(config.adbPort)
+    // What a control client (the MCP server's simulator_adb) addresses the device by.
+    device.event(
+      buildJsonObject {
+        put("event", "device")
+        put("serial", config.serial)
+        put("adbPort", config.adbPort)
+        put("consolePort", config.consolePort)
+        grpc?.let { put("grpcPort", it.port) }
+        put("avd", config.avdName)
+        put("formFactor", config.formFactor.id)
+      }
+        .toString()
+    )
     initialApk?.let { apk ->
       Thread {
         runCatching {
@@ -70,6 +85,14 @@ internal class DeviceHost(
           device.install(apk)
         }
           .onFailure {
+            device.event(
+              buildJsonObject {
+                put("event", "installFailed")
+                put("apk", apk.path)
+                put("error", it.message ?: it.toString())
+              }
+                .toString()
+            )
             System.err.println(
               "compose-preview launch: installing ${apk.name} failed: ${it.message}"
             )

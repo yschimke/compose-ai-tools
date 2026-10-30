@@ -67,6 +67,9 @@ internal class VirtualDevice(
 
   fun start() = lock.withLock { boot(config.systemApk) }
 
+  /** An event line of the device's own, to the control client beside the simulator's. */
+  fun event(line: String) = onLine(line)
+
   /** The running simulator, once it is up; waits out an install's restart. */
   fun simulator(timeoutMs: Long = 180_000): SimulatorLink {
     val deadline = System.currentTimeMillis() + timeoutMs
