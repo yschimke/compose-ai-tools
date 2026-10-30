@@ -820,9 +820,10 @@ What does not, or not yet:
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
-  see [adb equivalents](#adb-equivalents)). Without `--launcher`, `launch` while running pushes a
-  new launcher instance rather than bringing the task forward, and `HOME` does nothing; there are
-  no recents or task switching either way.
+  see [adb equivalents](#adb-equivalents)). A `NEW_TASK` start of the running root activity with
+  its launcher intent brings the task forward, as on a device, so `launch` (or another app's
+  "open the app") does not stack a second instance; without `--launcher`, `HOME` does nothing,
+  and there are no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
 - **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
