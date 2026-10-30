@@ -62,8 +62,17 @@ internal class LaunchCommand(private val args: List<String>) {
     }
     // No APK boots the device itself: the system UI with nothing installed (`--adb` installs
     // into it later). --project is not "no APK": it builds the one to launch.
+    // `--app <device>:<apk>` (repeatable): a topology of devices and their apps.
+    val appSpecs =
+      args.flagValuesAll("--app").map { spec ->
+        runCatching { LaunchTopology.parse(spec) }
+          .getOrElse { fail(it.message ?: "bad --app $spec") }
+          .also { if (!it.apk.isFile) fail("no such APK for --app: ${it.apk}") }
+      }
+    val positional = CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
     val apk =
-      CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
+      positional
+        ?: appSpecs.firstOrNull()?.apk
         ?: live?.let { reload ->
           System.err.println(
             "compose-preview launch: building ${reload.assembleTask} for the APK to launch"
@@ -163,17 +172,20 @@ internal class LaunchCommand(private val args: List<String>) {
       args.flagValuesAll("--install").map { path ->
         File(path).absoluteFile.also { if (!it.isFile) fail("no such APK to install: $it") }
       }
-    if (installs.isNotEmpty()) {
-      if (apk == null)
-        fail("--install adds apps beside one: launch <app.apk> --install <other.apk>")
-      if (pair != null) fail("--install runs one device with several apps; drop --pair")
-      if (adb) fail("--adb runs one app; drop --install")
+    if (installs.isNotEmpty() && apk == null) {
+      fail("--install adds apps beside one: launch <app.apk> --install <other.apk>")
+    }
+    if (adb && (installs.isNotEmpty() || appSpecs.isNotEmpty())) {
+      fail("--adb runs one app on one device; drop --install and --app")
     }
     if ("--prepare" in args) {
       if (apk == null) fail("--prepare converts an APK: launch <app.apk> --prepare")
       println(classesOf(apk).absolutePath)
       pair?.let { println(classesOf(it).absolutePath) }
       installs.forEach { println(classesOf(it).absolutePath) }
+      (if (positional == null) appSpecs.drop(1) else appSpecs).forEach {
+        println(classesOf(it.apk).absolutePath)
+      }
       return
     }
 
@@ -381,6 +393,8 @@ internal class LaunchCommand(private val args: List<String>) {
       return JsonObject(restarted + ("conversion" to converted.toJson()))
     }
 
+    // The simulator --project builds (reload, standby): the first app's.
+    var reloadable = PHONE
     fun supervise(
       device: String?,
       conversion: Conversion,
@@ -404,9 +418,11 @@ internal class LaunchCommand(private val args: List<String>) {
             when (cmd) {
               "update" -> update(supervisor, json)
               "reload" ->
-                live?.takeIf { device != WATCH }?.let { reload(it, supervisor, json) }
+                live
+                  ?.takeIf { device == null || device == reloadable }
+                  ?.let { reload(it, supervisor, json) }
                   ?: throw IllegalStateException(
-                    if (live != null) "reload is the phone's: --project builds the phone app"
+                    if (live != null) "reload is $reloadable's: --project builds that app"
                     else "reload needs a launch with --project <dir>, the app's Gradle build"
                   )
               else -> null
@@ -416,7 +432,7 @@ internal class LaunchCommand(private val args: List<String>) {
           // the launch would wait on after its simulator exited.
           outliveExits = outlivesExits(live != null, control != null, liveWatch),
           // The watch of a pair is not what reloads: no second JVM waiting for it.
-          standby = standby && control != null && device != WATCH,
+          standby = standby && control != null && (device == null || device == reloadable),
         )
         .also {
           bases[it] = conversion
@@ -497,13 +513,33 @@ internal class LaunchCommand(private val args: List<String>) {
     val conversion = conversionOf(apk)
     // What every reload compares against: the classes this APK was built from.
     live?.recordBaseline()
-    val pairConversion = pair?.let { conversionOf(it) }
     val classes = conversion.entry.classesJar
+
+    // The APK argument is the first app of its device: the watch's for a Wear app, else the
+    // phone's. --pair adds the watch's, --install apps beside it, --app any device's.
+    val primaryDevice = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
+    if (pair != null && primaryDevice == WATCH) {
+      fail(
+        "--pair pairs a watch with a phone app; this is a Wear app (use --app to say which is which)"
+      )
+    }
+    val topology = buildList {
+      add(
+        if (positional == null && appSpecs.isNotEmpty()) appSpecs.first()
+        else LaunchTopology.App(primaryDevice, apk)
+      )
+      val first = first()
+      pair?.let { add(LaunchTopology.App(WATCH, it)) }
+      installs.forEach { add(LaunchTopology.App(first.device, it)) }
+      addAll(if (positional == null) appSpecs.drop(1) else appSpecs)
+    }
 
     val dataLayerMode = args.flagValue("--data-layer")
     if (dataLayerMode != null) {
       if (dataLayerMode != "agent") fail("--data-layer supports only `agent`")
-      if (pair != null) fail("--data-layer agent plays the paired device itself; drop --pair")
+      if (topology.size > 1) {
+        fail("--data-layer agent plays the paired device itself; drop --pair, --install and --app")
+      }
       if (control == null) fail("--data-layer agent needs --control stdio: the agent is the peer")
       val device = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
       val supervisor =
@@ -541,103 +577,113 @@ internal class LaunchCommand(private val args: List<String>) {
       }
     }
 
-    if (installs.isNotEmpty()) {
-      finish(
-        launchDevice(
-          listOf(requireNotNull(apk)) + installs,
+    // A lone --app still names its device, which a plain launch would call the phone.
+    if (topology.size > 1 || appSpecs.isNotEmpty()) {
+      val exit =
+        launchTopology(
+          topology,
           conversion,
           options,
-          ::conversionOf,
-          ::supervise,
+          pairQualifiers = args.flagValue("--pair-qualifiers"),
+          conversionOf = ::conversionOf,
+          supervise = { name, conv, own -> supervise(name, conv, own) },
+          onNames = { first -> reloadable = first },
+          onPrimary = { if (live != null && liveWatch) watch(live, it) },
         )
-      )
-    }
-
-    if (pair == null || pairConversion == null) {
-      if (control == null && live == null) {
-        // A window only: nothing to supervise, so the simulator has the terminal to itself.
-        val command = commandFor(SimulatorSupervisor.Launch(apk, listOf(classes)), options)
-        if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-        finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
-      }
-      val supervisor = supervise(null, conversion, options)
-      if (live != null && liveWatch) watch(live, supervisor)
-      val exit = PairedLaunch(listOf(PHONE to supervisor), control = control != null).run()
       live?.close()
       finish(exit)
     }
 
-    val hub =
-      DataLayerHub(
-          log = { if (verbose) System.err.println("compose-preview launch: datalayer hub: $it") }
-        )
-        .start()
-    // --launcher gives each its own system UI; --widget is the phone's, --tile the watch's.
-    val phone =
-      supervise(
-        PHONE,
-        conversion,
-        options.copy(dataLayer = DataLayerNode(hub.port, PHONE), tiles = emptyList()),
-      )
-    val watch =
-      supervise(
-        WATCH,
-        pairConversion,
-        options.copy(
-          qualifiers = args.flagValue("--pair-qualifiers") ?: ApkFormFactor.WEAR.qualifiers,
-          // Drawn round, with the rotary input; --device presets are phone-sized, so the watch
-          // keeps its own display, and the phone's projected activity is not the watch's.
-          formFactor = ApkFormFactor.WEAR.id,
-          launchActivity = null,
-          device = null,
-          // --display connects to the phone; the watch has its one round display.
-          displays = emptyList(),
-          widgets = emptyList(),
-          dataLayer = DataLayerNode(hub.port, WATCH),
-        ),
-      )
-    if (live != null && liveWatch) watch(live, phone)
-    val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
+    if (control == null && live == null) {
+      // A window only: nothing to supervise, so the simulator has the terminal to itself.
+      val command = commandFor(SimulatorSupervisor.Launch(apk, listOf(classes)), options)
+      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+    }
+    val supervisor = supervise(null, conversion, options)
+    if (live != null && liveWatch) watch(live, supervisor)
+    val exit = PairedLaunch(listOf(PHONE to supervisor), control = control != null).run()
     live?.close()
-    hub.close()
     finish(exit)
   }
 
   /**
-   * `--install`: [apks] on one device, each in a simulator JVM of its own as each app runs in a
-   * process of its own, joined by a device bus (the Data Layer's relay, [DataLayerHub]) and each
-   * knowing the others' manifests. The first app is the one on screen; the others start their
-   * process without an activity, as an app does when something calls into it. Each simulator is a
-   * `device` of the control channel named by its package, the first taking commands that name none.
+   * A [topology] of devices and apps, each app in a simulator JVM of its own, as each app runs in a
+   * process of its own:
+   * - the apps of one device share a device bus (`DeviceBus`, over a [DataLayerHub] relay) and know
+   *   each other's manifests; the device's first app is on screen, the others start their process
+   *   without an activity, as an app does when something calls into it;
+   * - devices share the Wearable Data Layer, one node each, which delivers between the same package
+   *   on both sides; a watch is drawn round with the rotary input (`--pair-qualifiers`), and the
+   *   first device keeps the launch's display options.
+   *
+   * Each simulator is a `device` of the control channel ([LaunchTopology.names]); a command naming
+   * none goes to the first app.
    */
-  private fun launchDevice(
-    apks: List<File>,
+  private fun launchTopology(
+    topology: List<LaunchTopology.App>,
     first: Conversion,
     options: Options,
+    pairQualifiers: String?,
     conversionOf: (File) -> Conversion,
-    supervise: (String?, Conversion, Options) -> SimulatorSupervisor,
+    supervise: (String, Conversion, Options) -> SimulatorSupervisor,
+    onNames: (String) -> Unit,
+    onPrimary: (SimulatorSupervisor) -> Unit,
   ): Int {
-    val names = apks.map { ApkFormFactor.packageOf(it) ?: it.nameWithoutExtension }
-    names
-      .groupBy { it }
-      .filterValues { it.size > 1 }
-      .keys
-      .firstOrNull()
-      ?.let { fail("$it is installed twice: each app on the device is one package") }
-    val bus = DataLayerHub().start()
-    val devices = apks.mapIndexed { i, apk ->
-      val properties =
-        options.properties +
-          mapOf(
-            "composeai.simulator.device.bus" to bus.port.toString(),
-            "composeai.simulator.device.peers" to
-              apks.filter { it != apk }.joinToString(File.pathSeparator) { it.path },
+    val (names, aliases) =
+      runCatching {
+        LaunchTopology.names(topology) { ApkFormFactor.packageOf(it) ?: it.nameWithoutExtension }
+      }
+        .getOrElse { fail(it.message ?: "$it") }
+    onNames(names.first())
+    val devices = LaunchTopology.devices(topology)
+    val primaryDevice = topology.first().device
+    val dataLayer = if (devices.size > 1) DataLayerHub().start() else null
+    val buses =
+      devices
+        .filter { device -> topology.count { it.device == device } > 1 }
+        .associateWith { DataLayerHub().start() }
+    val hasWatch = devices.any(LaunchTopology::isWatch)
+    val supervisors = topology.mapIndexed { i, app ->
+      var own = options
+      // A device named a watch is one: the first app keeps the launch's own Wear display options
+      // when its APK is a Wear app, and gets the watch's otherwise.
+      val watch = LaunchTopology.isWatch(app.device)
+      if (watch && (app.device != primaryDevice || own.formFactor != ApkFormFactor.WEAR.id)) {
+        own =
+          own.copy(
+            qualifiers = pairQualifiers ?: ApkFormFactor.WEAR.qualifiers,
+            // Drawn round, with the rotary input; --device presets are phone-sized, so the watch
+            // keeps its own display, and the phone's projected activity is not the watch's.
+            formFactor = ApkFormFactor.WEAR.id,
+            launchActivity = null,
+            device = null,
+            // --display and --widget are the phone's; the watch has its one round display.
+            displays = emptyList(),
+            widgets = emptyList(),
           )
-      val own =
-        if (i == 0) options.copy(properties = properties)
-        else
-          options.copy(
-            properties = properties,
+      } else if (hasWatch && !LaunchTopology.isWatch(app.device)) {
+        // --tile is the watch's.
+        own = own.copy(tiles = emptyList())
+      }
+      dataLayer?.let { own = own.copy(dataLayer = DataLayerNode(it.port, app.device)) }
+      buses[app.device]?.let { bus ->
+        own =
+          own.copy(
+            properties =
+              own.properties +
+                mapOf(
+                  "composeai.simulator.device.bus" to bus.port.toString(),
+                  "composeai.simulator.device.peers" to
+                    LaunchTopology.deviceMates(topology, app).joinToString(File.pathSeparator) {
+                      it.apk.path
+                    },
+                )
+          )
+      }
+      if (!LaunchTopology.isFirstOnDevice(topology, app)) {
+        own =
+          own.copy(
             headless = true,
             noLaunch = true,
             launcher = false,
@@ -645,10 +691,13 @@ internal class LaunchCommand(private val args: List<String>) {
             widgets = emptyList(),
             tiles = emptyList(),
           )
-      names[i] to supervise(names[i], if (i == 0) first else conversionOf(apk), own)
+      }
+      names[i] to supervise(names[i], if (i == 0) first else conversionOf(app.apk), own)
     }
-    val exit = PairedLaunch(devices, control = options.control).run()
-    bus.close()
+    onPrimary(supervisors.first().second)
+    val exit = PairedLaunch(supervisors, control = options.control, aliases = aliases).run()
+    dataLayer?.close()
+    buses.values.forEach { it.close() }
     return exit
   }
 
@@ -1181,8 +1230,16 @@ internal class LaunchCommand(private val args: List<String>) {
                               simulator of its own: each app's PackageManager lists the
                               others, and calls between them (App Functions) cross over the
                               device's bus. The first APK is on screen; the others start
-                              without an activity. With --control stdio, "device":<package>
-                              sends a command to that app.
+                              without an activity. With --control stdio, a command's
+                              "device":"phone/<package>" (or the package) sends it to that app.
+        --app <device>:<apk>  Run an app on a device (repeatable): the whole topology, as
+                              --app phone:a.apk --app phone:b.apk --app watch:w.apk. A device
+                              named watch (or watch-…) is a Wear OS watch, any other a phone.
+                              Apps on a device share it as with --install; devices share the
+                              Wearable Data Layer, which delivers between the same package on
+                              each. An app alone on its device is "device":<device>; apps
+                              sharing one are <device>/<package>. Without an APK argument the
+                              first --app is the one on screen.
         --project <dir>       The app's Gradle build: the APK becomes optional (it is built),
                               and the control channel's "reload" compiles an edit and restarts
                               the app on just the changed classes, with no dexing or APK.

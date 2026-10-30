@@ -19,6 +19,10 @@ internal class PairedLaunch(
   /** One supervisor per device, the first (the phone) taking commands that name none. */
   private val devices: List<Pair<String, SimulatorSupervisor>>,
   private val control: Boolean,
+  /**
+   * Other names a command's `device` may use: a device for its first app, a package for its app.
+   */
+  private val aliases: Map<String, String> = emptyMap(),
 ) {
 
   fun run(): Int {
@@ -35,10 +39,10 @@ internal class PairedLaunch(
             // A lone simulator takes every command, whatever device it names.
             val target =
               if (devices.size == 1) devices.single().second
-              else supervisors[deviceOf(line) ?: primary]
+              else (deviceOf(line) ?: primary).let { supervisors[it] ?: supervisors[aliases[it]] }
             if (target == null) {
               emit(
-                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are paired"}"""
+                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are running"}"""
               )
               continue
             }

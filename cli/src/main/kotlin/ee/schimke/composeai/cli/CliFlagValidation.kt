@@ -285,6 +285,7 @@ internal object CliFlagValidation {
           "--java",
           "--pair",
           "--install",
+          "--app",
           "--pair-qualifiers",
           "--fingerprint",
           "--network",

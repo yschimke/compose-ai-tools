@@ -66,4 +66,17 @@ public class DataLayerFramesTest {
         DataLayerFrames.unchanged(
             new byte[] {1}, none, new byte[] {1}, Collections.singletonMap("photo", "abc")));
   }
+
+  @Test
+  public void appFramesReachTheSamePackageAndDeviceFramesEveryApp() {
+    assertTrue(DataLayerFrames.forApp("message", "com.a", "com.a"));
+    assertFalse(DataLayerFrames.forApp("message", "com.b", "com.a"));
+    assertFalse(DataLayerFrames.forApp("data", "com.b", "com.a"));
+    assertFalse(DataLayerFrames.forApp("channelOpen", "com.b", "com.a"));
+    assertTrue(DataLayerFrames.forApp("hello", "com.b", "com.a"));
+    assertTrue(DataLayerFrames.forApp("capabilities", "com.b", "com.a"));
+    // The hub's own frames, and a peer from before packages were sent.
+    assertTrue(DataLayerFrames.forApp("bye", null, "com.a"));
+    assertTrue(DataLayerFrames.forApp("message", null, "com.a"));
+  }
 }
