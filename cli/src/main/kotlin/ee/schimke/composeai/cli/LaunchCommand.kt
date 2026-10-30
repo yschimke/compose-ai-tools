@@ -154,6 +154,7 @@ internal class LaunchCommand(private val args: List<String>) {
             control = control != null,
             installProviders = "--no-providers" !in args,
             showAgent = "--hide-agent" !in args,
+            displays = args.flagValuesAll("--display"),
           ),
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
@@ -181,6 +182,11 @@ internal class LaunchCommand(private val args: List<String>) {
     val showAgent: Boolean = true,
     /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
     val device: String? = null,
+    /**
+     * Secondary displays connected at launch (`--display`, repeatable), each a size in dp with
+     * options: `1280x720@xhdpi,name=TV,type=external`.
+     */
+    val displays: List<String> = emptyList(),
   )
 
   private fun convert(
@@ -281,6 +287,9 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
+      if (options.displays.isNotEmpty()) {
+        properties["composeai.simulator.displays"] = options.displays.joinToString(";")
+      }
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -338,6 +347,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
+        --display <spec>      Connect a secondary display at launch (repeatable): a size in
+                              dp with an optional density, then name=, type= (external,
+                              virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
+                              own window; Presentation and launch-display activities use it.
         --font-scale <f>      Font scale (default 1.0).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).

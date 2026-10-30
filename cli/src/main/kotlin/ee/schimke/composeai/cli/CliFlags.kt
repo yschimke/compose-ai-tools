@@ -215,6 +215,7 @@ internal object CliFlags {
       "--font-scale",
       // `launch`
       "--control",
+      "--display",
       "--qualifiers",
       "--form-factor",
       "--sdk",

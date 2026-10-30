@@ -13,9 +13,13 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.content.res.Configuration;
+import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.util.DisplayMetrics;
+import android.view.Display;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -59,6 +63,8 @@ final class Navigator {
     final Intent request;
     final Entry caller;
     final int requestCode;
+    /** The display it was launched on ({@code ActivityOptions.setLaunchDisplayId}). */
+    final int displayId;
     /** Paused and stopped because another activity went on top of it. */
     boolean stopped;
 
@@ -66,11 +72,13 @@ final class Navigator {
         ActivityController<? extends Activity> controller,
         Intent request,
         Entry caller,
-        int requestCode) {
+        int requestCode,
+        int displayId) {
       this.controller = controller;
       this.request = request;
       this.caller = caller;
       this.requestCode = requestCode;
+      this.displayId = displayId;
     }
 
     Activity activity() {
@@ -115,8 +123,113 @@ final class Navigator {
     current = this;
   }
 
+  /** The top activity on the default display, which display and device changes go to. */
   Entry top() {
-    return stack.peek();
+    return top(Display.DEFAULT_DISPLAY);
+  }
+
+  /** The top activity on display [displayId], or null. */
+  Entry top(int displayId) {
+    for (Entry entry : stack) if (entry.displayId == displayId) return entry;
+    return null;
+  }
+
+  /** The window tokens of activities stopped under another, which are not on screen. */
+  Set<Object> hiddenWindowTokens() {
+    Set<Object> hidden = new HashSet<>();
+    for (Entry entry : stack) {
+      if (!entry.stopped) continue;
+      Activity activity = entry.activity();
+      if (activity.getWindow() != null) {
+        Object token = activity.getWindow().getDecorView().getApplicationWindowToken();
+        if (token != null) hidden.add(token);
+      }
+    }
+    return hidden;
+  }
+
+  /** The activity classes on display [displayId], top first. */
+  JSONArray activitiesOn(int displayId) {
+    JSONArray array = new JSONArray();
+    for (Entry entry : stack) {
+      if (entry.displayId == displayId) array.put(entry.activity().getClass().getName());
+    }
+    return array;
+  }
+
+  /**
+   * Display [displayId] changed size or density: each activity on it gets the new configuration,
+   * through {@code onConfigurationChanged} when its manifest {@code configChanges} covers the
+   * change, and is otherwise re-created on the same display with its saved state. (Robolectric's
+   * own re-creation would attach the new instance to the default display.)
+   */
+  void displayChanged(int displayId) {
+    List<Entry> on = new ArrayList<>();
+    for (Entry entry : stack) if (entry.displayId == displayId) on.add(entry);
+    for (Entry entry : on) {
+      DisplayMetrics metrics = new DisplayMetrics();
+      Configuration config = Displays.configurationOf(displayId, metrics);
+      Activity activity = entry.activity();
+      int changes = activity.getResources().getConfiguration().diff(config);
+      if (changes == 0) continue;
+      int handled = 0;
+      try {
+        handled =
+            app.getPackageManager().getActivityInfo(activity.getComponentName(), 0).configChanges;
+      } catch (PackageManager.NameNotFoundException e) {
+        // Not in the manifest: handles nothing.
+      }
+      if ((handled & changes) == changes) {
+        entry.controller.configurationChange(config, metrics);
+      } else {
+        relaunch(entry);
+      }
+    }
+  }
+
+  /** Destroys [entry]'s activity and creates it again in its place, from its saved state. */
+  private void relaunch(Entry entry) {
+    Bundle state = new Bundle();
+    boolean wasStopped = entry.stopped;
+    if (!wasStopped) entry.controller.pause();
+    entry.controller.saveInstanceState(state);
+    if (!wasStopped) entry.controller.stop();
+    entry.controller.destroy();
+    Activity old = entry.activity();
+    Bundle options =
+        android.app.ActivityOptions.makeBasic().setLaunchDisplayId(entry.displayId).toBundle();
+    Intent launch = old.getIntent();
+    ActivityController<? extends Activity> controller =
+        ActivityController.of(
+            instantiate(
+                () ->
+                    factory()
+                        .instantiateActivity(
+                            app.getClassLoader(), old.getClass().getName(), launch)),
+            launch,
+            options);
+    Displays.placeOn(controller.get(), entry.displayId);
+    controller.setup(state);
+    Entry fresh =
+        new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
+    List<Entry> entries = new ArrayList<>(stack);
+    entries.set(entries.indexOf(entry), fresh);
+    stack.clear();
+    stack.addAll(entries);
+    if (wasStopped) {
+      controller.pause();
+      controller.saveInstanceState(new Bundle()).stop();
+      fresh.stopped = true;
+    }
+    protocol.event("activity", describe(fresh, "recreated"));
+  }
+
+  /** Finishes every activity on display [displayId], which is going away. */
+  JSONArray finishOn(int displayId) {
+    JSONArray finished = activitiesOn(displayId);
+    for (Entry entry : stack) if (entry.displayId == displayId) entry.activity().finish();
+    reapFinishedActivities();
+    return finished;
   }
 
   List<Entry> backStack() {
@@ -133,7 +246,10 @@ final class Navigator {
         continue;
       }
       try {
-        startActivity(intent, forResult == null ? -1 : forResult.requestCode);
+        startActivity(
+            intent,
+            forResult == null ? -1 : forResult.requestCode,
+            forResult == null ? null : forResult.options);
       } catch (RuntimeException e) {
         protocol.event(
             "error",
@@ -174,6 +290,16 @@ final class Navigator {
    * {@code SINGLE_TOP}; everything else starts a new instance.
    */
   JSONObject startActivity(Intent intent, int requestCode) {
+    return startActivity(intent, requestCode, null);
+  }
+
+  /**
+   * As {@link #startActivity(Intent, int)}, with the caller's {@code ActivityOptions}: a launch
+   * display there puts the activity on that display, above that display's own top activity and
+   * leaving the others' alone, as a device's per-display task stacks do.
+   */
+  JSONObject startActivity(Intent intent, int requestCode, Bundle options) {
+    int displayId = launchDisplay(options);
     ComponentName component = resolveActivity(intent);
     ComponentName implementation = targetOfAlias(component);
     Class<? extends Activity> type = loadClass(implementation.getClassName(), Activity.class);
@@ -181,18 +307,28 @@ final class Navigator {
     int flags = intent.getFlags();
 
     if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0) {
-      while (!stack.isEmpty()) destroy(stack.pop());
-    } else if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 && contains(type)) {
-      while (stack.peek().activity().getClass() != type) destroy(stack.pop());
+      for (Entry entry : new ArrayList<>(stack)) {
+        if (entry.displayId != displayId) continue;
+        stack.remove(entry);
+        destroy(entry);
+      }
+    } else if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 && contains(type, displayId)) {
+      while (top(displayId).activity().getClass() != type) {
+        Entry entry = top(displayId);
+        stack.remove(entry);
+        destroy(entry);
+      }
       if ((flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0) {
-        Entry target = stack.peek();
+        Entry target = top(displayId);
         deliverNewIntent(target, launch);
         protocol.event("activity", describe(target, "newIntent"));
         return describe(target, "newIntent");
       }
-      destroy(stack.pop());
+      Entry cleared = top(displayId);
+      stack.remove(cleared);
+      destroy(cleared);
     }
-    Entry below = stack.peek();
+    Entry below = top(displayId);
     if (below != null
         && (flags & Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0
         && below.activity().getClass() == type) {
@@ -211,13 +347,17 @@ final class Navigator {
                     factory()
                         .instantiateActivity(
                             app.getClassLoader(), implementation.getClassName(), launch)),
-            launch);
+            launch,
+            options);
+    Displays.placeOn(controller.get(), displayId);
     controller.setup();
     if (coverBelow) {
       below.controller.saveInstanceState(new Bundle()).stop();
       below.stopped = true;
     }
-    Entry entry = new Entry(controller, intent, below, requestCode);
+    // The caller is the activity that started this one, which on another display is not [below].
+    Entry caller = below != null || stack.isEmpty() ? below : stack.peek();
+    Entry entry = new Entry(controller, intent, caller, requestCode, displayId);
     stack.push(entry);
     protocol.event("activity", describe(entry, "resumed"));
     return describe(entry, "resumed");
@@ -248,13 +388,18 @@ final class Navigator {
     return new Protocol.Json().put("activities", activities).put("services", stopped).object();
   }
 
-  /** Finishes the top activity the way {@code Activity.finish()} would, without a back press. */
-  JSONObject finishTop() {
-    Entry top = stack.peek();
-    if (top == null) throw new IllegalStateException("no activity is running");
+  /**
+   * Finishes the top activity on display [displayId] the way {@code Activity.finish()} would,
+   * without a back press.
+   */
+  JSONObject finishTop(int displayId) {
+    Entry top = top(displayId);
+    if (top == null) {
+      throw new IllegalStateException("no activity is running on display " + displayId);
+    }
     top.activity().finish();
     reapFinishedActivities();
-    Entry now = stack.peek();
+    Entry now = top(displayId);
     return new Protocol.Json()
         .put("finished", top.activity().getClass().getName())
         .put("top", now == null ? null : now.activity().getClass().getName())
@@ -262,7 +407,8 @@ final class Navigator {
   }
 
   private void reapFinishedActivities() {
-    Entry topBefore = stack.peek();
+    Map<Integer, Entry> topsBefore = new LinkedHashMap<>();
+    for (Entry entry : stack) topsBefore.putIfAbsent(entry.displayId, entry);
     List<Entry> finishing = new ArrayList<>();
     for (Entry entry : stack) if (entry.activity().isFinishing()) finishing.add(entry);
     if (finishing.isEmpty()) return;
@@ -278,12 +424,13 @@ final class Navigator {
       destroy(entry);
       protocol.event("activity", describe(entry, "destroyed"));
     }
-    if (finishing.contains(topBefore)) {
-      Entry resumed = stack.peek();
+    for (Map.Entry<Integer, Entry> before : topsBefore.entrySet()) {
+      if (!finishing.contains(before.getValue())) continue;
+      Entry resumed = top(before.getKey());
       if (resumed != null) {
         if (resumed.stopped) bringBack(resumed);
         protocol.event("activity", describe(resumed, "resumed"));
-      } else {
+      } else if (stack.isEmpty()) {
         protocol.event("activity", new Protocol.Json().put("state", "empty").object());
       }
     }
@@ -347,9 +494,23 @@ final class Navigator {
     entry.controller.destroy();
   }
 
-  private boolean contains(Class<?> type) {
-    for (Entry entry : stack) if (entry.activity().getClass() == type) return true;
+  private boolean contains(Class<?> type, int displayId) {
+    for (Entry entry : stack) {
+      if (entry.displayId == displayId && entry.activity().getClass() == type) return true;
+    }
     return false;
+  }
+
+  /** The display [options] launch on, checked to exist; the default display without one. */
+  private int launchDisplay(Bundle options) {
+    if (options == null) return Display.DEFAULT_DISPLAY;
+    // ActivityOptions.KEY_LAUNCH_DISPLAY_ID; fromBundle is hidden.
+    int id = options.getInt("android.activity.launchDisplayId", Display.INVALID_DISPLAY);
+    if (id == Display.INVALID_DISPLAY) return Display.DEFAULT_DISPLAY;
+    if (app.getSystemService(DisplayManager.class).getDisplay(id) == null) {
+      throw new IllegalArgumentException("no display " + id + " to launch on");
+    }
+    return id;
   }
 
   /** How permission requests are answered; the {@code permissions} command sets it. */
@@ -455,6 +616,7 @@ final class Navigator {
         .put("activity", activity.getClass().getName())
         .put("intent", Intents.toJson(activity.getIntent()))
         .put("title", activity.getTitle() == null ? null : activity.getTitle().toString())
+        .put("display", entry.displayId)
         .object();
   }
 
