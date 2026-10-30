@@ -527,7 +527,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               one over a simulated Wearable Data Layer: messages, requests,
                               data items and capabilities cross between the two apps. With
                               --control stdio, a command's "device":"watch" sends it to the
-                              watch, and every output line carries its "device".
+                              watch, and every output line carries its "device"; every log
+                              line is prefixed [phone] or [watch].
         --data-layer agent    Simulate the Wearable Data Layer with no second simulator: the
                               control channel plays the peer devices. What the app sends is a
                               "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
