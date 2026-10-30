@@ -577,7 +577,8 @@ internal class LaunchCommand(private val args: List<String>) {
       }
     }
 
-    if (topology.size > 1) {
+    // A lone --app still names its device, which a plain launch would call the phone.
+    if (topology.size > 1 || appSpecs.isNotEmpty()) {
       val exit =
         launchTopology(
           topology,
@@ -645,7 +646,10 @@ internal class LaunchCommand(private val args: List<String>) {
     val hasWatch = devices.any(LaunchTopology::isWatch)
     val supervisors = topology.mapIndexed { i, app ->
       var own = options
-      if (app.device != primaryDevice && LaunchTopology.isWatch(app.device)) {
+      // A device named a watch is one: the first app keeps the launch's own Wear display options
+      // when its APK is a Wear app, and gets the watch's otherwise.
+      val watch = LaunchTopology.isWatch(app.device)
+      if (watch && (app.device != primaryDevice || own.formFactor != ApkFormFactor.WEAR.id)) {
         own =
           own.copy(
             qualifiers = pairQualifiers ?: ApkFormFactor.WEAR.qualifiers,
