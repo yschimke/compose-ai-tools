@@ -82,8 +82,7 @@ final class SimulatorSandbox {
                 SimulatorShadowResultReceiver.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
-                SimulatorShadowRemoteViewsAdapter.class,
-                SimulatorShadowCompanionDeviceManager.class);
+                SimulatorShadowRemoteViewsAdapter.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class, ShadowGoogleApiAvailability.class);

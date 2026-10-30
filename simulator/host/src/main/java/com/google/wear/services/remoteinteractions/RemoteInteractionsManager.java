@@ -8,7 +8,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.OutcomeReceiver;
 import android.os.ResultReceiver;
-import ee.schimke.composeai.simulator.PeerPresence;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,11 +22,8 @@ import java.util.function.Consumer;
  * {@code NoClassDefFoundError}, which is how Horologist's {@code installOnNode} and {@code
  * startRemoteOwnApp} crashed on the watch.
  *
- * <p>Availability is {@code STATUS_AVAILABLE} while a Data Layer peer is connected (the phone of
- * {@code launch --pair}, or one the agent {@code connect}s in {@code --data-layer agent}) and {@code
- * STATUS_UNAVAILABLE} otherwise, from {@link PeerPresence}; each registered listener hears the
- * status when it registers and again on every connect and disconnect, as the system service's
- * callbacks do. {@code startRemoteActivity} (used from {@code
+ * <p>Availability is {@code STATUS_AVAILABLE} while the watch is paired ({@code launch --pair}) and
+ * {@code STATUS_UNAVAILABLE} otherwise. {@code startRemoteActivity} (used from {@code
  * WEAR_BAKLAVA_0}, API 36) goes the way the pre-SDK path does: the Wear OS app's {@code
  * REMOTE_INTENT} broadcast, which the simulator's data layer takes to the phone, and its result
  * answers the caller's {@link OutcomeReceiver}. Apps compile against the real library and never
@@ -40,6 +36,7 @@ public class RemoteInteractionsManager {
 
   static final int STATUS_AVAILABLE = 3;
 
+  private static final String HUB_PROPERTY = "composeai.simulator.datalayer.hub";
   private static final String COMPANION_PACKAGE = "com.google.android.wearable.app";
   private static final String ACTION_REMOTE_INTENT =
       "com.google.android.wearable.intent.action.REMOTE_INTENT";
@@ -50,7 +47,6 @@ public class RemoteInteractionsManager {
 
   private final Context context;
   private final Map<Consumer<Integer>, Executor> listeners = new ConcurrentHashMap<>();
-  private final Runnable onPresence = this::publish;
 
   public RemoteInteractionsManager(Context context) {
     this.context = context.getApplicationContext() != null ? context.getApplicationContext() : context;
@@ -58,33 +54,18 @@ public class RemoteInteractionsManager {
 
   /** The availability {@code RemoteActivityHelper.availabilityStatus} reports. */
   static int status() {
-    return PeerPresence.connected() ? STATUS_AVAILABLE : STATUS_UNAVAILABLE;
+    return System.getProperty(HUB_PROPERTY) != null ? STATUS_AVAILABLE : STATUS_UNAVAILABLE;
   }
 
   public void registerRemoteActivityHelperStatusListener(
       Executor executor, Consumer<Integer> listener) {
-    synchronized (listeners) {
-      if (listeners.isEmpty()) PeerPresence.addListener(onPresence);
-      listeners.put(listener, executor);
-    }
+    listeners.put(listener, executor);
     int status = status();
     executor.execute(() -> listener.accept(status));
   }
 
   public void unregisterRemoteActivityHelperStatusListener(Consumer<Integer> listener) {
-    synchronized (listeners) {
-      listeners.remove(listener);
-      if (listeners.isEmpty()) PeerPresence.removeListener(onPresence);
-    }
-  }
-
-  /** A peer connected or left: every listener hears the new status. */
-  private void publish() {
-    int status = status();
-    for (Map.Entry<Consumer<Integer>, Executor> e : listeners.entrySet()) {
-      Consumer<Integer> listener = e.getKey();
-      e.getValue().execute(() -> listener.accept(status));
-    }
+    listeners.remove(listener);
   }
 
   public void startRemoteActivity(

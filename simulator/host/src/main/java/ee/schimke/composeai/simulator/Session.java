@@ -117,7 +117,6 @@ final class Session {
             : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
-    CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
   }
 
@@ -302,8 +301,6 @@ final class Session {
         return new Protocol.Json().put("services", navigator.describeServices()).object();
       case "components":
         return components();
-      case "companion":
-        return CompanionDevices.command(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);

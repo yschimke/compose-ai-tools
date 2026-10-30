@@ -115,19 +115,6 @@ final class BluetoothSim {
     return current;
   }
 
-  /**
-   * The devices in range, {@code {address, name}}: what a companion-device chooser would list
-   * ({@link SimulatorShadowCompanionDeviceManager}).
-   */
-  List<String[]> inRange() {
-    List<String[]> result = new ArrayList<>();
-    for (Map.Entry<String, Peripheral> e : peripherals.entrySet()) {
-      String name = e.getValue().spec == null ? null : e.getValue().spec.optString("name", null);
-      result.add(new String[] {e.getKey(), name == null ? e.getKey() : name});
-    }
-    return result;
-  }
-
   private BluetoothAdapter adapter() {
     BluetoothManager manager = app.getSystemService(BluetoothManager.class);
     return manager == null ? null : manager.getAdapter();

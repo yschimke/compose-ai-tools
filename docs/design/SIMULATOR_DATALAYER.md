@@ -82,7 +82,6 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `com.google.wear.Sdk` (watch, API 34+) | the simulator's stand-in for the Wear OS system library, `WEAR_SDK_INT` 0, so androidx.wear takes its pre-Wear-SDK paths |
 | `ChannelClient` | `openChannel` sends a `channelOpen` frame; the peer's `ChannelCallback`s and `CHANNEL_EVENT` services get `onChannelOpened`; each write to the output stream is a `channelData` frame (64 KiB at most) that the peer's input stream reads in order; closing the output is `channelEof` (the peer's `onInputClosed`, this side's `onOutputClosed`); `close` is `channelClose` (`CLOSE_REASON_LOCAL_CLOSE` here, `REMOTE_CLOSE` there); a peer that leaves closes its channels with `DISCONNECTED`. `sendFile` / `receiveFile` stream a file (`file:` or a content URI) through the same pipe ([`ChannelPipes`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/ChannelPipes.java), [`DataLayerChannels`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DataLayerChannels.java)) |
 | every client's `Task` | never complete when the app gets it: completed by a post to the main looper, as Play services' binder answer is ([`DeferredTasks`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DeferredTasks.java)); a `sendRequest`'s answer or timeout, which arrives on the hub's reader or a timer thread, is posted to the main looper too |
-| `CompanionDeviceManager` | each peer is an association of the app (a stable locally administered MAC from its node id, its display name, `DEVICE_PROFILE_WATCH` on the phone); `associate()` is answered by the `companion` command's policy, from the peers and the Bluetooth devices in range ([`CompanionDevices`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/CompanionDevices.java)) |
 | `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while paired; its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
 | `ACTION_TIME_TICK` | sent each time the wall clock enters a new minute, so Wear Compose's `TimeText` moves (either form factor) |
 
@@ -170,7 +169,7 @@ paired on `--sdk 35`. Each API in both directions where it has two:
 | `BridgingManager.setConfig` | works, reported (it looped forever before: see below) |
 | `ConfirmationActivity` `OPEN_ON_PHONE_ANIMATION` | works, an ordinary activity of the app |
 | `WatchFaceConfigIntentHelper` | works (pure intent extras) |
-| `ChannelClient.openChannel` | fails, `API_UNAVAILABLE` (not simulated); works now, see [Channels](#evidence-channels-tasks-and-companion-devices) |
+| `ChannelClient.openChannel` | fails, `API_UNAVAILABLE` (not simulated then; see [Channels and tasks](#evidence-channels-and-tasks)) |
 
 | Phone → watch | Watch → phone |
 | --- | --- |
