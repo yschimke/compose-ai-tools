@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="weather_widget_label">Weather</string>
+  <string name="counter_widget_label">Glance counter</string>
+  <string name="counter_widget_description">Counts taps through a Glance action callback</string>
+  <string name="task_widget_label">Tasks</string>
+  <string name="task_widget_description">A scrolling task list you tick off</string>
+  <string name="shortcut_now_playing_short">Now Playing</string>
+  <string name="shortcut_now_playing_long">Open Now Playing</string>
+</resources>
