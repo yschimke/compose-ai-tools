@@ -229,7 +229,8 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
-| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
@@ -748,7 +749,11 @@ quit and launch again.
 `--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
 `Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
 simulator instead of Play services, so messages, requests, data items and capabilities cross
-between the apps and reach their listeners and manifest `WearableListenerService`s. With
+between the apps and reach their listeners and manifest `WearableListenerService`s, and
+`ChannelClient` channels stream bytes between them (`openChannel`, the streams, `sendFile` /
+`receiveFile`, `ChannelCallback`s and `CHANNEL_EVENT` services). As with Play services, no task a
+client returns is complete yet: each completes on a later turn of the main looper. Each peer is
+also a `CompanionDeviceManager` association (the [`companion`](#the-control-channel) command). With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
 `device`, and each crossing is a `datalayer` event. `RemoteActivityHelper` launches, Horologist's
 `DataLayerAppHelper`, and on the watch `RemoteAuthClient`, `BridgingManager` and
@@ -761,10 +766,13 @@ missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
 simulator: the control channel plays every peer device. Each frame the app sends is a
 `datalayer` event of kind `send`: `type` `hello` (its node and capabilities, answered on each
 connect), `message` (with a `requestId` for a `sendRequest`), `response`, `data`, `capabilities`,
-`activity` (a `startRemoteActivity`) or `oauth`, with its payload as base64 `data`, a `text`
+`activity` (a `startRemoteActivity`), `oauth`, or a channel's `channelOpen` (with its `token` and
+`path`), `channelData`, `channelEof` and `channelClose`, with its payload as base64 `data`, a `text`
 preview and, when the bytes are a `DataMap`, a `dataMap` JSON object; a data item's assets come
 as `assets` (key → base64, up to 4 MiB of base64 each, larger ones named in `assetsOmitted`).
-Both are in the form `put` takes, so a captured item can be put back as it was. The agent answers with
+Both are in the form `put` takes, so a captured item can be put back as it was. A channel's life
+on either side is also a `datalayer` event of kind `channel` (`state` `opened`, `data`,
+`inputClosed`, `outputClosed`, `closed`, with the `channel` token). The agent answers with
 `{"cmd":"dataLayer","action":…}`:
 
 | `action` | Arguments | The peer… |
@@ -776,6 +784,10 @@ Both are in the form `put` takes, so a captured item can be put back as it was. 
 | `message` / `request` | `node?`, `path`, a payload | sends a message, or a request the app answers (a `send` event of type `response`) |
 | `reply` | `requestId`, a payload or `error`; `result` for a remote activity; `responseUrl` for OAuth | answers the app's request |
 | `config` | `requestTimeoutMs` | sets how long the app's requests wait (default 30 s, then `TIMEOUT`) |
+| `channelOpen` | `node?`, `path`, `channel?` (a token; one is made up) | opens a `ChannelClient` channel to the app (`onChannelOpened`, `CHANNEL_EVENT` services); answers its `channel` token |
+| `channelWrite` | `channel`, a payload | writes bytes the app's input stream reads |
+| `channelEof` | `channel` | closes its output: the app's input ends (`onInputClosed`) |
+| `channelClose` | `channel`, `errorCode?` | closes the channel (`onChannelClosed`, `CLOSE_REASON_REMOTE_CLOSE`) |
 
 A payload is `text`, `data` (base64) or `dataMap` (JSON: strings, booleans and ints bare, other
 values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|"intList"|"dataMapList"|…,
@@ -825,8 +837,8 @@ What does not, or not yet:
 - **Bluetooth.** On, with nothing in range until the agent puts peripherals there
   ([above](#network-wi-fi-and-bluetooth)). Robolectric's adapter reports LE off in airplane mode
   even when Bluetooth is turned back on. No classic sockets (RFCOMM), audio profiles, LE
-  advertising by the app, or GATT server in the app. `CompanionDeviceManager.associate` is not
-  answered.
+  advertising by the app, or GATT server in the app. `CompanionDeviceManager.associate` is
+  answered by the [`companion`](#the-control-channel) command's policy, from API 33.
 - **Network.** Online, requests go out through the host JVM, its proxy and its trust store; the
   simulated network decides only whether they may, and how fast. A mode is one default network (a
   VPN adds the Wi-Fi beneath it): no Wi-Fi-to-cellular fallback when Wi-Fi drops, no roaming,

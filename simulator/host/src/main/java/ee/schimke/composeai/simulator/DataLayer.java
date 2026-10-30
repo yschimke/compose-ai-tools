@@ -711,6 +711,7 @@ final class DataLayer {
     }
     log("peer " + id + " (" + peer.packageName + ") connected, capabilities " + peer.capabilities);
     CompanionDevices.peerConnected(id, peer.name, isWatch(app));
+    PeerPresence.peerConnected(id);
     reportPeer(peer, "connected");
     if (!known) {
       notifyCapabilities(peer.capabilities);
@@ -726,6 +727,7 @@ final class DataLayer {
     if (peer == null) return;
     log("peer " + id + " disconnected");
     CompanionDevices.peerDisconnected(id);
+    PeerPresence.peerDisconnected(id);
     channels.disconnected(id);
     reportPeer(peer, "disconnected");
     notifyCapabilities(peer.capabilities);
