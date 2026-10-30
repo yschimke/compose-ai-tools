@@ -127,6 +127,12 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       fingerprint();
       pairedDevice();
       PlayServicesPackages.sync(app);
+      // AndroidKeyStore, which encrypted preferences open at startup, and voice input's activity.
+      AndroidKeyStoreProvider.install();
+      SystemPrompts.install(app);
+      Alarms.grantExact(app);
+      // The other apps of the device (--install): their manifests, here; their code, elsewhere.
+      DevicePeers.install(app);
       // The documents and photo pickers, camera, share sheet and browser an intent can reach.
       SystemApps.install(app);
       DocumentsStore.install(app);

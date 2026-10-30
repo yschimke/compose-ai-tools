@@ -158,10 +158,22 @@ internal class LaunchCommand(private val args: List<String>) {
     if (adb && pair != null) fail("--adb runs one device; drop --pair")
     if (apk == null && pair != null)
       fail("--pair needs the phone's APK: launch <phone.apk> --pair <watch.apk>")
+    // Other apps on the same device, each in a simulator of its own (DeviceBus).
+    val installs =
+      args.flagValuesAll("--install").map { path ->
+        File(path).absoluteFile.also { if (!it.isFile) fail("no such APK to install: $it") }
+      }
+    if (installs.isNotEmpty()) {
+      if (apk == null)
+        fail("--install adds apps beside one: launch <app.apk> --install <other.apk>")
+      if (pair != null) fail("--install runs one device with several apps; drop --pair")
+      if (adb) fail("--adb runs one app; drop --install")
+    }
     if ("--prepare" in args) {
       if (apk == null) fail("--prepare converts an APK: launch <app.apk> --prepare")
       println(classesOf(apk).absolutePath)
       pair?.let { println(classesOf(it).absolutePath) }
+      installs.forEach { println(classesOf(it).absolutePath) }
       return
     }
 
@@ -529,6 +541,18 @@ internal class LaunchCommand(private val args: List<String>) {
       }
     }
 
+    if (installs.isNotEmpty()) {
+      finish(
+        launchDevice(
+          listOf(requireNotNull(apk)) + installs,
+          conversion,
+          options,
+          ::conversionOf,
+          ::supervise,
+        )
+      )
+    }
+
     if (pair == null || pairConversion == null) {
       if (control == null && live == null) {
         // A window only: nothing to supervise, so the simulator has the terminal to itself.
@@ -577,6 +601,55 @@ internal class LaunchCommand(private val args: List<String>) {
     live?.close()
     hub.close()
     finish(exit)
+  }
+
+  /**
+   * `--install`: [apks] on one device, each in a simulator JVM of its own as each app runs in a
+   * process of its own, joined by a device bus (the Data Layer's relay, [DataLayerHub]) and each
+   * knowing the others' manifests. The first app is the one on screen; the others start their
+   * process without an activity, as an app does when something calls into it. Each simulator is a
+   * `device` of the control channel named by its package, the first taking commands that name none.
+   */
+  private fun launchDevice(
+    apks: List<File>,
+    first: Conversion,
+    options: Options,
+    conversionOf: (File) -> Conversion,
+    supervise: (String?, Conversion, Options) -> SimulatorSupervisor,
+  ): Int {
+    val names = apks.map { ApkFormFactor.packageOf(it) ?: it.nameWithoutExtension }
+    names
+      .groupBy { it }
+      .filterValues { it.size > 1 }
+      .keys
+      .firstOrNull()
+      ?.let { fail("$it is installed twice: each app on the device is one package") }
+    val bus = DataLayerHub().start()
+    val devices = apks.mapIndexed { i, apk ->
+      val properties =
+        options.properties +
+          mapOf(
+            "composeai.simulator.device.bus" to bus.port.toString(),
+            "composeai.simulator.device.peers" to
+              apks.filter { it != apk }.joinToString(File.pathSeparator) { it.path },
+          )
+      val own =
+        if (i == 0) options.copy(properties = properties)
+        else
+          options.copy(
+            properties = properties,
+            headless = true,
+            noLaunch = true,
+            launcher = false,
+            displays = emptyList(),
+            widgets = emptyList(),
+            tiles = emptyList(),
+          )
+      names[i] to supervise(names[i], if (i == 0) first else conversionOf(apk), own)
+    }
+    val exit = PairedLaunch(devices, control = options.control).run()
+    bus.close()
+    return exit
   }
 
   /** An APK's converted classes, and what getting them cost: a cache hit, or a conversion. */
@@ -1104,6 +1177,12 @@ internal class LaunchCommand(private val args: List<String>) {
                               "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
                               connects, disconnects, puts, deletes, messages and replies.
         --pair-qualifiers <q> The paired watch's display (default ${ApkFormFactor.WEAR.qualifiers}).
+        --install <other.apk> Install another app on the same device (repeatable), in a
+                              simulator of its own: each app's PackageManager lists the
+                              others, and calls between them (App Functions) cross over the
+                              device's bus. The first APK is on screen; the others start
+                              without an activity. With --control stdio, "device":<package>
+                              sends a command to that app.
         --project <dir>       The app's Gradle build: the APK becomes optional (it is built),
                               and the control channel's "reload" compiles an edit and restarts
                               the app on just the changed classes, with no dexing or APK.

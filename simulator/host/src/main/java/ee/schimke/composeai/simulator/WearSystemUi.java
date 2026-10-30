@@ -14,7 +14,6 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Icon;
-import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -1061,34 +1060,18 @@ final class WearSystemUi {
   // -- Quick settings
 
   private JSONObject quickSettingsState() {
-    BatteryManager battery = app.getSystemService(BatteryManager.class);
-    int level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-    if (level < 0 || level > 100) {
-      // Never set by the `battery` command: the sticky broadcast, else a full battery.
-      Intent sticky =
-          app.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-      level = sticky == null ? 100 : sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, 100);
+    JSONObject state = QuickSettings.state(app);
+    try {
+      state.put("surface", surface());
+    } catch (JSONException e) {
+      throw new IllegalStateException(e);
     }
-    JSONObject network = NetworkSim.get().state();
-    return new Protocol.Json()
-        .put("surface", surface())
-        .put("battery", level)
-        .put("charging", battery.isCharging())
-        .put("airplane", network.optBoolean("airplane"))
-        .put("wifi", network.optBoolean("wifi"))
-        .object();
+    return state;
   }
 
   /** A quick-settings switch: the radios as {@link NetworkSim}'s {@code network} command sets them. */
   private static void radios(Boolean wifi, Boolean airplane) {
-    try {
-      JSONObject c = new JSONObject();
-      if (wifi != null) c.put("wifi", wifi);
-      if (airplane != null) c.put("airplane", airplane);
-      NetworkSim.get().command(c);
-    } catch (JSONException e) {
-      throw new IllegalStateException(e);
-    }
+    QuickSettings.radios(wifi, airplane, null);
   }
 
   private void buildQuickSettings() {

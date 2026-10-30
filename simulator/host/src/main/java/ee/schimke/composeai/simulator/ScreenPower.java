@@ -62,6 +62,8 @@ final class ScreenPower {
   private Sensor wristTilt;
   /** The activity a sleep stopped in place, which a wake restarts. */
   private Navigator.Entry sleeping;
+  /** The phone's lock screen ({@code --launcher}), which a sleep locks; or null. */
+  private LockScreen lockScreen;
 
   ScreenPower(Application app, Navigator navigator, Protocol protocol, WearSystemUi wearUi) {
     this.app = app;
@@ -70,6 +72,21 @@ final class ScreenPower {
     this.wearUi = wearUi;
     this.policy =
         new ScreenPolicy(FormFactor.current() == FormFactor.WEAR, SystemClock.uptimeMillis());
+  }
+
+  /** The phone's lock screen: the screen going off locks it, and it holds the app on waking. */
+  void lockScreen(LockScreen lockScreen) {
+    this.lockScreen = lockScreen;
+  }
+
+  /** Sleeps the screen, as {@code sleep}. */
+  JSONObject sleep(String reason) {
+    return to(policy.sleepTarget(), reason);
+  }
+
+  /** Wakes the screen, as {@code wake}. */
+  JSONObject wakeUp(String reason) {
+    return wake(reason);
   }
 
   void start() {
@@ -296,6 +313,7 @@ final class ScreenPower {
       }
     }
     if (t.screenOff) navigator.broadcast(new Intent(Intent.ACTION_SCREEN_OFF));
+    if (t.screenOff && lockScreen != null) lockScreen.screenOff();
     if (t.enterAmbient) {
       updates = 0;
       for (AmbientClients.Client client : ready) client.enter(burnIn, lowBit);
@@ -303,7 +321,8 @@ final class ScreenPower {
     if (wearUi != null) wearUi.screen(target);
     if (t.restartApp) {
       if (wearUi != null) navigator.bringAppForward();
-      else navigator.screenOn(sleeping);
+      // A locked phone keeps the app stopped behind its lock screen until unlocked.
+      else if (lockScreen == null || !lockScreen.hold(sleeping)) navigator.screenOn(sleeping);
       sleeping = null;
     }
     if (t.screenOn) navigator.broadcast(new Intent(Intent.ACTION_SCREEN_ON));

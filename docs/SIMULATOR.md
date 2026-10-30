@@ -14,6 +14,7 @@ compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an ext
 compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
 compose-preview launch --form-factor wear                          # no app: a watch face, nothing installed
 compose-preview launch --adb                                       # a device adb and Android Studio see
+compose-preview launch agent.apk --install app.apk --control stdio # two apps on one device
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -266,7 +267,9 @@ Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `new
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
 `removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
-`error` for an intent the app sent that nothing handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`prompt`, `credentials` and `speak` ([below](#prompts-sign-in-and-the-keystore)), `alarm`, `job`
+and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app sent that
+nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -317,7 +320,16 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
+| `biometric` | `policy`? (`ask` / `succeed` / `cancel`), `answer`? (`succeed` / `fail` / `cancel` / `negative` / `lockout` / an error code), `requestId`?, `enrolled`?, `secure`? | the biometric prompt and the device-credential confirmation ([below](#prompts-sign-in-and-the-keystore)); `enrolled` and `secure` set what `BiometricManager` and `KeyguardManager` report |
+| `speech` | `policy`? (`ask` / `cancel`), `text`? (a string or several), `cancel`?, `requestId`? | answers `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` with what was "said" |
+| `credentials` | `policy`? (`auto` / `ask` / `cancel`), `answer`? (`{"id","password"}`, `{"type","data"}`, `save`, `none`, `cancel`), `requestId`?, `save`? (`{"id","password"}`), `forget`? | Credential Manager's sign-in and save requests (API 34+), and the saved passwords |
+| `clipboard` | `text`?, `label`?, `clear`? | the primary clip: sets it, or reads it back |
+| `alarms` | `fire`? (an index, or `"next"`), `exact`? (bool) | the alarms set through every context, soonest first, with `inMs`; `fire` delivers one now; `exact` grants or revokes exact alarms ([below](#alarms-jobs-and-downloads)) |
+| `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
+| `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
 | `pick` | `policy`? (`ask` / `cancel`), `answer`? (a request id, or `"next"`), `files`?, `path`?, `cancel`? | the documents, photo and camera pickers the app opened ([below](#pickers-sharing-and-other-apps)); without an answer, the policy and the requests waiting |
+| `assistant` | `invoke`? (a capability, e.g. `actions.intent.OPEN_APP_FEATURE`), `params`? (built-in intent parameter → value) | the App Actions capabilities of the app's `shortcuts.xml`; `invoke` starts the activity the first fulfilling intent names, as Assistant does ([below](#app-actions-appsearch-and-app-functions)) |
+| `appfunctions` | `execute`? (a function id), `params`? (JSON), `service`? | the app's `AppFunctionService`s and function ids; `execute` calls one (`--sdk 36`), replying with its result document |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range that matches one of the request's device filters (address, name pattern, service UUIDs)), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
@@ -386,6 +398,71 @@ Every request ends with a `permissions` event, `state: "answered"`, listing what
 An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
 from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
+### Prompts, sign-in and the keystore
+
+**Biometric prompts.** A `BiometricPrompt.authenticate` (androidx.biometric's, on API 28+) raises a
+`prompt` event, `kind: biometric`, with its title, subtitle, description, negative button and
+allowed authenticators. Under the `ask` policy (the default with `--control`) it waits for
+`biometric` `answer`: `succeed`, `fail` (not recognised; the prompt stays up), `cancel`,
+`negative` (the negative button, `ERROR_NEGATIVE_BUTTON`), `lockout`, or an error code. The
+`succeed` and `cancel` policies answer at once (`cancel` is the default without `--control`).
+`enrolled: false` makes `canAuthenticate` report no biometrics; `secure: true` gives the device a
+screen lock, so `isDeviceSecure` is true and `createConfirmDeviceCredentialIntent` returns an intent
+whose start is the same kind of prompt (`kind: deviceCredential`, `RESULT_OK` on `succeed`).
+
+**Voice input.** `ACTION_RECOGNIZE_SPEECH` resolves (to Google's voice-input activity, as on most
+devices) and raises a `prompt` event, `kind: speech`; `speech` `text` answers it with
+`EXTRA_RESULTS` (and confidence scores), `cancel` backs out. **Text to speech** initialises as a
+device's engine does (`onInit(SUCCESS)` on the main thread, the device's language available), and
+each `speak` is a `speak` event, with the utterance's `onStart` and `onDone`; nothing is heard.
+**The clipboard** is read and written with `clipboard`.
+
+**Credential Manager** (API 34+, androidx.credentials' platform path): under the `auto` policy (the
+default) a request for passwords gets the saved one, as one-tap sign-in does, and anything else
+`TYPE_NO_CREDENTIAL`; a `CreatePasswordRequest` saves the password for the next request, and
+other creates (passkeys) are cancelled. `credentials` `save` adds a password beforehand. Under `ask`
+each request is a `credentials` event that waits for `answer`: `{"id","password"}`, any credential
+as `{"type","data"}` (the bundle a provider returns, such as a passkey's
+`androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON`), `save`, `none` or `cancel`.
+
+**AndroidKeyStore** is a JCA provider of the simulator's: `KeyStore.getInstance("AndroidKeyStore")`,
+`KeyGenerator` (AES, HMAC) and `KeyPairGenerator` (EC, RSA, each with a self-signed `CN=fake`
+certificate) work from a `KeyGenParameterSpec`, so androidx.security's `MasterKey` and
+`EncryptedSharedPreferences` and Tink's Android keysets start. The keys are software keys in memory:
+the spec's purposes, user-authentication requirement and attestation are not enforced, and a
+`restart` starts with an empty keystore.
+### Alarms, jobs and downloads
+
+Robolectric records what an app schedules and runs none of it; here the system's side runs, each
+cycle, over every context's `AlarmManager` and `JobScheduler` (each context caches its own, where a
+device has one service).
+
+**Alarms** go off when due on their own clock (`RTC*` on the wall clock, `ELAPSED_REALTIME*` on
+elapsed time): a `PendingIntent` is sent as the system sends it (a broadcast reaches manifest
+receivers, an activity the back stack), an `OnAlarmListener` runs on its handler or executor, and a
+repeating alarm is set again an interval later. Each firing is an `alarm` event. The clock cannot be
+moved forward, so an alarm an hour out waits an hour: `alarms` `fire` delivers it now. Exact alarms
+are allowed when the manifest asks for `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`
+(`canScheduleExactAlarms` true, as on a device that granted them); `alarms` `exact: false` revokes
+them, and `true` grants them with `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`.
+
+**Jobs** start once their minimum latency has passed and the device meets their constraints (a
+network, an unmetered one, charging, idle), or once their deadline passes whatever the constraints:
+the `JobService` is created and bound, and `startJob` goes through its own `JobServiceEngine`, so
+`onStartJob`, `jobFinished` and `onStopJob` behave as on a device. A one-off job leaves the
+schedule as it starts; a periodic one runs again an interval later. `job` events report
+`started` and `finished` (with `wantsReschedule`). WorkManager's `SystemJobService` jobs are left
+alone, since WorkManager runs its work in-process here (`jobs` says so).
+
+**Downloads** enqueued with `DownloadManager` wait for a network, then fetch on a thread of their
+own over the simulated network (the `network` command's offline, slow and blocked hosts apply),
+with the request's headers, into the request's destination (the public `Download` directory by
+default). The request then reads `STATUS_SUCCESSFUL` or `STATUS_FAILED` through `query`, and
+`ACTION_DOWNLOAD_COMPLETE` reaches the app's receivers. `download` events report each step.
+
+**Foreground services.** A service started with `startForegroundService` that has not called
+`startForeground` within 10 seconds is reported as an `error` event (`kind: foregroundService`):
+a device stops the app there (`ForegroundServiceDidNotStartInTimeException`). The app runs on.
 ### Pickers, sharing and other apps
 
 A device answers some intents with a system app: the documents picker, the photo picker, the
@@ -436,6 +513,38 @@ handles (its own App Link) is the app's, as on a device.
 A for-result start that nothing handles at all is answered `RESULT_CANCELED` too, beside its
 `error` event: a device throws `ActivityNotFoundException`, which Robolectric does not, and the
 caller would otherwise wait for good.
+### App Actions, AppSearch and App Functions
+
+**App Actions.** `assistant` lists the `<capability>` elements of the `shortcuts.xml` the app's
+activities declare (`android.app.shortcuts` metadata), each with its fulfilling `<intent>`s and
+their `<parameter>`s, and the shortcuts bound to it (`<capability-binding>`, the inline inventory).
+`invoke` with `params` builds the first intent whose required parameters are given: a
+`<url-template>` is expanded (`{var}`, `{+var}`, `{#var}`, `{?a,b}`, `{&a}`, with parameters
+named by their built-in intent name or their `android:key`), otherwise each parameter becomes an
+extra under its key. The intent starts with `FLAG_ACTIVITY_NEW_TASK`, as from Assistant.
+
+```
+→ {"id":1,"cmd":"assistant","invoke":"actions.intent.OPEN_APP_FEATURE","params":{"feature":"inbox"}}
+← {"id":1,"ok":true,"result":{"capability":"actions.intent.OPEN_APP_FEATURE","intent":{"action":"android.intent.action.VIEW","data":"myapp://feature?feature=inbox",…},"result":{…}}}
+```
+
+**AppSearch.** androidx.appsearch's `LocalStorage` (whose Icing engine is a native library that
+cannot load here) and `PlatformStorage` (whose framework `AppSearchManager` Robolectric does not
+have) both hand out an in-memory session, kept apart per storage and database: schemas, put, get
+and remove by id, remove by query, namespaces, and search (each query term must match a word of a
+string property, as a prefix or exactly per the spec's term match; filtered by schema type and
+namespace; newest first, paged by `resultCountPerPage`). The data lasts as long as the simulator.
+The framework's own `AppSearchManager`, used without androidx, is still absent.
+
+**App Functions.** `appfunctions` lists the services that handle
+`android.app.appfunctions.AppFunctionService` (the platform's, or androidx.appfunctions'
+`PlatformAppFunctionService`) and the function ids their generated `app_functions.xml` /
+`app_functions_v2.xml` assets name. `execute` calls the service's `onExecuteFunction` as the system
+does for an agent, from `com.android.shell` (as `adb shell cmd app_function execute-app-function`
+does), with `params` as the parameter document (strings, numbers, booleans, objects, arrays of
+one of them), and replies with the result document's properties (`androidAppfunctionsReturnValue`
+for androidx's) or the function's error; a function that answers later sends an `appFunction`
+event. It needs `--sdk 36`, where the platform type exists.
 
 ### Display, fold and device state
 
@@ -770,6 +879,173 @@ under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widge
 
 `id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
 belongs to the default display: a secondary display gets no launcher.
+
+### Status bar and notification shade
+
+On a phone, `--launcher` also brings the system UI over every app: a **status bar** along the top
+of the default display, the **notification shade** pulled down from it, and a **heads-up** card for
+a notification that interrupts. Each is a window of its own above the app's (`PhoneSystemUi`), as
+SystemUI's are, so screenshots show it and it takes touches over whatever is on screen.
+
+![App under the status bar, heads-up, shade, inline reply, replied, expanded picture, tap opened the app, home in airplane mode at 12%](design/evidence/simulator-launch/phone-shade.png)
+
+**The status bar** shows the clock, an icon per notification, Wi-Fi, mobile signal or airplane mode,
+and the battery (low and charging drawn as such), from the same state the `network`, `wifi` and
+`battery` commands set. Robolectric's own status bar inset is switched on with it, so the app is
+laid out below the bar (`WindowInsets` report it), or under it when it draws edge to edge. The bar
+takes the window's status bar colour when the app is laid out below it, light or dark icons as the
+app asked (`APPEARANCE_LIGHT_STATUS_BARS`), and hides, taking no touches, while the app hides it.
+The home screen draws its wallpaper under it.
+
+**The shade** opens with a swipe down from the bar or `notifications {"op":"open"}`: the clock,
+quick settings tiles (Internet, mobile data, airplane mode, battery) and each notification the app
+has showing, interrupting ones first and newest first. Each is inflated from its own `RemoteViews`,
+as the preview renderer in `runtimes/notification` does: `createContentView()` collapsed,
+`createBigContentView()` expanded (the top one starts expanded), measured at the heights SystemUI
+gives them, so the platform's templates (`MessagingStyle`, `BigPictureStyle`, progress, actions)
+and an app's custom views draw as on a device. The template's expand button toggles one. A group
+shows its children, not the summary.
+
+- a tap on a notification sends its content intent (auto-cancel honored); an activity it starts
+  closes the shade, as on a device;
+- its action buttons press the action; a reply action opens an inline reply field under it, with
+  the input's label and the app's suggested replies, and send fills the `RemoteInput`;
+- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one a
+  person could;
+- Back, HOME, a swipe up, or a tap below the list closes the shade.
+
+A **heads-up** card shows the heads-up view of a newly posted notification on a high-importance
+channel for five seconds, while the shade is closed: a tap opens it, a sideways swipe dismisses it,
+a swipe up puts it away, and a reply action opens the shade at its reply field.
+
+These are the stream the Wear system UI draws too (`NotificationStream`), so the
+[`notification`](#wear-system-ui) command acts on the same notifications: `tap`, `action`,
+`reply`, `dismiss` and `snooze` work with the shade open or not. On a phone a notification's own
+actions are offered, not its `WearableExtender` ones. Commands:
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification; without `op`, the list ([Wear system UI](#wear-system-ui)) |
+| `notification` | `key`, `op`: `expand` / `collapse`, or the Wear ops | expands or collapses one in the shade |
+| `quickSettings` | `wifi`?, `data`?, `airplane`? | switches those radios, opens the shade, and returns the battery, radios and default network |
+| `statusBar` | | `surface`, and the bar: `visible`, `heightPx`, `time`, `notifications` (keys, in the bar's order), `wifi`, `cellular`, `airplane`, `battery`, `charging`, `darkIcons`, `background`; `shade`, `headsUp` |
+
+`info`'s `surface` is `notificationShade` while the shade is open, and a `surface` event follows it
+opening and closing; a `headsUp` event names the key a card shows. The views carry ids for `find`
+and `tap`: `status_bar` (its description reads out the clock, notifications, radios and battery),
+`notification_shade`, `shade_clock`, `qs_wifi`, `qs_data`, `qs_airplane`, `qs_battery`,
+`notification_card` (description: the key), `notification_expand` (the key),
+`notification_action` (`<key>/<index>`, with the button's text), `notification_reply`
+(`<key>/<index>/<choice>`), `notification_reply_text` and `notification_reply_send`
+(`<key>/<index>`), `notifications_clear_all`, `notifications_empty` and `heads_up`. The sample app
+posts a set to try it with:
+
+```
+→ {"cmd":"permissions","grant":["android.permission.POST_NOTIFICATIONS"]}
+→ {"cmd":"broadcast","intent":{"action":"com.example.sampleandroid.POST_NOTIFICATIONS","component":".NotificationDemoReceiver"}}
+← {"event":"headsUp","key":"1"}
+→ {"cmd":"swipe","x1":270,"y1":10,"x2":270,"y2":700}
+← {"event":"surface","surface":"notificationShade"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_action","desc":"1/0"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_reply","desc":"1/0/Sounds good"}
+← {"event":"systemUi","result":{"key":"1","action":"Reply","reply":"Sounds good","sent":{"kind":"broadcast",…}}}
+← {"event":"notification","state":"updated","key":"1",…}
+```
+
+A touch gesture stays with the window its down went to, on any display, as a device's input
+dispatcher keeps it: a drag that starts on the status bar is the bar's however far it goes.
+
+### Navigation bar and lock screen
+
+The phone's system UI also has a **navigation bar** and a **lock screen** (`NavigationBar`,
+`LockScreen`), each a window of its own.
+
+![Home over gesture navigation, the three buttons, the lock screen, the PIN bouncer, the notification tapped on it opened](design/evidence/simulator-launch/phone-navbar-lock.png)
+
+**The navigation bar** is gesture navigation's handle by default, along the bottom. Robolectric's
+navigation bar inset is switched on with it, so apps get its `WindowInsets` (24dp for gestures,
+48dp for buttons) and are laid out above it, or under it when they draw edge to edge; a window
+that draws its own navigation bar colour (a Material theme's black, where edge to edge is not
+enforced) shows it there. A swipe up from the handle goes home; Back is the edge swipe
+([Back](#back)). `navigationBar {"mode":"buttons"}` switches to the three buttons — Back, Home,
+and Overview, sent as `KEYCODE_APP_SWITCH` since there is no recents screen — with no edge swipe,
+as on a device; `"none"` removes the bar and its inset. The bar takes light or dark icons as the
+app asks (`APPEARANCE_LIGHT_NAVIGATION_BARS`) and hides, taking no touches, while the app hides
+it. The home screen draws its wallpaper under both bars.
+
+**The lock screen** comes on when the screen goes off (`key POWER`, `sleep`, the `screen`
+timeout). When the screen wakes, the app stays stopped behind it until it is unlocked, as on a
+device; `KeyguardManager` reports `isKeyguardLocked` (and `isDeviceLocked` when secure). It shows
+the clock, the date and up to three notifications. A swipe up unlocks, as does
+`lockScreen {"op":"unlock"}`; with a PIN set (`lockScreen {"op":"pin","pin":"2580"}`, or
+`biometric {"secure":true}`, which takes `1234`) a swipe opens the PIN bouncer instead and the
+`unlock` command needs the `pin`. Unlocking resumes the app and broadcasts `ACTION_USER_PRESENT`.
+A notification tapped on the lock screen opens once unlocked. HOME and Back go nowhere while it
+shows (Back closes the bouncer); the shade still pulls down over it.
+
+What apps ask of it is answered:
+
+- `KeyguardManager.requestDismissKeyguard` dismisses an insecure lock screen at once
+  (`onDismissSucceeded`), and opens the bouncer on a secure one;
+- an activity that shows when locked (`setShowWhenLocked(true)`, `android:showWhenLocked`, or
+  `FLAG_SHOW_WHEN_LOCKED`) is drawn over the lock screen, as an alarm or a call is;
+- an activity that turns the screen on (`setTurnScreenOn(true)`, `android:turnScreenOn`, or
+  `FLAG_TURN_SCREEN_ON`) wakes a dark screen when it comes to the top.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `navigationBar` | `mode`? (`gesture` / `buttons` / `none`) | switches the mode; returns `mode`, `side`, `sizePx`, `visible`, `darkIcons`, `background`, `edgeBack` |
+| `lockScreen` | `op`? (`status` / `lock` / `unlock` / `pin`), `pin`?, `screenOff`? | `lock` locks now (`screenOff: true` sleeps the screen too); `unlock` unlocks, with `pin` when secure (`unlocked: false` for a wrong one); `pin` sets the PIN, or clears it with `null`. Returns `locked`, `showing`, `secure`, `bouncer`, `keyguardLocked`, `deviceLocked`, and the activity `held` behind it |
+
+`info`'s `surface` is `lockScreen` while it shows, and `lockScreen` events report `locked`,
+`bouncer`, `wrongPin` and `unlocked` (with `via`); `navigationBar` events name a button pressed.
+View ids: `navigation_bar`, `lock_screen`, `lock_clock`, `lock_notification` (description: the
+key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
+
+```
+→ {"cmd":"lockScreen","op":"pin","pin":"2580"}
+→ {"cmd":"key","key":"POWER"}
+← {"event":"lockScreen","state":"locked","reason":"screenOff"}
+→ {"cmd":"key","key":"POWER"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_notification","desc":"3"}
+← {"event":"lockScreen","state":"bouncer"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin"}
+→ {"cmd":"text","text":"2580"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin_enter"}
+← {"event":"lockScreen","state":"unlocked","via":"bouncer"}
+← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
+```
+
+### On-screen keyboard
+
+The phone's system UI has a soft keyboard (`SoftKeyboard`), drawn to match the interactive
+previews' keyboard band (the same QWERTY layout, 240dp, palettes, light and dark), but a real
+input method window: its keys type into the app.
+
+![The chat composer, the keyboard up with the field above it, "See you!" typed with shift and symbols, sent, and the keyboard down after Back](design/evidence/simulator-launch/phone-keyboard.png)
+
+It comes up as a device's IME does: when the app asks for it (`InputMethodManager.showSoftInput`,
+`WindowInsetsController.show(ime())`), or when a tap focuses a text editor (an `EditText`, or a
+Compose text field, whose `AndroidComposeView` reports an input session). A field focused by
+default, without a tap, does not raise it. It goes when the app hides it, Back is pressed (before
+the app hears Back), the command hides it, or another activity comes to the top. While it is up the
+app's windows get the IME's `WindowInsets` (`Type.ime()`, over the keyboard), so `imePadding()`,
+`WindowInsets.ime` and `adjustResize` lay the app out above it, as on a device; `imeInsets` says
+whether that reached the app (it uses hidden platform API, API 34+).
+
+Its keys go to the focused field as key events, as the `text` command's do: letters, shift (one
+letter), `?123` (digits and symbols) and back, comma, space, period, delete and enter. `text`
+still types without it.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `keyboard` | `op`? (`status` / `show` / `hide`) | shows or hides it; returns `shown`, `heightPx`, `layout` (`letters` / `shift` / `symbols`), `imeInsets`, and whether the app `requested` it |
+
+A `keyboard` event follows each change, with its `reason` (`app`, `back`, `focus`, `command`).
+View ids: `keyboard`; `key` for each character key (its text is the character, so
+`tap {"resourceId":"sim:id/key","text":"q"}` presses it), and `key_shift`, `key_delete`,
+`key_symbols`, `key_space` and `key_enter`. `samples/android`'s `ChatActivity` (started with
+`startActivity`) is an edge-to-edge composer to try it with.
 
 ### Back
 
@@ -1265,6 +1541,42 @@ What a reload does not keep or cover:
 - **Pairs.** In a `--pair` session, `reload` and `--live` are the phone's: `--project` builds the
   phone app.
 
+## Several apps on one device
+
+`--install <other.apk>` (repeatable) puts more apps on the device, each in a simulator JVM of its
+own, as each app runs in a process of its own on a device. The first APK is the one on screen; the
+others start their process with no activity, as an app does when something calls into it. With
+`--control stdio` each is a `device` of the channel, named by its package: a command with
+`"device":"com.example.other"` goes to that app, one without to the first, and every line the
+simulators print carries its `device`, as with [`--pair`](#a-paired-phone-and-watch).
+
+What the apps share:
+
+- **Their manifests.** Each app's `PackageManager` holds the others, parsed from their APKs as the
+  system parses them at install: `getPackageInfo`, `queryIntentActivities` / `queryIntentServices`
+  and package visibility find them, and `packages` (`pm list packages`) lists every app.
+- **A bus**, the Data Layer hub's relay, that calls between apps cross as the binder carries them
+  on a device, each request run on the receiving app's main thread.
+- **App Functions.** `AppFunctionManager.executeAppFunction` from an app that declares
+  `EXECUTE_APP_FUNCTIONS` (an agent, an assistant) reaches the target app's `AppFunctionService`
+  in its own simulator, which runs the function with the caller's package and returns its result
+  document; without the permission the call is `ERROR_DENIED`, and an app that is not installed is
+  `ERROR_FUNCTION_NOT_FOUND`. An app calling its own functions needs no permission. API 36
+  (`--sdk 36`).
+
+```
+compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
+→ {"id":1,"cmd":"packages"}
+← {"device":"ee.schimke.agent","id":1,"ok":true,"result":{"packages":["ee.schimke.agent","ee.schimke.probe"],…}}
+   (the agent calls executeAppFunction("ee.schimke.probe", "…ProbeFunctions#add", {a: 20, b: 22}):
+    the probe's service runs with callingPackage ee.schimke.agent, and the agent's receiver gets 42)
+→ {"id":2,"device":"ee.schimke.probe","cmd":"logcat","op":"dump","filters":{"Probe":"V"}}
+```
+
+Intents, broadcasts and content providers do not cross between apps yet: a share sheet or an
+`ACTION_VIEW` aimed at another installed app is still a [handoff](#pickers-sharing-and-other-apps),
+and each app's `/sdcard` is its own. `--install` does not combine with `--pair` or `--adb`.
+
 ## A paired phone and watch
 
 `--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
@@ -1359,6 +1671,26 @@ What does not, or not yet:
   and the requesting activity is not paused while a request waits. Groups are approximated (a
   dialog per permission, not per group), and Android 16's health permissions that replace
   `BODY_SENSORS` are plain runtime permissions.
+- **Prompts and credentials.** The biometric and device-credential prompts, voice input and
+  Credential Manager are answered, not drawn ([above](#prompts-sign-in-and-the-keystore)); a
+  `CryptoObject` passed to a prompt is not checked against its key, Credential Manager below API 34 (Play
+  services' path) is not simulated, and `prepareGetCredential` is not answered. The keystore's
+  keys are software keys, kept in memory only.
+- **Background work.** Alarms, jobs and downloads run ([above](#alarms-jobs-and-downloads)), but
+  there is no Doze, App Standby bucket or battery optimisation deferring them; a job's
+  battery-not-low, storage-not-low and content-URI triggers are not checked, and a
+  `jobFinished(params, true)` retry waits its initial backoff each time, not a growing one; a download has no notification, and is neither
+  paused nor retried. A foreground service's type is not checked against its manifest
+  declaration or permissions.
+- **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
+  Functions calls ([above](#several-apps-on-one-device)); activities, services, broadcasts,
+  content providers and URI grants of another app are not reached yet, and the apps share no
+  storage, clipboard or settings.
+- **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
+  `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
+  ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
+  search. App Functions' enabled state and caller permission (`EXECUTE_APP_FUNCTIONS`) are not
+  checked.
 - **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
   the share sheet, browser and dialer are answered ([above](#network-wi-fi-and-bluetooth),
   [above](#pickers-sharing-and-other-apps)); there is no media store of picked photos (the photo
@@ -1400,12 +1732,20 @@ What does not, or not yet:
   paired phone: `checkApiAvailability` reports the `Wearable` clients `API_UNAVAILABLE`, as
   Play services' other APIs.
 - **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
-  own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
+  own widgets and shortcuts: there is one package. No wallpaper picker,
   keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).
   A pin request brings the home screen forward rather than showing its sheet over the app, and
   `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
   framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
   where this sandbox refuses the host.
+- **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
+  recents screen, notification history, snooze or per-channel settings in the shade, conversation
+  or bubble sections, media controls, or Do Not Disturb; one keyboard layout (US QWERTY, no
+  suggestions, emoji, voice or IME switcher); no pattern or password lock, fingerprint
+  unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
+  when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not
+  played. Quick settings tiles are the four above, not the app's `TileService`s. Robolectric posts
+  every notification of one task at the same instant, so ties are ordered by `when`, then id.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not

@@ -17,7 +17,8 @@ import org.robolectric.shadows.ShadowContextImpl;
  * registered for that exact intent, action and extras' filter included; an app's own explicit bind
  * resolves by component on a device, and Firebase Sessions binds with an action of {@code "0"}.
  * Also routes the app's explicit broadcasts to its manifest receivers ({@link
- * Navigator#appSentBroadcast}).
+ * Navigator#appSentBroadcast}), and starts the deadline a {@code startForegroundService} sets
+ * ({@link Navigator#expectForeground}).
  * Added to the shadow map by {@link SimulatorSandbox}.
  */
 @Implements(className = "android.app.ContextImpl", isInAndroidSdk = false)
@@ -60,6 +61,51 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
     if (!held || !Navigator.appSentBroadcast(intent)) {
       super.sendBroadcast(intent, receiverPermission);
     }
+  }
+
+  /**
+   * The system services Robolectric has no fetcher for, which a device always has: {@code
+   * AppFunctionManager} (API 36), whose calls {@link SimulatorShadowAppFunctionManager} answers.
+   */
+  @Implementation
+  @Override
+  protected Object getSystemService(String name) {
+    Object service = super.getSystemService(name);
+    if (service == null && "app_function".equals(name) && Build.VERSION.SDK_INT >= 36) {
+      service = appFunctionManager();
+    }
+    return service;
+  }
+
+  private static Object appFunctions;
+
+  /** One {@code AppFunctionManager}, built through its hidden constructor with no binder. */
+  private static synchronized Object appFunctionManager() {
+    if (appFunctions != null) return appFunctions;
+    try {
+      Class<?> type = Class.forName("android.app.appfunctions.AppFunctionManager");
+      java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructors()[0];
+      Object[] args = new Object[constructor.getParameterCount()];
+      Class<?>[] types = constructor.getParameterTypes();
+      for (int i = 0; i < args.length; i++) {
+        if (android.content.Context.class.isAssignableFrom(types[i])) {
+          args[i] = RuntimeEnvironment.getApplication();
+        }
+      }
+      constructor.setAccessible(true);
+      appFunctions = constructor.newInstance(args);
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      System.err.println("app functions: no AppFunctionManager: " + e);
+    }
+    return appFunctions;
+  }
+
+  /** Starts the system's clock on the service calling {@code startForeground}. */
+  @Implementation(minSdk = Build.VERSION_CODES.O)
+  @Override
+  protected android.content.ComponentName startForegroundService(Intent service) {
+    Navigator.expectForeground(service);
+    return super.startForegroundService(service);
   }
 
   @Implementation
