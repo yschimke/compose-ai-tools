@@ -1,6 +1,7 @@
 package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.googlecode.dex2jar.ir.IrMethod;
@@ -176,7 +177,8 @@ public class ApkClassConverterTest {
     summary.failures.add("a \"quoted\"\nline\\");
     assertEquals(
         "{\"classes\":0,\"interfaceCallsFixed\":0,\"failedMethods\":0,\"unframedClasses\":0,"
-            + "\"withoutDebugInfo\":0,\"failures\":[\"a \\\"quoted\\\"\\nline\\\\\"]}",
+            + "\"withoutDebugInfo\":0,\"sharedLibraryClasses\":0,"
+            + "\"failures\":[\"a \\\"quoted\\\"\\nline\\\\\"]}",
         summary.toJson());
   }
 
@@ -267,5 +269,27 @@ public class ApkClassConverterTest {
         };
     Method run = loader.loadClass(main).getMethod("run");
     return run.invoke(null);
+  }
+
+  @Test
+  public void sharedLibraryCopiesTheSimulatorProvidesAreDropped() {
+    ClassLoader host = ApkClassConverter.class.getClassLoader();
+    // The Wear OS library's ambient controller and the Wear SDK's ambient service and version.
+    assertTrue(
+        ApkClassConverter.providedBySimulator(
+            "com/google/android/wearable/compat/WearableActivityController.class", host));
+    assertTrue(
+        ApkClassConverter.providedBySimulator(
+            "com/google/wear/services/ambient/AmbientManager.class", host));
+    assertTrue(ApkClassConverter.providedBySimulator("com/google/wear/Sdk.class", host));
+    // A shared-library class the simulator does not provide stays the APK's.
+    assertFalse(
+        ApkClassConverter.providedBySimulator(
+            "com/google/wear/services/tiles/TilesManager.class", host));
+    // Outside the libraries' packages nothing is dropped, nor anything that is not a class.
+    assertFalse(
+        ApkClassConverter.providedBySimulator(
+            "ee/schimke/composeai/simulator/AmbientClients.class", host));
+    assertFalse(ApkClassConverter.providedBySimulator("com/google/wear/Sdk.txt", host));
   }
 }
