@@ -229,6 +229,7 @@ internal object CliFlags {
       "--network",
       "--max-heap",
       "--data-layer",
+      "--grpc-port",
       // bundle externalize
       "--res-out",
       "--ext",

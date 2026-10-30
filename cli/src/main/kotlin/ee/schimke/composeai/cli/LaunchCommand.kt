@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
+import ee.schimke.composeai.cli.device.DeviceHost
+import ee.schimke.composeai.cli.device.VirtualDevice
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.awt.GraphicsEnvironment
 import java.io.File
@@ -32,10 +34,11 @@ internal class LaunchCommand(private val args: List<String>) {
       println(USAGE)
       return
     }
-    val apk =
-      CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
-        ?: fail("expected an APK: compose-preview launch <app.apk>")
-    if (!apk.isFile) fail("no such APK: $apk")
+    // No APK boots the device itself: the system UI with nothing installed (`--adb` installs
+    // into it later).
+    val apk = CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
+    if (apk != null && !apk.isFile) fail("no such APK: $apk")
+    val adb = "--adb" in args
     val verbose = "--verbose" in args || "-v" in args
     val control = args.flagValue("--control")
     if (control != null && control != "stdio") fail("--control supports only `stdio`")
@@ -100,11 +103,13 @@ internal class LaunchCommand(private val args: List<String>) {
         .flagValue("--pair")
         ?.let { File(it).absoluteFile }
         ?.also { if (!it.isFile) fail("no such APK to pair: $it") }
-    val classes = classesOf(apk)
-    val pairClasses = pair?.let { classesOf(it) }
+    if (adb && pair != null) fail("--adb runs one device; drop --pair")
+    if (apk == null && pair != null)
+      fail("--pair needs the phone's APK: launch <phone.apk> --pair <watch.apk>")
     if ("--prepare" in args) {
-      println(classes.absolutePath)
-      pairClasses?.let { println(it.absolutePath) }
+      if (apk == null) fail("--prepare converts an APK: launch <app.apk> --prepare")
+      println(classesOf(apk).absolutePath)
+      pair?.let { println(classesOf(it).absolutePath) }
       return
     }
 
@@ -124,7 +129,8 @@ internal class LaunchCommand(private val args: List<String>) {
         fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
       }
     }
-    val detected = ApkFormFactor.inspect(apk)
+    val detected =
+      apk?.let { ApkFormFactor.inspect(it) } ?: ApkFormFactor.Detected(ApkFormFactor.PHONE, null)
     val formFactor =
       args.flagValue("--form-factor")?.let {
         ApkFormFactor.byId(it)
@@ -136,7 +142,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val launchActivity = detected.projectedActivity.takeIf { formFactor == ApkFormFactor.GLIMMER }
     if (formFactor != ApkFormFactor.PHONE) {
       System.err.println(
-        "compose-preview launch: ${formFactor.id} app; display ${formFactor.qualifiers}" +
+        "compose-preview launch: ${formFactor.id} ${if (apk == null) "device" else "app"}; " +
+          "display ${formFactor.qualifiers}" +
           (if (args.flagValue("--qualifiers") != null || args.flagValue("--device") != null)
             " (overridden by --qualifiers / --device)"
           else "")
@@ -144,7 +151,7 @@ internal class LaunchCommand(private val args: List<String>) {
     }
 
     val headless = "--headless" in args || GraphicsEnvironment.isHeadless()
-    if (headless && control == null) {
+    if (headless && control == null && !adb) {
       System.err.println(
         "compose-preview launch: no display, so no window; pass --control stdio to drive the app " +
           "headless."
@@ -169,28 +176,95 @@ internal class LaunchCommand(private val args: List<String>) {
             if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
           },
         headless = headless,
-        control = control != null,
+        // With --adb this process drives the simulator's channel, client or not.
+        control = control != null || adb,
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
         displays = args.flagValuesAll("--display"),
+        // A device with nothing started on it shows its system UI.
         launcher =
-          "--launcher" in args ||
+          apk == null ||
+            adb ||
+            "--launcher" in args ||
             args.flagValuesAll("--widget").isNotEmpty() ||
             args.flagValuesAll("--tile").isNotEmpty(),
+        noLaunch = apk == null || adb,
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
-    fun commandFor(apk: File, classes: File, options: Options) =
+    fun commandFor(apk: File, classes: File?, options: Options) =
       simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
         apk = apk,
-        classes = listOf(classes) + extraJars,
+        classes = listOfNotNull(classes) + extraJars,
         options = options,
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
+    val systemApk =
+      SystemApk.ensure(composeAiCacheDir("simulator").resolve("system"), formFactor, options.sdk)
+    /** The installed APK's classes, or none for the system package. */
+    fun bootCommand(installed: File): List<String> =
+      if (installed == systemApk) commandFor(systemApk, null, options)
+      else commandFor(installed, classesOf(installed), options)
+
+    if (adb) {
+      if (args.flagValue("--data-layer") != null)
+        fail("--adb and --data-layer agent are not combined yet")
+      val consolePort = DeviceHost.freeConsolePort()
+      val (width, height, dpi) = displayPixels(options.qualifiers)
+      val config =
+        VirtualDevice.Config(
+          formFactor = formFactor,
+          sdk = options.sdk,
+          consolePort = consolePort,
+          avdName =
+            if (formFactor == ApkFormFactor.WEAR) "Compose_Preview_Watch"
+            else "Compose_Preview_Phone",
+          dir =
+            composeAiCacheDir("simulator").resolve("devices/emulator-$consolePort").also {
+              it.deleteRecursively()
+              it.mkdirs()
+            },
+          systemApk = systemApk,
+          widthPx = width,
+          heightPx = height,
+          densityDpi = dpi,
+          fingerprint = options.fingerprint,
+        )
+      val virtual =
+        VirtualDevice(
+          config,
+          simulatorCommand = { installed ->
+            bootCommand(installed).also {
+              if (verbose) System.err.println("compose-preview launch: ${it.joinToString(" ")}")
+            }
+          },
+          onLine = { line ->
+            if (control != null) {
+              synchronized(System.out) {
+                println(line)
+                System.out.flush()
+              }
+            }
+          },
+          log = { if (verbose) System.err.println("compose-preview launch: $it") },
+        )
+      val grpcPort =
+        args.flagValue("--grpc-port")?.let { it.toIntOrNull() ?: fail("--grpc-port takes a port") }
+          ?: DeviceHost.grpcPortFor(consolePort)
+      exitProcess(DeviceHost(virtual, grpcPort, control = control != null, initialApk = apk).run())
+    }
+    if (apk == null) {
+      val command = bootCommand(systemApk)
+      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+      exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+    }
+    val classes = classesOf(apk)
+    val pairClasses = pair?.let { classesOf(it) }
+
     val dataLayerMode = args.flagValue("--data-layer")
     if (dataLayerMode != null) {
       if (dataLayerMode != "agent") fail("--data-layer supports only `agent`")
@@ -306,6 +380,11 @@ internal class LaunchCommand(private val args: List<String>) {
      * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
      */
     val tiles: List<String> = emptyList(),
+    /**
+     * Boot as a device: the APK is installed but not started (`launch` with no APK, the system
+     * package; `--adb`, whatever is installed), so the system UI is what shows.
+     */
+    val noLaunch: Boolean = false,
   )
 
   private fun convert(
@@ -387,6 +466,39 @@ internal class LaunchCommand(private val args: List<String>) {
     val NETWORK_MODES =
       listOf("wifi", "cellular", "ethernet", "vpn", "captive", "offline", "airplane")
 
+    /**
+     * The display's size in pixels and its density, from Robolectric qualifiers
+     * (`w227dp-h227dp-round-watch-xhdpi` is 454×454 at 320 dpi); a phone's default when they name
+     * no size.
+     */
+    fun displayPixels(qualifiers: String): Triple<Int, Int, Int> {
+      val parts = qualifiers.split('-')
+      val dpi =
+        parts.firstNotNullOfOrNull {
+          DENSITIES[it] ?: Regex("""(\d+)dpi""").matchEntire(it)?.groupValues?.get(1)?.toInt()
+        } ?: 160
+      val w =
+        parts.firstNotNullOfOrNull {
+          Regex("""w(\d+)dp""").matchEntire(it)?.groupValues?.get(1)?.toInt()
+        } ?: 360
+      val h =
+        parts.firstNotNullOfOrNull {
+          Regex("""h(\d+)dp""").matchEntire(it)?.groupValues?.get(1)?.toInt()
+        } ?: 640
+      return Triple(w * dpi / 160, h * dpi / 160, dpi)
+    }
+
+    private val DENSITIES =
+      mapOf(
+        "ldpi" to 120,
+        "mdpi" to 160,
+        "tvdpi" to 213,
+        "hdpi" to 240,
+        "xhdpi" to 320,
+        "xxhdpi" to 480,
+        "xxxhdpi" to 640,
+      )
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -424,6 +536,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
       if (options.launcher) properties["composeai.simulator.launcher"] = "true"
+      if (options.noLaunch) properties["composeai.simulator.noLaunch"] = "true"
       if (options.tiles.isNotEmpty()) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
       }
@@ -470,10 +583,17 @@ internal class LaunchCommand(private val args: List<String>) {
     val USAGE =
       """
       compose-preview launch <app.apk> [options]
+      compose-preview launch [--form-factor wear] [--adb] [options]
 
       Run an APK in Robolectric's simulator: a window showing the app, driven by mouse and
       keyboard (right-click is Back). The APK's dex is converted to JVM classes once and cached
-      by content; Robolectric comes from the Android daemon sidecar.
+      by content; Robolectric comes from the Android daemon sidecar. With no APK the device
+      boots to its system UI alone: the home screen, or on a watch the watch face.
+
+      --adb makes the simulator a device adb and Android Studio see, as an emulator is:
+      emulator-5554 (the first free port pair), with adb install / uninstall / shell / push /
+      pull, the emulator console, and the emulator gRPC endpoint Studio's Running Devices
+      window streams the display over. An install swaps in a simulator booted on the new APK.
 
       --control stdio adds a JSON-lines control channel on stdin/stdout: tap, swipe, type,
       read the UI hierarchy, take screenshots, start activities and services, send broadcasts,
@@ -487,6 +607,10 @@ internal class LaunchCommand(private val args: List<String>) {
 
       Options:
         --control stdio       JSON-lines control channel on stdin/stdout.
+        --adb                 Serve the device to adb and Android Studio (see above); an
+                              APK given too is installed, not started.
+        --grpc-port <n>       With --adb, the emulator gRPC port (default 8554 + the
+                              console port's offset from 5554).
         --headless            No window (the default when there is no display).
         --hide-agent          Do not draw the control channel's actions over the window.
         --qualifiers <q>      Resource qualifiers for the display, Robolectric syntax
