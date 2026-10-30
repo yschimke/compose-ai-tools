@@ -135,8 +135,9 @@ final class DeviceApps {
     navigator.addSystemUi(this::handle);
     DeviceBus.onBroadcast(EVENT, this::heard);
     DeviceBus.onBroadcast(LABEL, this::heardLabel);
-    if (!onScreen && !GraphicsEnvironment.isHeadless()) {
-      // The simulator's windows open as it starts; an app in the background keeps them hidden.
+    if (!GraphicsEnvironment.isHeadless()) {
+      // An app in the background keeps its windows hidden: those open as it starts, and any it
+      // opens later (a secondary display's), whether or not it started on screen.
       Toolkit.getDefaultToolkit()
           .addAWTEventListener(
               event -> {
@@ -149,7 +150,7 @@ final class DeviceApps {
                 }
               },
               AWTEvent.WINDOW_EVENT_MASK);
-      SwingUtilities.invokeLater(this::hideWindows);
+      if (!onScreen) SwingUtilities.invokeLater(this::hideWindows);
     }
   }
 
@@ -201,10 +202,7 @@ final class DeviceApps {
       DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", packageName).object());
       return shown;
     }
-    if (!isOtherApp(packageName)) {
-      throw new IllegalArgumentException(
-          "no app " + packageName + " on this device; it has " + DevicePeers.packages());
-    }
+    checkShowable(packageName, intent);
     JSONObject window = windowBounds();
     goBackground();
     DeviceBus.broadcast(
@@ -215,6 +213,25 @@ final class DeviceApps {
             .put("window", window)
             .object());
     return new Protocol.Json().put("package", packageName).put("onScreen", true).object();
+  }
+
+  /**
+   * Refuses, before this app leaves the screen, to show another app that could not come forward:
+   * one not on the device, or, with no [intent] to start, one with no launcher activity (a
+   * service-only app).
+   */
+  private void checkShowable(String packageName, Intent intent) {
+    if (!isOtherApp(packageName)) {
+      throw new IllegalArgumentException(
+          "no app " + packageName + " on this device; it has " + DevicePeers.packages());
+    }
+    if (intent != null) return;
+    Intent launcher =
+        new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName);
+    if (app.getPackageManager().queryIntentActivities(launcher, 0).isEmpty()) {
+      throw new IllegalArgumentException(
+          packageName + " has no launcher activity to show; start one of its activities instead");
+    }
   }
 
   /** The {@code foreground} command: this app, or the {@code package} named, comes on screen. */
@@ -240,10 +257,7 @@ final class DeviceApps {
    * activity or resuming its task there.
    */
   JSONObject split(String other) throws JSONException {
-    if (!isOtherApp(other)) {
-      throw new IllegalArgumentException(
-          "no app " + other + " on this device; it has " + DevicePeers.packages());
-    }
+    checkShowable(other, null);
     // Comes on screen alone first: whatever else was there goes to the background.
     if (!onScreen || side != null) show(app.getPackageName(), null);
     Configuration config = app.getResources().getConfiguration();
