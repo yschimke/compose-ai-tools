@@ -252,7 +252,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
-| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
 | `playServices` | `state`? (`installed` / `none` / `outdated` / `disabled` / `invalid`) | Google Play services as availability checks report it ([below](#google-play-services)); returns the state, status and version |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
@@ -854,7 +854,10 @@ runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
 `--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
 `Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
 simulator instead of Play services, so messages, requests, data items and capabilities cross
-between the apps and reach their listeners and manifest `WearableListenerService`s. Each peer
+between the apps and reach their listeners and manifest `WearableListenerService`s, and
+`ChannelClient` channels stream bytes between them (`openChannel`, the streams, `sendFile` /
+`receiveFile`, `ChannelCallback`s and `CHANNEL_EVENT` services). As with Play services, no task a
+client returns is complete yet: each completes on a later turn of the main looper. Each peer
 is also a `CompanionDeviceManager` association (the [`companion`](#the-control-channel) command),
 and on the watch `RemoteActivityHelper.availabilityStatus` follows the peer's connects and
 disconnects. With
@@ -872,10 +875,13 @@ missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
 simulator: the control channel plays every peer device. Each frame the app sends is a
 `datalayer` event of kind `send`: `type` `hello` (its node and capabilities, answered on each
 connect), `message` (with a `requestId` for a `sendRequest`), `response`, `data`, `capabilities`,
-`activity` (a `startRemoteActivity`) or `oauth`, with its payload as base64 `data`, a `text`
+`activity` (a `startRemoteActivity`), `oauth`, or a channel's `channelOpen` (with its `token` and
+`path`), `channelData`, `channelEof` and `channelClose`, with its payload as base64 `data`, a `text`
 preview and, when the bytes are a `DataMap`, a `dataMap` JSON object; a data item's assets come
 as `assets` (key → base64, up to 4 MiB of base64 each, larger ones named in `assetsOmitted`).
-Both are in the form `put` takes, so a captured item can be put back as it was. The agent answers with
+Both are in the form `put` takes, so a captured item can be put back as it was. A channel's life
+on either side is also a `datalayer` event of kind `channel` (`state` `opened`, `data`,
+`inputClosed`, `outputClosed`, `closed`, with the `channel` token). The agent answers with
 `{"cmd":"dataLayer","action":…}`:
 
 | `action` | Arguments | The peer… |
@@ -887,6 +893,10 @@ Both are in the form `put` takes, so a captured item can be put back as it was. 
 | `message` / `request` | `node?`, `path`, a payload | sends a message, or a request the app answers (a `send` event of type `response`) |
 | `reply` | `requestId`, a payload or `error`; `result` for a remote activity; `responseUrl` for OAuth | answers the app's request |
 | `config` | `requestTimeoutMs` | sets how long the app's requests wait (default 30 s, then `TIMEOUT`) |
+| `channelOpen` | `node?`, `path`, `channel?` (a token; one is made up) | opens a `ChannelClient` channel to the app (`onChannelOpened`, `CHANNEL_EVENT` services); answers its `channel` token |
+| `channelWrite` | `channel`, a payload | writes bytes the app's input stream reads |
+| `channelEof` | `channel` | closes its output: the app's input ends (`onInputClosed`) |
+| `channelClose` | `channel`, `errorCode?` | closes the channel (`onChannelClosed`, `CLOSE_REASON_REMOTE_CLOSE`) |
 
 A payload is `text`, `data` (base64) or `dataMap` (JSON: strings, booleans and ints bare, other
 values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|"intList"|"dataMapList"|…,

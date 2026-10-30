@@ -105,4 +105,24 @@ public class ShadowWearable {
       Activity activity, @ClassName(OPTIONS) Object options) {
     return DataLayer.get().capabilityClient(activity);
   }
+  @Implementation
+  protected static Object getChannelClient(Context context) {
+    return DataLayer.get().channelClient(context);
+  }
+
+  @Implementation
+  protected static Object getChannelClient(Context context, @ClassName(OPTIONS) Object options) {
+    return DataLayer.get().channelClient(context);
+  }
+
+  @Implementation
+  protected static Object getChannelClient(Activity activity) {
+    return DataLayer.get().channelClient(activity);
+  }
+
+  @Implementation
+  protected static Object getChannelClient(
+      Activity activity, @ClassName(OPTIONS) Object options) {
+    return DataLayer.get().channelClient(activity);
+  }
 }
