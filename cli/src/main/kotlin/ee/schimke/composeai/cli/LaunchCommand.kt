@@ -383,7 +383,9 @@ internal class LaunchCommand(private val args: List<String>) {
               else -> null
             }
           },
-          outliveExits = live != null,
+          // Only when something can bring the app back (a reload command or --live): otherwise
+          // the launch would wait on after its simulator exited.
+          outliveExits = outlivesExits(live != null, control != null, liveWatch),
           // The watch of a pair is not what reloads: no second JVM waiting for it.
           standby = standby && control != null && device != WATCH,
         )
@@ -678,6 +680,14 @@ internal class LaunchCommand(private val args: List<String>) {
   companion object {
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+
+    /**
+     * Whether a launch outlives its app exiting: only with a project and something that can reload
+     * it, the control channel's `reload` or `--live`. Otherwise nothing could bring the app back,
+     * and the CLI would wait on after its simulator exited.
+     */
+    fun outlivesExits(project: Boolean, control: Boolean, live: Boolean): Boolean =
+      project && (control || live)
 
     /** Extra options for the simulator JVM, whitespace-separated. */
     const val JVM_OPTIONS_ENV = "COMPOSE_PREVIEW_SIMULATOR_JVM_OPTIONS"

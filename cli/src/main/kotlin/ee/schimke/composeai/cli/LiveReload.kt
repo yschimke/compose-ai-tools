@@ -145,6 +145,15 @@ internal class LiveReload(
     val start = System.nanoTime()
     val now = fingerprint()
     if (now.assets != base.assets) return rebuild("assets or native libraries changed", build)
+    // A class deleted or renamed since the launch is still in the converted jar under the overlay,
+    // where it stays loadable: only a rebuilt APK drops it.
+    val removed = base.classes.keys - now.classes.keys
+    if (removed.isNotEmpty()) {
+      return rebuild(
+        "${removed.size} class(es) removed or renamed (${removed.sorted().first()}…)",
+        build,
+      )
+    }
     val changed =
       now.classes.filter { (name, stamp) -> base.classes[name]?.first != stamp.first }.keys.sorted()
     val resources = now.linkedResources != base.linkedResources

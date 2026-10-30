@@ -314,4 +314,29 @@ class LiveReloadTest {
     assertEquals(listOf("draw_0d7_KjU"), methods)
     assertEquals(listOf("androidx/compose/runtime/Updater.constructor_impl"), calls)
   }
+
+  @Test
+  fun `a class removed since the launch rebuilds the apk`() = fixture { root ->
+    val project = File(root, "project").apply { write("settings.gradle.kts", "") }
+    val kotlin = "app/build/tmp/kotlin-classes/debug"
+    project.writeClass(kotlin, "com/example/A", "a1")
+    val old = project.writeClass(kotlin, "com/example/Old", "o1")
+    project.write("app/build/outputs/apk/debug/app-debug.apk", "apk")
+    val apk = zip(File(root, "app.apk"), mapOf("classes.dex" to "dex"))
+    val live = live(project, File(root, "work"))
+    live.recordBaseline()
+
+    old.delete()
+    project.writeClass(kotlin, "com/example/New", "n1")
+    val plan = assertIs<LiveReload.Plan.Rebuild>(live.prepare(apk, full = false))
+    assertTrue(plan.reason.contains("removed"), plan.reason)
+  }
+
+  @Test
+  fun `only a launch that can reload outlives its app`() {
+    assertTrue(LaunchCommand.outlivesExits(project = true, control = true, live = false))
+    assertTrue(LaunchCommand.outlivesExits(project = true, control = false, live = true))
+    assertFalse(LaunchCommand.outlivesExits(project = true, control = false, live = false))
+    assertFalse(LaunchCommand.outlivesExits(project = false, control = true, live = false))
+  }
 }
