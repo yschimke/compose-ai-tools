@@ -20,6 +20,9 @@ internal fun detectProjectBuild(start: File): ProjectBuild? {
   var wrapperRoot: File? = null
   while (directory != null) {
     val dir = directory
+    if (isLightbuildProject(dir)) {
+      return lightbuildGradleRoot(dir)?.let { ProjectBuild(ProjectBuildKind.GRADLE, it) }
+    }
     if (hasSettingsFile(dir)) return ProjectBuild(ProjectBuildKind.GRADLE, dir)
     if (wrapperRoot == null && dir.resolve("gradlew").isFile) wrapperRoot = dir
     if (isBuckProjectMarker(dir)) {

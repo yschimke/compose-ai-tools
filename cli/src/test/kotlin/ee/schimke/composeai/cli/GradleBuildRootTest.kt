@@ -68,4 +68,26 @@ class GradleBuildRootTest {
   fun `null when there is neither settings nor a wrapper`() {
     assertNull(findGradleProjectRoot(dir("bare/deep")))
   }
+
+  @Test
+  fun `a lightbuild project resolves to its generated gradle build`() {
+    val project = dir("lb").also { touch(it, LIGHTBUILD_PROJECT_FILE) }
+    val generated = dir("lb/$LIGHTBUILD_GRADLE_DIR").also { touch(it, "settings.gradle") }
+    touch(generated, "gradlew")
+
+    assertEquals(generated, findGradleProjectRoot(project))
+    assertEquals(generated, findGradleProjectRoot(dir("lb/app-core/src/main")))
+    // Inside the generated build itself, its own settings file is found first.
+    assertEquals(generated, findGradleProjectRoot(generated))
+  }
+
+  @Test
+  fun `an unbuilt lightbuild project does not fall through to an enclosing build`() {
+    val repo = dir("repo").also { touch(it, "gradlew") }
+    touch(repo, "settings.gradle.kts")
+    val project = dir("repo/lb").also { touch(it, LIGHTBUILD_PROJECT_FILE) }
+
+    assertNull(findGradleProjectRoot(dir("repo/lb/app")))
+    assertEquals(project, findLightbuildProjectRoot(dir("repo/lb/app")))
+  }
 }

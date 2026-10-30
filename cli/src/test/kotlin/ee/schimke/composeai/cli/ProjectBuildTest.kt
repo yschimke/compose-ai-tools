@@ -20,6 +20,15 @@ class ProjectBuildTest {
   }
 
   @Test
+  fun `a Lightbuild project routes to its generated Gradle build`() = fixture { root ->
+    root.resolve(LIGHTBUILD_PROJECT_FILE).writeText("")
+    val generated = root.resolve(LIGHTBUILD_GRADLE_DIR).apply { mkdirs() }
+    generated.resolve("settings.gradle").writeText("")
+    val app = root.resolve("app/src").apply { mkdirs() }
+    assertEquals(ProjectBuild(ProjectBuildKind.GRADLE, generated), detectProjectBuild(app))
+  }
+
+  @Test
   fun `Gradle wins over BUILD and workspace markers in the same build`() = fixture { root ->
     root.resolve("settings.gradle.kts").writeText("")
     root.resolve("MODULE.bazel").writeText("")

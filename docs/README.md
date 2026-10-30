@@ -123,6 +123,7 @@ not as separate docs — read them next to the code.
 
 - [Bazel CLI and configurable artifact producers](BAZEL.md) — aspect setup, discovery/rendering, and internal build-system configuration.
 - [Buck2](BUCK.md) — the same driver over a BXL script: detection, target selection and `buck.json`.
+- [Lightbuild](LIGHTBUILD.md) — Android's declarative YAML build, driven through the Gradle build it generates.
 
 - [Offline deployment](OFFLINE.md) — `COMPOSE_PREVIEW_NO_NETWORK`, the one switch that refuses every outbound path of the CLI, which directories to pre-provision, and how to verify nothing is fetched.
 
