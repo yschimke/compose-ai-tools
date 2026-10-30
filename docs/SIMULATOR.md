@@ -1027,6 +1027,32 @@ key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
 ← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
 ```
 
+### Picture-in-picture
+
+On a phone with `--launcher`, an activity goes into picture-in-picture as on a device
+(`PictureInPicture`): when it calls `enterPictureInPictureMode` (from a button, or in
+`onUserLeaveHint`, which HOME now delivers), or on HOME when its `PictureInPictureParams` set
+`setAutoEnterEnabled(true)`. The device declares `FEATURE_PICTURE_IN_PICTURE`, and the params the
+app sets are kept, which Robolectric drops. The activity is paused, not stopped; the home screen
+comes forward under it, and its window shrinks to the bottom-right corner at its params' aspect
+ratio (16:9 without one), unfocusable, as SystemUI's is. It hears
+`onPictureInPictureModeChanged(true, …)` with the window's size as the configuration's, so it can
+show only its video.
+
+A tap on the window shows its controls for three seconds: expand (back to full screen, resumed,
+`onPictureInPictureModeChanged(false, …)`) and close (stopped and destroyed). Tapping the app's
+icon expands it too. `PictureInPictureParams` actions are not shown.
+
+![The player; HOME with auto-enter; its controls; expanded; its own button; closed](design/evidence/simulator-launch/phone-pip.png)
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `pip` | `op`? (`status` / `expand` / `close`) | returns `active`, the `activity`, its window's `bounds` and whether its `controls` show; `expand` and `close` do what the controls do |
+
+`pip` events report `entered`, `expanded` and `closed`. View ids: `pip` (the window's touch
+layer; description: the activity), `pip_expand`, `pip_close`. `samples/android`'s
+`PlayerActivity` (started with `startActivity`) auto-enters on HOME and has a button for it.
+
 ### On-screen keyboard
 
 The phone's system UI has a soft keyboard (`SoftKeyboard`), drawn to match the interactive

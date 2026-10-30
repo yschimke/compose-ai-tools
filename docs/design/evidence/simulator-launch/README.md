@@ -386,3 +386,10 @@ the keyboard down and the composer drops back.
 `media_action` Pause and Next: the app's receiver posts it again paused, on the next track.
 
 ![Player playing, then paused on the next track](phone-media.png)
+
+**Picture-in-picture** — `samples/android`'s `PlayerActivity`: full screen; HOME, and it auto-enters
+(`setAutoEnterEnabled`), showing only its video in the corner over the home screen; a tap shows the
+controls; expand brings it back resumed; its own button enters again (`enterPictureInPictureMode`);
+`pip {op: close}` destroys it.
+
+![Player, PiP, controls, expanded, button, closed](phone-pip.png)

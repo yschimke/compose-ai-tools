@@ -136,6 +136,7 @@ final class PhoneSystemUi {
   final NavigationBar navigationBar;
   final LockScreen lockScreen;
   final SoftKeyboard keyboard;
+  final PictureInPicture pictureInPicture;
 
   private PhoneSystemUi(
       Application app,
@@ -155,6 +156,7 @@ final class PhoneSystemUi {
     this.navigationBar = new NavigationBar(this, app, navigator, protocol);
     this.lockScreen = new LockScreen(this, app, navigator, protocol, stream);
     this.keyboard = new SoftKeyboard(this, app, navigator, protocol, typer);
+    this.pictureInPicture = new PictureInPicture(this, app, navigator, protocol);
   }
 
   /**
@@ -205,6 +207,7 @@ final class PhoneSystemUi {
     navigationBar.cycle();
     lockScreen.cycle();
     keyboard.cycle();
+    pictureInPicture.cycle();
     if (now - lastTick < 1000) return;
     lastTick = now;
     refresh();
@@ -223,6 +226,7 @@ final class PhoneSystemUi {
     JSONObject owned = navigationBar.command(name, c);
     if (owned == null) owned = lockScreen.command(name, c);
     if (owned == null) owned = keyboard.command(name, c);
+    if (owned == null) owned = pictureInPicture.command(name, c);
     if (owned != null) return owned;
     switch (name) {
       case "notifications":
@@ -291,6 +295,7 @@ final class PhoneSystemUi {
       case "navigationBar":
       case "lockScreen":
       case "keyboard":
+      case "pip":
         return true;
       default:
         return false;
@@ -354,6 +359,7 @@ final class PhoneSystemUi {
         .put("navigationBar", navigationBar.describe())
         .put("lockScreen", lockScreen.describe())
         .put("keyboard", keyboard.describe())
+        .put("pip", pictureInPicture.describe())
         .object();
   }
 

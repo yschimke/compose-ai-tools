@@ -76,6 +76,13 @@
         <service android:name="com.example.sampleandroid.TaskListWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
+        <!-- A video player that goes into picture-in-picture (docs/SIMULATOR.md). -->
+        <activity
+            android:name="com.example.sampleandroid.PlayerActivity"
+            android:exported="true"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <!-- A chat composer the simulator's on-screen keyboard is shown with (docs/SIMULATOR.md). -->
         <activity
             android:name="com.example.sampleandroid.ChatActivity"
