@@ -1096,6 +1096,11 @@ final class Navigator {
   }
 
   private void destroy(Entry entry) {
+    if (entry == pip) {
+      // Torn down in picture-in-picture (kill, force-stop): it is no longer there.
+      pip = null;
+      if (pipListener != null) pipListener.left(entry, false);
+    }
     Activity activity = entry.activity();
     if (activity.isDestroyed()) return;
     // Walk forward through whatever lifecycle the activity is in; each step is a no-op guard in

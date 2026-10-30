@@ -778,12 +778,14 @@ final class PhoneSystemUi {
     shadeList.addView(header());
     shadeList.addView(tiles());
     List<NotificationStream.Item> items = new ArrayList<>();
+    boolean players = false;
     for (NotificationStream.Item item : barItems()) {
       // A player's notification is the media player under the tiles, as Android 13+ shows it.
       if (isMedia(item)) {
         LinearLayout.LayoutParams lp = wide();
         lp.topMargin = dp(8);
         shadeList.addView(mediaPlayer(item), lp);
+        players = true;
       } else {
         items.add(item);
       }
@@ -798,7 +800,7 @@ final class PhoneSystemUi {
       lp.topMargin = dp(i == 0 ? 16 : 4);
       shadeList.addView(card, lp);
     }
-    if (items.isEmpty()) {
+    if (items.isEmpty() && !players) {
       TextView empty = text("No notifications", 15, secondaryText());
       empty.setGravity(Gravity.CENTER);
       empty.setPadding(0, dp(24), 0, dp(24));
