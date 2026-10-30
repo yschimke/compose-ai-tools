@@ -31,6 +31,7 @@ final class DeviceState {
   private int batteryLevel = 100;
   private int plugged = BatteryManager.BATTERY_PLUGGED_AC;
   private boolean powerSave;
+  private final BatteryWarnings warnings = new BatteryWarnings();
 
   DeviceState(Application app, Navigator navigator) {
     this.app = app;
@@ -67,6 +68,8 @@ final class DeviceState {
    * none}; or {@code charging} as a boolean) and {@code powerSave}; each optional, the rest kept.
    */
   private JSONObject battery(JSONObject c) throws JSONException {
+    int oldLevel = batteryLevel;
+    boolean wasCharging = plugged != 0;
     if (c.has("level")) batteryLevel = Math.max(0, Math.min(100, c.getInt("level")));
     if (c.has("plugged")) plugged = plugged(c.getString("plugged"));
     if (c.has("charging")) {
@@ -98,12 +101,19 @@ final class DeviceState {
                     : BatteryManager.BATTERY_STATUS_DISCHARGING)
             .putExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_GOOD);
     app.sendStickyBroadcast(changed);
-    if (c.has("level") || c.has("plugged") || c.has("charging")) {
+    if (charging != wasCharging) {
       navigator.broadcast(
           new Intent(charging ? Intent.ACTION_POWER_CONNECTED : Intent.ACTION_POWER_DISCONNECTED));
-      if (batteryLevel <= 15 && !charging) {
+    }
+    switch (warnings.update(oldLevel, wasCharging, batteryLevel, charging)) {
+      case LOW:
         navigator.broadcast(new Intent(Intent.ACTION_BATTERY_LOW));
-      }
+        break;
+      case OKAY:
+        navigator.broadcast(new Intent(Intent.ACTION_BATTERY_OKAY));
+        break;
+      default:
+        break;
     }
     if (c.has("powerSave") && c.getBoolean("powerSave") != powerSave) {
       powerSave = c.getBoolean("powerSave");
@@ -115,6 +125,7 @@ final class DeviceState {
         .put("level", batteryLevel)
         .put("charging", charging)
         .put("plugged", pluggedName(plugged))
+        .put("low", warnings.low())
         .put("powerSave", app.getSystemService(PowerManager.class).isPowerSaveMode())
         .object();
   }

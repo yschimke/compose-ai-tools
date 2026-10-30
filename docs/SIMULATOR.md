@@ -177,7 +177,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `posture` | `value` (`none`, `flat`, `half-opened`, `book`, `tabletop`), `orientation`? (`vertical` / `horizontal`), `hingeDp`? | the fold the app's `WindowInfoTracker` reports |
 | `fontScale` | `value` | the system font size, as a configuration change |
 | `display` | | size, density, orientation, rotation, font scale, night, locale, fold and qualifiers |
-| `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, power connected / low and power-save broadcasts |
+| `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
 | `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
 | `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
 | `quit` | | exits |
