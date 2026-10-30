@@ -74,6 +74,8 @@ final class DeviceDisplay {
           return describe();
         }
       case "display":
+        // `wm size` / `wm density` (size / density) are Device's; bare, this describes the display.
+        if (c.has("size") || c.has("density")) return null;
         return describe();
       default:
         return null;
@@ -158,6 +160,31 @@ final class DeviceDisplay {
   }
 
   /**
+   * {@code wm size} / {@code wm density}: [widthPx] x [heightPx] at [dpi], as on a device, so a
+   * density change keeps the pixel size. An override has no preset and no fold.
+   */
+  void overrideSize(int widthPx, int heightPx, int dpi) {
+    preset = null;
+    rotation = 0;
+    folds.set(Foldables.NONE, null, null);
+    resize(widthPx * 160 / dpi, heightPx * 160 / dpi, dpi + "dpi");
+  }
+
+  /** {@code wm size reset}: back to the launch's display, its preset and fold included. */
+  void reset(String launchQualifiers) {
+    rotation = 0;
+    String launchPreset = System.getProperty(DisplayGeometry.DEVICE_PROPERTY);
+    if (launchPreset != null) {
+      device(launchPreset, null);
+      return;
+    }
+    preset = null;
+    folds.set(Foldables.NONE, null, null);
+    RuntimeEnvironment.setQualifiers(launchQualifiers);
+    configurationChanged();
+  }
+
+  /**
    * Resizes the display to [widthDp] x [heightDp], keeping the density unless [density] names one
    * ({@code hdpi}, {@code 420dpi}, ...). The smallest width, screen size and aspect buckets and
    * the orientation follow from the size, as they do on a device; Robolectric's {@code +} merge
@@ -178,7 +205,7 @@ final class DeviceDisplay {
    * Delivers the configuration Robolectric now holds to the top activity, the way the system does
    * after a display change, then reports the new fold bounds and resizes the window.
    */
-  private void configurationChanged() {
+  void configurationChanged() {
     Display display =
         app.getSystemService(DisplayManager.class).getDisplay(Display.DEFAULT_DISPLAY);
     if (display != null) {
