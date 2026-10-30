@@ -790,6 +790,17 @@ compose-preview launch --adb   (this process: the device)
  └─ simulator JVM   --control stdio   what runs on the device; replaced on install
 ```
 
+**Screen and input.** The device has a screen two ways, both live and both taking input, and
+they show the same simulator. With a display, the simulator's own window opens as it does
+without `--adb`: mouse and keyboard drive it (right-click is Back), and an install closes it and
+opens the next simulator's in its place. Headless, or from Android Studio, the emulator gRPC
+endpoint below streams the display and takes touches and keys, which is what Studio's Running
+Devices window draws and sends. Input from adb (`input tap`), the window and gRPC all reach the
+one app, so a person can watch and use the device while a tool drives it.
+
+![A click in the window on the installed app's icon launches it](design/evidence/simulator-adb/window-click-launches-app.png)
+![Over gRPC: the streamed frames as a streamed tap opens Now Playing and GoBack closes it](design/evidence/simulator-adb/grpc-stream-touch-back.png)
+
 **Finding it.** Like an emulator it takes the first free port pair from 5554/5555, tells a
 running adb server about itself (`host:emulator:5555`), and is found by one started later, which
 scans 5555–5585. Its serial is `emulator-<console port>`, and `getprop` answers as an emulator's
@@ -840,7 +851,9 @@ endpoint implements `EmulatorController` from Studio's own `emulator_controller.
 Everything else answers `UNIMPLEMENTED`. **Verified here** with real `adb` 37 (devices, shell and
 exit codes, streamed install, `am start`, `screencap`, push / pull, interactive shell, uninstall,
 `DEBUG_SURFACE`) and a gRPC client built on Studio's stubs (status, displays, screenshots in each
-format, the frame stream, mouse input, the token check). **Not verified:** Android Studio itself,
+format, the frame stream, mouse input, the token check), the stream following a streamed touch
+tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
+display. **Not verified:** Android Studio itself,
 which the sandbox this was built in does not have; the discovery file follows the emulator's
 format, and Studio's own fallbacks (its deployer falling back to `pm install` sessions when its
 installer binary cannot run) are what the device relies on.
