@@ -198,9 +198,8 @@ button with an `actionRunCallback`) and `TaskListWidgetReceiver` (a `RemoteViews
 collection with a configure activity and per-row fill-in intents); `MainActivity` declares a static
 shortcut and publishes a dynamic one that asks `requestPinAppWidget` for the weather widget.
 
-The brief asked for Muzei, Home Assistant and MeshCore too. None of their APKs is in this sandbox,
-and its network refuses both GitHub's release API and F-Droid, so the third-party run is still to
-do; the commands below work unchanged on any APK with widgets.
+Real apps follow the sample's runs below: Home Assistant RemoteCompose and Cadence, built from
+their repositories.
 
 **Home and navigation** — the app; `key HOME` (the app stopped, the home screen resumed); a tap on
 its icon brings the same task back (`onRestart`, no new instance); a long press shows the manifest
@@ -237,6 +236,37 @@ showed in a separate run); the app
 drawer; `rotate landscape` re-flows the 4×6 grid to 7×3.
 
 ![Pin sheet, pinned, drawer, landscape](launcher-pin-drawer.png)
+
+### Real apps
+
+Debug APKs built from each repository's `main` (`:app:assembleDebug`, `:composeApp:assembleDebug`),
+run with `--launcher --sdk 36 --form-factor phone` (Home Assistant's dependencies read as XR to
+the detection), headless.
+
+**Home Assistant RemoteCompose** pins its widgets from a dashboard card rather than the picker: in
+the offline demo, a long press on the Garage Door card, its "Add to home screen", then the app's
+own install sheet's "Add widget" call `requestPinAppWidget` with the card's preview in
+`EXTRA_APPWIDGET_PREVIEW`. The sheet shows that preview; Add binds the widget and sends the app's
+callback, whose receiver stores the card and broadcasts `APPWIDGET_UPDATE` to the provider. The
+widget is an API 36 `RemoteViews.DrawInstructions` (Remote Compose) document, drawn by the
+framework, and re-laid out when resized to 2×2.
+
+![Home Assistant: card actions, its install sheet, the pin sheet with its preview, pinned, resized](launcher-ha-pin.png)
+
+Running the two apps found three faults, fixed with them: the app's install sheet (a Compose
+bottom-sheet dialog) stayed drawn and touchable over the home screen once the app stopped, since
+only an activity's own window was hidden; the pinned widget stayed on its initial layout until
+resized, since the app's explicit broadcast to its own manifest provider never arrived (Robolectric
+delivers an app's broadcasts to runtime receivers only); and Cadence's podcast widget, 250×80dp at
+the least, got 3×1 cells (232×72dp) and was clipped, since spans rounded to the nearest cell rather
+than up to one that holds the minimum.
+
+![Before and after: the pin sheet, the pinned widget, Cadence's span](launcher-real-apps-fixes.png)
+
+**MeshCore**'s battery widget is a Remote Compose widget enabled only from API 37
+(`android:enabled="@bool/widget_enabled"`, true in `values-v37`); Robolectric 4.17 runs up to 36, so
+`widgets` lists none for it, as a device on 36 would. Muzei's repository is not available to this
+sandbox.
 
 Re-collect: `./gradlew :samples:android:assembleDebug :cli:installDist`, then drive
 `cli/build/install/compose-preview/bin/compose-preview launch android-debug.apk --launcher

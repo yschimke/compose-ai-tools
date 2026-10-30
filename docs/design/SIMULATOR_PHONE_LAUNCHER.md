@@ -4,9 +4,9 @@
 runs, the commands and the limits are in [`docs/SIMULATOR.md` → Home screen and
 widgets](../SIMULATOR.md#home-screen-and-widgets), the evidence in
 [`evidence/simulator-launch/`](evidence/simulator-launch/README.md#home-screen-and-widgets).
-Still open from this brief: the evidence from Muzei, Home Assistant and MeshCore (no APK and no
-route to one from the sandbox that built it; `samples/android` carries a widget of each kind
-instead), the MCP schema (compose-preview-mcp, a separate PR), and the shade. Two departures: a
+Real apps: Home Assistant RemoteCompose's pin flow and Cadence's widget run (evidence README →
+Real apps); MeshCore's widget needs API 37, past Robolectric's 36; Muzei was not reachable. Still
+open from this brief: the MCP schema (compose-preview-mcp, a separate PR), and the shade. Two departures: a
 widget is named `widgetId` and a shortcut `shortcutId` in commands, since `id` is the command's
 own; and a pin request brings the home screen forward rather than drawing its sheet over the app.
 

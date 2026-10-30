@@ -96,7 +96,10 @@ and stopped, so its window is neither drawn nor touchable), `setResult` reaches 
 `startActivityForResult` caller, `CLEAR_TOP` / `SINGLE_TOP` / `CLEAR_TASK` are honored, a finished
 activity resumes the one below, and services are created, started, bound and destroyed through
 `ServiceController` (including `stopSelf`). The launcher activity takes the same path, so the stack
-has one owner.
+has one owner. A stopped activity's dialogs and bottom sheets are hidden with it. The app's own
+explicit `sendBroadcast` (a component or package named) reaches its manifest receivers too, on the
+main thread, as a device delivers it; Robolectric delivers an app's broadcasts to runtime receivers
+alone, which is also all an implicit one reaches on a device since API 26.
 
 **Startup** follows a device's order, through a Robolectric test environment of our own: the
 manifest's content providers are created after `attachBaseContext()` and before
@@ -494,8 +497,10 @@ a launcher do between them:
    updates merge, and errors show the error view — and redraw on every update (`widget`
    `updated` event with the layout, whether it was partial, the update count and a `reason`).
 
-The span is `targetCellWidth` × `targetCellHeight` when set, else from `minWidth` / `minHeight`;
-`resize` stays within `minResize*` / `maxResize*` along the axes `resizeMode` allows. `widget
+The span is `targetCellWidth` × `targetCellHeight` when set, else the fewest cells that hold
+`minWidth` / `minHeight` (a launcher never gives a widget less than its minimum); `resize` stays
+within `minResize*` (rounded up the same way) and `maxResize*` (the cells that fit in it) along
+the axes `resizeMode` allows. `widget
 update` sends `APPWIDGET_UPDATE`, as a launcher refresh does; `updatePeriodMillis` ticks follow the
 simulated clock (at least 30 minutes, as the system clamps it). An update's `reason` is the home
 screen's last prompt to that widget within ten simulated seconds (`bind`, `update`, `options`,

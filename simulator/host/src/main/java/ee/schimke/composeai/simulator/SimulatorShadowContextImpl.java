@@ -14,6 +14,8 @@ import org.robolectric.shadows.ShadowContextImpl;
  * bindService} before Robolectric looks the intent up. Robolectric answers a bind with the binder
  * registered for that exact intent, action and extras' filter included; an app's own explicit bind
  * resolves by component on a device, and Firebase Sessions binds with an action of {@code "0"}.
+ * Also routes the app's explicit broadcasts to its manifest receivers ({@link
+ * Navigator#appSentBroadcast}).
  * Added to the shadow map by {@link SimulatorSandbox}.
  */
 @Implements(className = "android.app.ContextImpl", isInAndroidSdk = false)
@@ -32,6 +34,22 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
       Intent service, int flags, Executor executor, ServiceConnection connection) {
     Navigator.prepareBind(service);
     return super.bindService(service, flags, executor, connection);
+  }
+
+  /**
+   * The app's explicit broadcast also reaches its manifest receivers, which Robolectric does not
+   * register for an APK: see {@link Navigator#appSentBroadcast}.
+   */
+  @Implementation
+  @Override
+  protected void sendBroadcast(Intent intent) {
+    if (!Navigator.appSentBroadcast(intent)) super.sendBroadcast(intent);
+  }
+
+  @Implementation
+  @Override
+  protected void sendBroadcast(Intent intent, String receiverPermission) {
+    if (!Navigator.appSentBroadcast(intent)) super.sendBroadcast(intent, receiverPermission);
   }
 
   @Implementation

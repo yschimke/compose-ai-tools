@@ -32,11 +32,26 @@ final class LauncherGrid {
     rows = Math.max(1, (heightDp - TOP_DP - BOTTOM_DP + GAP_DP) / step);
   }
 
-  /** Cells for [px] at [density]: {@code round((dp + gap) / (cell + gap))}, at least one. */
-  static int cells(int px, float density) {
+  /**
+   * The fewest cells that hold [px] at [density], at least one: a launcher never gives a widget
+   * less than its {@code minWidth} or {@code minResizeWidth}, so a 250dp minimum takes four 72dp
+   * cells (312dp), not three (232dp). The preview runtime rounds to the nearest instead, which only
+   * matters for a size between two spans.
+   */
+  static int cellsAtLeast(int px, float density) {
     if (px <= 0) return 1;
-    float dp = px / density;
-    return Math.max(1, Math.round((dp + GAP_DP) / (float) (CELL_DP + GAP_DP)));
+    return Math.max(1, (int) Math.ceil(steps(px, density) - 1e-3));
+  }
+
+  /** The most cells that fit in [px] at [density], at least one: a {@code maxResize*} limit. */
+  static int cellsAtMost(int px, float density) {
+    if (px <= 0) return 1;
+    return Math.max(1, (int) Math.floor(steps(px, density) + 1e-3));
+  }
+
+  /** [px] in cell steps: {@code (dp + gap) / (cell + gap)}, so {@code n} cells are exactly n. */
+  private static float steps(int px, float density) {
+    return (px / density + GAP_DP) / (float) (CELL_DP + GAP_DP);
   }
 
   /** The dp a span of [cells] covers. */
