@@ -765,7 +765,9 @@ between the apps and reach their listeners and manifest `WearableListenerService
 client returns is complete yet: each completes on a later turn of the main looper. Each peer is
 also a `CompanionDeviceManager` association (the [`companion`](#the-control-channel) command). With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
-`device`, and each crossing is a `datalayer` event. `RemoteActivityHelper` launches, Horologist's
+`device`, and each crossing is a `datalayer` event. Every other line either simulator prints — the
+app's logcat, Robolectric's logging and stack traces on stderr, and without the control channel its
+stdout too — is prefixed with its device, `[phone] ` or `[watch] `. `RemoteActivityHelper` launches, Horologist's
 `DataLayerAppHelper`, and on the watch `RemoteAuthClient`, `BridgingManager` and
 `PhoneTypeHelper` work across the pair too. A prototype; the design, evidence and what is
 missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).

@@ -10,10 +10,13 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * `launch --pair`: the phone's and the watch's simulators as one session. Without the control
- * channel both inherit the terminal and show their windows. With it, this process owns both
- * channels: a stdin command goes to the simulator its `"device"` names (the first, the phone, when
- * it names none), and each line a simulator prints comes out with its `"device"` added, so one
- * client drives the pair. Either simulator ending ends the other; closing stdin ends both.
+ * channel both share the terminal and show their windows. With it, this process owns both channels:
+ * a stdin command goes to the simulator its `"device"` names (the first, the phone, when it names
+ * none), and each JSON line a simulator prints comes out with its `"device"` added, so one client
+ * drives the pair. Every other line either simulator prints — its stderr (the app's logcat,
+ * Robolectric, stack traces) and, without the control channel, its stdout — comes out prefixed with
+ * its device, `[phone] ` or `[watch] `, so two interleaved logs stay readable. Either simulator
+ * ending ends the other; closing stdin ends both.
  */
 internal class PairedLaunch(
   private val devices: List<Pair<String, List<String>>>,
@@ -22,12 +25,40 @@ internal class PairedLaunch(
 
   fun run(): Int {
     val processes = devices.map { (device, command) ->
-      val builder = ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.INHERIT)
-      if (!control) builder.inheritIO()
+      val builder = ProcessBuilder(command)
+      if (!control) builder.redirectInput(ProcessBuilder.Redirect.INHERIT)
       device to builder.start()
     }
     val hook = Thread { processes.forEach { (_, process) -> destroyTree(process) } }
     Runtime.getRuntime().addShutdownHook(hook)
+    val pumps = mutableListOf<Thread>()
+    for ((device, process) in processes) {
+      pumps +=
+        daemon("paired-err-$device") {
+          process.errorStream.bufferedReader().useLines { lines ->
+            for (line in lines) {
+              val prefixed = prefix(line, device)
+              synchronized(System.err) { System.err.println(prefixed) }
+            }
+          }
+        }
+    }
+    if (!control) {
+      for ((device, process) in processes) {
+        pumps +=
+          daemon("paired-out-$device") {
+            process.inputStream.bufferedReader().useLines { lines ->
+              for (line in lines) {
+                val prefixed = prefix(line, device)
+                synchronized(System.out) {
+                  println(prefixed)
+                  System.out.flush()
+                }
+              }
+            }
+          }
+      }
+    }
 
     if (control) {
       val inputs = processes.associate { (device, process) ->
@@ -35,17 +66,18 @@ internal class PairedLaunch(
       }
       val primary = devices.first().first
       for ((device, process) in processes) {
-        daemon("paired-out-$device") {
-          process.inputStream.bufferedReader().useLines { lines ->
-            for (line in lines) {
-              val tagged = tag(line, device)
-              synchronized(System.out) {
-                println(tagged)
-                System.out.flush()
+        pumps +=
+          daemon("paired-out-$device") {
+            process.inputStream.bufferedReader().useLines { lines ->
+              for (line in lines) {
+                val tagged = tag(line, device)
+                synchronized(System.out) {
+                  println(tagged)
+                  System.out.flush()
+                }
               }
             }
           }
-        }
       }
       daemon("paired-in") {
         System.`in`.bufferedReader().useLines { lines ->
@@ -78,6 +110,8 @@ internal class PairedLaunch(
         )
         .get() as Process
     processes.forEach { (_, p) -> if (p !== exit) destroyTree(p) }
+    // The last lines either simulator printed, its exit's stack trace among them.
+    pumps.forEach { it.join(PUMP_DRAIN_MS) }
     try {
       Runtime.getRuntime().removeShutdownHook(hook)
     } catch (_: IllegalStateException) {
@@ -93,10 +127,18 @@ internal class PairedLaunch(
     }
       .getOrNull()
 
-    /** [line] with `"device":<device>` added, when it is a JSON object; otherwise as is. */
+    private const val PUMP_DRAIN_MS = 2_000L
+
+    /** A simulator's log line, prefixed with its device: `[watch] D/Tile: …`. */
+    internal fun prefix(line: String, device: String): String = "[$device] $line"
+
+    /**
+     * [line] with `"device":<device>` added, when it is a JSON object; otherwise [prefix]ed: the
+     * control channel's stdout carries only JSON, so anything else is stray output.
+     */
     internal fun tag(line: String, device: String): String {
       val trimmed = line.trimStart()
-      if (!trimmed.startsWith("{")) return line
+      if (!trimmed.startsWith("{")) return prefix(line, device)
       val rest = trimmed.substring(1).trimStart()
       val separator = if (rest.startsWith("}")) "" else ","
       return "{\"device\":${JsonPrimitive(device)}$separator$rest"
