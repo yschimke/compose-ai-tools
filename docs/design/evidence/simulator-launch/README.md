@@ -264,9 +264,13 @@ than up to one that holds the minimum.
 ![Before and after: the pin sheet, the pinned widget, Cadence's span](launcher-real-apps-fixes.png)
 
 **MeshCore**'s battery widget is a Remote Compose widget enabled only from API 37
-(`android:enabled="@bool/widget_enabled"`, true in `values-v37`); Robolectric 4.17 runs up to 36, so
-`widgets` lists none for it, as a device on 36 would. Muzei's repository is not available to this
-sandbox.
+(`android:enabled="@bool/widget_enabled"`, true in `values-v37`). On `--sdk 36` the receiver is
+disabled and `widgets` lists none, as a device on 36 would. Robolectric 4.17 ships the API 37
+framework, so on `--sdk 37` (`:app:assembleDebug`, `--launcher --form-factor phone`) the widget is
+listed, placed at 4×2 (its 250×110dp minimum) and redrawn by `widget update`; it shows "No device"
+with no radio paired. Muzei's repository is not available to this sandbox.
+
+![MeshCore on --sdk 36 (no widgets) and --sdk 37 (placed, updated)](launcher-meshcore-api37.png)
 
 Re-collect: `./gradlew :samples:android:assembleDebug :cli:installDist`, then drive
 `cli/build/install/compose-preview/bin/compose-preview launch android-debug.apk --launcher
