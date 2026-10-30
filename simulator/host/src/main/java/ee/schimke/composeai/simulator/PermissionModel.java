@@ -120,7 +120,8 @@ final class PermissionModel {
               "BLUETOOTH_ADVERTISE",
               "NEARBY_WIFI_DEVICES",
               "UWB_RANGING",
-              "RANGING"),
+              "RANGING",
+              "ACCESS_LOCAL_NETWORK"),
           group("READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"));
 
   /** Platform runtime permissions newer than API 30, and the API that added each. */
@@ -144,12 +145,87 @@ final class PermissionModel {
     }
     SINCE.put(VISUAL_USER_SELECTED, 34);
     SINCE.put("android.permission.RANGING", 36);
+    // Android 17; before it, local network access rides on NEARBY_WIFI_DEVICES.
+    SINCE.put("android.permission.ACCESS_LOCAL_NETWORK", 37);
   }
 
   private static Set<String> group(String... names) {
     Set<String> set = new HashSet<>();
     for (String n : names) set.add(n.contains(".") ? n : "android.permission." + n);
     return set;
+  }
+
+  /**
+   * The platform's runtime ("dangerous") permissions, the ones a device asks the user for.
+   * Robolectric has no platform permission definitions to read a protection level from. The
+   * Android XR ones are runtime on a headset, and ACCESS_LOCAL_NETWORK on Android 17.
+   */
+  private static final Set<String> RUNTIME =
+      new HashSet<>(
+          Arrays.asList(
+              "ACCEPT_HANDOVER",
+              "ACCESS_BACKGROUND_LOCATION",
+              "ACCESS_COARSE_LOCATION",
+              "ACCESS_FINE_LOCATION",
+              "ACCESS_LOCAL_NETWORK",
+              "ACCESS_MEDIA_LOCATION",
+              "ACTIVITY_RECOGNITION",
+              "ANSWER_PHONE_CALLS",
+              "BLUETOOTH_ADVERTISE",
+              "BLUETOOTH_CONNECT",
+              "BLUETOOTH_SCAN",
+              "BODY_SENSORS",
+              "BODY_SENSORS_BACKGROUND",
+              "BODY_TRACKING",
+              "CALL_PHONE",
+              "CAMERA",
+              "EYE_TRACKING_COARSE",
+              "EYE_TRACKING_FINE",
+              "FACE_TRACKING",
+              "GET_ACCOUNTS",
+              "HAND_TRACKING",
+              "HEAD_TRACKING",
+              "NEARBY_WIFI_DEVICES",
+              "POST_NOTIFICATIONS",
+              "PROCESS_OUTGOING_CALLS",
+              "RANGING",
+              "READ_CALENDAR",
+              "READ_CALL_LOG",
+              "READ_CONTACTS",
+              "READ_EXTERNAL_STORAGE",
+              "READ_MEDIA_AUDIO",
+              "READ_MEDIA_IMAGES",
+              "READ_MEDIA_VIDEO",
+              "READ_MEDIA_VISUAL_USER_SELECTED",
+              "READ_PHONE_NUMBERS",
+              "READ_PHONE_STATE",
+              "READ_SMS",
+              "RECEIVE_MMS",
+              "RECEIVE_SMS",
+              "RECEIVE_WAP_PUSH",
+              "RECORD_AUDIO",
+              "SCENE_UNDERSTANDING_COARSE",
+              "SCENE_UNDERSTANDING_FINE",
+              "SEND_SMS",
+              "USE_SIP",
+              "UWB_RANGING",
+              "WRITE_CALENDAR",
+              "WRITE_CALL_LOG",
+              "WRITE_CONTACTS",
+              "WRITE_EXTERNAL_STORAGE"));
+
+  /** A permission the platform defines, rather than the app or another package. */
+  static boolean isPlatform(String name) {
+    return name.startsWith("android.permission.")
+        || name.equals("com.android.voicemail.permission.ADD_VOICEMAIL");
+  }
+
+  /** Whether the platform permission [name] is a runtime one: Health Connect's all are. */
+  static boolean isPlatformRuntime(String name) {
+    if (name.startsWith("android.permission.health.")) return true;
+    if (name.equals("com.android.voicemail.permission.ADD_VOICEMAIL")) return true;
+    return name.startsWith("android.permission.")
+        && RUNTIME.contains(name.substring("android.permission.".length()));
   }
 
   private final Set<String> manifest;

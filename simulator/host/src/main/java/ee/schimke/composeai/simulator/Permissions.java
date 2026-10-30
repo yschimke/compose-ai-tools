@@ -137,55 +137,6 @@ final class Permissions {
   }
 
   /**
-   * The platform's runtime ("dangerous") permissions, the ones a device asks the user for.
-   * Robolectric has no platform permission definitions to read a protection level from.
-   */
-  private static final Set<String> RUNTIME =
-      new HashSet<>(
-          Arrays.asList(
-              "ACCEPT_HANDOVER",
-              "ACCESS_BACKGROUND_LOCATION",
-              "ACCESS_COARSE_LOCATION",
-              "ACCESS_FINE_LOCATION",
-              "ACCESS_MEDIA_LOCATION",
-              "ACTIVITY_RECOGNITION",
-              "ANSWER_PHONE_CALLS",
-              "BLUETOOTH_ADVERTISE",
-              "BLUETOOTH_CONNECT",
-              "BLUETOOTH_SCAN",
-              "BODY_SENSORS",
-              "BODY_SENSORS_BACKGROUND",
-              "CALL_PHONE",
-              "CAMERA",
-              "GET_ACCOUNTS",
-              "NEARBY_WIFI_DEVICES",
-              "POST_NOTIFICATIONS",
-              "PROCESS_OUTGOING_CALLS",
-              "RANGING",
-              "READ_CALENDAR",
-              "READ_CALL_LOG",
-              "READ_CONTACTS",
-              "READ_EXTERNAL_STORAGE",
-              "READ_MEDIA_AUDIO",
-              "READ_MEDIA_IMAGES",
-              "READ_MEDIA_VIDEO",
-              "READ_MEDIA_VISUAL_USER_SELECTED",
-              "READ_PHONE_NUMBERS",
-              "READ_PHONE_STATE",
-              "READ_SMS",
-              "RECEIVE_MMS",
-              "RECEIVE_SMS",
-              "RECEIVE_WAP_PUSH",
-              "RECORD_AUDIO",
-              "SEND_SMS",
-              "USE_SIP",
-              "UWB_RANGING",
-              "WRITE_CALENDAR",
-              "WRITE_CALL_LOG",
-              "WRITE_CONTACTS",
-              "WRITE_EXTERNAL_STORAGE"));
-
-  /**
    * Grants what a device grants at install: every requested permission that is not a runtime one.
    * Robolectric starts with all of them denied, so {@code INTERNET} or {@code FOREGROUND_SERVICE}
    * checks fail. Runs before the application's {@code onCreate()}.
@@ -208,11 +159,7 @@ final class Permissions {
   /** A runtime permission: the platform's, or one the app defines as dangerous. */
   static boolean isRuntime(PackageManager pm, String name) {
     // Health Connect's are all runtime; ADD_VOICEMAIL is the one outside `android.permission.`.
-    if (name.startsWith("android.permission.health.")) return true;
-    if (name.equals("com.android.voicemail.permission.ADD_VOICEMAIL")) return true;
-    if (name.startsWith("android.permission.")) {
-      return RUNTIME.contains(name.substring("android.permission.".length()));
-    }
+    if (PermissionModel.isPlatform(name)) return PermissionModel.isPlatformRuntime(name);
     try {
       return pm.getPermissionInfo(name, 0).getProtection() == PermissionInfo.PROTECTION_DANGEROUS;
     } catch (PackageManager.NameNotFoundException e) {
