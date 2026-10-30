@@ -143,6 +143,7 @@ final class Permissions {
    * of every permission the manifest requests.
    */
   JSONObject command(JSONObject c) throws JSONException {
+    if (c.optBoolean("reset", false)) reset();
     if (c.has("policy")) {
       String policy = c.getString("policy");
       if (!policy.equals("grant") && !policy.equals("deny")) {
@@ -153,6 +154,26 @@ final class Permissions {
     answer(c.optJSONArray("grant"), true);
     answer(c.optJSONArray("deny"), false);
     return state();
+  }
+
+  /**
+   * As after a fresh install ({@code pm reset-permissions}, {@code pm clear}): no answers, the
+   * granting policy, and every runtime permission the manifest requests revoked.
+   */
+  void reset() {
+    answers.clear();
+    grantByDefault = true;
+    try {
+      PackageInfo info =
+          app.getPackageManager()
+              .getPackageInfo(app.getPackageName(), PackageManager.GET_PERMISSIONS);
+      if (info.requestedPermissions == null) return;
+      for (String name : info.requestedPermissions) {
+        if (isRuntime(app.getPackageManager(), name)) set(name, false);
+      }
+    } catch (PackageManager.NameNotFoundException e) {
+      // Nothing requested.
+    }
   }
 
   private void answer(JSONArray names, boolean granted) throws JSONException {
@@ -172,7 +193,7 @@ final class Permissions {
     }
   }
 
-  private JSONObject state() {
+  JSONObject state() {
     JSONObject current = new JSONObject();
     try {
       PackageInfo info =

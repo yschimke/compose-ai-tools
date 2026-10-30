@@ -223,6 +223,31 @@ final class Navigator {
     return describe(entry, "resumed");
   }
 
+  /**
+   * What {@code am force-stop} can do in one process: destroys every activity, top first, and
+   * every service. The application object, its singletons and threads stay; there is no second
+   * process to start in their place.
+   */
+  JSONObject forceStop() {
+    JSONArray activities = new JSONArray();
+    while (!stack.isEmpty()) {
+      Entry entry = stack.pop();
+      destroy(entry);
+      activities.put(entry.activity().getClass().getName());
+      protocol.event("activity", describe(entry, "destroyed"));
+    }
+    JSONArray stopped = new JSONArray();
+    for (Map.Entry<ComponentName, Running> e : new ArrayList<>(services.entrySet())) {
+      destroyService(e.getKey(), e.getValue());
+      stopped.put(e.getKey().getClassName());
+      protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
+    }
+    if (activities.length() > 0) {
+      protocol.event("activity", new Protocol.Json().put("state", "empty").object());
+    }
+    return new Protocol.Json().put("activities", activities).put("services", stopped).object();
+  }
+
   /** Finishes the top activity the way {@code Activity.finish()} would, without a back press. */
   JSONObject finishTop() {
     Entry top = stack.peek();
@@ -460,8 +485,7 @@ final class Navigator {
     if (running == null) return new Protocol.Json().put("running", false).object();
     running.started = false;
     if (running.bindings == 0) {
-      services.remove(component);
-      running.controller.destroy();
+      destroyService(component, running);
       protocol.event("service", describe(component, running, "destroyed"));
       return describe(component, running, "destroyed");
     }
@@ -518,6 +542,17 @@ final class Navigator {
     boundByApp.add(new Intent.FilterComparison(key));
   }
 
+  /**
+   * Destroys a running service and drops its entry; a {@link LazyBinder} the app still holds for
+   * it then binds a fresh instance rather than handing out the destroyed one's binder.
+   */
+  private void destroyService(ComponentName component, Running running) {
+    services.remove(component);
+    running.controller.destroy();
+    LazyBinder binder = bindable.get(component);
+    if (binder != null) binder.forget();
+  }
+
   /** Binds [component] for the app: creates the service if needed and returns its binder. */
   private IBinder bindForApp(ComponentName component) {
     Intent intent = new Intent().setComponent(component);
@@ -535,6 +570,11 @@ final class Navigator {
   private static final class LazyBinder implements IBinder {
     private final ComponentName component;
     private IBinder real;
+
+    /** The service was destroyed: the next call binds a new instance. */
+    void forget() {
+      real = null;
+    }
 
     LazyBinder(ComponentName component) {
       this.component = component;
@@ -598,8 +638,7 @@ final class Navigator {
       binder = running.controller.get().onBind(intent);
     } catch (RuntimeException e) {
       if (!running.started && running.bindings == 0) {
-        services.remove(component);
-        running.controller.destroy();
+        destroyService(component, running);
       }
       throw e;
     }
@@ -631,8 +670,7 @@ final class Navigator {
     if (running.bindings == 0) {
       running.controller.get().onUnbind(intent);
       if (!running.started) {
-        services.remove(component);
-        running.controller.destroy();
+        destroyService(component, running);
         protocol.event("service", describe(component, running, "destroyed"));
         return describe(component, running, "destroyed");
       }
@@ -669,6 +707,8 @@ final class Navigator {
       if (shadow.isStoppedBySelf()) {
         it.remove();
         e.getValue().controller.destroy();
+        LazyBinder binder = bindable.get(e.getKey());
+        if (binder != null) binder.forget();
         protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
       }
     }
