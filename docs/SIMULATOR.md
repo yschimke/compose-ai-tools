@@ -1404,15 +1404,18 @@ prints it where tools read the text (`Starting: Intent { … }`, `Broadcast comp
 the client closes the stream; `-d` dumps, `-t N` dumps the last N, `-T N` follows from the last N,
 `-c` clears, `-m N` stops after N. Filterspecs (`TAG:LEVEL`, `*:LEVEL`, `-s`) and `-e REGEX`
 filter; `-v` takes `threadtime` (the default), `long`, `brief`, `time`, `tag`, `process` and
-`raw`, with the `epoch` and `year` modifiers (`color`, `uid` and the like change nothing); `-b`,
+`raw`, with the `epoch` and `year` modifiers (`color`, `uid` and the like change nothing), or `--proto` (below); `-b`,
 `--pid` and `--uid` are accepted, as there is one buffer and one process. Android Studio's Logcat
-window runs `date +%s`, then follows with `logcat -v long -v epoch -T N` (protobuf `--proto` is
-for API 36 and later), and reads it as from a device. The simulator follows once, unfiltered, and
-the device hands each entry to every follower in its own filter and format, so Studio and a
-terminal can follow at once; an install's new simulator follows for them too. The pid is the
-simulator JVM's (Robolectric's `Process.myPid()` is 0). Studio shows the process as `pid-N`:
-the device reports no process names (`track-jdwp` lists none), so its `package:mine` filter
-matches nothing. `adb push` / `pull`
+window runs `date +%s`, then follows with `logcat -v long -v epoch -T N`, or on API 36 and later
+`logcat --proto -T N`: each entry a little-endian 64-bit length and a `LogcatEntryProto`, with
+the installed package as its `process_name`. Studio reads both as from a device. The simulator
+follows once, unfiltered, and the device hands each entry to every follower in its own filter and
+format, so Studio and a terminal can follow at once; an install's new simulator follows for them
+too, and the simulator stops following when the last one leaves. An entry logged as a follower
+starts, in both the printed log and the stream, is printed once. The pid is the simulator JVM's
+(Robolectric's `Process.myPid()` is 0). In the text formats Studio shows the process as `pid-N`,
+as the device reports no process names (`track-jdwp` lists none), so there its `package:mine`
+filter matches nothing. `adb push` / `pull`
 and `ls`, `rm`, `mkdir`, `cat` reach `/data/local/tmp` and `/sdcard`, kept under the device's
 directory in the cache; an app's private files are `run-as`, which the simulator answers. A
 native binary pushed there (Studio's deployer) does not run: `can't execute`, exit 126.

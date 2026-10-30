@@ -219,22 +219,35 @@ internal class DeviceShell(private val device: VirtualDevice) {
       return 0
     }
     val incoming = LinkedBlockingQueue<LogcatEntry>()
+    val pending = ArrayDeque<LogcatEntry>()
     // Subscribed before the dump, so nothing logged in between is missed.
     val following =
       if (options.op == LogcatOptions.Op.FOLLOW) device.followLog { incoming.put(it) } else null
     try {
       var printed = 0
+      val processName = device.installed?.packageName
       fun print(entry: LogcatEntry): Boolean {
-        out.write(options.print(entry).toByteArray())
+        out.write(options.bytes(entry, processName))
         printed++
         return options.max == null || printed < options.max
       }
       val dump = device.simulator().request(options.dumpRequest())
-      for (element in dump["entries"] as? JsonArray ?: JsonArray(emptyList())) {
-        if (!print(LogcatEntry.of(element as JsonObject))) return 0
-      }
+      val dumped =
+        (dump["entries"] as? JsonArray ?: JsonArray(emptyList())).map {
+          LogcatEntry.of(it as JsonObject)
+        }
+      for (entry in dumped) if (!print(entry)) return 0
       out.stdout.flush()
       if (following == null) return 0
+      // What was logged between subscribing and the dump is in both: the dump's copy is printed,
+      // the follower's dropped, once each.
+      val overlap = HashMap<LogcatEntry, Int>()
+      for (entry in dumped) overlap.merge(entry, 1, Int::plus)
+      repeat(incoming.size) {
+        val entry = incoming.poll() ?: return@repeat
+        val seen = overlap[entry] ?: 0
+        if (seen > 0) overlap[entry] = seen - 1 else pending.add(entry)
+      }
       // The client closing the stream is the end of stdin: logcat runs until then.
       val closed = AtomicBoolean()
       Thread(
@@ -249,7 +262,8 @@ internal class DeviceShell(private val device: VirtualDevice) {
           start()
         }
       while (!closed.get() && !device.exit.isDone) {
-        val entry = incoming.poll(250, TimeUnit.MILLISECONDS) ?: continue
+        val entry =
+          pending.removeFirstOrNull() ?: incoming.poll(250, TimeUnit.MILLISECONDS) ?: continue
         if (!options.matches(entry)) continue
         val more = print(entry)
         out.stdout.flush()

@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.device
 
+import com.google.protobuf.CodedInputStream
+import com.google.protobuf.WireFormat
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.test.Test
@@ -107,13 +111,45 @@ class DeviceLogcatTest {
     assertFalse(hub.offer(line))
     val got = mutableListOf<LogcatEntry>()
     var armed = 0
-    val subscription = hub.subscribe({ got += it }) { armed++ }
-    hub.subscribe({}) { armed++ }.close()
+    var disarmed = 0
+    val subscription = hub.subscribe({ got += it }, { armed++ }, { disarmed++ })
+    hub.subscribe({}, { armed++ }, { disarmed++ }).close()
     assertEquals(1, armed)
+    assertEquals(0, disarmed)
     assertTrue(hub.offer(line))
     assertFalse(hub.offer("""{"event":"activity","state":"resumed"}"""))
     assertEquals(listOf(LogcatEntry("10-30 21:40:05.123", 'I', "T", "m", 7)), got)
+    // The last follower leaving stops the simulator's follower, and its events go on to the client.
     subscription.close()
+    assertEquals(1, disarmed)
     assertFalse(hub.offer(line))
+  }
+
+  @Test
+  fun `proto records are a little-endian length then a LogcatEntryProto`() {
+    val options = LogcatOptions.parse(listOf("--proto", "-T", "5"))
+    assertTrue(options.proto)
+    val bytes = options.bytes(entry, "com.example.app")
+    val size = ByteBuffer.wrap(bytes, 0, 8).order(ByteOrder.LITTLE_ENDIAN).long
+    assertEquals(bytes.size - 8L, size)
+    val fields = mutableMapOf<Int, Any>()
+    val input = CodedInputStream.newInstance(bytes, 8, bytes.size - 8)
+    while (true) {
+      val tag = input.readTag()
+      if (tag == 0) break
+      val field = WireFormat.getTagFieldNumber(tag)
+      fields[field] =
+        if (WireFormat.getTagWireType(tag) == WireFormat.WIRETYPE_LENGTH_DELIMITED)
+          input.readBytes().toStringUtf8()
+        else input.readInt64()
+    }
+    val stamp = LogcatOptions.parseStamp(entry.time)!!.atZone(ZoneId.systemDefault()).toInstant()
+    assertEquals(stamp.epochSecond, fields[1])
+    assertEquals(123_000_000L, fields[2])
+    assertEquals(3L, fields[3]) // DEBUG
+    assertEquals(4242L, fields[5])
+    assertEquals("Sample", fields[7])
+    assertEquals("hello", fields[8])
+    assertEquals("com.example.app", fields[9])
   }
 }

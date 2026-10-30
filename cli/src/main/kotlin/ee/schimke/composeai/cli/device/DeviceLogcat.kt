@@ -1,5 +1,10 @@
 package ee.schimke.composeai.cli.device
 
+import com.google.protobuf.ByteString
+import com.google.protobuf.CodedOutputStream
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.LocalDateTime
 import java.time.Year
 import java.time.ZoneId
@@ -39,7 +44,8 @@ internal data class LogcatEntry(
 /**
  * An `adb logcat` command line: what to do (dump, clear or follow), which entries, and how each is
  * printed — `threadtime` by default, or `-v long` with `-v epoch` as Android Studio's Logcat window
- * asks for, `brief`, `time`, `tag`, `raw`.
+ * asks for, `brief`, `time`, `tag`, `raw`, or `--proto`, the binary records Studio reads from
+ * API 36.
  */
 internal data class LogcatOptions(
   val op: Op = Op.FOLLOW,
@@ -53,6 +59,8 @@ internal data class LogcatOptions(
   val filters: Map<String, Char> = emptyMap(),
   val defaultLevel: Char? = null,
   val regex: Regex? = null,
+  /** `--proto`: length-prefixed `LogcatEntryProto` records instead of text. */
+  val proto: Boolean = false,
 ) {
 
   enum class Op {
@@ -88,6 +96,31 @@ internal data class LogcatOptions(
         else -> "$time ${pad(entry.pid)} ${pad(entry.pid)} ${entry.level} $tag: "
       }
     return lines.joinToString("") { "$prefix$it\n" }
+  }
+
+  /**
+   * [entry] as the bytes this logcat writes: [print]'s text, or with [proto] one record — its
+   * length as a little-endian 64-bit integer, then a `LogcatEntryProto` (`time_sec` 1, `time_nsec`
+   * 2, `priority` 3, `pid` 5, `tid` 6, `tag` 7, `message` 8, `process_name` 9), as Android Studio's
+   * `LogcatProtoShellCollector` reads them.
+   */
+  fun bytes(entry: LogcatEntry, processName: String?): ByteArray {
+    if (!proto) return print(entry).toByteArray()
+    val instant = parseStamp(entry.time)?.atZone(ZoneId.systemDefault())?.toInstant()
+    val record = ByteArrayOutputStream()
+    CodedOutputStream.newInstance(record).run {
+      writeInt64(1, instant?.epochSecond ?: 0)
+      writeInt64(2, instant?.nano?.toLong() ?: 0)
+      writeEnum(3, PROTO_PRIORITY[entry.level] ?: 0)
+      writeInt64(5, entry.pid.toLong())
+      writeInt64(6, entry.pid.toLong())
+      writeBytes(7, ByteString.copyFromUtf8(entry.tag))
+      writeBytes(8, ByteString.copyFromUtf8(entry.message))
+      if (processName != null) writeString(9, processName)
+      flush()
+    }
+    val size = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(record.size().toLong())
+    return size.array() + record.toByteArray()
   }
 
   /** The dump request for the simulator: its filter, so that `tail` counts the matching ones. */
@@ -145,6 +178,7 @@ internal data class LogcatOptions(
         val arg = args[i]
         when {
           arg == "-d" -> options = options.copy(op = Op.DUMP)
+          arg == "--proto" -> options = options.copy(proto = true)
           arg == "-c" -> options = options.copy(op = Op.CLEAR)
           arg == "-s" -> silent = true
           arg == "-t" -> options = options.copy(op = Op.DUMP, tail = count(arg, value(arg)))
@@ -209,6 +243,10 @@ internal data class LogcatOptions(
 
     private fun pad(n: Int) = n.toString().padStart(5)
 
+    /** `LogcatPriorityProto`'s values. */
+    private val PROTO_PRIORITY =
+      mapOf('V' to 2, 'D' to 3, 'I' to 4, 'W' to 5, 'E' to 6, 'F' to 8, 'A' to 8, 'S' to 9)
+
     /**
      * Robolectric's stamp has no year: this one's, or last year's for a stamp that would otherwise
      * be in the future (the turn of a year).
@@ -234,12 +272,25 @@ internal class LogcatHub {
   val active: Boolean
     get() = listeners.isNotEmpty()
 
-  /** Adds [listener]; [arm] starts the simulator following when it is the first. */
-  fun subscribe(listener: (LogcatEntry) -> Unit, arm: () -> Unit): AutoCloseable {
-    val first = listeners.isEmpty()
-    listeners.add(listener)
-    if (first) arm()
-    return AutoCloseable { listeners.remove(listener) }
+  private val lock = Any()
+
+  /**
+   * Adds [listener]; [arm] starts the simulator following when it is the first, and [disarm] stops
+   * it when the last one closes, so the simulator does not go on polling the log for nobody.
+   */
+  fun subscribe(
+    listener: (LogcatEntry) -> Unit,
+    arm: () -> Unit,
+    disarm: () -> Unit,
+  ): AutoCloseable {
+    synchronized(lock) {
+      val first = listeners.isEmpty()
+      listeners.add(listener)
+      if (first) arm()
+    }
+    return AutoCloseable {
+      synchronized(lock) { if (listeners.remove(listener) && listeners.isEmpty()) disarm() }
+    }
   }
 
   /** Whether [line] is a `log` event, which it hands to the followers when there are any. */
@@ -262,6 +313,11 @@ internal class LogcatHub {
           "cmd" to JsonPrimitive("logcat"),
           "op" to JsonPrimitive("follow"),
         )
+      )
+
+    val STOP: JsonObject =
+      JsonObject(
+        mapOf<String, JsonElement>("cmd" to JsonPrimitive("logcat"), "op" to JsonPrimitive("stop"))
       )
   }
 }

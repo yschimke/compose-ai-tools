@@ -167,7 +167,15 @@ internal class VirtualDevice(
    * subscription is closed.
    */
   fun followLog(listener: (LogcatEntry) -> Unit): AutoCloseable =
-    logcat.subscribe(listener) { followLog(simulator()) }
+    logcat.subscribe(
+      listener,
+      arm = { followLog(simulator()) },
+      disarm = {
+        link
+          ?.takeIf { it.alive }
+          ?.let { simulator -> runCatching { simulator.request(LogcatHub.STOP) } }
+      },
+    )
 
   private fun followLog(simulator: SimulatorLink) {
     runCatching { simulator.request(LogcatHub.FOLLOW) }
