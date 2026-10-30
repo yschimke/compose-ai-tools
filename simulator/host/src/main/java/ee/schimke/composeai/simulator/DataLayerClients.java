@@ -255,10 +255,12 @@ final class DataLayerClients {
   static final class SimNode implements Node {
     private final String id;
     private final String name;
+    private final boolean nearby;
 
-    SimNode(String id, String name) {
+    SimNode(String id, String name, boolean nearby) {
       this.id = id;
       this.name = name;
+      this.nearby = nearby;
     }
 
     @Override
@@ -273,7 +275,7 @@ final class DataLayerClients {
 
     @Override
     public boolean isNearby() {
-      return true;
+      return nearby;
     }
 
     @Override
