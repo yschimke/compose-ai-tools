@@ -57,6 +57,8 @@ final class Session {
   private final UiAutomation ui;
   private final Protocol protocol;
   private final Navigator navigator;
+  private final DeviceDisplay display;
+  private final DeviceState device;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -87,6 +89,8 @@ final class Session {
     this.ui = ui;
     this.protocol = protocol;
     this.navigator = new Navigator(app, protocol);
+    this.display = new DeviceDisplay(app, navigator);
+    this.device = new DeviceState(app, navigator);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
@@ -182,6 +186,7 @@ final class Session {
   }
 
   private static boolean changesUi(String name) {
+    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name)) return true;
     switch (name) {
       case "tap":
       case "longPress":
@@ -205,6 +210,9 @@ final class Session {
   }
 
   private JSONObject run(String name, JSONObject c) throws Exception {
+    JSONObject emulated = display.command(name, c);
+    if (emulated == null) emulated = device.command(name, c);
+    if (emulated != null) return emulated;
     switch (name) {
       case "ping":
         return new Protocol.Json().put("uptimeMs", SystemClock.uptimeMillis()).object();
@@ -283,6 +291,8 @@ final class Session {
         return navigator.broadcast(intent(c));
       case "query":
         return query(c);
+      case "permissions":
+        return navigator.permissions.command(c);
       case "qualifiers":
         return qualifiers(c.getString("value"));
       default:
@@ -309,6 +319,7 @@ final class Session {
     json.put("width", metrics.widthPixels);
     json.put("height", metrics.heightPixels);
     json.put("density", metrics.density);
+    json.put("display", display.describe());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
     json.put("backStack", navigator.backStack().size());
@@ -488,19 +499,7 @@ final class Session {
   }
 
   private JSONObject qualifiers(String value) {
-    RuntimeEnvironment.setQualifiers(value);
-    Navigator.Entry top = navigator.top();
-    if (top != null) {
-      top.controller.configurationChange(
-          app.getResources().getConfiguration(), app.getResources().getDisplayMetrics());
-      // An activity that does not handle the change is recreated, and Robolectric's recreate stops
-      // short of attaching the new window.
-      Activity activity = top.activity();
-      if (activity.getWindow() != null
-          && !activity.getWindow().getDecorView().isAttachedToWindow()) {
-        top.controller.visible();
-      }
-    }
+    display.qualifiers(value);
     return info();
   }
 

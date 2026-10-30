@@ -108,6 +108,15 @@ internal class LaunchCommand(private val args: List<String>) {
       return
     }
 
+    val device = args.flagValue("--device")
+    if (device != null) {
+      if (device !in DEVICES) fail("unknown --device $device (${DEVICES.joinToString(", ")})")
+      if (args.flagValue("--qualifiers") != null) {
+        fail(
+          "--device sets the display; drop --qualifiers, or send the qualifiers command after launch"
+        )
+      }
+    }
     val headless = "--headless" in args || GraphicsEnvironment.isHeadless()
     if (headless && control == null) {
       System.err.println(
@@ -123,6 +132,7 @@ internal class LaunchCommand(private val args: List<String>) {
             AndroidBundleLaunch.MAX_SDK,
           ),
         qualifiers = args.flagValue("--qualifiers") ?: DEFAULT_QUALIFIERS,
+        device = device,
         fontScale = args.flagValue("--font-scale"),
         headless = headless,
         control = control != null,
@@ -159,6 +169,8 @@ internal class LaunchCommand(private val args: List<String>) {
         pairClasses,
         options.copy(
           qualifiers = args.flagValue("--pair-qualifiers") ?: DEFAULT_WATCH_QUALIFIERS,
+          // --device presets are phone-sized; the watch keeps its own display.
+          device = null,
           dataLayer = DataLayerNode(hub.port, WATCH),
         ),
       )
@@ -192,6 +204,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val showAgent: Boolean = true,
     /** Set for each simulator of `--pair`: the hub both connect to. */
     val dataLayer: DataLayerNode? = null,
+    /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
+    val device: String? = null,
   )
 
   private fun convert(
@@ -263,6 +277,12 @@ internal class LaunchCommand(private val args: List<String>) {
     const val PHONE = "phone"
     const val WATCH = "watch"
 
+    /**
+     * The simulator's device presets (`DisplayGeometry.PRESETS` in `:simulator-host`), which the
+     * control channel's `device` command switches between at run time.
+     */
+    val DEVICES = listOf("phone", "foldable", "foldable-folded", "tablet", "desktop")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -286,6 +306,7 @@ internal class LaunchCommand(private val args: List<String>) {
           "robolectric.deviceconfig.sdk" to options.sdk.toString(),
           "composeai.simulator.qualifiers" to options.qualifiers,
         )
+      options.device?.let { properties["composeai.simulator.device"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
@@ -346,6 +367,8 @@ internal class LaunchCommand(private val args: List<String>) {
         --hide-agent          Do not draw the control channel's actions over the window.
         --qualifiers <q>      Resource qualifiers for the display, Robolectric syntax
                               (default $DEFAULT_QUALIFIERS; e.g. w411dp-h891dp-xxhdpi-night).
+        --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
+                              tablet or desktop, at hdpi; in place of --qualifiers.
         --font-scale <f>      Font scale (default 1.0).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).

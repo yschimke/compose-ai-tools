@@ -61,6 +61,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
         app.getApplicationInfo().processName = app.getPackageName();
       }
       Connectivity.connect(app);
+      Permissions.grantInstallTime(app);
       bluetoothOn(app);
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
