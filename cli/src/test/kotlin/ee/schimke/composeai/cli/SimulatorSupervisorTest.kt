@@ -28,7 +28,9 @@ class SimulatorSupervisorTest {
       restore=$(printf '%s' "${'$'}go" | sed -n 's/.*"composeai.simulator.restoreData":"\([^"]*\)".*/\1/p')
       warm=true
     fi
-    echo "{\"event\":\"ready\",\"apk\":\"$1\",\"restore\":\"${'$'}restore\",\"warm\":${'$'}warm,\"startup\":{\"totalMs\":7}}"
+    startup='{"totalMs":7}'
+    if [ "$4" = "fail" ] && [ -n "${'$'}restore" ]; then startup='{"totalMs":7,"restoreError":"disk full"}'; fi
+    echo "{\"event\":\"ready\",\"apk\":\"$1\",\"restore\":\"${'$'}restore\",\"warm\":${'$'}warm,\"startup\":${'$'}startup}"
     while IFS= read -r line; do
       id=$(printf '%s' "${'$'}line" | sed -n 's/.*"id":\("[^"]*"\|[0-9]*\).*/\1/p')
       case "${'$'}line" in
@@ -46,6 +48,7 @@ class SimulatorSupervisorTest {
     device: String? = null,
     extra: ((SimulatorSupervisor, String, JsonObject) -> JsonObject?)? = null,
     standby: Boolean = false,
+    failRestore: () -> Boolean = { false },
   ) =
     SimulatorSupervisor(
       device = device,
@@ -59,6 +62,7 @@ class SimulatorSupervisorTest {
           launch.apk.path,
           launch.properties[SimulatorSupervisor.RESTORE_PROPERTY].orEmpty(),
           launch.properties[SimulatorSupervisor.STANDBY_PROPERTY].orEmpty(),
+          if (failRestore()) "fail" else "",
         )
       },
       emit = { line -> out.add(Json.parseToJsonElement(line).jsonObject) },
@@ -161,5 +165,30 @@ class SimulatorSupervisorTest {
     assertEquals("", second["info"]!!.jsonObject["restore"]!!.jsonPrimitive.content)
     supervisor.close()
     assertEquals(0, supervisor.awaitExit())
+  }
+
+  @Test
+  fun `a restore that fails keeps the snapshot for the next restart`() {
+    var fail = true
+    val supervisor = supervisor(failRestore = { fail })
+    supervisor.start()
+    nextWith("event", "ready")
+
+    supervisor.submit("""{"id":1,"cmd":"restart"}""")
+    val failed = nextWith("id", "1")["result"]!!.jsonObject
+    assertEquals("false", failed["keptData"]!!.jsonPrimitive.content)
+    assertEquals("disk full", failed["restoreError"]!!.jsonPrimitive.content)
+    val snapshot = File(failed["snapshot"]!!.jsonPrimitive.content)
+    assertTrue(snapshot.isDirectory, "the snapshot is kept, not deleted")
+
+    fail = false
+    supervisor.submit("""{"id":2,"cmd":"restart"}""")
+    val retried = nextWith("id", "2")["result"]!!.jsonObject
+    assertEquals(
+      snapshot.path,
+      retried["info"]!!.jsonObject["restore"]!!.jsonPrimitive.content,
+      "the next restart restores the kept snapshot, not the empty app's",
+    )
+    supervisor.close()
   }
 }

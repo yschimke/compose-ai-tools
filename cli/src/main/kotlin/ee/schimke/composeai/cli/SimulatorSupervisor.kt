@@ -185,8 +185,9 @@ internal class SimulatorSupervisor(
     var snapshot: File? = null
     var snapshotMs = 0L
     var kept: JsonElement = JsonPrimitive(false)
-    if (keepData && (old == null || !old.process.isAlive)) {
-      // The last attempt stopped the old simulator and then failed to start: its data is here.
+    if (keepData) {
+      // The last attempt failed to start, or started without restoring: the app's real data is
+      // the snapshot it left, not whatever the running simulator has now.
       orphanedData?.let { dir ->
         snapshot = dir
         kept = JsonPrimitive(true)
@@ -194,7 +195,7 @@ internal class SimulatorSupervisor(
     }
     orphanedData?.takeIf { it != snapshot }?.deleteRecursively()
     orphanedData = null
-    if (keepData && old != null && old.process.isAlive) {
+    if (keepData && snapshot == null && old != null && old.process.isAlive) {
       val dir = Files.createTempDirectory("compose-preview-data").toFile()
       val t = System.nanoTime()
       val saved =
@@ -251,7 +252,17 @@ internal class SimulatorSupervisor(
         throw IllegalStateException("${lastFailure}\n${tail()}")
       }
     lastFailure = null
-    snapshot?.deleteRecursively()
+    // The new simulator could not put the data back: keep the snapshot rather than lose it, for
+    // the next restart (and say so), instead of deleting it.
+    val restoreError =
+      ((ready["startup"] as? JsonObject)?.get("restoreError") as? JsonPrimitive)?.contentOrNull
+    if (restoreError != null && snapshot != null) {
+      orphanedData = snapshot
+      kept = JsonPrimitive(false)
+      log(prefix("compose-preview launch: the app's data was not restored: $restoreError"))
+    } else {
+      snapshot?.deleteRecursively()
+    }
     launch = next
     val startMs = elapsed(spawnStart)
     prepareSpare()
@@ -259,6 +270,10 @@ internal class SimulatorSupervisor(
       put("reason", reason)
       put("standby", warm != null)
       put("keptData", kept)
+      restoreError?.let {
+        put("restoreError", it)
+        snapshot?.let { dir -> put("snapshot", dir.path) }
+      }
       put("snapshotMs", snapshotMs)
       put("stopMs", stopMs)
       put("startMs", startMs)

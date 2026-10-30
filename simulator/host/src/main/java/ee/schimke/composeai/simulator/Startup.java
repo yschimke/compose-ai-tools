@@ -30,6 +30,9 @@ final class Startup {
   /** How many files of a predecessor's data {@link AppFiles#restore} put back. */
   static final String RESTORED_PROPERTY = "composeai.simulator.restoredFiles";
 
+  /** Why restoring a predecessor's data failed, when it did. */
+  static final String RESTORE_ERROR_PROPERTY = "composeai.simulator.restoreError";
+
   static void mark(String name) {
     System.setProperty(PREFIX + name, Long.toString(System.currentTimeMillis()));
   }
@@ -68,6 +71,8 @@ final class Startup {
       }
       String restored = System.getProperty(RESTORED_PROPERTY);
       if (restored != null) out.put("restoredFiles", Integer.parseInt(restored));
+      String restoreError = System.getProperty(RESTORE_ERROR_PROPERTY);
+      if (restoreError != null) out.put("restoreError", restoreError);
     } catch (JSONException e) {
       throw new IllegalStateException(e);
     }
