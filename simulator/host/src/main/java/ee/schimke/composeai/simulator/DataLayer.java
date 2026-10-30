@@ -111,6 +111,11 @@ final class DataLayer {
     return DataLayerLink.enabled();
   }
 
+  /** The control channel, once {@link Session} exists; null before. */
+  static Protocol protocol() {
+    return protocol;
+  }
+
   /**
    * Starts the node before {@code Application.onCreate()}, so the peer sees it at once. Callers
    * check {@link DataLayerLink#enabled()} first: loading this class needs the app's Play services.
@@ -294,6 +299,7 @@ final class DataLayer {
     this.localId = System.getProperty(NODE_PROPERTY, "sim-" + app.getPackageName());
     this.localName = System.getProperty(NAME_PROPERTY, localId);
     localCapabilities.addAll(manifestCapabilities(app));
+    channels = new DataLayerChannels(this);
   }
 
   /** The app's {@code android_wear_capabilities}, which Play services reads from its resources. */
@@ -363,6 +369,17 @@ final class DataLayer {
 
   Object capabilityClient(Context context) {
     return new DataLayerClients.Capabilities(context, this);
+  }
+
+  Object channelClient(Context context) {
+    return new DataLayerClients.Channels(context, this);
+  }
+
+  /** The app's {@code ChannelClient} channels; see {@link DataLayerChannels}. */
+  final DataLayerChannels channels;
+
+  Application app() {
+    return app;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -466,11 +483,11 @@ final class DataLayer {
     return response.getTask();
   }
 
-  private synchronized boolean isPeer(String nodeId) {
+  synchronized boolean isPeer(String nodeId) {
     return peers.containsKey(nodeId);
   }
 
-  private static ApiException notConnected(String nodeId) {
+  static ApiException notConnected(String nodeId) {
     return new ApiException(
         new Status(TARGET_NODE_NOT_CONNECTED, "TARGET_NODE_NOT_CONNECTED: " + nodeId));
   }
@@ -610,6 +627,7 @@ final class DataLayer {
     String from = frame.optString("from");
     String to = frame.optString("to", null);
     if (from.equals(localId) || (to != null && !to.equals(localId))) return;
+    if (frame.optString("type").startsWith("channel") && channels.receive(frame)) return;
     try {
       switch (frame.optString("type")) {
         case "hello":
@@ -692,6 +710,7 @@ final class DataLayer {
       }
     }
     log("peer " + id + " (" + peer.packageName + ") connected, capabilities " + peer.capabilities);
+    CompanionDevices.peerConnected(id, peer.name, isWatch(app));
     reportPeer(peer, "connected");
     if (!known) {
       notifyCapabilities(peer.capabilities);
@@ -706,6 +725,8 @@ final class DataLayer {
     }
     if (peer == null) return;
     log("peer " + id + " disconnected");
+    CompanionDevices.peerDisconnected(id);
+    channels.disconnected(id);
     reportPeer(peer, "disconnected");
     notifyCapabilities(peer.capabilities);
     notifyPeer(peer, false);
@@ -972,7 +993,7 @@ final class DataLayer {
    * The app's manifest services with an intent filter for [action] and [uri], each created (once)
    * through {@link Navigator}, as Play services binds a {@code WearableListenerService}.
    */
-  private List<Service> services(String action, Uri uri) {
+  List<Service> services(String action, Uri uri) {
     Intent intent = new Intent(action).setPackage(app.getPackageName());
     if (uri != null) intent.setData(uri);
     List<Service> result = new ArrayList<>();
@@ -995,7 +1016,7 @@ final class DataLayer {
    * Play services does: apps block in them (Home Assistant's watch runs {@code runBlocking} work
    * that needs the main thread), which on the main thread would deadlock.
    */
-  private void onListenerThread(Runnable action) {
+  void onListenerThread(Runnable action) {
     Handler handler;
     synchronized (this) {
       if (listenerThread == null) {
@@ -1008,7 +1029,7 @@ final class DataLayer {
     handler.post(guarded(action));
   }
 
-  private void onMain(Runnable action) {
+  void onMain(Runnable action) {
     main.post(guarded(action));
   }
 
@@ -1299,6 +1320,7 @@ final class DataLayer {
     json.put("items", itemArray);
     json.put("dataListeners", dataListeners.size());
     json.put("messageListeners", messageListeners.size());
+    json.put("channels", channels.describe());
     return json.object();
   }
 
@@ -1366,7 +1388,7 @@ final class DataLayer {
   }
 
   /** The payload's start as text when it reads as text, so an agent sees what crossed. */
-  private static String preview(byte[] data) {
+  static String preview(byte[] data) {
     if (data == null || data.length == 0) return null;
     int n = Math.min(data.length, 120);
     StringBuilder text = new StringBuilder();
@@ -1377,7 +1399,7 @@ final class DataLayer {
     return text.toString();
   }
 
-  private static void log(String line) {
+  static void log(String line) {
     System.err.println("datalayer: " + line);
   }
 
@@ -1407,12 +1429,17 @@ final class DataLayer {
   }
 
   private void send(JSONObjectBuilder frame) {
+    sendFrame(frame.json.object());
+  }
+
+  /** A frame to the peers: over the hub, or in agent mode as a {@code send} event. */
+  void sendFrame(JSONObject frame) {
     if (agent) {
-      showFrame(frame.json.object());
+      showFrame(frame);
       return;
     }
     DataLayerLink wire = link;
-    if (wire != null) wire.send(frame.json.object().toString());
+    if (wire != null) wire.send(frame.toString());
   }
 
   /**

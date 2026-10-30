@@ -9,6 +9,7 @@ import com.google.android.gms.tasks.Tasks;
 import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.CapabilityClient;
 import com.google.android.gms.wearable.CapabilityInfo;
+import com.google.android.gms.wearable.ChannelClient;
 import com.google.android.gms.wearable.DataClient;
 import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataItemAsset;
@@ -20,6 +21,7 @@ import com.google.android.gms.wearable.NodeClient;
 import com.google.android.gms.wearable.PutDataRequest;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,10 +29,11 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The four Wearable clients {@link ShadowWearable} hands the app, each a subclass of Play services'
+ * The five Wearable clients {@link ShadowWearable} hands the app, each a subclass of Play services'
  * own abstract client (the app's copy, from its APK) answering from {@link DataLayer}, plus the
- * small value types they return. Every call completes at once except {@code sendRequest}, which
- * completes when the peer answers.
+ * small value types they return. No task is complete when the app gets it: each completes on the
+ * main looper ({@link DeferredTasks}), on its next turn, or for {@code sendRequest} and {@code
+ * sendFile} when the work is done.
  *
  * <p>Compiled against {@code gmsStubs}; nothing here may be loaded outside the sandbox.
  */
@@ -247,6 +250,75 @@ final class DataLayerClients {
     public Task<Boolean> removeListener(OnCapabilityChangedListener listener) {
       node.capabilityNames.remove(listener);
       return node.later(node.capabilityListeners.removeIf(r -> r.listener == listener));
+    }
+  }
+
+  static final class Channels extends ChannelClient {
+    private final DataLayer node;
+
+    Channels(Context context, DataLayer node) {
+      super(context, GoogleApi.Settings.DEFAULT_SETTINGS);
+      this.node = node;
+    }
+
+    @Override
+    public Task<Channel> openChannel(String nodeId, String path) {
+      return node.channels.open(nodeId, path);
+    }
+
+    @Override
+    public Task<Void> registerChannelCallback(ChannelCallback callback) {
+      return node.channels.register(null, callback);
+    }
+
+    @Override
+    public Task<Void> registerChannelCallback(Channel channel, ChannelCallback callback) {
+      return node.channels.register(channel, callback);
+    }
+
+    @Override
+    public Task<Boolean> unregisterChannelCallback(ChannelCallback callback) {
+      return node.channels.unregister(null, callback);
+    }
+
+    @Override
+    public Task<Boolean> unregisterChannelCallback(Channel channel, ChannelCallback callback) {
+      return node.channels.unregister(channel, callback);
+    }
+
+    @Override
+    public Task<Void> close(Channel channel) {
+      return node.channels.close(channel, 0);
+    }
+
+    @Override
+    public Task<Void> close(Channel channel, int errorCode) {
+      return node.channels.close(channel, errorCode);
+    }
+
+    @Override
+    public Task<InputStream> getInputStream(Channel channel) {
+      return node.channels.input(channel);
+    }
+
+    @Override
+    public Task<OutputStream> getOutputStream(Channel channel) {
+      return node.channels.output(channel);
+    }
+
+    @Override
+    public Task<Void> receiveFile(Channel channel, Uri uri, boolean append) {
+      return node.channels.receiveFile(channel, uri, append);
+    }
+
+    @Override
+    public Task<Void> sendFile(Channel channel, Uri uri) {
+      return node.channels.sendFile(channel, uri, 0, -1);
+    }
+
+    @Override
+    public Task<Void> sendFile(Channel channel, Uri uri, long startOffset, long length) {
+      return node.channels.sendFile(channel, uri, startOffset, length);
     }
   }
 
@@ -467,7 +539,8 @@ final class DataLayerClients {
     return api instanceof Data
         || api instanceof Messages
         || api instanceof Nodes
-        || api instanceof Capabilities;
+        || api instanceof Capabilities
+        || api instanceof Channels;
   }
 
   /** {@code checkApiAvailability}'s answer when every API is available. */

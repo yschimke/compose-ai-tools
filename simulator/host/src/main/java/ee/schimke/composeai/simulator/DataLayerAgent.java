@@ -26,8 +26,18 @@ import org.json.JSONObject;
  *   <li>{@code reply} {@code requestId} and a payload or {@code error}: answers the app's {@code
  *       sendRequest}; for a remote activity launch {@code result} (0 ok, 1 failed); for an OAuth
  *       request {@code responseUrl};
- *   <li>{@code config} {@code requestTimeoutMs}: how long the app's requests wait (0: forever).
+ *   <li>{@code config} {@code requestTimeoutMs}: how long the app's requests wait (0: forever);
+ *   <li>{@code channelOpen} {@code node path}: the peer opens a {@code ChannelClient} channel to
+ *       the app ({@code onChannelOpened}); answers the {@code channel} token;
+ *   <li>{@code channelWrite} {@code channel} and a payload: bytes the peer writes, which the app's
+ *       input stream reads;
+ *   <li>{@code channelEof} {@code channel}: the peer closes its output (the app's input ends);
+ *   <li>{@code channelClose} {@code channel errorCode}: the peer closes the channel.
  * </ul>
+ *
+ * A channel the app opens to the peer arrives as a {@code channelOpen} send event with its {@code
+ * token}; what the app writes, as {@code channelData} send events; both directions are also {@code
+ * channel} events.
  *
  * A payload is {@code text} (UTF-8), {@code data} (base64) or {@code dataMap} (JSON, see {@link
  * DataMapJson}). {@code node} defaults to the only connected peer.
@@ -115,6 +125,39 @@ final class DataLayerAgent {
         }
       case "reply":
         return reply(c);
+      case "channelOpen":
+        {
+          String from = peer(c);
+          String token = c.optString("channel", from + "/agent-" + agentRequests.incrementAndGet());
+          node.inject(
+              frame("channelOpen", from).put("token", token).put("path", c.getString("path")));
+          return new Protocol.Json().put("channel", token).put("node", from).object();
+        }
+      case "channelWrite":
+        {
+          String token = c.getString("channel");
+          byte[] bytes = payload(c);
+          node.inject(
+              frame("channelData", channelPeer(token))
+                  .put("token", token)
+                  .put("data", DataLayer.encode(bytes)));
+          return new Protocol.Json().put("channel", token).put("bytes", bytes.length).object();
+        }
+      case "channelEof":
+        {
+          String token = c.getString("channel");
+          node.inject(frame("channelEof", channelPeer(token)).put("token", token));
+          return new Protocol.Json().put("channel", token).put("state", "inputEnded").object();
+        }
+      case "channelClose":
+        {
+          String token = c.getString("channel");
+          node.inject(
+              frame("channelClose", channelPeer(token))
+                  .put("token", token)
+                  .put("errorCode", c.optInt("errorCode", 0)));
+          return new Protocol.Json().put("channel", token).put("state", "closed").object();
+        }
       case "config":
         if (c.has("requestTimeoutMs")) node.requestTimeoutMs = c.getLong("requestTimeoutMs");
         return new Protocol.Json().put("requestTimeoutMs", node.requestTimeoutMs).object();
@@ -123,7 +166,7 @@ final class DataLayerAgent {
             "unknown dataLayer action "
                 + action
                 + " (connect, disconnect, capabilities, put, delete, message, request, reply,"
-                + " config)");
+                + " config, channelOpen, channelWrite, channelEof, channelClose)");
     }
     return new Protocol.Json()
         .put("action", action)
@@ -180,6 +223,13 @@ final class DataLayerAgent {
         peers.isEmpty()
             ? "no peer: dataLayer connect first"
             : "several peers " + peers + ": name one with \"node\"");
+  }
+
+  /** The peer end of an open channel. */
+  private String channelPeer(String token) {
+    String peer = node.channels.peerOf(token);
+    if (peer == null) throw new IllegalArgumentException("no open channel " + token);
+    return peer;
   }
 
   private String firstPeerOr(String fallback) {
