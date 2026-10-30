@@ -6,7 +6,6 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
-import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
@@ -197,6 +196,7 @@ final class WindowZoom {
         .put("screenY", origin.y)
         .put("windowWidth", frame.getWidth())
         .put("windowHeight", frame.getHeight())
+        .put("alwaysOnTop", frame.isAlwaysOnTop())
         .object();
   }
 
@@ -218,7 +218,7 @@ final class WindowZoom {
 
   private void attach() {
     // The display letterboxed and centred in whatever size the window is dragged to.
-    JPanel holder = new JPanel(new GridBagLayout());
+    JPanel holder = new JPanel(new Letterbox());
     holder.setBackground(Color.BLACK);
     holder.add(layer);
     holder.addComponentListener(
@@ -235,6 +235,9 @@ final class WindowZoom {
     frame.getContentPane().add(holder);
     frame.setJMenuBar(menuBar());
     frame.setResizable(true);
+    // Robolectric's window floats above every other one; ours goes behind them like any window,
+    // and View → Keep on Top puts it back.
+    frame.setAlwaysOnTop(false);
     installKeys();
     Rectangle screen = usableScreen();
     apply(fit(deviceWidth, deviceHeight, screen, 1), true);
@@ -320,6 +323,10 @@ final class WindowZoom {
     menu.add(
         item("Actual Size", KeyStroke.getKeyStroke(KeyEvent.VK_0, shortcut), this::actualSize));
     menu.add(item("Fit to Screen", null, this::fitScreen));
+    menu.addSeparator();
+    javax.swing.JCheckBoxMenuItem onTop = new javax.swing.JCheckBoxMenuItem("Keep on Top");
+    onTop.addActionListener(e -> frame.setAlwaysOnTop(onTop.isSelected()));
+    menu.add(onTop);
     JMenuBar bar = frame.getJMenuBar() == null ? new JMenuBar() : frame.getJMenuBar();
     bar.add(menu);
     return bar;
@@ -391,6 +398,57 @@ final class WindowZoom {
       else if (this == OUT) zoom.zoomOut();
       else zoom.actualSize();
     }
+  }
+
+  /**
+   * Lays out the one display centred at its preferred size, shrunk to the window when that is
+   * smaller (the window is dragged smaller than the zoom, or the zoom rounds a pixel over).
+   * GridBagLayout would fall back to the display's minimum size, a few pixels, and the picture
+   * would vanish.
+   */
+  static final class Letterbox implements java.awt.LayoutManager {
+    @Override
+    public void addLayoutComponent(String name, java.awt.Component c) {}
+
+    @Override
+    public void removeLayoutComponent(java.awt.Component c) {}
+
+    @Override
+    public Dimension preferredLayoutSize(java.awt.Container parent) {
+      Insets in = parent.getInsets();
+      Dimension size = new Dimension(in.left + in.right, in.top + in.bottom);
+      if (parent.getComponentCount() > 0) {
+        Dimension child = parent.getComponent(0).getPreferredSize();
+        size.width += child.width;
+        size.height += child.height;
+      }
+      return size;
+    }
+
+    @Override
+    public Dimension minimumLayoutSize(java.awt.Container parent) {
+      // Small enough that the window can be dragged down to a thumbnail.
+      return new Dimension(1, 1);
+    }
+
+    @Override
+    public void layoutContainer(java.awt.Container parent) {
+      if (parent.getComponentCount() == 0) return;
+      Insets in = parent.getInsets();
+      int width = parent.getWidth() - in.left - in.right;
+      int height = parent.getHeight() - in.top - in.bottom;
+      Dimension child = parent.getComponent(0).getPreferredSize();
+      Rectangle bounds = letterbox(child.width, child.height, width, height);
+      bounds.translate(in.left, in.top);
+      parent.getComponent(0).setBounds(bounds);
+    }
+  }
+
+  /** A [width] x [height] child centred in an [areaWidth] x [areaHeight] area, never past it. */
+  static Rectangle letterbox(int width, int height, int areaWidth, int areaHeight) {
+    int w = Math.max(0, Math.min(width, areaWidth));
+    int h = Math.max(0, Math.min(height, areaHeight));
+    return new Rectangle((areaWidth - w) / 2, (areaHeight - h) / 2, w, h);
   }
 
   /** Paints the display at the zoom. */
