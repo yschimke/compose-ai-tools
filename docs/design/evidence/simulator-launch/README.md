@@ -365,3 +365,11 @@ sends its content intent, which starts `NowPlayingActivity` and closes the shade
 `network {airplane: true}` and `battery {level: 12}`, the bar over the wallpaper.
 
 ![App, heads-up, shade, reply field, replied, picture, opened, home](phone-shade.png)
+
+**Navigation bar and lock screen** — the home screen over gesture navigation (wallpaper under both
+bars; a swipe up from the handle went home); `navigationBar {mode: buttons}` over the app (its
+Back button finished the activity); `key POWER` twice with notifications posted: the lock screen,
+the app held stopped behind it; with `lockScreen {op: pin}` set, tapping a notification opens the
+PIN bouncer, and the right PIN unlocks and opens it (`NowPlayingActivity`).
+
+![Home, buttons, lock screen, bouncer, opened](phone-navbar-lock.png)

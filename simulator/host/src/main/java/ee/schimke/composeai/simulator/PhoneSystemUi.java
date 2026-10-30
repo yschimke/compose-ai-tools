@@ -111,7 +111,7 @@ final class PhoneSystemUi {
   private ShadeRoot shade;
 
   /** The status bar's icons along the top of the open shade, which covers the bar's window. */
-  private StatusBarView shadeBar;
+  private View shadeBar;
 
   private LinearLayout shadeList;
   private TextView shadeClock;
@@ -127,22 +127,45 @@ final class PhoneSystemUi {
   private long headsUpUntil;
   private final Set<String> seen = new HashSet<>();
 
+  /** Extra copies of the status bar's row, drawn at the top of the shade and the lock screen. */
+  private final List<StatusBarView> rows = new ArrayList<>();
+
+  /** Presses a key on the default display as the system's own buttons do. */
+  final java.util.function.IntConsumer keys;
+
+  final NavigationBar navigationBar;
+  final LockScreen lockScreen;
+
   private PhoneSystemUi(
-      Application app, Navigator navigator, Protocol protocol, NotificationStream stream) {
+      Application app,
+      Navigator navigator,
+      Protocol protocol,
+      NotificationStream stream,
+      java.util.function.IntConsumer keys) {
     this.app = app;
     this.navigator = navigator;
     this.protocol = protocol;
     this.stream = stream;
+    this.keys = keys;
     this.context = new ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault_DayNight);
     this.windows = app.getSystemService(WindowManager.class);
     this.insets = robolectricStatusBar();
+    this.navigationBar = new NavigationBar(this, app, navigator, protocol);
+    this.lockScreen = new LockScreen(this, app, navigator, protocol, stream);
   }
 
-  /** The phone's system UI when {@code --launcher} draws the phone home screen, else null. */
+  /**
+   * The phone's system UI when {@code --launcher} draws the phone home screen, else null. [keys]
+   * presses a key on the default display, for the navigation bar's buttons.
+   */
   static PhoneSystemUi create(
-      Application app, Navigator navigator, Protocol protocol, NotificationStream stream) {
+      Application app,
+      Navigator navigator,
+      Protocol protocol,
+      NotificationStream stream,
+      java.util.function.IntConsumer keys) {
     if (FormFactor.current() != FormFactor.PHONE) return null;
-    return new PhoneSystemUi(app, navigator, protocol, stream);
+    return new PhoneSystemUi(app, navigator, protocol, stream, keys);
   }
 
   /** Adds the status bar window: before the first cycle, so the app is laid out below it. */
@@ -164,6 +187,8 @@ final class PhoneSystemUi {
     barParams.setTitle("StatusBar");
     windows.addView(bar, barParams);
     stream.onChange(this::streamChanged);
+    navigationBar.start();
+    lockScreen.start();
     refresh();
   }
 
@@ -173,6 +198,8 @@ final class PhoneSystemUi {
     long now = SystemClock.uptimeMillis();
     if (headsUp != null && now >= headsUpUntil) hideHeadsUp();
     followApp();
+    navigationBar.cycle();
+    lockScreen.cycle();
     if (now - lastTick < 1000) return;
     lastTick = now;
     refresh();
@@ -188,6 +215,9 @@ final class PhoneSystemUi {
 
   /** The control-channel commands this class owns, or null when [name] is not one of them. */
   JSONObject command(String name, JSONObject c) throws JSONException {
+    JSONObject owned = navigationBar.command(name, c);
+    if (owned == null) owned = lockScreen.command(name, c);
+    if (owned != null) return owned;
     switch (name) {
       case "notifications":
         {
@@ -240,8 +270,8 @@ final class PhoneSystemUi {
       case "statusBar":
         return describe();
       case "home":
-        // HOME closes the shade on its way; the home screen does the rest.
-        closeShade();
+        // HOME closes the shade on its way; the home screen does the rest, unless locked.
+        if (home()) return describe();
         return null;
       default:
         return null;
@@ -252,6 +282,8 @@ final class PhoneSystemUi {
     switch (name) {
       case "notifications":
       case "quickSettings":
+      case "navigationBar":
+      case "lockScreen":
         return true;
       default:
         return false;
@@ -260,20 +292,27 @@ final class PhoneSystemUi {
 
   /** Back while the shade is open closes it, before any app hears it; else false. */
   boolean back() {
-    if (shade == null) return false;
-    closeShade();
-    return true;
+    if (shade != null) {
+      closeShade();
+      return true;
+    }
+    return lockScreen.back();
   }
 
-  /** HOME: the shade and a heads-up card close, as the system collapses them. */
-  void home() {
+  /**
+   * HOME: the shade and a heads-up card close, as the system collapses them. True when the lock
+   * screen keeps it from going further: locked, HOME goes nowhere.
+   */
+  boolean home() {
     closeShade();
     hideHeadsUp();
+    return lockScreen.showing();
   }
 
   /** What the default display shows, the shade over everything else. */
   String surface() {
     if (shade != null) return "notificationShade";
+    if (lockScreen.showing()) return "lockScreen";
     HomeScreen home = HomeScreen.current;
     return home == null ? "app" : home.surface();
   }
@@ -304,7 +343,38 @@ final class PhoneSystemUi {
         .put("statusBar", status.object())
         .put("shade", shade != null)
         .put("headsUp", headsUp == null ? null : headsUpKey)
+        .put("navigationBar", navigationBar.describe())
+        .put("lockScreen", lockScreen.describe())
         .object();
+  }
+
+  /**
+   * A copy of the status bar's row, for the top of a system window that covers the bar; dark icons
+   * on a light background. Kept up to date until {@link #dropRow}.
+   */
+  View statusRow(boolean darkIcons) {
+    StatusBarView row = new StatusBarView(context);
+    row.darkIcons = darkIcons;
+    row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    rows.add(row);
+    refresh();
+    return row;
+  }
+
+  void dropRow(View row) {
+    rows.remove(row);
+  }
+
+  int statusBarHeightPx() {
+    return height;
+  }
+
+  Context context() {
+    return context;
+  }
+
+  WindowManager windows() {
+    return windows;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -315,7 +385,7 @@ final class PhoneSystemUi {
    * its height as a device's would; returns its {@code SystemUi.StatusBar}, or null on a
    * Robolectric without one.
    */
-  private static Object robolectricStatusBar() {
+  static Object robolectricStatusBar() {
     try {
       ClassLoader loader = PhoneSystemUi.class.getClassLoader();
       Class<?> systemUi = Class.forName("org.robolectric.shadows.SystemUi", true, loader);
@@ -422,8 +492,9 @@ final class PhoneSystemUi {
       description.append(", ").append(items.size()).append(" notification");
       if (items.size() > 1) description.append('s');
     }
-    for (StatusBarView view : new StatusBarView[] {bar, shadeBar}) {
-      if (view == null) continue;
+    List<StatusBarView> views = new ArrayList<>(rows);
+    views.add(bar);
+    for (StatusBarView view : views) {
       view.time = time;
       view.icons = icons;
       view.airplane = quick.optBoolean("airplane");
@@ -446,7 +517,7 @@ final class PhoneSystemUi {
    * The notifications the bar has an icon for, in the shade's order: those that interrupt first,
    * then the rest; the newest first within each, as SystemUI ranks them.
    */
-  private List<NotificationStream.Item> barItems() {
+  List<NotificationStream.Item> barItems() {
     List<NotificationStream.Item> items = new ArrayList<>();
     for (NotificationStream.Item item : stream.shown()) {
       if (!hiddenInShade(item)) items.add(item);
@@ -466,7 +537,7 @@ final class PhoneSystemUi {
     return items;
   }
 
-  private String clock() {
+  String clock() {
     return DateFormat.format(DateFormat.is24HourFormat(app) ? "HH:mm" : "h:mm", new Date())
         .toString();
   }
@@ -653,9 +724,7 @@ final class PhoneSystemUi {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     scrollParams.topMargin = height;
     shade.addView(scroll, scrollParams);
-    shadeBar = new StatusBarView(context);
-    shadeBar.darkIcons = !night();
-    shadeBar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    shadeBar = statusRow(!night());
     shade.addView(
         shadeBar,
         new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height, Gravity.TOP));
@@ -680,6 +749,7 @@ final class PhoneSystemUi {
     if (shade == null) return;
     windows.removeViewImmediate(shade);
     shade = null;
+    dropRow(shadeBar);
     shadeBar = null;
     shadeList = null;
     shadeClock = null;
@@ -905,7 +975,7 @@ final class PhoneSystemUi {
    * collapsed, expanded or heads-up, on a rounded card that a tap opens and a sideways swipe
    * dismisses; with the reply field under it while one of its reply actions is being answered.
    */
-  private View card(NotificationStream.Item item, boolean open, boolean headsUp) {
+  View card(NotificationStream.Item item, boolean open, boolean headsUp) {
     Card card = new Card(context, item, headsUp);
     card.setBackground(rounded(night() ? 0xFF1F1F1F : 0xFFFFFFFF, 20));
     card.setClipToOutline(true);
@@ -1094,7 +1164,7 @@ final class PhoneSystemUi {
     return Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, handler);
   }
 
-  private void tap(NotificationStream.Item item) {
+  void tap(NotificationStream.Item item) {
     run(() -> collapseFor(stream.tap(item)));
   }
 
@@ -1328,12 +1398,12 @@ final class PhoneSystemUi {
   // ---------------------------------------------------------------------------------------------
   // Building blocks
 
-  private interface Action {
+  interface Action {
     JSONObject run() throws Exception;
   }
 
   /** Runs a tap's action; a failure is an {@code error} event, as the app's own would be. */
-  private void run(Action action) {
+  void run(Action action) {
     try {
       JSONObject result = action.run();
       if (result != null) {
@@ -1346,20 +1416,20 @@ final class PhoneSystemUi {
     }
   }
 
-  private boolean night() {
+  boolean night() {
     return (app.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
         == Configuration.UI_MODE_NIGHT_YES;
   }
 
-  private int primaryText() {
+  int primaryText() {
     return night() ? 0xFFE3E3E3 : 0xFF1F1F1F;
   }
 
-  private int secondaryText() {
+  int secondaryText() {
     return night() ? 0xFFC4C7C5 : 0xFF444746;
   }
 
-  private TextView text(String value, float sp, int color) {
+  TextView text(String value, float sp, int color) {
     TextView view = new TextView(context);
     view.setText(value);
     view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
@@ -1367,7 +1437,7 @@ final class PhoneSystemUi {
     return view;
   }
 
-  private TextView pill(String label, boolean primary) {
+  TextView pill(String label, boolean primary) {
     TextView pill = text(label, 14, primary ? 0xFF062E6F : primaryText());
     pill.setPadding(dp(16), dp(8), dp(16), dp(8));
     pill.setBackground(rounded(primary ? 0xFFA8C7FA : night() ? 0xFF2D2F31 : 0xFFFFFFFF, 18));
@@ -1375,14 +1445,14 @@ final class PhoneSystemUi {
     return pill;
   }
 
-  private GradientDrawable rounded(int color, float radiusDp) {
+  GradientDrawable rounded(int color, float radiusDp) {
     GradientDrawable background = new GradientDrawable();
     background.setColor(color);
     background.setCornerRadius(dp(radiusDp));
     return background;
   }
 
-  private static LinearLayout.LayoutParams wide() {
+  static LinearLayout.LayoutParams wide() {
     return new LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
   }
@@ -1396,12 +1466,12 @@ final class PhoneSystemUi {
     }
   }
 
-  private int dp(float value) {
+  int dp(float value) {
     return Math.round(value * app.getResources().getDisplayMetrics().density);
   }
 
   /** Gives [view] the resource id {@code sim:id/<name>}, which find and tap match on. */
-  private static void simId(View view, String name) {
+  static void simId(View view, String name) {
     view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     view.setAccessibilityDelegate(
         new View.AccessibilityDelegate() {

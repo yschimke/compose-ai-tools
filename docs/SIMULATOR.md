@@ -955,6 +955,67 @@ posts a set to try it with:
 A touch gesture stays with the window its down went to, on any display, as a device's input
 dispatcher keeps it: a drag that starts on the status bar is the bar's however far it goes.
 
+### Navigation bar and lock screen
+
+The phone's system UI also has a **navigation bar** and a **lock screen** (`NavigationBar`,
+`LockScreen`), each a window of its own.
+
+![Home over gesture navigation, the three buttons, the lock screen, the PIN bouncer, the notification tapped on it opened](design/evidence/simulator-launch/phone-navbar-lock.png)
+
+**The navigation bar** is gesture navigation's handle by default, along the bottom. Robolectric's
+navigation bar inset is switched on with it, so apps get its `WindowInsets` (24dp for gestures,
+48dp for buttons) and are laid out above it, or under it when they draw edge to edge; a window
+that draws its own navigation bar colour (a Material theme's black, where edge to edge is not
+enforced) shows it there. A swipe up from the handle goes home; Back is the edge swipe
+([Back](#back)). `navigationBar {"mode":"buttons"}` switches to the three buttons — Back, Home,
+and Overview, sent as `KEYCODE_APP_SWITCH` since there is no recents screen — with no edge swipe,
+as on a device; `"none"` removes the bar and its inset. The bar takes light or dark icons as the
+app asks (`APPEARANCE_LIGHT_NAVIGATION_BARS`) and hides, taking no touches, while the app hides
+it. The home screen draws its wallpaper under both bars.
+
+**The lock screen** comes on when the screen goes off (`key POWER`, `sleep`, the `screen`
+timeout). When the screen wakes, the app stays stopped behind it until it is unlocked, as on a
+device; `KeyguardManager` reports `isKeyguardLocked` (and `isDeviceLocked` when secure). It shows
+the clock, the date and up to three notifications. A swipe up unlocks, as does
+`lockScreen {"op":"unlock"}`; with a PIN set (`lockScreen {"op":"pin","pin":"2580"}`, or
+`biometric {"secure":true}`, which takes `1234`) a swipe opens the PIN bouncer instead and the
+`unlock` command needs the `pin`. Unlocking resumes the app and broadcasts `ACTION_USER_PRESENT`.
+A notification tapped on the lock screen opens once unlocked. HOME and Back go nowhere while it
+shows (Back closes the bouncer); the shade still pulls down over it.
+
+What apps ask of it is answered:
+
+- `KeyguardManager.requestDismissKeyguard` dismisses an insecure lock screen at once
+  (`onDismissSucceeded`), and opens the bouncer on a secure one;
+- an activity that shows when locked (`setShowWhenLocked(true)`, `android:showWhenLocked`, or
+  `FLAG_SHOW_WHEN_LOCKED`) is drawn over the lock screen, as an alarm or a call is;
+- an activity that turns the screen on (`setTurnScreenOn(true)`, `android:turnScreenOn`, or
+  `FLAG_TURN_SCREEN_ON`) wakes a dark screen when it comes to the top.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `navigationBar` | `mode`? (`gesture` / `buttons` / `none`) | switches the mode; returns `mode`, `side`, `sizePx`, `visible`, `darkIcons`, `background`, `edgeBack` |
+| `lockScreen` | `op`? (`status` / `lock` / `unlock` / `pin`), `pin`?, `screenOff`? | `lock` locks now (`screenOff: true` sleeps the screen too); `unlock` unlocks, with `pin` when secure (`unlocked: false` for a wrong one); `pin` sets the PIN, or clears it with `null`. Returns `locked`, `showing`, `secure`, `bouncer`, `keyguardLocked`, `deviceLocked`, and the activity `held` behind it |
+
+`info`'s `surface` is `lockScreen` while it shows, and `lockScreen` events report `locked`,
+`bouncer`, `wrongPin` and `unlocked` (with `via`); `navigationBar` events name a button pressed.
+View ids: `navigation_bar`, `lock_screen`, `lock_clock`, `lock_notification` (description: the
+key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
+
+```
+→ {"cmd":"lockScreen","op":"pin","pin":"2580"}
+→ {"cmd":"key","key":"POWER"}
+← {"event":"lockScreen","state":"locked","reason":"screenOff"}
+→ {"cmd":"key","key":"POWER"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_notification","desc":"3"}
+← {"event":"lockScreen","state":"bouncer"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin"}
+→ {"cmd":"text","text":"2580"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin_enter"}
+← {"event":"lockScreen","state":"unlocked","via":"bouncer"}
+← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
+```
+
 ### Back
 
 Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
@@ -1646,9 +1707,11 @@ What does not, or not yet:
   `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
   framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
   where this sandbox refuses the host.
-- **Status bar and shade.** Phones only, with `--launcher`. No navigation bar, notification
-  history, snooze or per-channel settings in the shade, conversation or bubble sections, media
-  controls, lock-screen notifications, or Do Not Disturb; notification sounds and vibration are not
+- **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
+  recents screen, notification history, snooze or per-channel settings in the shade, conversation
+  or bubble sections, media controls, or Do Not Disturb; no pattern or password lock, fingerprint
+  unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
+  when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not
   played. Quick settings tiles are the four above, not the app's `TileService`s. Robolectric posts
   every notification of one task at the same instant, so ties are ordered by `when`, then id.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request

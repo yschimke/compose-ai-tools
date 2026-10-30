@@ -124,7 +124,21 @@ final class Session {
             ? new HomeScreen(app, navigator, protocol, widgets)
             : null;
     this.phoneUi =
-        home != null ? PhoneSystemUi.create(app, navigator, protocol, notifications) : null;
+        home != null
+            ? PhoneSystemUi.create(
+                app,
+                navigator,
+                protocol,
+                notifications,
+                code -> {
+                  try {
+                    key(code, false, android.view.Display.DEFAULT_DISPLAY);
+                  } catch (JSONException e) {
+                    throw new IllegalStateException(e);
+                  }
+                })
+            : null;
+    if (phoneUi != null) screen.lockScreen(phoneUi.lockScreen);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
@@ -928,7 +942,12 @@ final class Session {
         && home != null
         && displayId == android.view.Display.DEFAULT_DISPLAY) {
       // The system's, as the window manager takes HOME before any app sees it.
-      if (phoneUi != null) phoneUi.home();
+      if (phoneUi != null && phoneUi.home()) {
+        return new Protocol.Json()
+            .put("keyCode", code)
+            .put("surface", phoneUi.surface())
+            .object();
+      }
       home.goHome();
       return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
     }

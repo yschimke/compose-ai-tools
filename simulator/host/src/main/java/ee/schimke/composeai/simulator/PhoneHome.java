@@ -57,6 +57,8 @@ public class PhoneHome extends Activity {
     // Edge to edge, as a launcher is: the wallpaper runs on under the status bar.
     getWindow().setDecorFitsSystemWindows(false);
     getWindow().setStatusBarColor(Color.TRANSPARENT);
+    getWindow().setNavigationBarColor(Color.TRANSPARENT);
+    getWindow().setNavigationBarContrastEnforced(false);
     home = HomeScreen.current;
     home.attach(this);
     rebuild();
@@ -114,16 +116,6 @@ public class PhoneHome extends Activity {
       cells.addView(frame, new CellLayout.Params(w.cellX, w.cellY, w.spanX, w.spanY));
     }
     root.addView(cells, new FrameLayout.LayoutParams(-1, -1));
-    root.setOnApplyWindowInsetsListener(
-        (v, insets) -> {
-          int top = insets.getInsets(android.view.WindowInsets.Type.statusBars()).top;
-          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) cells.getLayoutParams();
-          if (lp.topMargin != top) {
-            lp.topMargin = top;
-            cells.setLayoutParams(lp);
-          }
-          return insets;
-        });
     TextView handle = text(this, "⌃  Apps", 13, Color.WHITE);
     handle.setGravity(Gravity.CENTER);
     handle.setShadowLayer(4, 0, 1, 0x99000000);
@@ -134,6 +126,21 @@ public class PhoneHome extends Activity {
     root.addView(
         handle, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
     ((FrameLayout.LayoutParams) handle.getLayoutParams()).bottomMargin = dp(16);
+    // Clear of the status and navigation bars, which the wallpaper runs on under.
+    root.setOnApplyWindowInsetsListener(
+        (v, insets) -> {
+          android.graphics.Insets bars =
+              insets.getInsets(android.view.WindowInsets.Type.systemBars());
+          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) cells.getLayoutParams();
+          FrameLayout.LayoutParams hp = (FrameLayout.LayoutParams) handle.getLayoutParams();
+          if (lp.topMargin != bars.top || lp.bottomMargin != bars.bottom) {
+            lp.setMargins(bars.left, bars.top, bars.right, bars.bottom);
+            cells.setLayoutParams(lp);
+            hp.bottomMargin = dp(16) + bars.bottom;
+            handle.setLayoutParams(hp);
+          }
+          return insets;
+        });
     overlay = new FrameLayout(this);
     root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
     setContentView(root);
