@@ -67,6 +67,8 @@ final class DeviceDisplay {
       case "posture":
         setPosture(c);
         return describe();
+      case "uimode":
+        return uimode(c);
       case "fontScale":
         {
           RuntimeEnvironment.setFontScale((float) c.getDouble("value"));
@@ -89,10 +91,44 @@ final class DeviceDisplay {
       case "rotate":
       case "posture":
       case "fontScale":
+      case "uimode":
         return true;
       default:
         return false;
     }
+  }
+
+  /** {@code cmd uimode night}'s mode as last set: {@code yes}, {@code no} or {@code auto}. */
+  private String nightMode;
+
+  /**
+   * {@code cmd uimode night [yes|no|auto]}: sets night mode as a configuration change ({@code auto}
+   * is day here: no clock or location decides), and answers as the device does, {@code Night mode:
+   * yes}, which is what Android Studio's Device Settings reads its Dark Theme switch from.
+   */
+  private JSONObject uimode(JSONObject c) throws JSONException {
+    if (c.has("night")) {
+      String mode = c.getString("night");
+      if (!mode.equals("yes") && !mode.equals("no") && !mode.equals("auto")) {
+        throw new IllegalArgumentException("night mode is yes, no or auto, not " + mode);
+      }
+      nightMode = mode;
+      boolean night = mode.equals("yes");
+      if (night != night(app.getResources().getConfiguration())) {
+        qualifiers(night ? "+night" : "+notnight");
+      }
+    }
+    String mode =
+        nightMode != null ? nightMode : night(app.getResources().getConfiguration()) ? "yes" : "no";
+    return new Protocol.Json()
+        .put("night", mode)
+        .put("output", "Night mode: " + mode)
+        .object();
+  }
+
+  /** The display's rotation in quarter turns, as {@code Surface.ROTATION_*}. */
+  int rotation() {
+    return rotation;
   }
 
   /** Applies resource qualifiers (Robolectric syntax; a leading {@code +} merges) as a change. */

@@ -155,10 +155,12 @@ internal class DeviceShell(private val device: VirtualDevice) {
         out.line(
           if ("-a" in args) "Linux localhost 6.1.0 #1 SMP PREEMPT aarch64 Toybox" else "Linux"
         )
-      "getprop" -> getprop(args, out)
+      // `debug.layout` is the simulator's (layout bounds); the rest are the device's own.
+      "getprop" -> if (args == listOf("debug.layout")) simulator(argv, out) else getprop(args, out)
+      // Layout bounds (`debug.layout`) the simulator acts on; others are dropped, as before.
+      "setprop" -> if (args.firstOrNull() == "debug.layout") simulator(argv, out) else 0
       "logcat" -> logcat(args, stdin, out)
       "date" -> date(args, out)
-      "setprop",
       // `adb logcat` sends `export ANDROID_LOG_TAGS="''"; exec logcat …`.
       "export" -> 0
       "exec" -> command(args, stdin, out)
