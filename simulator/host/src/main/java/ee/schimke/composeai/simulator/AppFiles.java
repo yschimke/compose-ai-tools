@@ -168,9 +168,12 @@ final class AppFiles {
    * {@code update}) starts from, as {@code adb install -r} keeps an app's data. Taken while the
    * app runs, so an open database is copied with its {@code -wal} and {@code -shm} files, which
    * SQLite recovers from as after a crash.
+   *
+   * <p>{@code to} must not exist or be an empty directory (the CLI passes a fresh temporary one):
+   * a snapshot never deletes or overwrites what is already there.
    */
   JSONObject snapshot(File to) throws IOException {
-    delete(to);
+    DataSnapshots.checkTarget(to);
     int data = copy(dataDir(), new File(to, "data"));
     File external = Environment.getExternalStorageDirectory();
     int externalFiles = external != null && external.isDirectory()
@@ -184,22 +187,20 @@ final class AppFiles {
 
   /**
    * Puts back what {@link #snapshot} saved, from {@value #RESTORE_PROPERTY}: before the
-   * application, its providers and anything else open a file. Returns the number of files.
+   * application, its providers and anything else open a file. Returns the number of files. A
+   * failure is not swallowed: it is recorded ({@link Startup#RESTORE_ERROR_PROPERTY}, reported
+   * in {@code ready}'s {@code startup.restoreError}) so the CLI keeps the snapshot.
    */
   static int restore(Context app) {
     String from = System.getProperty(RESTORE_PROPERTY);
     if (from == null || from.isEmpty()) return 0;
     try {
-      int count = 0;
-      File data = new File(from, "data");
-      if (data.isDirectory()) count += copy(data, app.getDataDir());
-      File external = new File(from, "external");
-      File storage = Environment.getExternalStorageDirectory();
-      if (external.isDirectory() && storage != null) count += copy(external, storage);
-      return count;
-    } catch (IOException e) {
+      return DataSnapshots.restoreInto(
+          new File(from), app.getDataDir(), Environment.getExternalStorageDirectory());
+    } catch (IOException | RuntimeException e) {
       System.err.println("compose-preview: could not restore the app's data from " + from);
       e.printStackTrace();
+      System.setProperty(Startup.RESTORE_ERROR_PROPERTY, String.valueOf(e));
       return 0;
     }
   }
