@@ -100,7 +100,14 @@ internal class VirtualDevice(
     val packageName =
       ApkFormFactor.packageOf(apk) ?: throw IllegalArgumentException("not an APK: no manifest")
     if (packageName == SYSTEM_PACKAGE) throw IllegalArgumentException("cannot replace the system")
-    val target = File(config.dir, "data/app/$packageName/base.apk")
+    // The manifest's package names a directory here, so it must be one, as the platform's
+    // package parser requires before anything is written.
+    if (!PACKAGE_NAME.matches(packageName)) {
+      throw IllegalArgumentException("invalid package name in the manifest: $packageName")
+    }
+    val apps = File(config.dir, "data/app").canonicalFile
+    val target = File(apps, "$packageName/base.apk")
+    check(target.canonicalFile.parentFile.parentFile == apps) { "$packageName escapes data/app" }
     target.parentFile.mkdirs()
     if (apk.canonicalFile != target.canonicalFile) apk.copyTo(target, overwrite = true)
     lock.withLock {
@@ -222,6 +229,9 @@ internal class VirtualDevice(
      * for streamed installs, and `push` creating directories. Not `stat_v2`/`ls_v2`, so the sync
      * protocol stays at `STAT`/`LIST`.
      */
+    /** A Java package name of two or more segments, as `PackageParser` validates one. */
+    val PACKAGE_NAME = Regex("""[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+""")
+
     val FEATURES = listOf("shell_v2", "cmd", "abb_exec", "fixed_push_mkdir")
 
     private val RELEASES =

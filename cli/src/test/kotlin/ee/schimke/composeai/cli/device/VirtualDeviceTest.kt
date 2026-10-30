@@ -120,10 +120,27 @@ class VirtualDeviceTest {
   }
 
   @Test
+  fun `an installed APK's package must be a package name, not a path`() {
+    assertTrue(VirtualDevice.PACKAGE_NAME.matches("com.example.app_1"))
+    for (bad in listOf("../../evil", "com.example/../x", "single", "com..x", ".com.x", "com.x/")) {
+      assertTrue(!VirtualDevice.PACKAGE_NAME.matches(bad), bad)
+    }
+  }
+
+  @Test
   fun `display pixels come from the qualifiers`() {
     assertEquals(Triple(454, 454, 320), LaunchCommand.displayPixels(ApkFormFactor.WEAR.qualifiers))
     assertEquals(Triple(540, 960, 240), LaunchCommand.displayPixels(ApkFormFactor.PHONE.qualifiers))
     assertEquals(Triple(840, 1680, 420), LaunchCommand.displayPixels("w320dp-h640dp-420dpi"))
+    // A --device preset replaces the launch size; the desktop preset has its own density.
+    assertEquals(
+      Triple(1920, 1200, 240),
+      LaunchCommand.displayPixels(ApkFormFactor.PHONE.qualifiers, "tablet"),
+    )
+    assertEquals(
+      Triple(1920, 1080, 160),
+      LaunchCommand.displayPixels(ApkFormFactor.PHONE.qualifiers, "desktop"),
+    )
   }
 
   @Test

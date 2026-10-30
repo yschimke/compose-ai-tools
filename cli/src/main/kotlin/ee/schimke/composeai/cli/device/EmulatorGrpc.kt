@@ -42,6 +42,8 @@ import java.net.URI
 import java.util.Base64
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -150,13 +152,13 @@ internal class EmulatorGrpc(
       response: StreamObserver<DisplayConfigurations>,
     ) =
       answer(response) {
-        val config = device.config
+        val (width, height, dpi) = display()
         DisplayConfigurations.newBuilder()
           .addDisplays(
             DisplayConfiguration.newBuilder()
-              .setWidth(config.widthPx)
-              .setHeight(config.heightPx)
-              .setDpi(config.densityDpi)
+              .setWidth(width)
+              .setHeight(height)
+              .setDpi(dpi)
               .setDisplay(0)
           )
           .setMaxDisplays(1)
@@ -372,6 +374,22 @@ internal class EmulatorGrpc(
           "count" to JsonPrimitive(maxOf(1, kotlin.math.abs(event.dy) / 120)),
         )
     }
+  }
+
+  /**
+   * The default display as the simulator has it now — a `--device` preset, a `wm size`, a rotation
+   * — in pixels and dpi; the launch's own geometry while it is booting.
+   */
+  private fun display(): Triple<Int, Int, Int> {
+    val config = device.config
+    val now =
+      runCatching { device.simulator(timeoutMs = 2_000).request("display") }.getOrNull()
+        ?: return Triple(config.widthPx, config.heightPx, config.densityDpi)
+    val width = now["width"]?.jsonPrimitive?.intOrNull ?: config.widthPx
+    val height = now["height"]?.jsonPrimitive?.intOrNull ?: config.heightPx
+    val dpi =
+      now["density"]?.jsonPrimitive?.doubleOrNull?.let { (it * 160).toInt() } ?: config.densityDpi
+    return Triple(width, height, dpi)
   }
 
   private class Frame(val png: ByteArray, val image: Image)

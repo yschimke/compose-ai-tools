@@ -238,7 +238,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (args.flagValue("--data-layer") != null)
         fail("--adb and --data-layer agent are not combined yet")
       val consolePort = DeviceHost.freeConsolePort()
-      val (width, height, dpi) = displayPixels(options.qualifiers)
+      val (width, height, dpi) = displayPixels(options.qualifiers, options.device)
       val config =
         VirtualDevice.Config(
           formFactor = formFactor,
@@ -597,12 +597,19 @@ internal class LaunchCommand(private val args: List<String>) {
      * (`w227dp-h227dp-round-watch-xhdpi` is 454×454 at 320 dpi); a phone's default when they name
      * no size.
      */
-    fun displayPixels(qualifiers: String): Triple<Int, Int, Int> {
+    fun displayPixels(qualifiers: String, device: String? = null): Triple<Int, Int, Int> {
       val parts = qualifiers.split('-')
-      val dpi =
+      val launchDpi =
         parts.firstNotNullOfOrNull {
           DENSITIES[it] ?: Regex("""(\d+)dpi""").matchEntire(it)?.groupValues?.get(1)?.toInt()
         } ?: 160
+      // A --device preset replaces the size, and the density where it has its own, as
+      // `DisplayGeometry.launchQualifiers` in `:simulator-host` does.
+      DEVICE_SIZES_DP[device]?.let { (w, h, presetDpi) ->
+        val dpi = presetDpi ?: launchDpi
+        return Triple(w * dpi / 160, h * dpi / 160, dpi)
+      }
+      val dpi = launchDpi
       val w =
         parts.firstNotNullOfOrNull {
           Regex("""w(\d+)dp""").matchEntire(it)?.groupValues?.get(1)?.toInt()
@@ -613,6 +620,16 @@ internal class LaunchCommand(private val args: List<String>) {
         } ?: 640
       return Triple(w * dpi / 160, h * dpi / 160, dpi)
     }
+
+    /** [DEVICES]' sizes in dp and own density (`DisplayGeometry.PRESETS` in `:simulator-host`). */
+    private val DEVICE_SIZES_DP: Map<String?, Triple<Int, Int, Int?>> =
+      mapOf(
+        "phone" to Triple(411, 891, null),
+        "foldable" to Triple(673, 841, null),
+        "foldable-folded" to Triple(411, 891, null),
+        "tablet" to Triple(1280, 800, null),
+        "desktop" to Triple(1920, 1080, 160),
+      )
 
     private val DENSITIES =
       mapOf(
