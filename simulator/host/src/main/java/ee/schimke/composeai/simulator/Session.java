@@ -664,10 +664,9 @@ final class Session {
   /** A file a command writes: a host path, or a device path when the shell translation says so. */
   private File outputFile(JSONObject c) throws JSONException {
     String path = c.getString("path");
-    // `screencap -p /sdcard/s.png` writes on the "device", for a later pull; a host path as is.
-    if (c.optBoolean("devicePath", false) && path.startsWith("/") && files.isDevicePath(path)) {
-      return files.resolve(path);
-    }
+    // `screencap -p s.png` or `/sdcard/s.png` writes on the "device", where a later pull by the
+    // same name finds it; another absolute path, and a `> file` redirect, are host paths.
+    if (c.optBoolean("devicePath", false) && files.isDevicePath(path)) return files.resolve(path);
     return new File(path).getAbsoluteFile();
   }
 

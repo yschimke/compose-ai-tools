@@ -1075,6 +1075,24 @@ final class AdbShell {
 
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * Whether a file argument names the simulated device's storage ({@code AppFiles} maps it) rather
+   * than the host: a relative path (the app's data directory, as {@code run-as} sees it), or one
+   * under {@code /data/data}, {@code /data/user}, {@code /sdcard}, {@code /storage} or {@code
+   * /data/local/tmp}. Any other absolute path is the host's.
+   */
+  static boolean isDevicePath(String path) {
+    if (!path.startsWith("/")) return true;
+    for (String prefix :
+        new String[] {"/data/data/", "/data/user/", "/data/user_de/", "/data/local/tmp"}) {
+      if (path.startsWith(prefix)) return true;
+    }
+    for (String root : new String[] {"/sdcard", "/storage"}) {
+      if (path.equals(root) || path.startsWith(root + "/")) return true;
+    }
+    return false;
+  }
+
   private static void skipUser(Args a) {
     while (a.hasNext() && a.peek().equals("--user")) {
       a.next();

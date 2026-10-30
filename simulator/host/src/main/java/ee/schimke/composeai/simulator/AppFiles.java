@@ -48,13 +48,7 @@ final class AppFiles {
 
   /** Whether [path] is one of the device paths {@link #resolve} maps, not a host path. */
   boolean isDevicePath(String path) {
-    for (String prefix :
-        new String[] {
-          "/data/data/", "/data/user/", "/data/user_de/", "/sdcard", "/storage/", "/data/local/tmp"
-        }) {
-      if (path.startsWith(prefix)) return true;
-    }
-    return !path.startsWith("/");
+    return AdbShell.isDevicePath(path);
   }
 
   /** The host file behind a device path. */

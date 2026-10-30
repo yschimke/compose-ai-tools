@@ -1,6 +1,7 @@
 package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -290,6 +291,22 @@ public class AdbShellTest {
     Map<String, Object> dump = t("uiautomator dump /sdcard/window.xml");
     assertEquals("hierarchy", dump.get("cmd"));
     assertTrue((Boolean) dump.get("flat"));
+  }
+
+  @Test
+  public void devicePaths() {
+    // Relative names land in the app's data directory, where run-as and pull look for them.
+    assertTrue(AdbShell.isDevicePath("foo.png"));
+    assertTrue(AdbShell.isDevicePath("files/a.txt"));
+    assertTrue(AdbShell.isDevicePath("/sdcard/s.png"));
+    assertTrue(AdbShell.isDevicePath("/storage/emulated/0/s.png"));
+    assertTrue(AdbShell.isDevicePath("/data/data/com.x/files"));
+    assertTrue(AdbShell.isDevicePath("/data/local/tmp/x"));
+    assertFalse(AdbShell.isDevicePath("/tmp/out.png"));
+    assertFalse(AdbShell.isDevicePath("/sdcardx/out.png"));
+    Map<String, Object> relative = t("screencap -p foo.png");
+    assertEquals("foo.png", relative.get("path"));
+    assertEquals(true, relative.get("devicePath"));
   }
 
   @Test
