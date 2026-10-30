@@ -168,7 +168,14 @@ final class Session {
     screen.cycle();
     if (!ready && navigator.top() != null) {
       ready = true;
-      protocol.event("ready", info());
+      Startup.mark(Startup.READY);
+      JSONObject info = info();
+      try {
+        info.put("startup", Startup.describe());
+      } catch (JSONException e) {
+        throw new IllegalStateException(e);
+      }
+      protocol.event("ready", info);
     }
     long now = SystemClock.uptimeMillis();
     while (!deferred.isEmpty() && deferred.peek().at <= now) {
@@ -432,6 +439,8 @@ final class Session {
       case "files":
         checkPackage(c);
         return files.command(c);
+      case "snapshotData":
+        return files.snapshot(new File(c.getString("to")).getAbsoluteFile());
       case "forceStop":
         {
           checkPackage(c);
