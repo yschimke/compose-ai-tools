@@ -291,6 +291,7 @@ internal object CliFlagValidation {
           "--data-layer",
           "--adb",
           "--grpc-port",
+          "--play-services",
           "--prepare",
           "--verbose",
           "-v",

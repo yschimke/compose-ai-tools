@@ -7,6 +7,7 @@ import ee.schimke.composeai.cli.device.DeviceHost
 import ee.schimke.composeai.cli.device.VirtualDevice
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.awt.GraphicsEnvironment
+import java.io.Closeable
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -84,12 +85,25 @@ internal class LaunchCommand(private val args: List<String>) {
     val converterJars = listOf(hostJar) + dex2jarJars
     val cache = ApkConversionCache(composeAiCacheDir("simulator"))
     val stamp = ApkConversionCache.converterStamp(converterJars, androidJar)
+    // The in-use locks on the cache entries the simulators run from. Kept reachable, and closed
+    // only once every simulator has exited ([finish]): a lock whose channel were collected would be
+    // released, and another launch could prune the jar from under a running simulator.
+    val inUse = mutableListOf<Closeable>()
+    fun finish(exit: Int): Nothing {
+      inUse.forEach { runCatching { it.close() } }
+      exitProcess(exit)
+    }
     fun classesOf(apk: File): File {
       val entry =
-        cache.ensure(apk, stamp) { out ->
-          System.err.println("compose-preview launch: converting ${apk.name} (once per APK)")
-          convert(java, converterJars, apk, out, androidJar)
+        cache.ensure(apk, stamp) { out, previous ->
+          System.err.println(
+            "compose-preview launch: converting ${apk.name} (once per APK" +
+              (if (previous != null) "; reusing the unchanged classes of its previous build)"
+              else ")")
+          )
+          convert(java, converterJars, apk, out, androidJar, previous)
         }
+      inUse += cache.use(entry)
       if (verbose || !entry.cached) {
         System.err.println(
           "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"}: " +
@@ -129,6 +143,12 @@ internal class LaunchCommand(private val args: List<String>) {
         fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
       }
     }
+    val playServices =
+      args.flagValue("--play-services")?.also {
+        if (it !in PLAY_SERVICES_STATES) {
+          fail("--play-services takes ${PLAY_SERVICES_STATES.joinToString(" | ")}")
+        }
+      }
     val detected =
       apk?.let { ApkFormFactor.inspect(it) } ?: ApkFormFactor.Detected(ApkFormFactor.PHONE, null)
     val formFactor =
@@ -169,12 +189,13 @@ internal class LaunchCommand(private val args: List<String>) {
         launchActivity = launchActivity,
         device = device,
         network = network,
+        playServices = playServices,
         fontScale = args.flagValue("--font-scale"),
         fingerprint = args.flagValue("--fingerprint"),
         maxHeap =
           args.flagValue("--max-heap")?.also {
             if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
-          },
+          } ?: defaultMaxHeap(physicalMemoryBytes()),
         headless = headless,
         // With --adb this process drives the simulator's channel, client or not.
         control = control != null || adb,
@@ -193,6 +214,9 @@ internal class LaunchCommand(private val args: List<String>) {
         tiles = args.flagValuesAll("--tile"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
+    val robolectricProperties = offline.ifEmpty {
+      provisionAndroidAll(robolectricJars, options.sdk)
+    }
     fun commandFor(apk: File, classes: File?, options: Options) =
       simulatorCommand(
         java = java.binary,
@@ -200,7 +224,7 @@ internal class LaunchCommand(private val args: List<String>) {
         apk = apk,
         classes = listOfNotNull(classes) + extraJars,
         options = options,
-        robolectricProperties = offline,
+        robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
     val systemApk =
@@ -278,13 +302,12 @@ internal class LaunchCommand(private val args: List<String>) {
           options.copy(dataLayer = DataLayerNode(hubPort = 0, device = device, agent = true)),
         )
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
     if (pair == null || pairClasses == null) {
       val command = commandFor(apk, classes, options)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      val exit = ProcessBuilder(command).inheritIO().runTiedToLauncher()
-      exitProcess(exit)
+      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
 
     val hub =
@@ -322,7 +345,7 @@ internal class LaunchCommand(private val args: List<String>) {
     }
     val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
     hub.close()
-    exitProcess(exit)
+    finish(exit)
   }
 
   /**
@@ -359,6 +382,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val device: String? = null,
     /** [NETWORK_MODES], comma-separated (`cellular,airplane`); Wi-Fi when null. */
     val network: String? = null,
+    /** One of [PLAY_SERVICES_STATES]; installed when null. */
+    val playServices: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
     /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
@@ -393,24 +418,61 @@ internal class LaunchCommand(private val args: List<String>) {
     apk: File,
     out: File,
     androidJar: File,
+    previous: File?,
   ): String {
-    val process =
-      ProcessBuilder(
-          java.binary.path,
-          "-cp",
-          converterJars.joinToString(File.pathSeparator) { it.path },
-          CONVERTER_MAIN,
-          apk.path,
-          out.path,
-          androidJar.path,
-        )
-        .redirectError(ProcessBuilder.Redirect.INHERIT)
-        .start()
-    val summary = process.inputStream.bufferedReader().readText()
-    val exit = process.waitFor()
-    check(exit == 0) { "the APK converter exited $exit" }
-    return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
+    for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
+      val process =
+        ProcessBuilder(
+            converterCommand(java.binary, converterJars, apk, out, androidJar, heap, previous)
+          )
+          .redirectError(ProcessBuilder.Redirect.INHERIT)
+          .start()
+      val summary = process.inputStream.bufferedReader().readText()
+      val exit = process.waitFor()
+      if (exit == 0) return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
+      val next = CONVERTER_HEAPS.getOrNull(attempt + 1)
+      check(exit == OUT_OF_MEMORY_EXIT && next != null) { "the APK converter exited $exit" }
+      // The converter's temporary jars, which an exit on OutOfMemoryError leaves behind.
+      out.absoluteFile.parentFile
+        .listFiles { f -> f.name.startsWith("dex2jar-") && f.name.endsWith(".jar") }
+        .orEmpty()
+        .forEach { it.delete() }
+      System.err.println(
+        "compose-preview launch: the converter ran out of its $heap heap; retrying with $next"
+      )
+    }
+    error("unreachable")
   }
+
+  /**
+   * Robolectric's system properties for an online launch: SDK [sdk]'s `android-all` provisioned
+   * into [RobolectricDepsProvision.defaultDir] (from Robolectric's own Maven-local copy when it has
+   * one) and Robolectric pointed there offline.
+   *
+   * Left to itself, Robolectric's `MavenDependencyResolver` fetches under one lock for every
+   * artifact on the host, `~/.robolectric-download-lock`: held for a whole download, so a launch
+   * whose jar is already there waits behind another's 200 MB fetch, with no network timeout; and
+   * deleted on release, so with three or more JVMs (`--pair`, several agents) two end up holding it
+   * at once. Provisioning here takes a lock per artifact once, before any simulator JVM starts.
+   * When it cannot, the launch goes on online as before, and says why.
+   */
+  private fun provisionAndroidAll(robolectricJars: List<File>, sdk: Int): Map<String, String> =
+    try {
+      val artifact = RobolectricDepsProvision.artifactFor(robolectricJars, sdk).artifact
+      val directory = RobolectricDepsProvision.defaultDir()
+      RobolectricDepsProvision.ensure(
+        artifact,
+        directory,
+        seed = RobolectricDepsProvision.mavenLocalCopy(artifact),
+      )
+      robolectricOfflineProperties(directory.path)
+    } catch (e: Exception) {
+      System.err.println(
+        "compose-preview launch: could not provision android-all for SDK $sdk ($e); " +
+          "Robolectric will fetch it"
+      )
+      emptyMap()
+    }
 
   private fun sidecar(name: String): List<File> =
     locateBundleSidecarJars(name).ifEmpty {
@@ -442,6 +504,70 @@ internal class LaunchCommand(private val args: List<String>) {
   companion object {
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+
+    /**
+     * Collector settings for every simulator JVM.
+     *
+     * Android's graphics objects — bitmaps, render nodes, canvases — are small on the Java heap and
+     * own native memory that is freed only when the collector finds them unreachable. An app idling
+     * on an animated screen allocates them every frame but too little heap to trigger a collection,
+     * so native memory grows without bound: Confetti went from 850 MB to 2.3 GB in two idle minutes
+     * with 116 MB of live heap, and to 5.4 GB in longer runs whatever its `-Xmx`. A periodic
+     * collection, only when none has run for that long, keeps it flat (990 MB).
+     */
+    val SIMULATOR_JVM_ARGS = listOf("-XX:G1PeriodicGCInterval=5000")
+
+    /**
+     * The simulator's heap without `--max-heap`: an eighth of the machine, between 768 MB and 2 GB.
+     * The JVM's own default, a quarter of the machine, lets G1 grow far past an app's live set
+     * (about 120 MB for Confetti and Now in Android) before it collects, and `--pair` runs two.
+     */
+    fun defaultMaxHeap(physicalMemoryBytes: Long?): String {
+      val mb = (physicalMemoryBytes ?: 0L) / (1L shl 20) / 8
+      return "${mb.coerceIn(768L, 2048L)}m"
+    }
+
+    private fun physicalMemoryBytes(): Long? =
+      (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+          as? com.sun.management.OperatingSystemMXBean)
+        ?.totalMemorySize
+
+    /**
+     * The converter's heap, then the one it retries with if that runs out. It translates one class
+     * at a time, so its live set is the dex files and a header per class: about 260 MB for Home
+     * Assistant's 61,000 classes. Without a cap the JVM's default heap, a quarter of the machine,
+     * lets G1 grow to twice that before it collects.
+     */
+    val CONVERTER_HEAPS = listOf("1g", "3g")
+
+    /** `-XX:+ExitOnOutOfMemoryError`'s exit status. */
+    const val OUT_OF_MEMORY_EXIT = 3
+
+    /** The converter JVM's command line. Pure, for tests. */
+    fun converterCommand(
+      java: File,
+      converterJars: List<File>,
+      apk: File,
+      out: File,
+      androidJar: File,
+      heap: String,
+      previous: File? = null,
+    ): List<String> =
+      listOfNotNull(
+        java.path,
+        "-Xmx$heap",
+        // A single-threaded batch job: the serial collector's footprint is the smallest, and it
+        // spends no threads on concurrent marking.
+        "-XX:+UseSerialGC",
+        "-XX:+ExitOnOutOfMemoryError",
+        "-cp",
+        converterJars.joinToString(File.pathSeparator) { it.path },
+        CONVERTER_MAIN,
+        apk.path,
+        out.path,
+        androidJar.path,
+        previous?.path,
+      )
 
     /**
      * A phone-shaped display that fits on a laptop screen: Robolectric's window draws one device
@@ -499,6 +625,12 @@ internal class LaunchCommand(private val args: List<String>) {
         "xxxhdpi" to 640,
       )
 
+    /**
+     * What `--play-services` takes (`PlayServices.State` in `:simulator-host`), which the control
+     * channel's `playServices` command switches between at run time.
+     */
+    val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -512,6 +644,7 @@ internal class LaunchCommand(private val args: List<String>) {
       add(java.path)
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
+      addAll(SIMULATOR_JVM_ARGS)
       add("--enable-native-access=ALL-UNNAMED")
       // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
       // the app's real traffic reaches.
@@ -530,6 +663,7 @@ internal class LaunchCommand(private val args: List<String>) {
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.network?.let { properties["composeai.simulator.network"] = it }
+      options.playServices?.let { properties["composeai.simulator.playServices"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -625,6 +759,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               captive (Wi-Fi without internet) or offline; add ,airplane
                               (or just airplane) for airplane mode. Offline, the app's
                               real connections fail as on a device.
+        --play-services <s>   Google Play services as availability checks report it:
+                              installed (default; SUCCESS, version 25.42.34), none
+                              (SERVICE_MISSING), outdated, disabled or invalid, for an
+                              app's error paths. With --pair, both devices.
         --display <spec>      Connect a secondary display at launch (repeatable): a size in
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
@@ -640,8 +778,8 @@ internal class LaunchCommand(private val args: List<String>) {
         --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
                               (repeatable; implies --launcher). With --pair, the watch's.
         --font-scale <f>      Font scale (default 1.0).
-        --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: the JVM's,
-                              a quarter of the machine's memory, for each of a pair).
+        --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
+                              of the machine's memory, 768m to 2g, for each of a pair).
         --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
                               apps check to skip real work under tests; MeshCore's watch does).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
@@ -651,7 +789,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               one over a simulated Wearable Data Layer: messages, requests,
                               data items and capabilities cross between the two apps. With
                               --control stdio, a command's "device":"watch" sends it to the
-                              watch, and every output line carries its "device".
+                              watch, and every output line carries its "device"; every log
+                              line is prefixed [phone] or [watch].
         --data-layer agent    Simulate the Wearable Data Layer with no second simulator: the
                               control channel plays the peer devices. What the app sends is a
                               "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}

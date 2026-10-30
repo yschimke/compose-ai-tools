@@ -87,10 +87,30 @@ Then an ASM pass makes the output acceptable to a *verifying* JVM:
 On the sample app that is 21,870 classes, 1,818 interface calls fixed, 0 failed methods, in about
 40 seconds; ASM's `BasicVerifier` passes every one of its 142,691 methods.
 
+The converter reads and translates one class at a time, keeping only the class-level facts
+(inner-class annotations, then each class's header) for the rest, and runs on a 1 GB serial heap,
+retried once on 3 GB if that runs out. dex2jar's own driver reads the whole APK into one tree
+first: Home Assistant needed 3.8 GB, and now converts in under 1 GB.
+
 **The cache** lives under `<cache>/composeai/simulator/<apk sha256>/<converter stamp>/`. The APK is
-keyed by content and the stamp by the converter's jars and the platform jar, so a rebuilt APK or a
-newer converter converts again, and anything else is a cache hit (about 0.25 s). The eight most
-recently used APKs are kept. A launch from a warm cache reaches its first frame in about 7 seconds.
+keyed by content. The stamp covers the converter's own classes and the shared-library classes in
+the simulator host jar, dex2jar and the platform jar — not the rest of the simulator, so a change to
+`Navigator` does not reconvert every APK. A cache hit takes about 0.25 s, and a launch from a warm
+cache reaches its first frame in about 7 seconds.
+
+A rebuilt APK converts incrementally. Beside each `classes.jar` the converter writes
+`classes.jar.index`: per class, a digest of its smali (instructions, constants, annotations and
+debug info, with names resolved, so it does not shift when another class adds a string to the dex)
+and of the inner-class facts it takes from other classes, and every supertype lookup its frames
+were computed from. Converting the next build of the same APK path copies each class whose digest
+matches and whose lookups still resolve the same way, and translates the rest. Per class, not per
+`classesN.dex`, because D8 reshuffles dex files between builds. A three-class edit to Now in Android
+reconverts in 31 s instead of 115 s.
+
+Pruning never deletes an entry that a conversion holds (`<sha>.lock`) or a running simulator uses
+(`<sha>.inuse`, a shared lock each launch holds): after a conversion the earlier build of the same
+path is removed, the APK's other converter stamps go, and then the least recently used APKs beyond
+eight or 2 GB.
 
 **Navigation.** `Navigator` drains Robolectric's recorded intents every loop turn and does what the
 system would: activities go onto a back stack through `ActivityController` (the one below is paused
@@ -236,6 +256,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `playServices` | `state`? (`installed` / `none` / `outdated` / `disabled` / `invalid`) | Google Play services as availability checks report it ([below](#google-play-services)); returns the state, status and version |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
@@ -438,6 +459,30 @@ reads, MTU requests and subscriptions are `gatt` events — the agent plays the 
 with `bluetooth notify` (`onCharacteristicChanged`) or `disconnect`. A `connectGatt` to a device not
 in range fails with status 133, as a device's times out. Bytes are hex (`"0a1b"`), `{"text":…}`,
 `{"base64":…}` or a number array.
+### Google Play services
+
+The simulated device has Google Play services, as a phone or watch from a store does, so an app
+that gates code on `GoogleApiAvailability.isGooglePlayServicesAvailable(context) == SUCCESS` takes
+that path. Only availability is simulated, not Play services itself:
+
+| Check | Answer (`installed`, the default) |
+| --- | --- |
+| `GoogleApiAvailability` / `GoogleApiAvailabilityLight` / `GooglePlayServicesUtil(Light)` `.isGooglePlayServicesAvailable` | `SUCCESS`; `SERVICE_VERSION_UPDATE_REQUIRED` for a minimum newer than the installed version |
+| `getApkVersion` | 254234035 (Play services 25.42.34) |
+| `verifyGooglePlayServicesIsAvailable`, `makeGooglePlayServicesAvailable` | succeed |
+| `PackageManager` | `com.google.android.gms` and `com.android.vending` installed, system, enabled, with no components |
+| `checkApiAvailability` (the `GoogleApi`, `HasApiKey` and `Executor` overloads) | the Wearable `DataClient`, `MessageClient`, `NodeClient` and `CapabilityClient` are available under `--pair` or `--data-layer agent` ([below](#a-paired-phone-and-watch)), with or without a peer connected; any other API (and every Wearable client of an unpaired launch) fails at once with an `AvailabilityException` of `API_UNAVAILABLE` |
+| Horologist `WearableApiAvailability.isAvailable`, `DataLayerAppHelper.isAvailable` | true when the Data Layer is simulated, false otherwise, from `checkApiAvailability` |
+
+`launch --play-services none|outdated|disabled|invalid` (or `{"cmd":"playServices","state":…}`
+while the app runs) breaks it instead, to drive an app's error paths: every check reports
+`SERVICE_MISSING`, `SERVICE_VERSION_UPDATE_REQUIRED` (version 11.9.75), `SERVICE_DISABLED` or
+`SERVICE_INVALID`, as does `checkApiAvailability` for every API, `getErrorDialog` builds Play
+services' own dialog for it, and `PackageManager` drops or disables the package. The command
+sends the `PACKAGE_ADDED` / `CHANGED` / `REMOVED` broadcast a device would; an app that cached an
+earlier answer keeps it. Under `--pair` the simulated Wearable clients still answer an app that
+uses them without checking.
+
 ### Home screen and widgets
 
 `launch --launcher` puts a home screen under the app, as a phone's launcher sits under every app,
@@ -863,6 +908,16 @@ nothing), `adb reverse` / `forward` to the device, `adb root` (it reports alread
 watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
 
+## Memory
+
+Each simulator JVM gets `-Xmx` of an eighth of the machine, between 768 MB and 2 GB
+(`--max-heap` overrides it), and a periodic collection every 5 seconds without one
+(`-XX:G1PeriodicGCInterval=5000`). Apps' live heaps are small — about 120 MB for Now in Android and
+Confetti once ready — but the framework's graphics objects own native memory that only a
+collection frees, and an app idling on an animated screen makes too little garbage to trigger one:
+Confetti grew from 850 MB to 2.3 GB in two idle minutes before, and stays near 1 GB with it. A pair
+runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
+
 ## A paired phone and watch
 
 `--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
@@ -871,7 +926,9 @@ watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication
 simulator instead of Play services, so messages, requests, data items and capabilities cross
 between the apps and reach their listeners and manifest `WearableListenerService`s. With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
-`device`, and each crossing is a `datalayer` event. `RemoteActivityHelper` launches, Horologist's
+`device`, and each crossing is a `datalayer` event. Every other line either simulator prints — the
+app's logcat, Robolectric's logging and stack traces on stderr, and without the control channel its
+stdout too — is prefixed with its device, `[phone] ` or `[watch] `. `RemoteActivityHelper` launches, Horologist's
 `DataLayerAppHelper`, and on the watch `RemoteAuthClient`, `BridgingManager` and
 `PhoneTypeHelper` work across the pair too. A prototype; the design, evidence and what is
 missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
@@ -924,16 +981,18 @@ MeshCore run too. Renders are in
 What does not, or not yet:
 
 - **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
-- **Google Play services, Maps, billing, DRM** — not present in Robolectric's framework; their
-  APIs report `SERVICE_INVALID` (the Wearable Data Layer is simulated under `--pair`). Firebase starts, and its backends answer as they would any
+- **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
+  ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
+  or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
   unregistered client.
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
-  see [adb equivalents](#adb-equivalents)). Without `--launcher`, `launch` while running pushes a
-  new launcher instance rather than bringing the task forward, and `HOME` does nothing; there are
-  no recents or task switching either way.
+  see [adb equivalents](#adb-equivalents)). A `NEW_TASK` start of the running root activity with
+  its launcher intent brings the task forward, as on a device, so `launch` (or another app's
+  "open the app") does not stack a second instance; without `--launcher`, `HOME` does nothing,
+  and there are no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
 - **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
@@ -974,8 +1033,9 @@ What does not, or not yet:
   does not dim, shift for burn-in or cap the frame rate of an ambient app's drawing, ambient
   offload (`setAmbientOffloadEnabled`) and auto-resume are accepted and ignored, and the Wear SDK's
   `AmbientTransitionListener` is not called. Only the wrist-tilt gesture sensor exists; tilt is a
-  command, not derived from an accelerometer. The Data Layer has no paired phone: `Wearable` APIs fail with
-  `SERVICE_INVALID`, as Play services' other APIs do.
+  command, not derived from an accelerometer. Without `--pair` or `--data-layer agent` the Data Layer has no
+  paired phone: `checkApiAvailability` reports the `Wearable` clients `API_UNAVAILABLE`, as
+  Play services' other APIs.
 - **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
   own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
   keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).

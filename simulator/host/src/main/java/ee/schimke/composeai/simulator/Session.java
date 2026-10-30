@@ -327,6 +327,9 @@ final class Session {
           }
           return state;
         }
+      case "playServices":
+        if (c.has("state")) PlayServicesPackages.change(app, c.getString("state"));
+        return PlayServicesPackages.describe();
       case "hierarchy":
         {
           List<Hierarchy.Node> windows = snapshot(displays.target(c));
