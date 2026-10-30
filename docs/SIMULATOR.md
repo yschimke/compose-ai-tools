@@ -273,6 +273,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `widgets` | | the app's widget providers (sizes, spans, resize mode, configure, preview) and the widgets placed |
 | `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
 | `picker` | `action`? (`open` / `close`) | the widget picker |
+| `restart` | `keepData`? (true) | the app again in a fresh simulator JVM, its data kept; see [Restart and update](#restart-and-update) |
+| `update` | `apk`, `keepData`? (true) | another APK (a rebuild) in a fresh simulator JVM, as `adb install -r` |
+| `snapshotData` | `to` | copies the app's data directory and external storage to `to/data` and `to/external` (what `restart` keeps) |
 | `quit` | | exits |
 
 ### Runtime permissions
@@ -847,6 +850,48 @@ Confetti once ready — but the framework's graphics objects own native memory t
 collection frees, and an app idling on an animated screen makes too little garbage to trigger one:
 Confetti grew from 850 MB to 2.3 GB in two idle minutes before, and stays near 1 GB with it. A pair
 runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
+
+## Restart and update
+
+`launch --control stdio` keeps the simulator JVM behind a supervisor in the CLI, so the app can be
+replaced without ending the session or the client's connection:
+
+- **`restart`** starts the app again in a fresh simulator JVM from the same converted classes. It is
+  a new process, as after `am force-stop` on a device, but statics, singletons and in-memory state
+  are really gone. Its data is kept: the old simulator copies its data directory and external
+  storage (`snapshotData`), and the new one restores them before the `Application` and its
+  providers are created. `"keepData":false` starts from a clean install.
+- **`update`** `{"apk":…}` does the same with another APK, usually a rebuild of the running one,
+  as `adb install -r` does. Its classes come from the conversion cache: a hit when that exact APK
+  was converted before, and otherwise only the classes the rebuild changed are converted again.
+  Keeping data needs the same package.
+
+With `"device":"watch"` in a `--pair` session, each replaces the watch's simulator instead of the
+phone's.
+
+Each answers with the new simulator's `info` and where the time went: `snapshotMs`, `stopMs` and
+`startMs`, `totalMs`, and `startup`, which every `ready` event also carries. `startup` has `jvmMs`
+to `main`, `sandboxMs` for Robolectric's sandbox, `applicationMs` to `Application.onCreate()`
+returning, and `firstActivityMs` to the first activity's first frame. `update` adds `conversion`.
+Every launch also sends a `conversion` event before `ready`, saying whether the APK's classes came
+from the cache (`cached`) and what it cost (`ms`).
+
+**`--standby`** keeps a second simulator JVM prepared, which the next `restart` takes over. It is
+started with the same APK and classes and waits at the last point before the app's own code: the
+manifest is asked for the app's `AppComponentFactory`, just before the `Application` is created.
+By then the JVM, Robolectric's sandbox and the framework's setup of the app's resources, display
+and configuration are paid, which is more than half of a launch. The standby is told to go with the
+data to restore; `startup` then reports `standby: true` and `preparedMs`. A new standby is prepared
+after each restart. It costs a second JVM's memory while it waits: about 400 MB idle.
+
+TIMINGS_TABLE
+
+Why a new JVM rather than a new class loader in this one: Robolectric's sandbox and the framework's
+classes belong to a class loader, so a fresh sandbox costs almost what a fresh JVM does. Starting the
+JVM itself is about 0.3 s of the total. The native graphics runtime also binds to one class loader
+per process. A new JVM also gives the app a clean process, as a real reinstall does. UI state, such
+as the back stack and scroll positions, is not kept: the app starts at its launcher activity, as
+after `adb install -r`.
 
 ## A paired phone and watch
 

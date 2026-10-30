@@ -55,7 +55,9 @@ public final class LaunchMain {
     for (int i = 1; i < args.length; i++) classpath.add(Path.of(args[i]));
     int sdk = Integer.parseInt(System.getProperty("robolectric.deviceconfig.sdk", "35"));
 
+    Startup.mark(Startup.MAIN);
     AndroidSandbox sandbox = SimulatorSandbox.build(classpath, sdk);
+    Startup.mark(Startup.SANDBOX);
     try {
       sandbox.runOnMainThread(
           () -> {

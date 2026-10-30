@@ -290,6 +290,8 @@ internal object CliFlagValidation {
           "--max-heap",
           "--data-layer",
           "--play-services",
+          "--standby",
+          "--no-standby",
           "--prepare",
           "--verbose",
           "-v",

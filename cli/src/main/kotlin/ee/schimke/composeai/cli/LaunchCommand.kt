@@ -7,7 +7,17 @@ import ee.schimke.composeai.io.composeAiCacheDir
 import java.awt.GraphicsEnvironment
 import java.io.Closeable
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
 
 /**
  * `compose-preview launch <app.apk>`: runs an APK in Robolectric's simulator — a desktop window
@@ -33,13 +43,15 @@ internal class LaunchCommand(private val args: List<String>) {
       println(USAGE)
       return
     }
+    val verbose = "--verbose" in args || "-v" in args
+    val control = args.flagValue("--control")
+    if (control != null && control != "stdio") fail("--control supports only `stdio`")
+    // A warm JVM waiting for the next restart: worth its memory when restarts are the loop.
+    val standby = "--standby" in args && "--no-standby" !in args
     val apk =
       CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
         ?: fail("expected an APK: compose-preview launch <app.apk>")
     if (!apk.isFile) fail("no such APK: $apk")
-    val verbose = "--verbose" in args || "-v" in args
-    val control = args.flagValue("--control")
-    if (control != null && control != "stdio") fail("--control supports only `stdio`")
 
     val java =
       when (val result = SimulatorJava.resolve(args.flagValue("--java"))) {
@@ -84,13 +96,15 @@ internal class LaunchCommand(private val args: List<String>) {
     val stamp = ApkConversionCache.converterStamp(converterJars, androidJar)
     // The in-use locks on the cache entries the simulators run from. Kept reachable, and closed
     // only once every simulator has exited ([finish]): a lock whose channel were collected would be
-    // released, and another launch could prune the jar from under a running simulator.
-    val inUse = mutableListOf<Closeable>()
+    // released, and another launch could prune the jar from under a running simulator. An update's
+    // APK adds its entry here too.
+    val inUse = Collections.synchronizedList(mutableListOf<Closeable>())
     fun finish(exit: Int): Nothing {
-      inUse.forEach { runCatching { it.close() } }
+      synchronized(inUse) { inUse.forEach { runCatching { it.close() } } }
       exitProcess(exit)
     }
-    fun classesOf(apk: File): File {
+    fun conversionOf(apk: File): Conversion {
+      val start = System.nanoTime()
       val entry =
         cache.ensure(apk, stamp) { out, previous ->
           System.err.println(
@@ -101,21 +115,25 @@ internal class LaunchCommand(private val args: List<String>) {
           convert(java, converterJars, apk, out, androidJar, previous)
         }
       inUse += cache.use(entry)
+      val conversion =
+        Conversion(apk, entry, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))
       if (verbose || !entry.cached) {
         System.err.println(
-          "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"}: " +
-            "${entry.classesJar} ${entry.summary}"
+          "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"} " +
+            "in ${conversion.ms} ms: ${entry.classesJar} ${entry.summary}"
         )
       }
-      return entry.classesJar
+      return conversion
     }
     val pair =
       args
         .flagValue("--pair")
         ?.let { File(it).absoluteFile }
         ?.also { if (!it.isFile) fail("no such APK to pair: $it") }
-    val classes = classesOf(apk)
-    val pairClasses = pair?.let { classesOf(it) }
+    val conversion = conversionOf(apk)
+    val pairConversion = pair?.let { conversionOf(it) }
+    val classes = conversion.entry.classesJar
+    val pairClasses = pairConversion?.entry?.classesJar
     if ("--prepare" in args) {
       println(classes.absolutePath)
       pairClasses?.let { println(it.absolutePath) }
@@ -200,40 +218,110 @@ internal class LaunchCommand(private val args: List<String>) {
             args.flagValuesAll("--tile").isNotEmpty(),
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
+        jvmOptions =
+          System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
+            ?: emptyList(),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
     }
-    fun commandFor(apk: File, classes: File, options: Options) =
+    fun commandFor(launch: SimulatorSupervisor.Launch, options: Options) =
       simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
-        apk = apk,
-        classes = listOf(classes) + extraJars,
-        options = options,
+        apk = launch.apk,
+        classes = launch.classes + extraJars,
+        options = options.copy(properties = options.properties + launch.properties),
         robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
+
+    /** The APK (and its converted classes) each simulator runs. */
+    val bases = ConcurrentHashMap<SimulatorSupervisor, Conversion>()
+
+    /** `update`: another APK (a rebuild of this one) in a fresh simulator, keeping the data. */
+    fun update(supervisor: SimulatorSupervisor, command: JsonObject): JsonObject {
+      val next =
+        command.string("apk")?.let { File(it).absoluteFile }
+          ?: throw IllegalArgumentException("update needs `apk`, the path of the new APK")
+      require(next.isFile) { "no such APK: $next" }
+      val keepData = command.boolean("keepData") ?: (command.boolean("clearData") != true)
+      if (keepData) {
+        val running = ApkFormFactor.packageOf(supervisor.launch.apk)
+        val updated = ApkFormFactor.packageOf(next)
+        require(running == updated) {
+          "$next is $updated, not $running: its data cannot carry over (pass keepData: false)"
+        }
+      }
+      val converted = conversionOf(next)
+      bases[supervisor] = converted
+      val restarted =
+        supervisor.restart(
+          SimulatorSupervisor.Launch(next, listOf(converted.entry.classesJar)),
+          keepData,
+          reason = "update",
+        )
+      return JsonObject(restarted + ("conversion" to converted.toJson()))
+    }
+
+    fun supervise(
+      device: String?,
+      conversion: Conversion,
+      options: Options,
+    ): SimulatorSupervisor {
+      val launch = SimulatorSupervisor.Launch(conversion.apk, listOf(conversion.entry.classesJar))
+      if (verbose) {
+        System.err.println(
+          "compose-preview launch: ${device?.let { "$it: " } ?: ""}" +
+            commandFor(launch, options).joinToString(" ")
+        )
+      }
+      return SimulatorSupervisor(
+          device = device,
+          initial = launch,
+          command = { commandFor(it, options) },
+          emit = PairedLaunch::emit,
+          log = PairedLaunch::log,
+          control = control != null,
+          extraCommand = { supervisor, cmd, json ->
+            when (cmd) {
+              "update" -> update(supervisor, json)
+              else -> null
+            }
+          },
+          // The watch of a pair is restarted far less: no second JVM waiting for it.
+          standby = standby && control != null && device != WATCH,
+        )
+        .also {
+          bases[it] = conversion
+          it.event(conversion.event())
+        }
+    }
+
     val dataLayerMode = args.flagValue("--data-layer")
     if (dataLayerMode != null) {
       if (dataLayerMode != "agent") fail("--data-layer supports only `agent`")
       if (pair != null) fail("--data-layer agent plays the paired device itself; drop --pair")
       if (control == null) fail("--data-layer agent needs --control stdio: the agent is the peer")
       val device = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
-      val command =
-        commandFor(
-          apk,
-          classes,
+      val supervisor =
+        supervise(
+          null,
+          conversion,
           options.copy(dataLayer = DataLayerNode(hubPort = 0, device = device, agent = true)),
         )
-      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+      finish(PairedLaunch(listOf(device to supervisor), control = true).run())
     }
-    if (pair == null || pairClasses == null) {
-      val command = commandFor(apk, classes, options)
-      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
-      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+    if (pair == null || pairConversion == null) {
+      if (control == null) {
+        // A window only: nothing to supervise, so the simulator has the terminal to itself.
+        val command = commandFor(SimulatorSupervisor.Launch(apk, listOf(classes)), options)
+        if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+        finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+      }
+      val supervisor = supervise(null, conversion, options)
+      finish(PairedLaunch(listOf(PHONE to supervisor), control = true).run())
     }
 
     val hub =
@@ -243,15 +331,15 @@ internal class LaunchCommand(private val args: List<String>) {
         .start()
     // --launcher gives each its own system UI; --widget is the phone's, --tile the watch's.
     val phone =
-      commandFor(
-        apk,
-        classes,
+      supervise(
+        PHONE,
+        conversion,
         options.copy(dataLayer = DataLayerNode(hub.port, PHONE), tiles = emptyList()),
       )
     val watch =
-      commandFor(
-        pair,
-        pairClasses,
+      supervise(
+        WATCH,
+        pairConversion,
         options.copy(
           qualifiers = args.flagValue("--pair-qualifiers") ?: ApkFormFactor.WEAR.qualifiers,
           // Drawn round, with the rotary input; --device presets are phone-sized, so the watch
@@ -265,13 +353,23 @@ internal class LaunchCommand(private val args: List<String>) {
           dataLayer = DataLayerNode(hub.port, WATCH),
         ),
       )
-    if (verbose) {
-      System.err.println("compose-preview launch: phone: ${phone.joinToString(" ")}")
-      System.err.println("compose-preview launch: watch: ${watch.joinToString(" ")}")
-    }
     val exit = PairedLaunch(listOf(PHONE to phone, WATCH to watch), control != null).run()
     hub.close()
     finish(exit)
+  }
+
+  /** An APK's converted classes, and what getting them cost: a cache hit, or a conversion. */
+  data class Conversion(val apk: File, val entry: ApkConversionCache.Entry, val ms: Long) {
+    fun toJson(): JsonObject = buildJsonObject {
+      put("apk", apk.path)
+      put("cached", entry.cached)
+      put("ms", ms)
+      put("classesJar", entry.classesJar.path)
+      runCatching { Json.parseToJsonElement(entry.summary) }.getOrNull()?.let { put("summary", it) }
+    }
+
+    /** The control channel's `conversion` event, sent before the simulator starts. */
+    fun event(): JsonObject = JsonObject(mapOf("event" to JsonPrimitive("conversion")) + toJson())
   }
 
   /**
@@ -331,6 +429,10 @@ internal class LaunchCommand(private val args: List<String>) {
      * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
      */
     val tiles: List<String> = emptyList(),
+    /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
+    val jvmOptions: List<String> = emptyList(),
+    /** Further system properties: a restarted simulator's data to restore, its launch time. */
+    val properties: Map<String, String> = emptyMap(),
   )
 
   private fun convert(
@@ -417,6 +519,11 @@ internal class LaunchCommand(private val args: List<String>) {
     return null
   }
 
+  private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+  private fun JsonObject.boolean(key: String): Boolean? =
+    (this[key] as? JsonPrimitive)?.booleanOrNull
+
   private fun fail(message: String): Nothing {
     System.err.println("compose-preview launch: $message")
     exitProcess(1)
@@ -425,6 +532,9 @@ internal class LaunchCommand(private val args: List<String>) {
   companion object {
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+
+    /** Extra options for the simulator JVM, whitespace-separated. */
+    const val JVM_OPTIONS_ENV = "COMPOSE_PREVIEW_SIMULATOR_JVM_OPTIONS"
 
     /**
      * Collector settings for every simulator JVM.
@@ -533,6 +643,7 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       addAll(SIMULATOR_JVM_ARGS)
+      addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
       // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
       // the app's real traffic reaches.
@@ -574,6 +685,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.widgets.isNotEmpty()) {
         properties["composeai.simulator.widgets"] = options.widgets.joinToString(";")
       }
+      properties.putAll(options.properties)
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -611,7 +723,8 @@ internal class LaunchCommand(private val args: List<String>) {
 
       --control stdio adds a JSON-lines control channel on stdin/stdout: tap, swipe, type,
       read the UI hierarchy, take screenshots, start activities and services, send broadcasts,
-      query providers. See docs/SIMULATOR.md. This is what agents and the MCP server use. The
+      query providers; "restart" and "update" {"apk":…} replace the app in a fresh JVM, its
+      data kept. See docs/SIMULATOR.md. This is what agents and the MCP server use. The
       window stays up, so you watch the agent drive the app: each tap and swipe it sends is
       drawn over the window (never into its screenshots) and the command shown along the
       bottom. --headless drops the window; with no display there is none anyway.
@@ -672,6 +785,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
                               connects, disconnects, puts, deletes, messages and replies.
         --pair-qualifiers <q> The paired watch's display (default ${ApkFormFactor.WEAR.qualifiers}).
+        --standby             Keep a second simulator JVM prepared up to the app's own code,
+                              so "restart" takes seconds, at the cost of its memory.
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.
         --verbose, -v         Print the cache entry and the launched command.
