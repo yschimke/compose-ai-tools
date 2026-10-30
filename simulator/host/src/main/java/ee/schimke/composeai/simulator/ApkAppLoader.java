@@ -122,7 +122,11 @@ public final class ApkAppLoader implements Runnable {
         System.err.println("No activity " + requested + " in the manifest; starting the launcher");
       }
     }
-    Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+    // The app's own: a paired phone also has the simulator's Wear OS companion app installed.
+    Intent launcher =
+        new Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(application.getPackageName());
     List<ResolveInfo> found = application.getPackageManager().queryIntentActivities(launcher, 0);
     if (found.isEmpty()) {
       throw new IllegalArgumentException("Could not find a launcher Activity in provided manifest");

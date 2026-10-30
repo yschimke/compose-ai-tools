@@ -96,7 +96,10 @@ and stopped, so its window is neither drawn nor touchable), `setResult` reaches 
 `startActivityForResult` caller, `CLEAR_TOP` / `SINGLE_TOP` / `CLEAR_TASK` are honored, a finished
 activity resumes the one below, and services are created, started, bound and destroyed through
 `ServiceController` (including `stopSelf`). The launcher activity takes the same path, so the stack
-has one owner.
+has one owner. A stopped activity's dialogs and bottom sheets are hidden with it. The app's own
+explicit `sendBroadcast` (a component or package named) reaches its manifest receivers too, on the
+main thread, as a device delivers it; Robolectric delivers an app's broadcasts to runtime receivers
+alone, which is also all an implicit one reaches on a device since API 26.
 
 **Startup** follows a device's order, through a Robolectric test environment of our own: the
 manifest's content providers are created after `attachBaseContext()` and before
@@ -535,8 +538,10 @@ a launcher do between them:
    updates merge, and errors show the error view — and redraw on every update (`widget`
    `updated` event with the layout, whether it was partial, the update count and a `reason`).
 
-The span is `targetCellWidth` × `targetCellHeight` when set, else from `minWidth` / `minHeight`;
-`resize` stays within `minResize*` / `maxResize*` along the axes `resizeMode` allows. `widget
+The span is `targetCellWidth` × `targetCellHeight` when set, else the fewest cells that hold
+`minWidth` / `minHeight` (a launcher never gives a widget less than its minimum); `resize` stays
+within `minResize*` (rounded up the same way) and `maxResize*` (the cells that fit in it) along
+the axes `resizeMode` allows. `widget
 update` sends `APPWIDGET_UPDATE`, as a launcher refresh does; `updatePeriodMillis` ticks follow the
 simulated clock (at least 30 minutes, as the system clamps it). An update's `reason` is the home
 screen's last prompt to that widget within ten simulated seconds (`bind`, `update`, `options`,
@@ -644,13 +649,18 @@ leave / remove), and drawn by the protolayout tile renderer the CLI stages in `l
 (apps do not ship it); a `LoadAction` requests the tile again with the clicked state and a
 `LaunchAction` starts its activity. Widgets are bound by Glance Wear's `BIND_WIDGET_PROVIDER`,
 asked for a document of their container's size and played with the View-based Remote Compose
-player. Both get the watch's system data: `health` sets the Wear Health Services values tiles read
+player. A widget is shown as a watch shows it: just its container, the provider's
+`preferredType` (small, 2x1, or large, 2x2), with no card or label around it. The document
+paints its own background and the host only masks it to the container's shape: on a round
+watch a stadium (large 160x136dp, small 200x60dp), on a square one a 26dp-cornered squircle
+(200x108dp, 200x60dp), the sizes Glance Wear's own previews use. Both get the watch's system data: `health` sets the Wear Health Services values tiles read
 through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
 
 ![Navigation: app, watch face, launcher, quick settings](design/evidence/simulator-launch/wear-navigation.png)
 ![Notifications: stream, expanded card, reply choices, reply delivered, heads-up](design/evidence/simulator-launch/wear-notifications.png)
 ![Ongoing activity: chip on the face and row in the launcher](design/evidence/simulator-launch/wear-ongoing.png)
 ![Tiles and widgets following the simulated heart rate and steps](design/evidence/simulator-launch/wear-tiles-widgets.png)
+![Widgets as their host containers: large stadium and small pill, no card](design/evidence/simulator-launch/wear-widget-containers.png)
 
 | Command | Arguments | Does |
 | --- | --- | --- |
@@ -659,7 +669,7 @@ through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
 | `notifications` | `op`? (`open` / `close` / `clear`) | without `op`, every active notification with its key, channel, category, extras, actions, `ongoingActivity`, and `shown: false` plus `hiddenBecause` for one a watch would drop (blocked channel, `POST_NOTIFICATIONS` denied) |
 | `notification` | `key`, `op` (`tap` / `action` / `reply` / `dismiss` / `snooze`), `index`?, `text`?, `ms`? | sends its content intent (auto-cancel honored), presses action `index`, fills the action's `RemoteInput` with `text` (the first reply action without `index`), sends the delete intent and cancels (not when ongoing), or snoozes for `ms`. Activities land on the back stack, broadcasts reach manifest receivers, services start; an immutable `PendingIntent` drops a reply as on a device (`fillInDropped`) |
 | `ongoing` | `op`? (`list` / `tap`), `index`? | the ongoing activities, or sends one's touch intent |
-| `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers, each tile's render state; `show` takes a page index or a component |
+| `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers (a widget with its `container`), each tile's and widget's render state; `show` takes a page index or a component |
 | `health` | `heartRate`?, `heartRateAccuracy`? (`unknown` … `high`), `steps`?, `distanceMeters`?, `calories`?, `floors`? | sets the simulated health data, which tiles and widgets on screen redraw with |
 | `quickSettings` | `airplane`?, `wifi`? | opens quick settings (battery, airplane mode, Wi-Fi), switching either first |
 
@@ -790,7 +800,9 @@ quit and launch again.
 simulator instead of Play services, so messages, requests, data items and capabilities cross
 between the apps and reach their listeners and manifest `WearableListenerService`s. With
 `--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
-`device`, and each crossing is a `datalayer` event. `RemoteActivityHelper` launches, Horologist's
+`device`, and each crossing is a `datalayer` event. Every other line either simulator prints — the
+app's logcat, Robolectric's logging and stack traces on stderr, and without the control channel its
+stdout too — is prefixed with its device, `[phone] ` or `[watch] `. `RemoteActivityHelper` launches, Horologist's
 `DataLayerAppHelper`, and on the watch `RemoteAuthClient`, `BridgingManager` and
 `PhoneTypeHelper` work across the pair too. A prototype; the design, evidence and what is
 missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).

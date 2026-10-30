@@ -58,6 +58,11 @@ class PinCommand(
           exitProcess(1)
         }
 
+    if ((remove || useCli || positional != null) && isLightbuildGradleRoot(root)) {
+      stderr(lightbuildPinRefusal())
+      exitProcess(1)
+    }
+
     when {
       remove -> {
         val removed = removeGradlePropertiesPin(root, fileSystem)
@@ -129,3 +134,11 @@ class PinCommand(
   private fun String?.jsonOrNull(): String =
     if (this == null) "null" else "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
+
+/**
+ * Why `pin` won't write in a Lightbuild project: its only `gradle.properties` is in the generated
+ * build, which Lightbuild rewrites on every build, so a pin written there would silently vanish.
+ */
+internal fun lightbuildPinRefusal(): String =
+  "compose-preview pin: Lightbuild regenerates $LIGHTBUILD_GRADLE_DIR on every build, so a pin " +
+    "written there would be lost. Set $VERSION_PIN_ENV in the environment instead."

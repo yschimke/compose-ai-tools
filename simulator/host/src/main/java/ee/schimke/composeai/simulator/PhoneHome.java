@@ -197,7 +197,7 @@ public class PhoneHome extends Activity {
         {
           WidgetHost.PinRequest request = home.widgets.pendingPin();
           if (request == null) return;
-          view = home.picker.buildPinSheet(this, request.info, width);
+          view = home.picker.buildPinSheet(this, request, width);
           break;
         }
       case "resize":

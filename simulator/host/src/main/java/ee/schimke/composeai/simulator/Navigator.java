@@ -151,6 +151,30 @@ final class Navigator {
     return null;
   }
 
+  /** The app's activity at the bottom of [displayId]'s stack, its task's root; null if none. */
+  private Entry root(int displayId) {
+    Entry root = null;
+    for (Entry entry : stack) if (entry.displayId == displayId && !entry.system) root = entry;
+    return root;
+  }
+
+  private static Intent withoutPackage(Intent intent) {
+    return new Intent(intent).setPackage(null);
+  }
+
+  private static boolean isLauncherIntent(Intent intent) {
+    return Intent.ACTION_MAIN.equals(intent.getAction())
+        && intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+        && intent.getData() == null;
+  }
+
+  /** A component and nothing else, as the simulator starts the app's launcher activity. */
+  private static boolean isBare(Intent intent) {
+    return intent.getAction() == null
+        && intent.getData() == null
+        && (intent.getCategories() == null || intent.getCategories().isEmpty());
+  }
+
   /** The session's navigator, for the simulator's own system UI. */
   static Navigator current() {
     return current;
@@ -171,6 +195,10 @@ final class Navigator {
       if (activity.getWindow() != null) {
         Object token = activity.getWindow().getDecorView().getApplicationWindowToken();
         if (token != null) hidden.add(token);
+        // The activity's own token, which its dialogs carry in their layout params: a dialog is a
+        // window of its own, with a window token of its own.
+        Object appToken = activity.getWindow().getAttributes().token;
+        if (appToken != null) hidden.add(appToken);
       }
     }
     return hidden;
@@ -345,6 +373,27 @@ final class Navigator {
     Class<? extends Activity> type = loadClass(implementation.getClassName(), Activity.class);
     Intent launch = new Intent(intent).setComponent(component);
     int flags = intent.getFlags();
+
+    Entry root = requestCode < 0 ? root(displayId) : null;
+    if (root != null) {
+      Intent rootIntent = root.activity().getIntent();
+      boolean reuse =
+          TaskReuse.bringsTaskForward(
+              flags,
+              component.equals(root.activity().getComponentName()),
+              withoutPackage(launch).filterEquals(withoutPackage(rootIntent)),
+              isLauncherIntent(launch),
+              isBare(rootIntent) || isLauncherIntent(rootIntent));
+      if (reuse) {
+        // The task comes forward as it is; nothing new starts and nothing gets the intent.
+        Entry top = top(displayId);
+        if (top.stopped) {
+          bringBack(top);
+          protocol.event("activity", describe(top, "resumed"));
+        }
+        return describe(top, "resumed");
+      }
+    }
 
     if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0) {
       for (Entry entry : new ArrayList<>(stack)) {
@@ -1164,11 +1213,52 @@ final class Navigator {
       delivered.put(
           new Protocol.Json().put("receiver", receiver.name).put("declared", "manifest").object());
     }
-    app.sendBroadcast(intent);
+    delivering = true;
+    try {
+      app.sendBroadcast(intent);
+    } finally {
+      delivering = false;
+    }
     // Robolectric collects the matching receivers when the broadcast is sent and delivers on the
     // main looper, so the one-shot registrations can go now.
     for (BroadcastReceiver instance : oneShot) app.unregisterReceiver(instance);
     return new Protocol.Json().put("delivered", delivered).object();
+  }
+
+  /** Set while {@link #broadcast} hands the intent to Robolectric's own delivery. */
+  private static boolean delivering;
+
+  /**
+   * The app's own {@code sendBroadcast}, from {@link SimulatorShadowContextImpl}: an explicit one
+   * (a component or a package named) that a manifest receiver handles is delivered as {@link
+   * #broadcast} delivers it, on the main thread as the system would, and true is returned. Others
+   * return false and keep Robolectric's delivery, to runtime receivers alone, which is also what
+   * a device does with an implicit broadcast and a manifest receiver since API 26.
+   */
+  static boolean appSentBroadcast(Intent intent) {
+    Navigator navigator = current;
+    if (navigator == null || delivering) return false;
+    if (intent.getComponent() == null && intent.getPackage() == null) return false;
+    if (navigator.app.getPackageManager().queryBroadcastReceivers(intent, 0).isEmpty()) {
+      return false;
+    }
+    Intent copy = new Intent(intent);
+    new android.os.Handler(android.os.Looper.getMainLooper())
+        .post(
+            () -> {
+              try {
+                navigator.broadcast(copy);
+              } catch (RuntimeException e) {
+                navigator.protocol.event(
+                    "error",
+                    new Protocol.Json()
+                        .put("kind", "broadcast")
+                        .put("intent", Intents.toJson(copy))
+                        .put("message", String.valueOf(e))
+                        .object());
+              }
+            });
+    return true;
   }
 
   private void register(BroadcastReceiver receiver, Intent intent) {

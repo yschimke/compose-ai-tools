@@ -409,9 +409,14 @@ final class WidgetHost {
   /** The span a launcher gives a new widget: {@code targetCell*} when set, else its min size. */
   int[] defaultSpan(AppWidgetProviderInfo info) {
     float d = density();
-    int x = info.targetCellWidth > 0 ? info.targetCellWidth : LauncherGrid.cells(info.minWidth, d);
+    int x =
+        info.targetCellWidth > 0
+            ? info.targetCellWidth
+            : LauncherGrid.cellsAtLeast(info.minWidth, d);
     int y =
-        info.targetCellHeight > 0 ? info.targetCellHeight : LauncherGrid.cells(info.minHeight, d);
+        info.targetCellHeight > 0
+            ? info.targetCellHeight
+            : LauncherGrid.cellsAtLeast(info.minHeight, d);
     return new int[] {x, y};
   }
 
@@ -421,11 +426,11 @@ final class WidgetHost {
     float d = density();
     int x =
         resizes(info, AppWidgetProviderInfo.RESIZE_HORIZONTAL)
-            ? Math.min(span[0], LauncherGrid.cells(info.minResizeWidth, d))
+            ? Math.min(span[0], LauncherGrid.cellsAtLeast(info.minResizeWidth, d))
             : span[0];
     int y =
         resizes(info, AppWidgetProviderInfo.RESIZE_VERTICAL)
-            ? Math.min(span[1], LauncherGrid.cells(info.minResizeHeight, d))
+            ? Math.min(span[1], LauncherGrid.cellsAtLeast(info.minResizeHeight, d))
             : span[1];
     return new int[] {x, y};
   }
@@ -438,13 +443,13 @@ final class WidgetHost {
         !resizes(info, AppWidgetProviderInfo.RESIZE_HORIZONTAL)
             ? span[0]
             : info.maxResizeWidth > 0
-                ? Math.max(span[0], LauncherGrid.cells(info.maxResizeWidth, d))
+                ? Math.max(span[0], LauncherGrid.cellsAtMost(info.maxResizeWidth, d))
                 : Integer.MAX_VALUE;
     int y =
         !resizes(info, AppWidgetProviderInfo.RESIZE_VERTICAL)
             ? span[1]
             : info.maxResizeHeight > 0
-                ? Math.max(span[1], LauncherGrid.cells(info.maxResizeHeight, d))
+                ? Math.max(span[1], LauncherGrid.cellsAtMost(info.maxResizeHeight, d))
                 : Integer.MAX_VALUE;
     return new int[] {x, y};
   }
@@ -824,6 +829,7 @@ final class WidgetHost {
   /** {@code updateAppWidget}: [views] replace what widget [id] shows. */
   void appUpdated(int id, RemoteViews views, boolean partial) {
     Hosted hosted;
+    int count;
     synchronized (this) {
       hosted = widgets.get(id);
       if (hosted == null || views == null) return;
@@ -837,11 +843,13 @@ final class WidgetHost {
       }
       hosted.updates++;
       hosted.lastUpdateUptime = SystemClock.uptimeMillis();
+      count = hosted.updates;
     }
     onMain(
         () -> {
           String layout = draw(hosted);
-          JSONObject event = event(hosted, "updated");
+          // The count this update made, which a later update may already have moved on.
+          JSONObject event = put(event(hosted, "updated"), "updates", count);
           put(event, "layout", layout);
           put(event, "partial", partial);
           put(event, "reason", takeReason(hosted));

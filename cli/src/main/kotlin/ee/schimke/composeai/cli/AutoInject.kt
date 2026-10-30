@@ -477,11 +477,16 @@ allprojects {
                 // exclusiveContent-with-own-repos case the module's own buildscript repositories
                 // resolve the coordinate. Outside the exclusiveContent branch we both add our
                 // repos and the dep, the original auto-inject happy path.
+                //
+                // google() goes first: these repos also resolve the build's own `plugins { }`
+                // markers, and AGP's exist only there. Asked first, Maven Central 404s and Gradle
+                // falls through, but a 429 from a rate-limited Central is fatal, which failed every
+                // project of a Lightbuild-generated build.
                 if (!composeAiPreviewSettingsHasExclusiveContent) {
                     repositories {
+                        google()
                         gradlePluginPortal()
                         mavenCentral()
-                        google()
                         if (useMavenLocal) mavenLocal()
                     }
                 }

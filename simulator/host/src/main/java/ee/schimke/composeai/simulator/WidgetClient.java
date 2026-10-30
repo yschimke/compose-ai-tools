@@ -43,6 +43,58 @@ final class WidgetClient {
 
   static final int SMALL = 2;
 
+  /**
+   * The slot a watch's host gives a widget: its size, the padding it keeps inside, and the corner
+   * radius it masks the widget's background to. The document paints its own background over the
+   * whole slot (Glance Wear's container), so the host draws nothing around it. Values are Glance
+   * Wear's own preview parameters for each host shape: a round watch's stadium (corners of 999dp,
+   * clamped to a pill) and a square watch's squircle (26dp), each sized for a large screen
+   * (227dp across) or a small one.
+   */
+  static final class Container {
+    final int type;
+    final float widthDp;
+    final float heightDp;
+    final float horizontalPaddingDp;
+    final float verticalPaddingDp;
+    final float cornerRadiusDp;
+
+    Container(int type, float w, float h, float hPad, float vPad, float corner) {
+      this.type = type;
+      this.widthDp = w;
+      this.heightDp = h;
+      this.horizontalPaddingDp = hPad;
+      this.verticalPaddingDp = vPad;
+      this.cornerRadiusDp = corner;
+    }
+
+    static Container of(int type, boolean round, int screenWidthDp) {
+      boolean large = screenWidthDp >= 210;
+      if (round) {
+        if (type == SMALL) {
+          return large
+              ? new Container(SMALL, 200, 60, 15, 8, 999)
+              : new Container(SMALL, 182, 54, 13, 8, 999);
+        }
+        return large
+            ? new Container(LARGE, 160, 136, 35, 16, 999)
+            : new Container(LARGE, 150, 120, 29, 16, 999);
+      }
+      if (type == SMALL) {
+        return large
+            ? new Container(SMALL, 200, 60, 8, 8, 26)
+            : new Container(SMALL, 166, 60, 8, 8, 26);
+      }
+      return large
+          ? new Container(LARGE, 200, 108, 8, 8, 26)
+          : new Container(LARGE, 166, 96, 8, 8, 26);
+    }
+
+    String name() {
+      return type == SMALL ? "small" : "large";
+    }
+  }
+
   final ComponentName component;
   final int instanceId;
   private final Application app;
@@ -55,8 +107,7 @@ final class WidgetClient {
   private String error;
   private Context context;
   private ViewGroup parent;
-  private int widthDp = 186;
-  private int heightDp = 110;
+  private Container container = Container.of(LARGE, true, 227);
 
   WidgetClient(
       Application app,
@@ -82,12 +133,15 @@ final class WidgetClient {
     return error;
   }
 
-  /** Where the document plays, at [widthDp] x [heightDp]. */
-  void attach(Context context, ViewGroup parent, int widthDp, int heightDp) {
+  /** Where the document plays: [parent], sized to [container]. */
+  void attach(Context context, ViewGroup parent, Container container) {
     this.context = context;
     this.parent = parent;
-    this.widthDp = widthDp;
-    this.heightDp = heightDp;
+    this.container = container;
+  }
+
+  Container container() {
+    return container;
   }
 
   private Object provider() throws ReflectiveOperationException {
@@ -145,7 +199,14 @@ final class WidgetClient {
                   float.class, float.class, int.class, int.class, int.class, List.class,
                   byteString)
               .newInstance(
-                  instanceId, "simulator", (float) widthDp, (float) heightDp, LARGE, 8f, 8f, 26f,
+                  instanceId,
+                  "simulator",
+                  container.widthDp,
+                  container.heightDp,
+                  container.type,
+                  container.horizontalPaddingDp,
+                  container.verticalPaddingDp,
+                  container.cornerRadiusDp,
                   version[0],
                   version[1],
                   version[2],
@@ -216,12 +277,14 @@ final class WidgetClient {
                 view.post(WidgetClient.this::applySystemData);
               }
             });
-    float radius = 26 * app.getResources().getDisplayMetrics().density;
+    // The host masks the widget to its container's shape; 999dp corners clamp to a pill.
+    float radius = container.cornerRadiusDp * app.getResources().getDisplayMetrics().density;
     view.setOutlineProvider(
         new ViewOutlineProvider() {
           @Override
           public void getOutline(View v, Outline outline) {
-            outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+            outline.setRoundRect(
+                0, 0, v.getWidth(), v.getHeight(), Math.min(radius, v.getHeight() / 2f));
           }
         });
     view.setClipToOutline(true);
