@@ -90,7 +90,10 @@ final class SimulatorSandbox {
                 SimulatorShadowJobScheduler.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
-                ShadowGoogleApiAvailability.class);
+                ShadowGoogleApiAvailability.class,
+                // androidx.appsearch's storages, in memory (AppSearchSessions).
+                ShadowLocalStorage.class,
+                ShadowPlatformStorage.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class);
@@ -167,6 +170,8 @@ final class SimulatorSandbox {
     builder.doNotInstrumentClass("android.app.RecoverableSecurityException");
     builder.addInstrumentedClass(ShadowGooglePlayServicesUtilLight.UTIL_LIGHT);
     builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
+    builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
+    builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
     if (DataLayerLink.enabled()) builder.addInstrumentedClass(ShadowWearable.WEARABLE);
     builder
         .addInstrumentedPackage("dalvik.")

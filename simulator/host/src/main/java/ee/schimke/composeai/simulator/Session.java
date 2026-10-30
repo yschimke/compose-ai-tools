@@ -72,6 +72,8 @@ final class Session {
   private final SystemPrompts prompts;
   private final BackgroundWork background;
   private final SystemPickers pickers;
+  private final AppActions appActions;
+  private final AppFunctions appFunctions;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -128,6 +130,8 @@ final class Session {
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
     new Handoffs(app, protocol, navigator);
+    this.appActions = new AppActions(app, navigator);
+    this.appFunctions = new AppFunctions(app, protocol);
   }
 
   void start() {
@@ -311,6 +315,8 @@ final class Session {
       case "settings":
       case "content":
       case "pick":
+      case "assistant":
+      case "appfunctions":
         return true;
       default:
         return false;
@@ -349,6 +355,10 @@ final class Session {
         return CompanionDevices.command(c);
       case "credentials":
         return Credentials.command(c);
+      case "assistant":
+        return appActions.command(c);
+      case "appfunctions":
+        return appFunctions.command(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);

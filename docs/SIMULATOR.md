@@ -327,6 +327,8 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
 | `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
 | `pick` | `policy`? (`ask` / `cancel`), `answer`? (a request id, or `"next"`), `files`?, `path`?, `cancel`? | the documents, photo and camera pickers the app opened ([below](#pickers-sharing-and-other-apps)); without an answer, the policy and the requests waiting |
+| `assistant` | `invoke`? (a capability, e.g. `actions.intent.OPEN_APP_FEATURE`), `params`? (built-in intent parameter → value) | the App Actions capabilities of the app's `shortcuts.xml`; `invoke` starts the activity the first fulfilling intent names, as Assistant does ([below](#app-actions-appsearch-and-app-functions)) |
+| `appfunctions` | `execute`? (a function id), `params`? (JSON), `service`? | the app's `AppFunctionService`s and function ids; `execute` calls one (`--sdk 36`), replying with its result document |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range that matches one of the request's device filters (address, name pattern, service UUIDs)), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
@@ -510,6 +512,38 @@ handles (its own App Link) is the app's, as on a device.
 A for-result start that nothing handles at all is answered `RESULT_CANCELED` too, beside its
 `error` event: a device throws `ActivityNotFoundException`, which Robolectric does not, and the
 caller would otherwise wait for good.
+### App Actions, AppSearch and App Functions
+
+**App Actions.** `assistant` lists the `<capability>` elements of the `shortcuts.xml` the app's
+activities declare (`android.app.shortcuts` metadata), each with its fulfilling `<intent>`s and
+their `<parameter>`s, and the shortcuts bound to it (`<capability-binding>`, the inline inventory).
+`invoke` with `params` builds the first intent whose required parameters are given: a
+`<url-template>` is expanded (`{var}`, `{+var}`, `{#var}`, `{?a,b}`, `{&a}`, with parameters
+named by their built-in intent name or their `android:key`), otherwise each parameter becomes an
+extra under its key. The intent starts with `FLAG_ACTIVITY_NEW_TASK`, as from Assistant.
+
+```
+→ {"id":1,"cmd":"assistant","invoke":"actions.intent.OPEN_APP_FEATURE","params":{"feature":"inbox"}}
+← {"id":1,"ok":true,"result":{"capability":"actions.intent.OPEN_APP_FEATURE","intent":{"action":"android.intent.action.VIEW","data":"myapp://feature?feature=inbox",…},"result":{…}}}
+```
+
+**AppSearch.** androidx.appsearch's `LocalStorage` (whose Icing engine is a native library that
+cannot load here) and `PlatformStorage` (whose framework `AppSearchManager` Robolectric does not
+have) both hand out an in-memory session, kept apart per storage and database: schemas, put, get
+and remove by id, remove by query, namespaces, and search (each query term must match a word of a
+string property, as a prefix or exactly per the spec's term match; filtered by schema type and
+namespace; newest first, paged by `resultCountPerPage`). The data lasts as long as the simulator.
+The framework's own `AppSearchManager`, used without androidx, is still absent.
+
+**App Functions.** `appfunctions` lists the services that handle
+`android.app.appfunctions.AppFunctionService` (the platform's, or androidx.appfunctions'
+`PlatformAppFunctionService`) and the function ids their generated `app_functions.xml` /
+`app_functions_v2.xml` assets name. `execute` calls the service's `onExecuteFunction` as the system
+does for an agent, from `com.android.shell` (as `adb shell cmd app_function execute-app-function`
+does), with `params` as the parameter document (strings, numbers, booleans, objects, arrays of
+one of them), and replies with the result document's properties (`androidAppfunctionsReturnValue`
+for androidx's) or the function's error; a function that answers later sends an `appFunction`
+event. It needs `--sdk 36`, where the platform type exists.
 
 ### Display, fold and device state
 
@@ -1444,6 +1478,11 @@ What does not, or not yet:
   `jobFinished(params, true)` retry waits its initial backoff each time, not a growing one; a download has no notification, and is neither
   paused nor retried. A foreground service's type is not checked against its manifest
   declaration or permissions.
+- **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
+  `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
+  ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
+  search. App Functions' enabled state and caller permission (`EXECUTE_APP_FUNCTIONS`) are not
+  checked.
 - **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
   the share sheet, browser and dialer are answered ([above](#network-wi-fi-and-bluetooth),
   [above](#pickers-sharing-and-other-apps)); there is no media store of picked photos (the photo
