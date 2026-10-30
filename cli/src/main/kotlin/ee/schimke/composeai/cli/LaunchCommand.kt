@@ -103,6 +103,7 @@ internal class LaunchCommand(private val args: List<String>) {
       synchronized(inUse) { inUse.forEach { runCatching { it.close() } } }
       exitProcess(exit)
     }
+    val locked = ConcurrentHashMap.newKeySet<String>()
     fun conversionOf(apk: File): Conversion {
       val start = System.nanoTime()
       val entry =
@@ -114,7 +115,9 @@ internal class LaunchCommand(private val args: List<String>) {
           )
           convert(java, converterJars, apk, out, androidJar, previous)
         }
-      inUse += cache.use(entry)
+      // Once per entry: a second lock on the same file from this process throws
+      // (OverlappingFileLockException), as an update to an APK already running would.
+      if (locked.add(entry.classesJar.absolutePath)) inUse += cache.use(entry)
       val conversion =
         Conversion(apk, entry, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))
       if (verbose || !entry.cached) {
