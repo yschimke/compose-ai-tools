@@ -122,3 +122,31 @@ rendered inline, after one `tap "Click"`. The Glimmer probe sets no theme, hence
 ![Glimmer probe](glimmer-probe.png)
 
 ![XR probe in Home Space](xr-probe-home-space.png)
+
+## More than one display
+
+A probe APK (plain Views, built outside the repository) that listens for displays, shows an
+`android.app.Presentation` on each presentation display, and launches a second activity onto one
+with `ActivityOptions.setLaunchDisplayId`. Headless, with `launch --display 960x540,name=TV`,
+driven over `--control stdio`; each image is the control channel's `screenshot` with `display` (or `"all"`), unless noted.
+
+**A presentation on the TV** — the app's `DisplayListener` and `getDisplays(
+DISPLAY_CATEGORY_PRESENTATION)` find the display, and its `Presentation` draws there at the
+display's 960×540. Two `tap {"display":1}` reached the presentation's button; the phone's picture
+does not contain it (before this change, Robolectric drew every window into the one screen).
+
+![The phone, and the presentation on display 1](multi-display-presentation.png)
+
+**Activities on a display** — the app's own `setLaunchDisplayId` puts `SecondActivity` on the TV
+while `MainActivity` stays resumed on the phone; `SecondActivity` reports the TV's 960×540dp. After
+`displays change` to 640×360dp at xhdpi it is re-created there at 1280×720 pixels. (Its "Open
+another here" starts a third activity with no options, which stays on the TV.)
+
+![MainActivity on the phone, SecondActivity on the TV, and after the TV changes density](multi-display-activities.png)
+
+**The windows** — under Xvfb (`import -window root`, cropped and scaled): the phone, then a window
+per secondary display (titled `<name> — display <id>`; no window manager, hence no frames): the TV
+with `SecondActivity`, and a 480×360 virtual "Projector" added with `displays add`, showing its
+presentation.
+
+![The phone and two display windows under Xvfb](multi-display-window.png)
