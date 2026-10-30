@@ -215,7 +215,26 @@ final class DataLayer {
     final String name;
     final String packageName;
     final boolean nearby;
+    /** Every app of the node's capabilities: what {@code CapabilityClient} sees of it. */
     final Set<String> capabilities = new LinkedHashSet<>();
+
+    /**
+     * The node's apps on the Data Layer, each with the capabilities it declares. A node is
+     * connected while any of its apps is; a device of several apps ({@code --app}) has one node.
+     */
+    final Map<String, Set<String>> byPackage = new LinkedHashMap<>();
+
+    /** Recomputes [capabilities] from [byPackage]; returns the names that came or went. */
+    Set<String> recompute() {
+      Set<String> next = new LinkedHashSet<>();
+      for (Set<String> names : byPackage.values()) next.addAll(names);
+      Set<String> changed = new LinkedHashSet<>();
+      for (String name : capabilities) if (!next.contains(name)) changed.add(name);
+      for (String name : next) if (!capabilities.contains(name)) changed.add(name);
+      capabilities.clear();
+      capabilities.addAll(next);
+      return changed;
+    }
 
     Peer(String id, String name, String packageName, boolean nearby) {
       this.id = id;
@@ -643,6 +662,12 @@ final class DataLayer {
     String from = frame.optString("from");
     String to = DataLayerFrames.text(frame.opt("to"));
     if (from.equals(localId) || (to != null && !to.equals(localId))) return;
+    // Another app's on the peer node: Play services hands it to that app, not this one.
+    String type = frame.optString("type");
+    if (!DataLayerFrames.forApp(
+        type, DataLayerFrames.text(frame.opt("package")), app.getPackageName())) {
+      return;
+    }
     if (frame.optString("type").startsWith("channel") && channels.receive(frame)) return;
     try {
       switch (frame.optString("type")) {
@@ -650,10 +675,11 @@ final class DataLayer {
           onHello(frame);
           break;
         case "bye":
-          onBye(from);
+          onBye(from, DataLayerFrames.text(frame.opt("package")));
           break;
         case "capabilities":
-          onCapabilities(from, frame.optJSONArray("capabilities"));
+          onCapabilities(
+              from, DataLayerFrames.text(frame.opt("package")), frame.optJSONArray("capabilities"));
           break;
         case "message":
           onMessage(frame);
@@ -695,14 +721,19 @@ final class DataLayer {
             DataLayerFrames.text(frame.opt("package")),
             frame.optBoolean("nearby", true));
     JSONArray capabilities = frame.optJSONArray("capabilities");
+    Set<String> declared = new LinkedHashSet<>();
     if (capabilities != null) {
-      for (int i = 0; i < capabilities.length(); i++) {
-        peer.capabilities.add(capabilities.getString(i));
-      }
+      for (int i = 0; i < capabilities.length(); i++) declared.add(capabilities.getString(i));
     }
     List<Item> own = new ArrayList<>();
+    Set<String> changed;
     synchronized (this) {
-      known = peers.containsKey(id);
+      Peer existing = peers.get(id);
+      known = existing != null;
+      // Another app of a node already connected joins it rather than replacing it.
+      if (known) peer = existing;
+      peer.byPackage.put(packageOf(frame), declared);
+      changed = peer.recompute();
       peers.put(id, peer);
       String prefix = wearUri(localId, "/");
       for (Item item : items.values()) if (item.uri.startsWith(prefix)) own.add(item);
@@ -732,15 +763,37 @@ final class DataLayer {
     if (!known) {
       notifyCapabilities(peer.capabilities);
       notifyPeer(peer, true);
+    } else if (!changed.isEmpty()) {
+      notifyCapabilities(changed);
     }
   }
 
-  private void onBye(String id) {
+  private static String packageOf(JSONObject frame) {
+    String pkg = DataLayerFrames.text(frame.opt("package"));
+    return pkg == null ? "" : pkg;
+  }
+
+  /**
+   * An app of node [id] left the Data Layer ([pkg]), or the whole node did (no package): the node
+   * stays connected while another of its apps is.
+   */
+  private void onBye(String id, String pkg) {
     Peer peer;
+    Set<String> changed = null;
     synchronized (this) {
-      peer = peers.remove(id);
+      peer = peers.get(id);
+      if (peer == null) return;
+      if (pkg != null) {
+        peer.byPackage.remove(pkg);
+        if (!peer.byPackage.isEmpty()) changed = peer.recompute();
+      }
+      if (changed == null) peers.remove(id);
     }
-    if (peer == null) return;
+    if (changed != null) {
+      log("an app of peer " + id + " (" + pkg + ") left");
+      notifyCapabilities(changed);
+      return;
+    }
     log("peer " + id + " disconnected");
     channels.disconnected(id);
     CompanionDevices.peerDisconnected(id);
@@ -779,11 +832,12 @@ final class DataLayer {
     synchronized (this) {
       gone = new ArrayList<>(peers.keySet());
     }
-    for (String id : gone) onBye(id);
+    for (String id : gone) onBye(id, null);
   }
 
-  private void onCapabilities(String from, JSONArray capabilities) throws JSONException {
-    Set<String> changed = new LinkedHashSet<>();
+  private void onCapabilities(String from, String pkg, JSONArray capabilities)
+      throws JSONException {
+    Set<String> changed;
     synchronized (this) {
       Peer peer = peers.get(from);
       if (peer == null) return;
@@ -791,10 +845,8 @@ final class DataLayer {
       for (int i = 0; capabilities != null && i < capabilities.length(); i++) {
         next.add(capabilities.getString(i));
       }
-      for (String name : peer.capabilities) if (!next.contains(name)) changed.add(name);
-      for (String name : next) if (!peer.capabilities.contains(name)) changed.add(name);
-      peer.capabilities.clear();
-      peer.capabilities.addAll(next);
+      peer.byPackage.put(pkg == null ? "" : pkg, next);
+      changed = peer.recompute();
     }
     notifyCapabilities(changed);
   }
@@ -1452,6 +1504,9 @@ final class DataLayer {
 
   /** A frame to the peers: over the hub, or in agent mode as a {@code send} event. */
   void sendFrame(JSONObject frame) {
+    // Every frame says which app sent it, channels' included: the peer node's other apps do not
+    // take it ({@link #receive}).
+    if (!frame.has("package")) putUnchecked(frame, "package", app.getPackageName());
     if (agent) {
       showFrame(frame);
       return;

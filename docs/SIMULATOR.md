@@ -1379,9 +1379,10 @@ What a reload does not keep or cover:
 `--install <other.apk>` (repeatable) puts more apps on the device, each in a simulator JVM of its
 own, as each app runs in a process of its own on a device. The first APK is the one on screen; the
 others start their process with no activity, as an app does when something calls into it. With
-`--control stdio` each is a `device` of the channel, named by its package: a command with
-`"device":"com.example.other"` goes to that app, one without to the first, and every line the
-simulators print carries its `device`, as with [`--pair`](#a-paired-phone-and-watch).
+`--control stdio` each is a `device` of the channel, `phone/<package>` (see [devices and their
+apps](#devices-and-their-apps)): a command with `"device":"phone/com.example.other"`, or the
+package alone, goes to that app, one without to the first, and every line the simulators print
+carries its `device`, as with [`--pair`](#a-paired-phone-and-watch).
 
 What the apps share:
 
@@ -1400,15 +1401,45 @@ What the apps share:
 ```
 compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
 → {"id":1,"cmd":"packages"}
-← {"device":"ee.schimke.agent","id":1,"ok":true,"result":{"packages":["ee.schimke.agent","ee.schimke.probe"],…}}
+← {"device":"phone/ee.schimke.agent","id":1,"ok":true,"result":{"packages":["ee.schimke.agent","ee.schimke.probe"],…}}
    (the agent calls executeAppFunction("ee.schimke.probe", "…ProbeFunctions#add", {a: 20, b: 22}):
     the probe's service runs with callingPackage ee.schimke.agent, and the agent's receiver gets 42)
-→ {"id":2,"device":"ee.schimke.probe","cmd":"logcat","op":"dump","filters":{"Probe":"V"}}
+→ {"id":2,"device":"phone/ee.schimke.probe","cmd":"logcat","op":"dump","filters":{"Probe":"V"}}
 ```
 
 Intents, broadcasts and content providers do not cross between apps yet: a share sheet or an
 `ACTION_VIEW` aimed at another installed app is still a [handoff](#pickers-sharing-and-other-apps),
-and each app's `/sdcard` is its own. `--install` does not combine with `--pair` or `--adb`.
+and each app's `/sdcard` is its own. `--install` combines with `--pair` (and both with `--app`), but
+not with `--adb`.
+
+## Devices and their apps
+
+`--app <device>:<apk>` (repeatable) says the whole topology at once: devices, each with its apps,
+every app in a simulator JVM of its own. A device is a lower-case name; `watch` (or `watch-…`) is a
+Wear OS watch, drawn round with the rotary input (`--pair-qualifiers`), anything else a phone. The
+APK argument, `--pair` and `--install` are shorthands: the first app of its device (the phone's,
+or the watch's for a Wear app), the watch's app, and apps beside the first. Without an APK
+argument the first `--app` is the one on screen.
+
+```
+compose-preview launch --app phone:notes.apk --app phone:agent.apk \
+                       --app watch:notes-wear.apk --app watch:fitness.apk --control stdio
+```
+
+- **On a device**, the apps share its [bus](#several-apps-on-one-device) and know each other's
+  manifests; its first app is on screen and the others start without an activity.
+- **Between devices** the [Wearable Data Layer](#a-paired-phone-and-watch) connects them, one node
+  per device. As Play services does, messages, data items, channels and the remote activity and
+  sign-in requests go to the app of the same package on the other node: the phone's
+  `com.example.notes` talks to the watch's `com.example.notes`, never to `fitness`. Which nodes are
+  connected and what they are capable of is the device's, seen by every app on it; a node stays
+  connected while any of its apps runs.
+- **On the control channel** an app alone on its device is the device's name (`phone`, `watch`, as
+  with `--pair`); apps sharing one are `<device>/<package>`, the device's name standing for its
+  first app and a package alone for its app when only one device has it.
+
+`--app` does not combine with `--adb`, or with `--data-layer agent`, which plays the other device
+itself.
 
 ## A paired phone and watch
 

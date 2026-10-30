@@ -18,6 +18,25 @@ import java.util.Objects;
 final class DataLayerFrames {
   private DataLayerFrames() {}
 
+  /**
+   * Whether a frame of [type] from the app [framePackage] on another node is this app's
+   * ([ownPackage]). Play services delivers messages, data items, channels and the remote activity
+   * and authentication requests to the app of the same package on the receiving node; which nodes
+   * are connected and what they are capable of is the device's, seen by every app. A frame without
+   * a package (one the hub writes, a {@code bye}) is everyone's.
+   */
+  static boolean forApp(String type, String framePackage, String ownPackage) {
+    if (framePackage == null) return true;
+    switch (type) {
+      case "hello":
+      case "bye":
+      case "capabilities":
+        return true;
+      default:
+        return framePackage.equals(ownPackage);
+    }
+  }
+
   /** [value] when it is a string; null for an absent field or JSON {@code null}. */
   static String text(Object value) {
     return value instanceof String ? (String) value : null;

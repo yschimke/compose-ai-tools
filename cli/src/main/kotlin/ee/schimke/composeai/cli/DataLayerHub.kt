@@ -20,8 +20,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * object) to the others. A device pair's Play services do the same over Bluetooth; here both apps
  * run in their own simulator JVM, so the hub is the only shared piece.
  *
- * The hub reads only a `hello`'s `from`, to tell the others with a `bye` when that node's simulator
- * goes away; everything else a frame means is the simulators' business.
+ * The hub reads only a `hello`'s `from` and `package`, to tell the others with a `bye` when that
+ * app's simulator goes away (a device of several apps, `--app`, is one node with an app per
+ * simulator); everything else a frame means is the simulators' business.
  */
 internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoCloseable {
 
@@ -38,6 +39,7 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
   private inner class Connection(val socket: Socket) {
     val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
     @Volatile var node: String? = null
+    @Volatile var pkg: String? = null
 
     fun send(bytes: ByteArray) {
       synchronized(out) {
@@ -78,7 +80,10 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
           if (length < 0 || length > MAX_FRAME) throw IOException("bad frame length $length")
           val bytes = ByteArray(length)
           input.readFully(bytes)
-          if (from.node == null) from.node = helloFrom(bytes)
+          if (from.node == null) {
+            from.node = helloFrom(bytes)
+            from.pkg = helloPackage(bytes)
+          }
           log(summary(bytes))
           for (to in connections) if (to !== from) to.send(bytes)
         }
@@ -91,7 +96,8 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
       connections -= from
       runCatching { from.socket.close() }
       from.node?.let { node ->
-        val bye = """{"type":"bye","from":${Json.encodeToString(node)}}""".toByteArray()
+        val pkg = from.pkg?.let { ""","package":${Json.encodeToString(it)}""" }.orEmpty()
+        val bye = """{"type":"bye","from":${Json.encodeToString(node)}$pkg}""".toByteArray()
         log("$node left")
         for (to in connections) to.send(bye)
       }
@@ -117,6 +123,13 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
       val frame = parse(bytes) ?: return null
       if (frame["type"]?.jsonPrimitive?.content != "hello") return null
       return frame["from"]?.jsonPrimitive?.content
+    }
+
+    /** The app a `hello` frame announces, or null for any other frame or one with none. */
+    internal fun helloPackage(bytes: ByteArray): String? {
+      val frame = parse(bytes) ?: return null
+      if (frame["type"]?.jsonPrimitive?.content != "hello") return null
+      return frame["package"]?.jsonPrimitive?.content
     }
 
     /** One line about a frame, for `--verbose`: type, from → to, path. */
