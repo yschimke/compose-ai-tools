@@ -131,6 +131,11 @@ final class SimulatorSandbox {
         .doNotAcquireClass("org.robolectric.shadow.api.ShadowPicker")
         .doNotAcquireClass("org.robolectric.simulator.SimulatorPanelRegistry");
     builder
+        // macOS's look and feel lives in java.desktop. Swing loads it through the context class
+        // loader, the sandbox's on the AWT thread; a sandbox copy cannot reach sun.awt, and the
+        // window's panel fails to build (IllegalAccessError in AquaUtils).
+        .doNotAcquirePackage("apple.")
+        .doNotAcquirePackage("com.apple.")
         // One NetworkGate for the launcher, which installs it, and the sandbox, which drives it.
         .doNotAcquirePackage("ee.schimke.composeai.simulator.net.")
         .doNotAcquirePackage("org.bouncycastle.")
