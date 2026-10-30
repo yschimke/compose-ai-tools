@@ -267,8 +267,9 @@ Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `new
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
 `removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
-`alarm`, `job` and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app
-sent that nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`prompt`, `credentials` and `speak` ([below](#prompts-sign-in-and-the-keystore)), `alarm`, `job`
+and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app sent that
+nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -319,6 +320,10 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
+| `biometric` | `policy`? (`ask` / `succeed` / `cancel`), `answer`? (`succeed` / `fail` / `cancel` / `negative` / `lockout` / an error code), `requestId`?, `enrolled`?, `secure`? | the biometric prompt and the device-credential confirmation ([below](#prompts-sign-in-and-the-keystore)); `enrolled` and `secure` set what `BiometricManager` and `KeyguardManager` report |
+| `speech` | `policy`? (`ask` / `cancel`), `text`? (a string or several), `cancel`?, `requestId`? | answers `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` with what was "said" |
+| `credentials` | `policy`? (`auto` / `ask` / `cancel`), `answer`? (`{"id","password"}`, `{"type","data"}`, `save`, `none`, `cancel`), `requestId`?, `save`? (`{"id","password"}`), `forget`? | Credential Manager's sign-in and save requests (API 34+), and the saved passwords |
+| `clipboard` | `text`?, `label`?, `clear`? | the primary clip: sets it, or reads it back |
 | `alarms` | `fire`? (an index, or `"next"`), `exact`? (bool) | the alarms set through every context, soonest first, with `inMs`; `fire` delivers one now; `exact` grants or revokes exact alarms ([below](#alarms-jobs-and-downloads)) |
 | `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
 | `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
@@ -393,6 +398,39 @@ Every request ends with a `permissions` event, `state: "answered"`, listing what
 An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
 from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
+### Prompts, sign-in and the keystore
+
+**Biometric prompts.** A `BiometricPrompt.authenticate` (androidx.biometric's, on API 28+) raises a
+`prompt` event, `kind: biometric`, with its title, subtitle, description, negative button and
+allowed authenticators. Under the `ask` policy (the default with `--control`) it waits for
+`biometric` `answer`: `succeed`, `fail` (not recognised; the prompt stays up), `cancel`,
+`negative` (the negative button, `ERROR_NEGATIVE_BUTTON`), `lockout`, or an error code. The
+`succeed` and `cancel` policies answer at once (`cancel` is the default without `--control`).
+`enrolled: false` makes `canAuthenticate` report no biometrics; `secure: true` gives the device a
+screen lock, so `isDeviceSecure` is true and `createConfirmDeviceCredentialIntent` returns an intent
+whose start is the same kind of prompt (`kind: deviceCredential`, `RESULT_OK` on `succeed`).
+
+**Voice input.** `ACTION_RECOGNIZE_SPEECH` resolves (to Google's voice-input activity, as on most
+devices) and raises a `prompt` event, `kind: speech`; `speech` `text` answers it with
+`EXTRA_RESULTS` (and confidence scores), `cancel` backs out. **Text to speech** initialises as a
+device's engine does (`onInit(SUCCESS)` on the main thread, the device's language available), and
+each `speak` is a `speak` event, with the utterance's `onStart` and `onDone`; nothing is heard.
+**The clipboard** is read and written with `clipboard`.
+
+**Credential Manager** (API 34+, androidx.credentials' platform path): under the `auto` policy (the
+default) a request for passwords gets the saved one, as one-tap sign-in does, and anything else
+`TYPE_NO_CREDENTIAL`; a `CreatePasswordRequest` saves the password for the next request, and
+other creates (passkeys) are cancelled. `credentials` `save` adds a password beforehand. Under `ask`
+each request is a `credentials` event that waits for `answer`: `{"id","password"}`, any credential
+as `{"type","data"}` (the bundle a provider returns, such as a passkey's
+`androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON`), `save`, `none` or `cancel`.
+
+**AndroidKeyStore** is a JCA provider of the simulator's: `KeyStore.getInstance("AndroidKeyStore")`,
+`KeyGenerator` (AES, HMAC) and `KeyPairGenerator` (EC, RSA, each with a self-signed `CN=fake`
+certificate) work from a `KeyGenParameterSpec`, so androidx.security's `MasterKey` and
+`EncryptedSharedPreferences` and Tink's Android keysets start. The keys are software keys in memory:
+the spec's purposes, user-authentication requirement and attestation are not enforced, and a
+`restart` starts with an empty keystore.
 ### Alarms, jobs and downloads
 
 Robolectric records what an app schedules and runs none of it; here the system's side runs, each
@@ -858,16 +896,34 @@ the activity takes it first):
 - **Any other window gets `KEYCODE_BACK`**, which `Activity.onKeyUp` turns into `onBackPressed`;
   `ComponentActivity` hands that to the same `OnBackPressedDispatcher`, and with nothing registered
   the activity finishes. Robolectric 4.17 does not turn on the targetSdk 36 default, so an app
-  opts in only through the manifest attribute.
+  opts in only through the manifest attribute, on the `<application>` or on an `<activity>` (which
+  overrides the application's either way). Neither Robolectric's `ApplicationInfo` for an APK nor
+  the platform's legacy `PackageParser` carries it, so the simulator reads it from the APK's
+  manifest and sets the flags `WindowOnBackInvokedDispatcher` checks (`BackOptIn`).
 - **The simulator's own home** (`WearHome`, `PhoneHome`) takes Back itself whatever the app opted
   in to: back from a launcher, stream or tile surface goes to the watch face.
 
 Finishing the root activity lands on the watch face (or home screen) with `--launcher`, and
 otherwise empties the back stack (`activity` event `empty`).
 
-The predictive back *gesture* is not simulated: a `swipe` from a watch's left edge is a touch, which
-Wear Compose's `SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has
-not opted in. An opted-in window gets no `handleOnBackProgressed` stream from a swipe; use `back`.
+**The Back gesture.** On a phone, a swipe in from the left or right edge is Back, as gesture
+navigation makes it, however the touch arrives: the simulator's window, `touch` (Android Studio's
+Running Devices), `swipe`, `adb shell input swipe`. As a device's `EdgeBackGestureHandler` does,
+a touch that goes down within 24dp of an edge is the app's until it moves inward past the touch
+slop, more across than along the edge; then the app's pointer is cancelled (as `pilferPointers`
+does) and the swipe is the system's. An opted-in window's top callback follows it: an
+`OnBackAnimationCallback` (API 34+) hears `onBackStarted`, `onBackProgressed` with each move
+(`BackEvent` progress linear across the rest of the display, and the edge), then `onBackInvoked` when
+the finger lifts 48dp or more in, or `onBackCancelled` when it lifts short of that. That is what
+androidx's `PredictiveBackHandler`, Navigation and Material animate from. A window that has not
+opted in gets Back on a committed release, the same Back as the `back` command. A touch that moves
+along the edge first stays the app's.
+
+![A Back swipe over the sample's predictive-back screen: following the finger, back toward the edge, cancelled, then committed](design/evidence/simulator-launch/edge-back-swipe.png)
+
+A watch has no edge gesture: a `swipe` from its left edge is a touch, which Wear Compose's
+`SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has not opted
+in; an opted-in watch window gets no `onBackProgressed` stream from a swipe, so use `back`.
 
 ### Wear system UI
 
@@ -1176,12 +1232,11 @@ format, the frame stream, mouse input, the token check), the stream following a 
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
 display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
 the device appears in Device Manager and Running Devices, which streams the display and takes
-clicks and drags. Studio's process tracker, a native binary, cannot run (`can't execute`, logged
+clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's process tracker, a native binary, cannot run (`can't execute`, logged
 and harmless). The host process stays out of the macOS Dock and app switcher
 (`apple.awt.UIElement`); only the simulator's window is an app there.
 
-**Not yet:** a second display or `--pair` with `--adb`; system gestures from Running Devices (a
-drag from the left edge is a touch for the app, not Back: see [Back](#back)); debugging (`jdwp:`, `track-jdwp` lists
+**Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
 watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
@@ -1449,6 +1504,11 @@ What does not, or not yet:
   and the requesting activity is not paused while a request waits. Groups are approximated (a
   dialog per permission, not per group), and Android 16's health permissions that replace
   `BODY_SENSORS` are plain runtime permissions.
+- **Prompts and credentials.** The biometric and device-credential prompts, voice input and
+  Credential Manager are answered, not drawn ([above](#prompts-sign-in-and-the-keystore)); a
+  `CryptoObject` passed to a prompt is not checked against its key, Credential Manager below API 34 (Play
+  services' path) is not simulated, and `prepareGetCredential` is not answered. The keystore's
+  keys are software keys, kept in memory only.
 - **Background work.** Alarms, jobs and downloads run ([above](#alarms-jobs-and-downloads)), but
   there is no Doze, App Standby bucket or battery optimisation deferring them; a job's
   battery-not-low, storage-not-low and content-URI triggers are not checked, and a

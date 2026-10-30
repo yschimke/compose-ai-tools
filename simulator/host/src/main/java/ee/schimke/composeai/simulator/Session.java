@@ -69,6 +69,7 @@ final class Session {
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
   private final Radios radios;
+  private final SystemPrompts prompts;
   private final BackgroundWork background;
   private final SystemPickers pickers;
   private final AppActions appActions;
@@ -123,6 +124,8 @@ final class Session {
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
+    this.prompts = new SystemPrompts(app, protocol, navigator);
+    Credentials.protocol = protocol;
     this.background = new BackgroundWork(app, protocol, navigator);
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
@@ -138,6 +141,19 @@ final class Session {
     displays.start();
     screen.start();
     if (wear != null) wear.start();
+    if (wear == null && FormFactor.current() == FormFactor.PHONE) {
+      Displays.edgeBack =
+          new EdgeBackGesture(
+              app,
+              navigator,
+              displayId -> {
+                try {
+                  key(KeyEvent.KEYCODE_BACK, false, displayId);
+                } catch (JSONException e) {
+                  throw new IllegalStateException(e);
+                }
+              });
+    }
     if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
@@ -171,6 +187,7 @@ final class Session {
     if (home != null) home.cycle();
     displays.cycle();
     radios.cycle();
+    prompts.cycle();
     background.cycle();
     overlay.round(FormFactor.isRound());
     android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
@@ -271,6 +288,7 @@ final class Session {
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)
         || Radios.changesUi(name)
+        || SystemPrompts.changesUi(name)
         || BackgroundWork.changesUi(name)) {
       return true;
     }
@@ -317,6 +335,7 @@ final class Session {
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated == null) emulated = radios.command(name, c);
+    if (emulated == null) emulated = prompts.command(name, c);
     if (emulated == null) emulated = background.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
@@ -337,6 +356,8 @@ final class Session {
         return debugSurface(c);
       case "companion":
         return CompanionDevices.command(c);
+      case "credentials":
+        return Credentials.command(c);
       case "assistant":
         return appActions.command(c);
       case "appfunctions":
