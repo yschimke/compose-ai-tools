@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     publishPinShortcut(this)
     setContent {
-      MaterialTheme {
+      SampleTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
           HomeScreen(
             onOpenNowPlaying = { startActivity(Intent(this, NowPlayingActivity::class.java)) }

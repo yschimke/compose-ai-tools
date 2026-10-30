@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window behind the Compose screens: light here, dark in values-night, so the window
+      background and system bars follow the system's dark theme with SampleTheme's colours.
+    -->
+    <style name="Theme.Sample" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>
