@@ -75,6 +75,7 @@ final class SimulatorSandbox {
             .newBuilder()
             .addShadowClasses(
                 SimulatorShadowContextImpl.class,
+                SimulatorShadowResultReceiver.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
                 SimulatorShadowRemoteViewsAdapter.class);

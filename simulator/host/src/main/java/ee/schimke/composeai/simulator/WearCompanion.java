@@ -68,6 +68,7 @@ final class WearCompanion {
     Intent intent = new Intent(action).setPackage(RemoteIntents.COMPANION_PACKAGE);
     shadow.setComponentNameAndServiceForBindServiceForIntent(
         intent, new ComponentName(RemoteIntents.COMPANION_PACKAGE, name), binder);
+    Navigator.registerForeignBind(intent);
   }
 
   /** Calls back the app's {@code RemoteAuthClient} with the phone's answer. */

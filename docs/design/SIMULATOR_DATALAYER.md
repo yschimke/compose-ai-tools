@@ -72,6 +72,14 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `DataClient.putDataItem` | stored as `wear://<local>/<path>`, synced to the peers, and synced again to a node that connects later |
 | `getDataItems` / `getDataItem` / `deleteDataItems` | over every node's items, with `*` / node hosts and literal / prefix filters |
 | assets | `Asset.createFromBytes` bytes travel with the item; `getFdForAsset` streams them |
+| `NodeClient.getCompanionPackageForNode` | `com.google.android.wearable.app`, the Wear OS app, as on a device (not the peer app's package) |
+| `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`); Horologist's `isAvailable()` asks it |
+| `RemoteActivityHelper.startRemoteActivity` | its `REMOTE_INTENT` broadcast to the Wear OS app is taken here and sent as an `activity` frame; the other node starts the intent (or, for `http(s)` / `market:` with no app activity, answers OK as its browser or Play Store would) and its `activityResult` answers the app's `ResultReceiver` |
+| `RemoteAuthClient.sendAuthorizationRequest` (watch) | the bind to the Wear OS app's OAuth service connects (`WearCompanion`); the request reaches the phone as an `oauth` event, and `{"cmd":"dataLayer","oauthResponse":"<redirect URL>"}` on the phone stands in for the browser's redirect, which reaches the app's callback |
+| `BridgingManager.setConfig` (watch) | the bind connects; the config is reported as a `bridging` event |
+| `PhoneTypeHelper.getPhoneDeviceType` (watch) | `DEVICE_TYPE_ANDROID`, from `Settings.Global` `paired_device_os_type` |
+| `PackageManager.hasSystemFeature("android.hardware.type.watch")` | true on a watch display, paired or not |
+| `com.google.wear.Sdk` (watch, API 34+) | the simulator's stand-in for the Wear OS system library, `WEAR_SDK_INT` 0, so androidx.wear takes its pre-Wear-SDK paths |
 
 **Delivery** runs on the receiving app's main looper: the live listeners the app added (with
 their URI filters), then each manifest service whose intent filter matches the action
@@ -132,6 +140,88 @@ its comment says, for Play services' background thread — `runBlocking`s on wor
 main thread, so the watch froze on the first large item. Services' callbacks now run on a
 `WearableListenerService` handler thread, in order, as on a device.
 
+## Evidence: every Wear interaction API, from two probe apps
+
+Two throwaway probe apps (not committed): a phone and a Wear app with one package, Horologist
+0.8.3-alpha's `PhoneDataLayerAppHelper` / `WearDataLayerAppHelper`, androidx.wear
+`wear-remote-interactions` 1.1.0 and `wear-phone-interactions` 1.1.1, one button per API, run
+paired on `--sdk 35`. Each API in both directions where it has two:
+
+| API | Result |
+| --- | --- |
+| `NodeClient` `getLocalNode` / `getConnectedNodes` | works |
+| `CapabilityClient` `getAllCapabilities` (`FILTER_ALL`, `FILTER_REACHABLE`), `addLocalCapability`, `onCapabilityChanged` | works |
+| `GoogleApiAvailability.checkApiAvailability`, Horologist `isAvailable()` | works (was `SERVICE_INVALID`) |
+| Horologist `connectedNodes()`, `connectedAndInstalledNodes` | works: the peer, `Installed` |
+| Horologist `startRemoteOwnApp`, `startRemoteActivity(ActivityConfig)` | works, `APP_HELPER_RESULT_SUCCESS`; the activity starts on the other device |
+| Horologist `installOnNode` | `SUCCESS`: the Play Store link is answered as the store would |
+| Horologist `startCompanion` | `NO_COMPANION_FOUND`: there is no Wear OS app |
+| `MessageClient` `sendMessage` (`/request-network`), `sendRequest` / `onRequest` | works |
+| `DataClient` `putDataItem`, `getDataItems(wear://*/…, FILTER_PREFIX)`, listeners and services | works |
+| `RemoteActivityHelper.startRemoteActivity` (`VIEW` + `BROWSABLE`, data, package) | works both ways (the future never completed before: see below) |
+| `RemoteActivityHelper.availabilityStatus` | `STATUS_UNKNOWN` |
+| `PhoneTypeHelper.getPhoneDeviceType` | `DEVICE_TYPE_ANDROID` |
+| `RemoteAuthClient.sendAuthorizationRequest` | works, with `oauthResponse` as the redirect |
+| `BridgingManager.setConfig` | works, reported (it looped forever before: see below) |
+| `ConfirmationActivity` `OPEN_ON_PHONE_ANIMATION` | works, an ordinary activity of the app |
+| `WatchFaceConfigIntentHelper` | works (pure intent extras) |
+| `ChannelClient.openChannel` | fails, `API_UNAVAILABLE` (not simulated) |
+
+| Phone → watch | Watch → phone |
+| --- | --- |
+| ![VIEW probe://target/from-phone opened on the watch](evidence/simulator-launch/pair-remote-phone-to-watch.png) | ![VIEW probe://target/from-watch opened on the phone](evidence/simulator-launch/pair-remote-watch-to-phone.png) |
+
+| Phone probe | Watch probe |
+| --- | --- |
+| ![phone probe results](evidence/simulator-launch/pair-probe-phone.png) | ![watch probe results](evidence/simulator-launch/pair-probe-watch.png) |
+
+The probes found five simulator bugs, all fixed:
+
+- **`ResultReceiver` through a `Parcel`.** Robolectric's shadow makes `send` call the receiver's
+  own `onReceiveResult`. `RemoteActivityHelper` parcels its receiver before handing it over, and
+  the copy is a plain `ResultReceiver` that forwards over its binder, so the result was dropped
+  and the launch's future never completed. `SimulatorShadowResultReceiver` runs the framework's
+  `send`.
+- **A shadow parameter typed `Object[]`.** Robolectric matches a `@ClassName` parameter only when
+  it is declared `Object`, so `ShadowGoogleApiAvailability` never applied.
+- **`com.google.wear.Sdk`.** With `android.hardware.type.watch` reported, androidx.wear reads the
+  Wear OS system library on API 34+, which a device has and Robolectric does not.
+- **`unbindService` calling `onServiceDisconnected`.** Robolectric's default; `BridgingManager`
+  unbinds in `onServiceDisconnected`, so the two called each other until the log filled the disk.
+  The simulator now behaves as a device.
+- **A bind reported as a failed start.** Robolectric logs a bind as a start too; the binds to the
+  simulator's own Wear OS app services are now recognized as binds.
+
+## Evidence: MeshCore
+
+`meshcore-debug.apk` with `meshcore-wear-debug.apk`, `--sdk 36`. Three causes, in order, kept the
+watch from ever reaching its phone:
+
+1. **The watch skips the Data Layer under Robolectric.** `WearAppGraph` checks `Build.FINGERPRINT
+   == "robolectric"` (its preview renderer's test) and then uses `PreviewWearClient`, canned
+   data, instead of Horologist's `WearDataLayerRegistry`. That is what the earlier "Radio not
+   connected" was. `launch --fingerprint <device fingerprint>` makes it take the real client.
+2. **No `horologist_phone` capability (a MeshCore bug).** The watch's gRPC channel targets
+   `TargetNodeId.PairedPhone`, which Horologist resolves as
+   `getCapability("horologist_phone", FILTER_ALL).nodes.singleOrNull()`. The phone APK has no
+   `android_wear_capabilities` resource at all, so on a device too the watch finds no phone:
+   "Phone not reachable". MeshCore uses neither `PhoneDataLayerAppHelper` nor
+   `WearDataLayerAppHelper`; only the registry and `datalayer-grpc`. The fix belongs in the
+   phone app's `res/values/wear.xml`. In the simulator `{"cmd":"dataLayer","addCapability":
+   "horologist_phone"}` on the phone stands in for it.
+3. **A request to a `MESSAGE_RECEIVED` service (a simulator gap, fixed).** The phone's
+   `MeshcoreWearDataService` (`BaseGrpcDataService`) declares `MESSAGE_RECEIVED` for
+   `/WearGrpcService/…`, as Horologist's samples do, and Play services delivers `sendRequest`s
+   there too; the simulator only looked for `REQUEST_RECEIVED`.
+
+With all three addressed, the watch's `GetConnectionStatus` crosses as a `sendRequest`, the
+phone's service answers (6 bytes), and the watch shows the phone's real state: its radio is not
+connected, since the simulator has no BLE device in range.
+
+| No `horologist_phone` | Answered by the phone |
+| --- | --- |
+| ![MeshCore watch: phone not reachable](evidence/simulator-launch/pair-meshcore-watch-unreachable.png) | ![MeshCore watch: the phone's radio state](evidence/simulator-launch/pair-meshcore-watch-via-phone.png) |
+
 ## What is missing
 
 - **Fidelity gaps, all in `DataLayer`.** `getCapability` leaves out the local node (Play
@@ -140,7 +230,12 @@ main thread, so the watch froze on the first large item. Services' callbacks now
   reachable; `onPeerConnected` / `onConnectedNodes` are not delivered; a data item's
   `TYPE_CHANGED` is delivered even when its bytes did not change; `getNodeId` answers null.
 - **`ChannelClient`** (streams between nodes) is not simulated; `getChannelClient` still returns
-  Play services' real client, which fails as before.
+  Play services' real client, which fails with `API_UNAVAILABLE` (17).
+- **Wear SDK services.** `RemoteActivityHelper.availabilityStatus` reports `STATUS_UNKNOWN`:
+  the Wear SDK's `RemoteInteractionsManager` (Wear OS 6) is not simulated.
+- **Things only the system does.** No browser or Play Store opens a remote `https:` / `market:`
+  intent (reported, answered OK); no companion app exists for Horologist's `startCompanion`
+  (`APP_HELPER_RESULT_NO_COMPANION_FOUND`).
 - **The deprecated `GoogleApiClient` APIs** (`Wearable.DataApi`, `MessageApi`, …) are not
   shadowed.
 - **R8-minified APKs.** A minified app renames or removes `Wearable` and the abstract client
@@ -154,15 +249,10 @@ main thread, so the watch froze on the first large item. Services' callbacks now
 - **One phone, one watch.** The hub relays to every node, so more watches would work, but the
   CLI starts exactly two.
 - **Driving it from the control channel.** An agent cannot yet inject a message or data item as
-  if from the peer, which would let one simulator be tested against a scripted counterpart.
-- **MeshCore** was not run: no Wear APK was available. Its watch calls the phone over
-  Horologist's gRPC (`MessageClientChannel` → `sendRequest`, answered by the phone's
-  `BaseGrpcDataService.onRequest`, both of which this prototype handles), but it targets
-  `TargetNodeId.PairedPhone`, which Horologist resolves as
-  `getCapability("horologist_phone").nodes.singleOrNull()`, and the phone APK declares no
-  `android_wear_capabilities` at all (checked in its `resources.arsc`). On a device that
-  resolves to no node too, so the simulator would surface a real MeshCore bug rather than a
-  simulator gap.
+  if from the peer, which would let one simulator be tested against a scripted counterpart. It
+  can add or drop a capability of its own node: `{"cmd":"dataLayer","addCapability":"…"}`.
+- **MeshCore's own handshake** (above) needs `horologist_phone`, which its phone does not
+  declare; the simulator surfaces that rather than papering over it.
 
 ## Estimate
 
@@ -171,8 +261,7 @@ The prototype covers what both apps use. To make it the default for `launch --pa
 | Work | Estimate |
 | --- | --- |
 | Fidelity gaps above, with unit tests over a fake link | 1–2 days |
-| Inject-as-peer control commands (`dataLayerSend`, `dataLayerPut`) | 0.5 day |
+| Inject-as-peer control commands (`dataLayer` actions; in progress as `--data-layer agent`) | 0.5 day |
 | `ChannelClient` (pipes over the hub) | 2 days |
 | Minified APKs (mapping-file lookup of `Wearable` and the clients) | 2–3 days |
-| MeshCore end to end, once its phone declares `horologist_phone` | 0.5 day |
 | MCP server / `docs/SIMULATOR.md` integration of the paired session | 1 day |

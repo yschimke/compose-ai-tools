@@ -289,6 +289,25 @@ final class DataLayer {
   // ---------------------------------------------------------------------------------------------
   // Clients
 
+  /**
+   * A task that completes with [value] on the main looper's next turn, as Play services' do (its
+   * answer comes over a binder): never already complete when the app gets it. Code that awaits
+   * a task and expects to suspend (Horologist's {@code DataLayerViewModel} init) misbehaves when
+   * it is.
+   */
+  <T> Task<T> later(T value) {
+    TaskCompletionSource<T> result = new TaskCompletionSource<>();
+    main.post(() -> result.trySetResult(value));
+    return result.getTask();
+  }
+
+  /** As {@link #later(Object)}, failing with [error]. */
+  <T> Task<T> laterFailure(Exception error) {
+    TaskCompletionSource<T> result = new TaskCompletionSource<>();
+    main.post(() -> result.trySetException(error));
+    return result.getTask();
+  }
+
   Object dataClient(Context context) {
     return new DataLayerClients.Data(context, this);
   }
@@ -370,15 +389,15 @@ final class DataLayer {
   // Messages
 
   Task<Integer> sendMessage(String nodeId, String path, byte[] data) {
-    if (!isPeer(nodeId)) return Tasks.forException(notConnected(nodeId));
+    if (!isPeer(nodeId)) return laterFailure(notConnected(nodeId));
     int id = requestIds.incrementAndGet();
     send(frame("message").put("to", nodeId).put("path", path).put("data", encode(data)));
     event("message", "out", nodeId, path, data, null);
-    return Tasks.forResult(id);
+    return later(id);
   }
 
   Task<byte[]> sendRequest(String nodeId, String path, byte[] data) {
-    if (!isPeer(nodeId)) return Tasks.forException(notConnected(nodeId));
+    if (!isPeer(nodeId)) return laterFailure(notConnected(nodeId));
     int id = requestIds.incrementAndGet();
     TaskCompletionSource<byte[]> response = new TaskCompletionSource<>();
     pending.put(id, response);
@@ -726,7 +745,13 @@ final class DataLayer {
       respond(from, path, requestId, answer);
       return;
     }
+    // Play services hands a request to a service declaring REQUEST_RECEIVED, and also to one that
+    // declares only MESSAGE_RECEIVED for the path, as Horologist's gRPC services (and its samples)
+    // do: MeshCore's phone answers its watch that way.
     List<Service> services = services(ACTION_REQUEST_RECEIVED, uri);
+    for (Service service : services(ACTION_MESSAGE_RECEIVED, uri)) {
+      if (!services.contains(service)) services.add(service);
+    }
     onListenerThread(
         () -> {
           Task<byte[]> handled = null;
