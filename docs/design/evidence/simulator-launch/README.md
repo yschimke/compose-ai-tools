@@ -25,6 +25,15 @@ captured from the Xvfb screen (not the agent's screenshots, which never contain 
 | --- | --- |
 | ![agent tap](agent-tap.png) | ![agent swipe](agent-swipe.png) |
 
+## Zoom
+
+![window zoom](window-zoom.png)
+
+The 540×960 default display under Xvfb (1600×1000): fitted to the screen at start (92%), then
+`{"cmd":"zoom","value":"50%"}` and `"150%"`. At 50% and 150% a `java.awt.Robot` click on the
+home screen's app icon, at its zoomed screen position, opened the app; Ctrl `=` / `-` / `0` from
+Robot stepped 50 → 63 → 78 → 63 → 100%, and none reached the app as key events.
+
 Re-collect: build the APK, `./gradlew :cli:installDist`, then drive
 `cli/build/install/compose-preview/bin/compose-preview launch <apk> --java <jdk21+> --control
 stdio` with the commands above.

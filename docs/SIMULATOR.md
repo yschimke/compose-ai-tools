@@ -23,6 +23,16 @@ glass pane, not in the Android display, so the agent's own screenshots never con
 person's clicks still reach the app. `--hide-agent` turns it off; `--headless` drops the window
 (the default when there is no display, as in CI or a cloud sandbox).
 
+**Zoom.** The window, and each secondary display's, is resizable: dragging its edge fits the
+display to the window, letterboxed. ⌘ `=` / `-` / `0` (Ctrl on Linux and Windows), or the
+window's View menu, zoom in, out and back to one device pixel per point; View → Fit to Screen
+fits it to the screen, which is also how a display taller than the screen starts. Only the
+picture scales: clicks are mapped back to device pixels, and `screenshot`, `hierarchy` bounds and
+the control channel's coordinates stay in device pixels. The `zoom` command does the same from the
+control channel.
+
+![The 540×960 display at 92% (fitted to a 1000-point screen), 50% and 150%](design/evidence/simulator-launch/window-zoom.png)
+
 It needs Java 21+ for the simulator JVM (`--java <jdk>`, or `COMPOSE_PREVIEW_SIMULATOR_JAVA`; the
 CLI itself still runs on 17) and an Android SDK platform's `android.jar` (`ANDROID_HOME`, or
 `local.properties` `sdk.dir`).
@@ -262,6 +272,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | --- | --- | --- |
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
+| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, and where the display is on screen (`screenX`, `screenY`). Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
