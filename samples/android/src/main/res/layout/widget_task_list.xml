@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- `TaskListWidgetReceiver`'s collection widget: a title, a summary, and the task list. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#FF4A148C">
+
+  <TextView
+      android:id="@+id/task_title"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:text="Tasks"
+      android:textColor="#FFFFFFFF"
+      android:textSize="16sp"
+      android:textStyle="bold" />
+
+  <TextView
+      android:id="@+id/task_summary"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:textColor="#B3FFFFFF"
+      android:textSize="12sp" />
+
+  <FrameLayout
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:layout_marginTop="8dp">
+
+    <ListView
+        android:id="@+id/task_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:divider="@null" />
+
+    <TextView
+        android:id="@+id/task_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="No tasks"
+        android:textColor="#B3FFFFFF" />
+  </FrameLayout>
+</LinearLayout>

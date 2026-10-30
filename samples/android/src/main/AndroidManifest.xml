@@ -13,6 +13,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         <!--
           Second screen for app-level previews and the getting-started tour: reached from
@@ -38,6 +40,7 @@
           resize metadata on the launcher-widget data product's payload.
         -->
         <receiver android:name="com.example.sampleandroid.WeatherAppWidgetReceiver"
+            android:label="@string/weather_widget_label"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -45,5 +48,43 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/weather_widget_info" />
         </receiver>
+        <!--
+          Widgets for `compose-preview launch - -launcher` (docs/SIMULATOR.md, "Home screen and
+          widgets"): a Glance widget with an action callback, and a collection widget with a
+          configure activity.
+        -->
+        <receiver android:name="com.example.sampleandroid.CounterWidgetReceiver"
+            android:label="@string/counter_widget_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/counter_widget_info" />
+        </receiver>
+        <receiver android:name="com.example.sampleandroid.TaskListWidgetReceiver"
+            android:label="@string/task_widget_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/task_list_widget_info" />
+        </receiver>
+        <service android:name="com.example.sampleandroid.TaskListWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        <activity
+            android:name="com.example.sampleandroid.PinRequestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity
+            android:name="com.example.sampleandroid.TaskListConfigureActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

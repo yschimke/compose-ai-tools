@@ -93,7 +93,7 @@ final class TileClient {
   private Object provider() throws ReflectiveOperationException {
     if (provider == null) {
       IBinder binder =
-          navigator.bindForSystem(
+          navigator.bindForHost(
               new Intent(TileHost.TILE_ACTION).setComponent(component));
       if (binder == null) throw new IllegalStateException(component + " returned no binder");
       provider =

@@ -93,7 +93,7 @@ final class WidgetClient {
   private Object provider() throws ReflectiveOperationException {
     if (provider == null) {
       IBinder binder =
-          navigator.bindForSystem(new Intent(TileHost.WIDGET_ACTION).setComponent(component));
+          navigator.bindForHost(new Intent(TileHost.WIDGET_ACTION).setComponent(component));
       if (binder == null) throw new IllegalStateException(component + " returned no binder");
       provider =
           load(PARCEL + "IWearWidgetProvider$Stub")

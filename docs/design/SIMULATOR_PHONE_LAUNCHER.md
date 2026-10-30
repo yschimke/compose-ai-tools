@@ -1,6 +1,16 @@
 # Handover: a phone launcher with app widgets for the simulator
 
-**Status:** not started. This is a brief for the agent that builds it.
+**Status:** surfaces 1–4 built (`launch --launcher`, `--widget`); the shade (5) is not. What
+runs, the commands and the limits are in [`docs/SIMULATOR.md` → Home screen and
+widgets](../SIMULATOR.md#home-screen-and-widgets), the evidence in
+[`evidence/simulator-launch/`](evidence/simulator-launch/README.md#home-screen-and-widgets).
+Still open from this brief: the evidence from Muzei, Home Assistant and MeshCore (no APK and no
+route to one from the sandbox that built it; `samples/android` carries a widget of each kind
+instead), the MCP schema (compose-preview-mcp, a separate PR), and the shade. Two departures: a
+widget is named `widgetId` and a shortcut `shortcutId` in commands, since `id` is the command's
+own; and a pin request brings the home screen forward rather than drawing its sheet over the app.
+
+This was the brief for the agent that built it.
 
 **Goal:** `compose-preview launch` gets a home screen. The app's icon sits on it, the app can be left and returned to, and **the app's own widgets** are placed, sized, updated and tapped there as a device launcher would do it. That makes widgets something an agent can test end to end: a classic `RemoteViews` `AppWidgetProvider`, a collection widget, and a Glance widget.
 

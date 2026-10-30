@@ -8,7 +8,7 @@ import android.os.Bundle;
  * quick settings, all drawn by {@link WearSystemUi} in plain views (no Compose: the app's Compose
  * is the only one on the classpath). It sits at the bottom of the default display's back stack, so
  * a back press from the app's root lands on the watch face, as on a watch. Not in the app's
- * manifest; {@link Navigator#startSystemActivity} starts it directly.
+ * manifest; {@link Navigator#startHome} starts it directly.
  */
 public final class WearHome extends Activity {
 

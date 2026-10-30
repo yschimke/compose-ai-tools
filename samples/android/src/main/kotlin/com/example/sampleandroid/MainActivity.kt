@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    publishPinShortcut(this)
     setContent {
       MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {

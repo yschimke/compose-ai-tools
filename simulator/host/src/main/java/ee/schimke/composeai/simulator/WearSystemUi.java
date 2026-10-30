@@ -134,13 +134,8 @@ final class WearSystemUi {
   static WearSystemUi create(
       Application app, Navigator navigator, Protocol protocol, NotificationStream stream) {
     if (!"true".equals(System.getProperty(PROPERTY))) return null;
-    if (FormFactor.current() != FormFactor.WEAR) {
-      System.err.println(
-          "compose-preview launch: --launcher draws a Wear OS system UI; this is a "
-              + FormFactor.current().id()
-              + " app, so it is not shown");
-      return null;
-    }
+    // Elsewhere --launcher is the phone home screen (HomeScreen).
+    if (FormFactor.current() != FormFactor.WEAR) return null;
     WearSystemUi ui = new WearSystemUi(app, navigator, protocol, stream);
     current = ui;
     return ui;
@@ -155,7 +150,7 @@ final class WearSystemUi {
         new Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_HOME)
             .setComponent(new ComponentName(app.getPackageName(), WearHome.class.getName()));
-    home = navigator.startSystemActivity(new WearHome(), intent);
+    home = navigator.startHome(new WearHome(), intent);
     tiles.addFromLaunch(protocol);
   }
 
@@ -184,7 +179,7 @@ final class WearSystemUi {
 
   /** Shows [target], bringing the system UI over the app first if the app is on screen. */
   private void show(Surface target) {
-    if (!onTop()) navigator.moveToFront(home);
+    if (!onTop()) navigator.goHome();
     if (target != Surface.TILES) leaveTile();
     surface = target;
     if (root == null) return;
@@ -260,15 +255,14 @@ final class WearSystemUi {
 
   /** Launches [activity] from the launcher, or brings the app's task back if that is its root. */
   private JSONObject launch(ComponentName activity) {
-    List<Navigator.Entry> task = navigator.appTask();
-    if (!task.isEmpty()) {
-      Navigator.Entry root = task.get(task.size() - 1);
-      ComponentName rootComponent = root.activity().getComponentName();
-      ComponentName requested = root.request.getComponent();
-      if (activity.equals(rootComponent) || activity.equals(requested)) {
-        navigator.moveToBack(home);
-        return navigator.describe(navigator.top(), "resumed");
-      }
+    Navigator.Entry root = null;
+    for (Navigator.Entry entry : navigator.backStack()) {
+      if (!entry.system && entry.displayId == android.view.Display.DEFAULT_DISPLAY) root = entry;
+    }
+    if (root != null
+        && (activity.equals(root.activity().getComponentName())
+            || activity.equals(root.request.getComponent()))) {
+      return navigator.bringAppForward();
     }
     Intent intent =
         new Intent(Intent.ACTION_MAIN)

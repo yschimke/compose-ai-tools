@@ -402,41 +402,20 @@ final class NotificationStream {
   }
 
   /**
-   * Sends [pending] as the system does for the app, with [fillIn] merged into its intent: an
-   * activity through {@link Navigator}, so it lands on the back stack; a broadcast to the app's
-   * runtime and manifest receivers; a service started. Robolectric's own {@code send} would only
-   * record the start, or reach runtime receivers alone.
+   * Sends [pending] as the system does for the app ({@link PendingIntents}), with [fillIn] merged
+   * into its intent; an immutable one drops the fill-in, as on a device, and says so.
    */
   JSONObject send(PendingIntent pending, Intent fillIn) {
+    JSONObject sent = PendingIntents.send(pending, fillIn, navigator);
     ShadowPendingIntent shadow = Shadow.extract(pending);
-    Intent[] saved = shadow.getSavedIntents();
-    if (saved == null || saved.length == 0) {
-      throw new IllegalStateException("the PendingIntent carries no intent");
+    if (fillIn != null && shadow.isImmutable()) {
+      try {
+        sent.put("fillInDropped", "the PendingIntent is immutable");
+      } catch (JSONException e) {
+        throw new IllegalStateException(e);
+      }
     }
-    Intent intent = new Intent(saved[saved.length - 1]);
-    // An immutable PendingIntent drops the sender's fill-in, an inline reply's results included,
-    // as on a device: the app must make a reply action's intent FLAG_MUTABLE.
-    boolean filled = fillIn != null && !shadow.isImmutable();
-    if (filled) intent.fillIn(fillIn, 0);
-    String kind;
-    if (shadow.isActivity()) {
-      kind = "activity";
-      // Earlier intents of getActivities() form the back stack below the last.
-      for (int i = 0; i < saved.length - 1; i++) navigator.startActivity(new Intent(saved[i]), -1);
-      navigator.startActivity(intent, -1);
-    } else if (shadow.isBroadcast()) {
-      kind = "broadcast";
-      navigator.broadcast(intent);
-    } else if (shadow.isService() || shadow.isForegroundService()) {
-      kind = "service";
-      navigator.startService(intent);
-    } else {
-      throw new IllegalStateException("cannot send this PendingIntent");
-    }
-    Protocol.Json json =
-        new Protocol.Json().put("kind", kind).put("intent", Intents.toJson(intent));
-    if (fillIn != null && !filled) json.put("fillInDropped", "the PendingIntent is immutable");
-    return json.object();
+    return sent;
   }
 
   // ---------------------------------------------------------------------------------------------

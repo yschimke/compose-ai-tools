@@ -63,6 +63,9 @@ final class Session {
   private final NotificationStream notifications;
   /** The Wear system UI ({@code --launcher}), or null. */
   private final WearSystemUi wear;
+  private final WidgetHost widgets;
+  /** The home screen, with {@code --launcher}; null without. */
+  private final HomeScreen home;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -101,6 +104,12 @@ final class Session {
     this.displays = new Displays(app, navigator, protocol);
     this.notifications = new NotificationStream(app, navigator, protocol);
     this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
+    this.widgets = new WidgetHost(app, navigator, protocol);
+    // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
+    this.home =
+        HomeScreen.enabled() && wear == null
+            ? new HomeScreen(app, navigator, protocol, widgets)
+            : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
@@ -108,6 +117,7 @@ final class Session {
   void start() {
     displays.start();
     if (wear != null) wear.start();
+    if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
     if (providers.length() > 0) {
@@ -137,6 +147,7 @@ final class Session {
   /** One simulator cycle, on the main thread. */
   void cycle() {
     navigator.pump();
+    if (home != null) home.cycle();
     displays.cycle();
     Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
     overlay.round(FormFactor.isRound());
@@ -219,6 +230,7 @@ final class Session {
     if (DeviceDisplay.changesUi(name)
         || DeviceState.changesUi(name)
         || Displays.changesUi(name)
+        || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)) {
       return true;
@@ -258,6 +270,7 @@ final class Session {
     if (emulated == null) emulated = displays.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
     if (emulated == null) emulated = notifications.command(name, c);
+    if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -351,6 +364,8 @@ final class Session {
       case "launch":
         {
           checkPackage(c);
+          // From the home screen's icon: a running app's task comes forward.
+          if (home != null && !c.has("display")) return home.launch();
           Intent launcher = app.getPackageManager().getLaunchIntentForPackage(app.getPackageName());
           if (launcher == null) throw new IllegalStateException("the app has no launcher activity");
           return navigator.startActivity(launcher, -1, launchOptions(c));
@@ -358,6 +373,7 @@ final class Session {
       case "startActivity":
         {
           Intent intent = intent(c);
+          if (home != null && intent.hasCategory(Intent.CATEGORY_HOME)) return home.goHome();
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
           return navigator.startActivity(intent, -1, launchOptions(c));
         }
@@ -435,6 +451,16 @@ final class Session {
     }
   }
 
+  /** The home screen's and widgets' commands; refused without {@code --launcher} where needed. */
+  private JSONObject launcherCommand(String name, JSONObject c) throws JSONException {
+    if (home != null) return home.command(name, c);
+    if (name.equals("widgets")) return widgets.command(name, c);
+    if (HomeScreen.needsLauncher(name)) {
+      throw new IllegalStateException(name + " needs the home screen: launch with --launcher");
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Read
 
@@ -461,6 +487,7 @@ final class Session {
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
     if (wear != null) json.put("surface", wear.surface());
+    if (home != null) json.put("surface", home.surface());
     json.put("backStack", navigator.backStack().size());
     json.put("services", navigator.describeServices().length());
     return json.object();
@@ -684,6 +711,13 @@ final class Session {
   }
 
   private JSONObject key(int code, boolean longPress, int displayId) {
+    if (code == KeyEvent.KEYCODE_HOME
+        && home != null
+        && displayId == android.view.Display.DEFAULT_DISPLAY) {
+      // The system's, as the window manager takes HOME before any app sees it.
+      home.goHome();
+      return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
+    }
     long now = SystemClock.uptimeMillis();
     inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0), displayId);
     if (longPress) {

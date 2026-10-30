@@ -161,7 +161,11 @@ internal class LaunchCommand(private val args: List<String>) {
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
         displays = args.flagValuesAll("--display"),
-        launcher = "--launcher" in args || args.flagValuesAll("--tile").isNotEmpty(),
+        launcher =
+          "--launcher" in args ||
+            args.flagValuesAll("--widget").isNotEmpty() ||
+            args.flagValuesAll("--tile").isNotEmpty(),
+        widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
@@ -187,16 +191,12 @@ internal class LaunchCommand(private val args: List<String>) {
           log = { if (verbose) System.err.println("compose-preview launch: datalayer hub: $it") }
         )
         .start()
-    // The Wear system UI (--launcher, --tile) is the watch's.
+    // --launcher gives each its own system UI; --widget is the phone's, --tile the watch's.
     val phone =
       commandFor(
         apk,
         classes,
-        options.copy(
-          dataLayer = DataLayerNode(hub.port, PHONE),
-          launcher = false,
-          tiles = emptyList(),
-        ),
+        options.copy(dataLayer = DataLayerNode(hub.port, PHONE), tiles = emptyList()),
       )
     val watch =
       commandFor(
@@ -211,6 +211,7 @@ internal class LaunchCommand(private val args: List<String>) {
           device = null,
           // --display connects to the phone; the watch has its one round display.
           displays = emptyList(),
+          widgets = emptyList(),
           dataLayer = DataLayerNode(hub.port, WATCH),
         ),
       )
@@ -259,9 +260,17 @@ internal class LaunchCommand(private val args: List<String>) {
      * options: `1280x720@xhdpi,name=TV,type=external`.
      */
     val displays: List<String> = emptyList(),
-    /** Put the Wear system UI (watch face, launcher, notification stream, tiles) under the app. */
+    /**
+     * A system UI under the app (`--launcher`): on a Wear app the watch face, launcher,
+     * notification stream and tiles carousel; on any other a home screen with HOME, icons,
+     * shortcuts and app widgets.
+     */
     val launcher: Boolean = false,
-    /** Tiles and Wear Widgets (service class names) in the carousel at launch (`--tile`). */
+    /** Widget providers placed on the home screen at launch (`--widget`, repeatable). */
+    val widgets: List<String> = emptyList(),
+    /**
+     * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
+     */
     val tiles: List<String> = emptyList(),
   )
 
@@ -380,6 +389,10 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.displays.isNotEmpty()) {
         properties["composeai.simulator.displays"] = options.displays.joinToString(";")
       }
+      if (options.launcher) properties["composeai.simulator.launcher"] = "true"
+      if (options.widgets.isNotEmpty()) {
+        properties["composeai.simulator.widgets"] = options.widgets.joinToString(";")
+      }
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -441,9 +454,14 @@ internal class LaunchCommand(private val args: List<String>) {
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
                               own window; Presentation and launch-display activities use it.
-        --launcher            Wear: put a system UI under the app — watch face, launcher,
-                              notification stream, tiles carousel, quick settings — reached
-                              by back, the side button and swipes, or control commands.
+        --launcher            A system UI under the app. On a phone, a home screen: HOME and
+                              Back from the app's root go there, its icons reopen the app, a
+                              long press shows its shortcuts, and the app's widgets are placed,
+                              sized, updated and tapped there as a phone's launcher does. On a
+                              watch: watch face, launcher, notification stream, tiles carousel
+                              and quick settings, reached by back, the side button and swipes.
+        --widget <provider>   Start with the app's widget <provider> (a receiver class or its
+                              short name) on the home screen (repeatable; implies --launcher).
         --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
                               (repeatable; implies --launcher). With --pair, the watch's.
         --font-scale <f>      Font scale (default 1.0).
