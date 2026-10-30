@@ -270,3 +270,16 @@ phone with `dataLayer addCapability`): before, the watch finds no phone; after, 
 | No `horologist_phone` | Answered by the phone |
 | --- | --- |
 | ![MeshCore watch, no phone](pair-meshcore-watch-unreachable.png) | ![MeshCore watch, via the phone](pair-meshcore-watch-via-phone.png) |
+
+**The agent as the peer** (`--data-layer agent`, one simulator): Home Assistant's watch with an
+agent-played phone, before and after the agent `put`s the phone's data items; MeshCore's watch
+after the agent `reply`s to its gRPC request with an error, then with the bytes MeshCore's phone
+answered the same request with.
+
+| HA watch, agent phone connected | After `put` |
+| --- | --- |
+| ![HA watch, agent phone](agent-ha-watch-connected.png) | ![HA watch, demo mode](agent-ha-watch-put-settings.png) |
+
+| MeshCore watch, error `reply` | The phone's answer `reply`ed |
+| --- | --- |
+| ![MeshCore, error](agent-mc-watch-error.png) | ![MeshCore, answered](agent-mc-watch-answered.png) |

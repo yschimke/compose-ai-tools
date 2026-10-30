@@ -222,6 +222,33 @@ connected, since the simulator has no BLE device in range.
 | --- | --- |
 | ![MeshCore watch: phone not reachable](evidence/simulator-launch/pair-meshcore-watch-unreachable.png) | ![MeshCore watch: the phone's radio state](evidence/simulator-launch/pair-meshcore-watch-via-phone.png) |
 
+## Evidence: the agent as the peer
+
+`--data-layer agent`, one app at a time, the agent playing the other device:
+
+- **Home Assistant's phone app alone.** `connect` a watch (`data_layer_app_helper_device_watch`),
+  then tap "Offline demo": every data item the phone writes arrives as a `send` event, its
+  `DataMap` decoded (`{"proto":{"type":"bytes",…},"ts":{"type":"long",…}}`), 15 paths from
+  `/wear/settings` to `/wear/values`, plus its `/wear/stream` messages.
+- **Home Assistant's watch app alone.** `connect` a phone, then `put` the phone's items captured
+  above: the watch switches to the phone's demo mode, as when paired. Its `/wear/lease`
+  heartbeats arrive as `send` events. On `disconnect` its next `sendMessage` fails with
+  `TARGET_NODE_NOT_CONNECTED`; its UI keeps the synced data, as on a device.
+- **MeshCore, the Horologist handshake.** The watch alone (with `--fingerprint`): a phone that
+  connects without `horologist_phone` gets no request; once its `capabilities` add it, the
+  watch's gRPC `GetConnectionStatus` arrives as a `send` with a `requestId`. A `reply` with an
+  `error` leaves the watch at "Phone not reachable". The phone alone answered the same request
+  bytes, sent with `request`, with 6 bytes; `reply`ing those to the watch, it shows the phone's
+  radio state, as in the paired run.
+
+| Watch: agent phone connected | After `put /wear/settings` (and the rest) |
+| --- | --- |
+| ![HA watch with an agent phone](evidence/simulator-launch/agent-ha-watch-connected.png) | ![HA watch in demo mode](evidence/simulator-launch/agent-ha-watch-put-settings.png) |
+
+| MeshCore watch: `reply` with an error | `reply` with the phone's answer |
+| --- | --- |
+| ![MeshCore watch, error reply](evidence/simulator-launch/agent-mc-watch-error.png) | ![MeshCore watch, the phone's answer](evidence/simulator-launch/agent-mc-watch-answered.png) |
+
 ## What is missing
 
 - **Fidelity gaps, all in `DataLayer`.** `getCapability` leaves out the local node (Play
