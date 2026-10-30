@@ -292,6 +292,8 @@ internal object CliFlagValidation {
           "--adb",
           "--grpc-port",
           "--play-services",
+          "--standby",
+          "--no-standby",
           "--prepare",
           "--verbose",
           "-v",

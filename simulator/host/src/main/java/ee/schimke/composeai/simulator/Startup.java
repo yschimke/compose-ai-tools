@@ -1,0 +1,93 @@
+package ee.schimke.composeai.simulator;
+
+import java.lang.management.ManagementFactory;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+/**
+ * Where a launch spends its time, reported as the {@code ready} event's {@code startup}: the JVM
+ * starting, Robolectric's sandbox being built, the application and its providers being created,
+ * and the first activity reaching its first frame.
+ *
+ * <p>The marks are system properties (epoch milliseconds), not fields: this class is loaded both
+ * by {@link LaunchMain}'s class loader and by the sandbox's, and both must see one set. The CLI
+ * adds {@value #CLI_PROPERTY}, the moment it started the JVM, so the JVM's own start-up counts.
+ */
+final class Startup {
+
+  static final String PREFIX = "composeai.simulator.t.";
+  /** When the CLI started this JVM, set on its command line. */
+  static final String CLI_PROPERTY = PREFIX + "launched";
+
+  static final String MAIN = "main";
+  static final String SANDBOX = "sandbox";
+  static final String PROVIDERS = "providers";
+  static final String APPLICATION = "application";
+  static final String READY = "ready";
+  /** When a standby simulator was told to go: its launch, as far as the CLI is concerned. */
+  static final String GO = "go";
+
+  /** How many files of a predecessor's data {@link AppFiles#restore} put back. */
+  static final String RESTORED_PROPERTY = "composeai.simulator.restoredFiles";
+
+  /** Why restoring a predecessor's data failed, when it did. */
+  static final String RESTORE_ERROR_PROPERTY = "composeai.simulator.restoreError";
+
+  static void mark(String name) {
+    System.setProperty(PREFIX + name, Long.toString(System.currentTimeMillis()));
+  }
+
+  /**
+   * Milliseconds per phase: {@code jvm} (process start to {@code main}), {@code sandbox}, {@code
+   * application} (from the sandbox to {@code Application.onCreate()} returning, providers
+   * included), {@code firstActivity} (to its first frame), and {@code totalMs} from the CLI's
+   * start of this JVM, or the JVM's own start when the CLI did not say.
+   */
+  static JSONObject describe() {
+    long jvm = ManagementFactory.getRuntimeMXBean().getStartTime();
+    long launched = time(CLI_PROPERTY, jvm);
+    long main = time(MAIN, jvm);
+    long sandbox = time(SANDBOX, main);
+    long application = time(APPLICATION, sandbox);
+    long ready = time(READY, application);
+    String go = System.getProperty(PREFIX + GO);
+    JSONObject out = new JSONObject();
+    try {
+      if (go != null) {
+        // A standby: everything up to the go was paid before anyone asked.
+        long goAt = Long.parseLong(go);
+        long asked = time(PREFIX + "asked", goAt);
+        out.put("standby", true);
+        out.put("preparedMs", Math.max(0, time("standby", goAt) - launched));
+        out.put("applicationMs", Math.max(0, application - goAt));
+        out.put("firstActivityMs", Math.max(0, ready - application));
+        out.put("totalMs", Math.max(0, ready - asked));
+      } else {
+        out.put("jvmMs", Math.max(0, main - launched));
+        out.put("sandboxMs", Math.max(0, sandbox - main));
+        out.put("applicationMs", Math.max(0, application - sandbox));
+        out.put("firstActivityMs", Math.max(0, ready - application));
+        out.put("totalMs", Math.max(0, ready - launched));
+      }
+      String restored = System.getProperty(RESTORED_PROPERTY);
+      if (restored != null) out.put("restoredFiles", Integer.parseInt(restored));
+      String restoreError = System.getProperty(RESTORE_ERROR_PROPERTY);
+      if (restoreError != null) out.put("restoreError", restoreError);
+    } catch (JSONException e) {
+      throw new IllegalStateException(e);
+    }
+    return out;
+  }
+
+  private static long time(String name, long fallback) {
+    String value = System.getProperty(name.startsWith(PREFIX) ? name : PREFIX + name);
+    if (value == null) return fallback;
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      return fallback;
+    }
+  }
+
+  private Startup() {}
+}

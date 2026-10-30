@@ -78,6 +78,8 @@ public final class ApkAppLoader implements Runnable {
 
           @Override
           public String getAppComponentFactory() {
+            // The last moment before the app's own classes: a standby waits here.
+            Standby.awaitGo();
             return parsed().appComponentFactory;
           }
 
