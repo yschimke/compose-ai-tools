@@ -23,6 +23,8 @@ import org.robolectric.manifest.AndroidManifest;
 import org.robolectric.pluginapi.config.Configurer;
 import org.robolectric.simulator.FixedConfiguration;
 import org.robolectric.simulator.Simulator;
+import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.inject.Injector;
@@ -46,6 +48,18 @@ import org.robolectric.util.inject.Injector;
 public final class ApkAppLoader implements Runnable {
 
   static final String LAUNCH_ACTIVITY_PROPERTY = "composeai.simulator.launchActivity";
+
+  /**
+   * Set when the simulator boots as a device rather than to run an app ({@code launch} with no APK,
+   * or {@code --adb}): the APK is installed but not started, as {@code adb install} leaves one, or
+   * it is the CLI's generated system package with no activities at all. {@link NoAppActivity}
+   * stands in for the launcher activity, so the system UI under it is what shows.
+   */
+  static final String NO_LAUNCH_PROPERTY = "composeai.simulator.noLaunch";
+
+  static boolean noLaunch() {
+    return Boolean.getBoolean(NO_LAUNCH_PROPERTY);
+  }
 
   private final AndroidSandbox sandbox;
   private final Path apk;
@@ -110,6 +124,7 @@ public final class ApkAppLoader implements Runnable {
    * the first launcher.
    */
   private static ActivityInfo firstActivity(Application application) {
+    if (noLaunch()) return registerNoAppActivity(application);
     String requested = System.getProperty(LAUNCH_ACTIVITY_PROPERTY);
     if (requested != null && !requested.isBlank()) {
       try {
@@ -132,6 +147,21 @@ public final class ApkAppLoader implements Runnable {
       throw new IllegalArgumentException("Could not find a launcher Activity in provided manifest");
     }
     return found.get(0).activityInfo;
+  }
+
+  /** Declares {@link NoAppActivity} to the package manager, as {@code HomeScreen} does its own. */
+  private static ActivityInfo registerNoAppActivity(Application application) {
+    ActivityInfo info = new ActivityInfo();
+    info.name = NoAppActivity.class.getName();
+    info.packageName = application.getPackageName();
+    info.applicationInfo = application.getApplicationInfo();
+    info.exported = false;
+    info.enabled = true;
+    info.theme = android.R.style.Theme_DeviceDefault_NoActionBar;
+    info.flags |= ActivityInfo.FLAG_HARDWARE_ACCELERATED;
+    ShadowPackageManager shadow = Shadow.extract(application.getPackageManager());
+    shadow.addOrUpdateActivity(info);
+    return info;
   }
 
   private static Config defaultConfig() {

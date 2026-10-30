@@ -132,6 +132,24 @@ public class AdbShellTest {
   }
 
   @Test
+  public void debugSurfaceBroadcastsBecomeTheCarouselsCommand() {
+    // What Android Studio's Wear tile run configuration sends.
+    Map<String, Object> add =
+        t(
+            "am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation add-tile"
+                + " --ecn component com.x/.MyTile");
+    assertEquals("debugSurface", add.get("cmd"));
+    assertEquals("add-tile", add.get("operation"));
+    assertEquals("com.x/.MyTile", add.get("component"));
+    Map<String, Object> show =
+        t(
+            "am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation show-tile"
+                + " --ei index 2");
+    assertEquals("show-tile", show.get("operation"));
+    assertEquals(2, show.get("index"));
+  }
+
+  @Test
   public void amForceStop() {
     Map<String, Object> c = t("am force-stop com.x");
     assertEquals("forceStop", c.get("cmd"));

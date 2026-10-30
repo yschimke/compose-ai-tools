@@ -12,6 +12,8 @@ compose-preview launch app-debug.apk --prepare                     # convert and
 compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
 compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
 compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
+compose-preview launch --form-factor wear                          # no app: a watch face, nothing installed
+compose-preview launch --adb                                       # a device adb and Android Studio see
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -223,6 +225,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
 | `longPress` | as `tap`, `durationMs`? | |
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
+| `touch` | `action` (`down` / `move` / `up`), `x`, `y`, `display`? | one pointer event, answered at once without settling: for relaying a person's touches as they happen (what the emulator gRPC endpoint of [`--adb`](#as-a-device-adb-and-android-studio) sends) |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
 | `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
@@ -815,6 +818,7 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `am start` / `start-activity` | `startActivity` | `-a -d -t -c -n -p -f`, `--es --esn --ez --ei --el --ef --ed --eu --ecn --esa --eia`, `--activity-*` / `--grant-*` flags, a trailing URI (with `VIEW`), component or package; `-W` is implicit; `-S` force-stops first; `--display <id>` starts it on that display |
 | `am start-service` / `start-foreground-service` / `stopservice` | `startService` / `stopService` | |
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
+| `am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation …` | `debugSurface` → `tiles` / `widget` | Android Studio's Wear run configurations: `add-tile` / `add-widget` (`--ecn component`) add to the carousel and show it, replying with its page `index`; `show-tile` (`--ei index`) and `remove-tile` / `remove-widget`. On a phone with the home screen, `add-widget` places an app widget. `set-watchface` and the complication operations are refused: there is no watch face or complication host |
 | `am force-stop` / `kill` | `forceStop` | partly: see below |
 | `am stack list` | `activities` | |
 | `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests; a grant lifts "don't ask again" |
@@ -854,7 +858,7 @@ quit and launch again.
 
 | adb | Why |
 | --- | --- |
-| `install`, `uninstall`, `pm install` | the simulator runs the one APK it was launched with |
+| `install`, `uninstall`, `pm install` | the simulator runs the one APK it was launched with; [`launch --adb`](#as-a-device-adb-and-android-studio) answers them from outside it, by booting a simulator on the new APK |
 | `am instrument`, `am profile`, `am start -P/--start-profiler`, `am dumpheap` | no instrumentation runner, profiler or ART heap |
 | `intent:` URIs, `--selector`, `--ela`/`--efa` array extras | not mapped; use `-a -d -n` and the scalar or `--esa`/`--eia` extras |
 | `svc power`, `svc nfc`, `svc usb` | power is the `screen` command (`svc power stayon` is not mapped); no NFC or USB model |
@@ -864,6 +868,113 @@ quit and launch again.
 | `reboot`, `root`, `sh` scripts, pipes, `&&` | no device to reboot; one command per line |
 | `pm disable` / `enable` components | not mapped |
 | `logcat -b crash/events/radio`, `bugreport` | there is one buffer: the app's `android.util.Log` |
+
+## As a device: adb and Android Studio
+
+`compose-preview launch` with no APK boots the device itself: the system UI with nothing installed,
+the phone's home screen or, with `--form-factor wear`, the watch face. Underneath it is a
+generated package with a manifest and nothing else (`SystemApk`), and `:simulator-host`'s
+`NoAppActivity` stands in for a launcher activity and finishes at once, so the home screen is what
+shows.
+
+`--adb` goes further: the simulator becomes a device adb and Android Studio see, the way they see
+an emulator.
+
+```
+compose-preview launch --adb                          # emulator-5554, a phone, nothing installed
+compose-preview launch --adb --form-factor wear       # a watch
+compose-preview launch --adb app.apk                  # with app.apk installed (not started)
+
+adb devices                                           # emulator-5554  device
+adb install app-debug.apk                             # Performing Streamed Install / Success
+adb shell am start -n com.example/.MainActivity       # Starting: Intent { cmp=com.example/.MainActivity }
+adb exec-out screencap -p > screen.png
+adb shell am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE \
+    --es operation add-tile --ecn component com.example/.MyTileService
+adb uninstall com.example
+```
+
+```
+compose-preview launch --adb   (this process: the device)
+ ├─ adb transport   127.0.0.1:5555    the adbd protocol: shell (v1, v2), exec, abb_exec, sync
+ ├─ console         127.0.0.1:5554    avd name/path/id, geo fix, power, rotate, kill
+ ├─ emulator gRPC   127.0.0.1:8554    EmulatorController: display frames, touch, keys
+ │   └─ discovery file  <registration dir>/pid_<pid>.ini, AVD dir with config.ini
+ └─ simulator JVM   --control stdio   what runs on the device; replaced on install
+```
+
+**Screen and input.** The device has a screen two ways, both live and both taking input, and
+they show the same simulator. With a display, the simulator's own window opens as it does
+without `--adb`: mouse and keyboard drive it (right-click is Back), and an install closes it and
+opens the next simulator's in its place. Headless, or from Android Studio, the emulator gRPC
+endpoint below streams the display and takes touches and keys, which is what Studio's Running
+Devices window draws and sends. Input from adb (`input tap`), the window and gRPC all reach the
+one app, so a person can watch and use the device while a tool drives it.
+
+![A click in the window on the installed app's icon launches it](design/evidence/simulator-adb/window-click-launches-app.png)
+![Over gRPC: the streamed frames as a streamed tap opens Now Playing and GoBack closes it](design/evidence/simulator-adb/grpc-stream-touch-back.png)
+
+**Finding it.** Like an emulator it takes the first free port pair from 5554/5555, tells a
+running adb server about itself (`host:emulator:5555`), and is found by one started later, which
+scans 5555–5585. Its serial is `emulator-<console port>`, and `getprop` answers as an emulator's
+system image does (`ro.kernel.qemu`, `ro.boot.qemu.avd_name`, `sys.boot_completed` once the
+simulator is up, `ro.build.characteristics` with `watch` on a watch). `adb connect localhost:5555`
+also works.
+
+**Installing.** A Robolectric sandbox is built around one APK, so the device is this process and
+the simulator is what runs on it: `adb install` (streamed with `abb_exec`, `exec:cmd package`, or
+pushed then `pm install`), the session commands Studio and `install-multiple` use
+(`install-create`, `install-write`, `install-commit`), and `uninstall` each stop the simulator
+and boot one on the new package (or on the system package again). The adb connection stays up
+across it. The new simulator boots as a device does after an install: the app is installed, not
+started, so the home screen or watch face shows until `am start` (or a tap on its icon). One app
+at a time: a second install replaces the first. Of a split install only the base APK runs (a
+split is reported on stderr). The first install of an APK converts its dex, as `launch` does, so
+it takes as long as a first `launch` (a minute or two); a repeat install of the same APK starts in
+seconds.
+
+**The shell.** `adb shell` (one command, a `;` / `&&` / `||` sequence, `| grep` / `| head` /
+`| tail` filters, `2>/dev/null`, `> file`) and an interactive `adb shell`. The device answers
+packages (`pm list packages`, `pm path`, `pm list features`, `pm resolve-activity --brief`),
+`getprop`, `screencap`, `echo`/`id`/`true`, and the files below itself; everything else goes to
+the simulator's [adb equivalents](#adb-equivalents), and its JSON answer is printed as a device
+prints it where tools read the text (`Starting: Intent { … }`, `Broadcast completed: …`,
+`Physical size: 540x960`, a setting's value), and otherwise as the JSON. `adb push` / `pull`
+and `ls`, `rm`, `mkdir`, `cat` reach `/data/local/tmp` and `/sdcard`, kept under the device's
+directory in the cache; an app's private files are `run-as`, which the simulator answers. A
+native binary pushed there (Studio's deployer) does not run: `can't execute`, exit 126.
+
+**Android Studio.** Studio lists the device under its serial, installs and launches through the
+commands above, and finds the emulator gRPC endpoint through the discovery file every emulator
+writes (`$XDG_RUNTIME_DIR/avd/running` on Linux, `~/Library/Caches/TemporaryItems/avd/running` on
+macOS, `%LOCALAPPDATA%\Temp\avd\running` on Windows) beside an AVD directory whose `config.ini`
+gives the display (`hw.lcd.*`) and the device type (`tag.id=android-wear` on a watch). The
+endpoint implements `EmulatorController` from Studio's own `emulator_controller.proto`
+(`com.android.tools.emulator:proto`), with the discovery file's token:
+
+| RPC | Simulator |
+| --- | --- |
+| `getStatus`, `getVmState`, `getDisplayConfigurations` | booted state, the hardware config, `getprop`; one display |
+| `getScreenshot`, `streamScreenshot` | `screenshot`, as PNG, RGB888 or RGBA8888, scaled to fit the requested size; the stream sends a frame when the display changes, at most 15 a second; a local client's shared-memory file is written when it names one |
+| `sendTouch`, `sendMouse`, `streamInputEvent` | `touch` down / move / up (the first pointer), `key` (W3C key names: `GoHome`, `GoBack`, `AppSwitch`, `Power`, `Enter`, arrows…) or `text`; the wheel turns a watch's crown (`rotary`) |
+| `setGps`, `setPhysicalModel` (heart rate, wrist tilt) | `location`, `health`, `tilt` |
+| `setVmState` | shut down or reboot the device |
+| `streamNotification` | boot completed |
+
+Everything else answers `UNIMPLEMENTED`. **Verified here** with real `adb` 37 (devices, shell and
+exit codes, streamed install, `am start`, `screencap`, push / pull, interactive shell, uninstall,
+`DEBUG_SURFACE`) and a gRPC client built on Studio's stubs (status, displays, screenshots in each
+format, the frame stream, mouse input, the token check), the stream following a streamed touch
+tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
+display. **Not verified:** Android Studio itself,
+which the sandbox this was built in does not have; the discovery file follows the emulator's
+format, and Studio's own fallbacks (its deployer falling back to `pm install` sessions when its
+installer binary cannot run) are what the device relies on.
+
+**Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
+nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
+watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
+`adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
 
 ## Memory
 

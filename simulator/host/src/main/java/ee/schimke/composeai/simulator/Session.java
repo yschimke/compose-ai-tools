@@ -202,7 +202,7 @@ final class Session {
       JSONObject command = new JSONObject(line);
       id = command.opt("id");
       String name = command.getString("cmd");
-      if (!name.equals("ping")) overlay.status(summary(name, command));
+      if (!name.equals("ping") && !name.equals("touch")) overlay.status(summary(name, command));
       JSONObject shell = null;
       if (name.equals("shell")) {
         // An adb shell line: run the command it translates to, and say what that was.
@@ -302,6 +302,8 @@ final class Session {
         return new Protocol.Json().put("services", navigator.describeServices()).object();
       case "components":
         return components();
+      case "debugSurface":
+        return debugSurface(c);
       case "companion":
         return CompanionDevices.command(c);
       case "dataLayer":
@@ -369,6 +371,8 @@ final class Session {
           if (name.equals("swipe")) return swipe(c);
           return rotary(c);
         }
+      case "touch":
+        return touch(c);
       case "key":
         {
           Object keys = c.get("key");
@@ -470,6 +474,51 @@ final class Session {
 
   private boolean onDefaultDisplay(JSONObject c) {
     return displays.target(c) == android.view.Display.DEFAULT_DISPLAY;
+  }
+
+  /**
+   * Android Studio's Wear surface launches ({@code am broadcast -a …DEBUG_SURFACE}, translated by
+   * {@link AdbShell#debugSurface}): a tile or Wear Widget goes into the watch's carousel and shows,
+   * as the Wear OS system UI does; on a phone with the home screen, {@code add-widget} places an app
+   * widget. The reply's {@code index} is the carousel page, which {@code show-tile} takes back.
+   */
+  private JSONObject debugSurface(JSONObject c) throws Exception {
+    String operation = c.getString("operation");
+    switch (operation) {
+      case "add-tile":
+      case "add-widget":
+        if (wear != null) {
+          return run(
+              "tiles",
+              new Protocol.Json().put("op", "add").put("component", c.getString("component")).object());
+        }
+        if (home != null && operation.equals("add-widget")) {
+          return run(
+              "widget",
+              new Protocol.Json()
+                  .put("action", "add")
+                  .put("provider", c.getString("component"))
+                  .object());
+        }
+        throw new IllegalStateException(
+            "DEBUG_SURFACE " + operation + " needs the system UI: launch with --launcher");
+      case "show-tile":
+        if (wear == null) throw new IllegalStateException("show-tile needs the Wear system UI");
+        return run(
+            "tiles", new Protocol.Json().put("op", "show").put("index", c.optInt("index", 0)).object());
+      case "remove-tile":
+      case "remove-widget":
+        if (wear == null) throw new IllegalStateException(operation + " needs the Wear system UI");
+        return run(
+            "tiles",
+            new Protocol.Json().put("op", "remove").put("component", c.getString("component")).object());
+      default:
+        throw new IllegalArgumentException(
+            "DEBUG_SURFACE "
+                + operation
+                + " is not simulated: the system UI has tiles and widgets, but no watch face or"
+                + " complication host");
+    }
   }
 
   /** The home screen's and widgets' commands; refused without {@code --launcher} where needed. */
@@ -652,6 +701,45 @@ final class Session {
         .put("display", displayId)
         .put("node", target)
         .object();
+  }
+
+  /** The down time of the pointer {@code touch} holds down, or -1. */
+  private long touchDown = -1;
+
+  /**
+   * One pointer event — {@code down}, {@code move} or {@code up} — as a touchscreen streams them:
+   * for a client that relays a person's touches as they happen (the emulator gRPC endpoint of
+   * {@code launch --adb}) rather than a whole gesture at once. Replies at once, without settling.
+   */
+  private JSONObject touch(JSONObject c) throws JSONException {
+    int displayId = displays.target(c);
+    float x = (float) c.getDouble("x");
+    float y = (float) c.getDouble("y");
+    String action = c.getString("action");
+    long now = SystemClock.uptimeMillis();
+    int motion;
+    switch (action) {
+      case "down":
+        if (touchDown >= 0) inject(touch(touchDown, now, MotionEvent.ACTION_CANCEL, x, y), displayId);
+        JSONObject woke = onDefaultDisplay(c) ? screen.input("tap") : null;
+        if (woke != null) return woke;
+        touchDown = now;
+        motion = MotionEvent.ACTION_DOWN;
+        break;
+      case "move":
+        if (touchDown < 0) return new Protocol.Json().put("ignored", "no pointer down").object();
+        motion = MotionEvent.ACTION_MOVE;
+        break;
+      case "up":
+        if (touchDown < 0) return new Protocol.Json().put("ignored", "no pointer down").object();
+        motion = MotionEvent.ACTION_UP;
+        break;
+      default:
+        throw new IllegalArgumentException("touch action is down, move or up, not " + action);
+    }
+    inject(touch(touchDown, now, motion, x, y), displayId);
+    if (motion == MotionEvent.ACTION_UP) touchDown = -1;
+    return new Protocol.Json().put("x", x).put("y", y).put("action", action).object();
   }
 
   private JSONObject swipe(JSONObject c) throws JSONException {
