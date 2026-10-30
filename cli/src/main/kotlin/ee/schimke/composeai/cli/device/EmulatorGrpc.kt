@@ -439,7 +439,8 @@ internal class EmulatorGrpc(
         .setRotation(
           Rotation.newBuilder()
             .setRotation(Rotation.SkinRotation.forNumber(quarters))
-            .setZAxis(quarters * 90.0)
+            // The proto's angle is in [-180, 180]: reverse landscape is -90.
+            .setZAxis(if (quarters == 3) -90.0 else quarters * 90.0)
         )
         .clearTransport()
     val builder =

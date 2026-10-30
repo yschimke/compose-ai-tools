@@ -1015,6 +1015,9 @@ final class Session {
    * onKeyDown} sees them first, as on a device): the media volume steps up, down or mutes, and the
    * phone's system UI shows its volume panel. Returns the new volume, or null for another key.
    */
+  /** The media volume before a mute, which muting again restores; 0 when not muted. */
+  private int unmutedVolume;
+
   private Integer volumeKey(int code) {
     int direction;
     switch (code) {
@@ -1033,10 +1036,23 @@ final class Session {
     android.media.AudioManager audio = app.getSystemService(android.media.AudioManager.class);
     int stream = android.media.AudioManager.STREAM_MUSIC;
     if (direction == android.media.AudioManager.ADJUST_TOGGLE_MUTE) {
-      // Robolectric's adjustStreamVolume only steps: muting is the volume at zero.
-      audio.setStreamVolume(stream, 0, 0);
+      // Muting is the volume at zero, and muting
+      // again gives back the volume it had.
+      int now = audio.getStreamVolume(stream);
+      if (now > 0) {
+        unmutedVolume = now;
+        audio.setStreamVolume(stream, 0, 0);
+      } else if (unmutedVolume > 0) {
+        audio.setStreamVolume(stream, unmutedVolume, 0);
+        unmutedVolume = 0;
+      }
     } else {
-      audio.adjustStreamVolume(stream, direction, 0);
+      unmutedVolume = 0;
+      // One step, within the stream's range, as the system's volume keys move it.
+      int step = direction == android.media.AudioManager.ADJUST_RAISE ? 1 : -1;
+      int max = audio.getStreamMaxVolume(stream);
+      audio.setStreamVolume(
+          stream, Math.max(0, Math.min(max, audio.getStreamVolume(stream) + step)), 0);
     }
     int volume = audio.getStreamVolume(stream);
     if (phoneUi != null) phoneUi.showVolume(volume, audio.getStreamMaxVolume(stream));
