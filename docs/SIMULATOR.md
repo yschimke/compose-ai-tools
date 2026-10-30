@@ -23,6 +23,16 @@ glass pane, not in the Android display, so the agent's own screenshots never con
 person's clicks still reach the app. `--hide-agent` turns it off; `--headless` drops the window
 (the default when there is no display, as in CI or a cloud sandbox).
 
+**Zoom.** The window, and each secondary display's, is resizable: dragging its edge fits the
+display to the window, letterboxed. ⌘ `=` / `-` / `0` (Ctrl on Linux and Windows), or the
+window's View menu, zoom in, out and back to one device pixel per point; View → Fit to Screen
+fits it to the screen, which is also how a display taller than the screen starts. Only the
+picture scales: clicks are mapped back to device pixels, and `screenshot`, `hierarchy` bounds and
+the control channel's coordinates stay in device pixels. The `zoom` command does the same from the
+control channel.
+
+![The 540×960 display at 92% (fitted to a 1000-point screen), 50% and 150%](design/evidence/simulator-launch/window-zoom.png)
+
 It needs Java 21+ for the simulator JVM (`--java <jdk>`, or `COMPOSE_PREVIEW_SIMULATOR_JAVA`; the
 CLI itself still runs on 17) and an Android SDK platform's `android.jar` (`ANDROID_HOME`, or
 `local.properties` `sdk.dir`).
@@ -250,9 +260,9 @@ the app throws while handling a command becomes an error reply, and the simulato
 Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `newIntent` /
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
-`removed`), `log` (while `logcat` follows), `prompt`, `credentials` and `speak`
-([below](#prompts-sign-in-and-the-keystore)), `error` for an intent the app sent that nothing
-handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
+`prompt`, `credentials` and `speak` ([below](#prompts-sign-in-and-the-keystore)), `error` for an
+intent the app sent that nothing handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -263,6 +273,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | --- | --- | --- |
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
+| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, and where the display is on screen (`screenX`, `screenY`). Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
@@ -306,6 +317,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `speech` | `policy`? (`ask` / `cancel`), `text`? (a string or several), `cancel`?, `requestId`? | answers `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` with what was "said" |
 | `credentials` | `policy`? (`auto` / `ask` / `cancel`), `answer`? (`{"id","password"}`, `{"type","data"}`, `save`, `none`, `cancel`), `requestId`?, `save`? (`{"id","password"}`), `forget`? | Credential Manager's sign-in and save requests (API 34+), and the saved passwords |
 | `clipboard` | `text`?, `label`?, `clear`? | the primary clip: sets it, or reads it back |
+| `pick` | `policy`? (`ask` / `cancel`), `answer`? (a request id, or `"next"`), `files`?, `path`?, `cancel`? | the documents, photo and camera pickers the app opened ([below](#pickers-sharing-and-other-apps)); without an answer, the policy and the requests waiting |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range that matches one of the request's device filters (address, name pattern, service UUIDs)), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
@@ -407,6 +419,56 @@ certificate) work from a `KeyGenParameterSpec`, so androidx.security's `MasterKe
 `EncryptedSharedPreferences` and Tink's Android keysets start. The keys are software keys in memory:
 the spec's purposes, user-authentication requirement and attestation are not enforced, and a
 `restart` starts with an empty keystore.
+### Pickers, sharing and other apps
+
+A device answers some intents with a system app: the documents picker, the photo picker, the
+camera, the share sheet, a browser, a dialer. Those are installed here as packages with intent
+filters and no code (`com.android.documentsui`, `com.android.providers.media.module`,
+`com.android.camera2`, `com.android.intentresolver`, `com.android.browser`, `com.android.dialer`,
+`com.android.email`), so `resolveActivity` and `queryIntentActivities` find them as on a device,
+and the simulator answers in their place.
+
+**Pickers.** `OPEN_DOCUMENT` and `GET_CONTENT` (androidx's `OpenDocument`, `OpenMultipleDocuments`,
+`GetContent`), `CREATE_DOCUMENT` (`CreateDocument`), `OPEN_DOCUMENT_TREE` (`OpenDocumentTree`),
+`PICK_IMAGES` (`PickVisualMedia`, `PickMultipleVisualMedia`) and `IMAGE_CAPTURE` (`TakePicture`)
+each raise a `pick` event, `kind` `open`, `create`, `tree`, `media` or `camera`, with the MIME types
+asked for and whether several may be picked. Under the `ask` policy (the default with
+`--control`) the request waits, as the picker would on screen, until `pick` answers it:
+
+| `kind` | answer with | the app gets |
+| --- | --- | --- |
+| `open`, `media` | `files`: device paths (`/sdcard/…`) or host files (copied to `/sdcard/Download/` first) | a document URI each, in `data`, or a `ClipData` when several may be picked |
+| `create` | `path`? (default `/sdcard/Download/<the suggested name>`, numbered if taken) | the new, empty document's URI, writable |
+| `tree` | `path`? (a directory, default `/sdcard/Download`) | a tree URI, with persistable read and write grants |
+| `camera` | `files`? (an image; default a generated 640×480 test card) | the image written to the request's `EXTRA_OUTPUT`, else a thumbnail in `data` |
+
+`cancel: true` answers `RESULT_CANCELED`, as backing out does; the `cancel` policy (the default
+without `--control`) answers every request that way at once. The URIs are the external storage
+provider's, `content://com.android.externalstorage.documents/document/primary%3ADownload%2F…`,
+served from the simulated `/sdcard` by a `DocumentsProvider` of the simulator's: they query with
+`OpenableColumns`, open for reading and writing, and a tree lists, creates, renames and deletes
+through `DocumentsContract`. `takePersistableUriPermission` is kept.
+
+```
+→ {"id":1,"cmd":"tap","text":"Import"}
+← {"event":"pick","id":1,"kind":"open","action":"android.intent.action.OPEN_DOCUMENT","mimeTypes":["application/pdf"],"multiple":false,"waiting":true}
+→ {"id":2,"cmd":"pick","answer":"next","files":["/home/me/invoice.pdf"]}
+← {"id":2,"ok":true,"result":{"id":1,"kind":"open","answer":"RESULT_OK","uris":["content://com.android.externalstorage.documents/document/primary%3ADownload%2Finvoice.pdf"],…}}
+```
+
+**Handoffs.** An intent that only one of those system apps handles (`ACTION_CHOOSER`, `SEND`, a
+`VIEW` of an `http(s)` link, `DIAL` / `VIEW` of `tel:`, `SENDTO` `mailto:`) goes nowhere, as if the
+other app had opened and been closed: a `handoff` event names the `handler` package, the intent
+(a chooser's inner one), its `text`, and each content URI it hands over (`data`, `EXTRA_STREAM`,
+its clip) read through the app's own grant and copied to `/data/local/tmp/handoff/<n>/`, with
+`hostPath`, so what the app shared from its `FileProvider` can be checked. A caller waiting for a
+result gets `RESULT_CANCELED`. A chooser also lists `appTargets`, the app's own activities that
+take the inner intent, which `startActivity` can open; an intent one of the app's activities
+handles (its own App Link) is the app's, as on a device.
+
+A for-result start that nothing handles at all is answered `RESULT_CANCELED` too, beside its
+`error` event: a device throws `ActivityNotFoundException`, which Robolectric does not, and the
+caller would otherwise wait for good.
 
 ### Display, fold and device state
 
@@ -1304,9 +1366,12 @@ What does not, or not yet:
   `CryptoObject` passed to a prompt is not checked against its key, Credential Manager below API 34 (Play
   services' path) is not simulated, and `prepareGetCredential` is not answered. The keystore's
   keys are software keys, kept in memory only.
-- **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
-  share sheet, other settings screens) reaches no activity and is reported as an `error` event;
-  the radio dialogs and settings panels are answered ([above](#network-wi-fi-and-bluetooth)).
+- **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
+  the share sheet, browser and dialer are answered ([above](#network-wi-fi-and-bluetooth),
+  [above](#pickers-sharing-and-other-apps)); there is no media store of picked photos (the photo
+  picker serves documents), no video capture, and a chooser does not pick one of the app's own
+  targets itself. Any other intent only the system handles (the live-wallpaper picker Muzei
+  opens, other settings screens) reaches no activity and is reported as an `error` event.
 - **Bluetooth.** On, with nothing in range until the agent puts peripherals there
   ([above](#network-wi-fi-and-bluetooth)). Robolectric's adapter reports LE off in airplane mode
   even when Bluetooth is turned back on. No classic sockets (RFCOMM), audio profiles, LE

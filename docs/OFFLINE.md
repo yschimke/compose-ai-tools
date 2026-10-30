@@ -101,7 +101,9 @@ refused.
 
 - The jars must match **the Robolectric version inside the render daemon** you provisioned (the
   `lib-daemon-android` jars), and the SDK levels you render at. `compose-preview provision
-  --android` asks that Robolectric which jars it needs and fetches them. The alternative is an
+  --android` asks that Robolectric which jars it needs and fetches them (as `launch` does), from
+  Google's mirror of Maven Central first and Central itself second: shared cloud egress addresses
+  are rate-limited by Central (HTTP 429), the mirror much less. The alternative is an
   online warm-up render: Robolectric leaves them in
   `~/.m2/repository/org/robolectric/android-all-instrumented/`; copy the `.jar` files (flat) into
   the directory.
