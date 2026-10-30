@@ -8,7 +8,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -87,6 +89,106 @@ final class CompanionDevices {
     }
   }
 
+  /**
+   * One of an {@code AssociationRequest}'s Bluetooth device filters ({@code BluetoothDeviceFilter}
+   * for classic devices, {@code BluetoothLeDeviceFilter} for BLE ones), as far as the simulator
+   * knows its devices: an address, a name pattern and service UUIDs (each with an optional mask),
+   * each optional. A filter the simulator cannot evaluate (a Wi-Fi one, or a BLE one with raw-data,
+   * service-data or manufacturer-data predicates) is {@link #NONE}, which matches no device.
+   */
+  static final class Filter {
+    /** Which devices a filter applies to. */
+    enum Medium {
+      CLASSIC,
+      BLE
+    }
+
+    static final Filter NONE = new Filter(null, null, null, new ArrayList<>(), new ArrayList<>());
+
+    /** The medium, or null for {@link #NONE}. */
+    final Medium medium;
+
+    final String address;
+    final Pattern name;
+    final List<UUID> serviceUuids;
+    /** Per service UUID, the bits that must match, or null for all of them. */
+    final List<UUID> masks;
+
+    Filter(Medium medium, String address, Pattern name, List<UUID> serviceUuids, List<UUID> masks) {
+      this.medium = medium;
+      this.address = address;
+      this.name = name;
+      this.serviceUuids = serviceUuids;
+      this.masks = masks;
+    }
+
+    static Filter classic(String address, Pattern name, List<UUID> serviceUuids) {
+      List<UUID> masks = new ArrayList<>();
+      for (int i = 0; i < serviceUuids.size(); i++) masks.add(null);
+      return new Filter(Medium.CLASSIC, address, name, serviceUuids, masks);
+    }
+
+    static Filter ble(String address, Pattern name, UUID serviceUuid, UUID mask) {
+      List<UUID> uuids = new ArrayList<>();
+      List<UUID> masks = new ArrayList<>();
+      if (serviceUuid != null) {
+        uuids.add(serviceUuid);
+        masks.add(mask);
+      }
+      return new Filter(Medium.BLE, address, name, uuids, masks);
+    }
+
+    /** Whether [device] passes. */
+    boolean matches(Device device) {
+      if (medium == null) return false;
+      if ((medium == Medium.BLE) != device.ble) return false;
+      if (address != null && !address.equalsIgnoreCase(device.address)) return false;
+      if (name != null && (device.name == null || !name.matcher(device.name).find())) return false;
+      for (int i = 0; i < serviceUuids.size(); i++) {
+        UUID wanted = serviceUuids.get(i);
+        UUID mask = masks.get(i);
+        boolean found = false;
+        for (UUID advertised : device.serviceUuids) found |= masked(advertised, wanted, mask);
+        if (!found) return false;
+      }
+      return true;
+    }
+
+    /** {@code ScanFilter}'s comparison: equal in the bits [mask] sets (all, without one). */
+    static boolean masked(UUID advertised, UUID wanted, UUID mask) {
+      if (mask == null) return advertised.equals(wanted);
+      return ((advertised.getMostSignificantBits() ^ wanted.getMostSignificantBits())
+                  & mask.getMostSignificantBits())
+              == 0
+          && ((advertised.getLeastSignificantBits() ^ wanted.getLeastSignificantBits())
+                  & mask.getLeastSignificantBits())
+              == 0;
+    }
+  }
+
+  /** A Bluetooth device in range, as {@link BluetoothSim} reports it. */
+  static final class Device {
+    final String address;
+    final String name;
+    /** Whether it is a BLE peripheral (advertising), rather than a classic device. */
+    final boolean ble;
+    /** Its service UUIDs, canonical: a short {@code 180D} as {@code 0000180d-…-00805f9b34fb}. */
+    final List<UUID> serviceUuids = new ArrayList<>();
+
+    Device(String address, String name, boolean ble, List<String> serviceUuids) {
+      this.address = address;
+      this.name = name;
+      this.ble = ble;
+      for (String uuid : serviceUuids) {
+        try {
+          this.serviceUuids.add(AdvertisingData.uuid(uuid));
+        } catch (IllegalArgumentException e) {
+          // Not a UUID: matches no filter.
+        }
+      }
+    }
+  }
+
   /** An {@code associate()} the chooser has not answered. */
   static final class Request {
     final int id;
@@ -148,11 +250,13 @@ final class CompanionDevices {
   }
 
   /**
-   * The app's {@code associate()}: answered now by policy, or held for the agent. [bluetooth] are
-   * the Bluetooth devices in range ({@code {address, name}}).
+   * The app's {@code associate()}: answered now by policy, or held for the agent. [filters] are the
+   * request's device filters (empty: any device); [bluetooth] the Bluetooth devices in range, of
+   * which the chooser lists those matching any filter, as the system's does.
    */
   static void associate(
-      String profile, boolean filtered, List<String[]> bluetooth, Consumer<Candidate> answer) {
+      String profile, List<Filter> filters, List<Device> bluetooth, Consumer<Candidate> answer) {
+    boolean filtered = !filters.isEmpty();
     List<Candidate> candidates = new ArrayList<>();
     String chosenPolicy;
     Request request;
@@ -163,7 +267,13 @@ final class CompanionDevices {
         }
       }
       if (!DEVICE_PROFILE_WATCH.equals(profile)) {
-        for (String[] device : bluetooth) candidates.add(new Candidate(device[0], device[1], null));
+        for (Device device : bluetooth) {
+          boolean passes = !filtered;
+          for (Filter filter : filters) {
+            passes |= filter.matches(device);
+          }
+          if (passes) candidates.add(new Candidate(device.address, device.name, null));
+        }
       }
       request = new Request(nextRequest++, profile, candidates, answer);
       chosenPolicy = policy;
