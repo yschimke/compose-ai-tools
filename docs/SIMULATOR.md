@@ -715,7 +715,9 @@ simulator: the control channel plays every peer device. Each frame the app sends
 `datalayer` event of kind `send`: `type` `hello` (its node and capabilities, answered on each
 connect), `message` (with a `requestId` for a `sendRequest`), `response`, `data`, `capabilities`,
 `activity` (a `startRemoteActivity`) or `oauth`, with its payload as base64 `data`, a `text`
-preview and, when the bytes are a `DataMap`, a `dataMap` JSON object. The agent answers with
+preview and, when the bytes are a `DataMap`, a `dataMap` JSON object; a data item's assets come
+as `assets` (key → base64, up to 4 MiB of base64 each, larger ones named in `assetsOmitted`).
+Both are in the form `put` takes, so a captured item can be put back as it was. The agent answers with
 `{"cmd":"dataLayer","action":…}`:
 
 | `action` | Arguments | The peer… |
@@ -729,8 +731,8 @@ preview and, when the bytes are a `DataMap`, a `dataMap` JSON object. The agent 
 | `config` | `requestTimeoutMs` | sets how long the app's requests wait (default 30 s, then `TIMEOUT`) |
 
 A payload is `text`, `data` (base64) or `dataMap` (JSON: strings, booleans and ints bare, other
-values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|…,"value":…}`, nested
-objects as `DataMap`s). `node` defaults to the only connected peer; with none, the app's
+values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|"intList"|"dataMapList"|…,
+"value":…}`, nested objects as `DataMap`s; `"list"` picks the list type from its elements). `node` defaults to the only connected peer; with none, the app's
 `sendMessage` / `sendRequest` fail with `TARGET_NODE_NOT_CONNECTED`.
 
 `--fingerprint <f>` replaces Robolectric's `Build.FINGERPRINT` (`robolectric`), which some apps

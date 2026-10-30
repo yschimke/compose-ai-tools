@@ -1422,7 +1422,9 @@ final class DataLayer {
   /**
    * Agent mode: a frame this node sent, as a {@code datalayer} event of kind {@code send}: the
    * frame's fields, with its payload as base64 {@code data}, a {@code text} preview and, when the
-   * bytes are a {@code DataMap}, the map as {@code dataMap} JSON.
+   * bytes are a {@code DataMap}, the map as {@code dataMap} JSON; a data item's assets as {@code
+   * assets} (key → base64, as {@code dataLayer put} takes them; see {@link AgentAssets}) and their
+   * {@code assetDigests}.
    */
   private void showFrame(JSONObject frame) {
     Protocol channel = protocol;
@@ -1437,6 +1439,31 @@ final class DataLayer {
       String key = it.next();
       if (key.equals("assetBytes")) continue;
       json.put(key, frame.opt(key));
+    }
+    JSONObject assetKeys = frame.optJSONObject("assets");
+    if (assetKeys != null && assetKeys.length() > 0) {
+      // Replayable: key → base64, as `dataLayer put` takes `assets`; the digests alongside.
+      Map<String, String> digests = new LinkedHashMap<>();
+      for (Iterator<String> it = assetKeys.keys(); it.hasNext(); ) {
+        String key = it.next();
+        digests.put(key, assetKeys.optString(key));
+      }
+      Map<String, String> bytesByDigest = new LinkedHashMap<>();
+      JSONObject assetBytes = frame.optJSONObject("assetBytes");
+      if (assetBytes != null) {
+        for (Iterator<String> it = assetBytes.keys(); it.hasNext(); ) {
+          String digest = it.next();
+          bytesByDigest.put(digest, assetBytes.optString(digest));
+        }
+      }
+      Map<String, Integer> omitted = new LinkedHashMap<>();
+      json.put(
+          "assets",
+          new JSONObject(
+              AgentAssets.replayable(
+                  digests, bytesByDigest, AgentAssets.MAX_BASE64_CHARS, omitted)));
+      json.put("assetDigests", assetKeys);
+      if (!omitted.isEmpty()) json.put("assetsOmitted", new JSONObject(omitted));
     }
     String data = frame.optString("data", null);
     if (data != null) {

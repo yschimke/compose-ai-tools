@@ -74,6 +74,15 @@ final class DataMapJson {
           for (float f : (float[]) v) array.put((double) f);
           return array;
         }
+      case DataMapTypes.STRING_LIST:
+      case DataMapTypes.INT_LIST:
+        return new JSONArray((List<?>) v);
+      case DataMapTypes.DATA_MAP_LIST:
+        {
+          JSONArray array = new JSONArray();
+          for (Object item : (List<?>) v) array.put(toJson((DataMap) item));
+          return array;
+        }
       case DataMapTypes.LIST:
         {
           JSONArray array = new JSONArray();
@@ -182,6 +191,16 @@ final class DataMapJson {
       case DataMapTypes.DATA_MAP:
         map.putDataMap(key, toDataMap((JSONObject) v));
         break;
+      case DataMapTypes.LIST:
+        {
+          String list = DataMapTypes.listTag(javaList((JSONArray) v));
+          if (list.equals(DataMapTypes.LIST)) {
+            throw new IllegalArgumentException(
+                key + ": a DataMap list holds strings, ints or DataMaps, not a mix");
+          }
+          putTyped(map, key, list, v);
+          break;
+        }
       case DataMapTypes.DATA_MAP_LIST:
         {
           JSONArray array = (JSONArray) v;
@@ -193,6 +212,16 @@ final class DataMapJson {
       default:
         throw new IllegalArgumentException("unknown DataMap type " + tag + " for " + key);
     }
+  }
+
+  /** [array]'s elements as Java values, nested objects as maps, for {@link DataMapTypes#listTag}. */
+  private static List<Object> javaList(JSONArray array) throws JSONException {
+    List<Object> out = new ArrayList<>();
+    for (int i = 0; i < array.length(); i++) {
+      Object element = array.get(i);
+      out.add(element instanceof JSONObject ? new java.util.HashMap<String, Object>() : element);
+    }
+    return out;
   }
 
   private static ArrayList<String> strings(JSONArray array) throws JSONException {
