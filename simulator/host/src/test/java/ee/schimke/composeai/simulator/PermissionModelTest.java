@@ -296,6 +296,18 @@ public class PermissionModelTest {
     assertEquals(How.DIALOG, model(34).triage(new String[] {SELECTED}).get(0).how);
   }
 
+  @Test
+  public void platformRuntimePermissionsIncludeXrAndLocalNetwork() {
+    assertTrue(PermissionModel.isPlatformRuntime("android.permission.HEAD_TRACKING"));
+    assertTrue(PermissionModel.isPlatformRuntime("android.permission.SCENE_UNDERSTANDING_COARSE"));
+    assertTrue(PermissionModel.isPlatformRuntime("android.permission.ACCESS_LOCAL_NETWORK"));
+    assertTrue(PermissionModel.isPlatformRuntime("android.permission.health.READ_HEART_RATE"));
+    assertTrue(PermissionModel.isPlatformRuntime(CAMERA));
+    assertFalse(PermissionModel.isPlatformRuntime(INTERNET));
+    assertFalse(PermissionModel.isPlatformRuntime("android.permission.FOREGROUND_SERVICE"));
+    assertFalse(PermissionModel.isPlatform("com.example.permission.C2D_MESSAGE"));
+  }
+
   @Test(expected = IllegalArgumentException.class)
   public void unknownAnswerIsRejected() {
     PermissionModel.expand(Arrays.asList(CAMERA), "maybe");
