@@ -50,6 +50,8 @@ internal class LiveReload(
   /** Where overlays and merged resource APKs go; one directory per reload. */
   private val workDir: File,
   private val log: (String) -> Unit,
+  /** Runs Gradle tasks; the Tooling API unless a test stands in. */
+  private val runner: ((List<String>) -> Build)? = null,
 ) : AutoCloseable {
 
   private val connection: ProjectConnection by lazy {
@@ -208,6 +210,9 @@ internal class LiveReload(
 
   /** Runs [tasks], capturing the build's output for the errors a failure reports. */
   fun run(tasks: List<String>): Build {
+    runner?.let {
+      return it(tasks)
+    }
     val start = System.nanoTime()
     val output = TailBuffer()
     val ok =
