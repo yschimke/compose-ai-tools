@@ -275,7 +275,7 @@ final class HomeScreen {
     Navigator.Entry root = appRoot();
     if (root != null
         && root.activity().getComponentName().getClassName().equals(className(activity))) {
-      return navigator.bringAppForward();
+      return navigator.bringAppForward(true);
     }
     Intent launch =
         new Intent(Intent.ACTION_MAIN)

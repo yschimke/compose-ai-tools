@@ -264,7 +264,7 @@ final class WearSystemUi {
     if (root != null
         && (activity.equals(root.activity().getComponentName())
             || activity.equals(root.request.getComponent()))) {
-      return navigator.bringAppForward();
+      return navigator.bringAppForward(true);
     }
     Intent intent =
         new Intent(Intent.ACTION_MAIN)

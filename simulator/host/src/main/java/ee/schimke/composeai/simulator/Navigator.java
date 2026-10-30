@@ -271,6 +271,7 @@ final class Navigator {
     controller.setup(state);
     Entry fresh =
         new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
+    fresh.noHistory = entry.noHistory;
     List<Entry> entries = new ArrayList<>(stack);
     entries.set(entries.indexOf(entry), fresh);
     stack.clear();
@@ -611,8 +612,17 @@ final class Navigator {
    * onStart}, {@code onResume}). Returns null when the app has no activity there to bring back.
    */
   JSONObject bringAppForward() {
+    return bringAppForward(false);
+  }
+
+  /**
+   * As {@link #bringAppForward()}; [fromLauncher], a launcher's icon, applies the manifest's task
+   * resets first, as its {@code RESET_TASK_IF_NEEDED} start does.
+   */
+  JSONObject bringAppForward(boolean fromLauncher) {
     restoreKilled();
     if (!hasAppActivity(Display.DEFAULT_DISPLAY)) return null;
+    if (fromLauncher) resetTask(root(Display.DEFAULT_DISPLAY));
     leaveHome(Display.DEFAULT_DISPLAY);
     Entry top = top(Display.DEFAULT_DISPLAY);
     if (top.stopped) bringBack(top);
