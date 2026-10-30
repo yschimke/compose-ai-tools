@@ -129,6 +129,21 @@ final class NetworkModel {
     return defaultTransport() != null && mode != Mode.CAPTIVE;
   }
 
+  /** {@code BluetoothAdapter.STATE_OFF} / {@code STATE_ON}. */
+  static final int BLUETOOTH_OFF = 10;
+
+  static final int BLUETOOTH_ON = 12;
+
+  /**
+   * The Bluetooth adapter's state at startup: off in airplane mode ({@code launch --network
+   * airplane}), else on. Robolectric's adapter starts in no state at all (0), which BLE libraries
+   * reject.
+   */
+  static int bluetoothAtStartup(int robolectricState, boolean airplane) {
+    if (airplane) return BLUETOOTH_OFF;
+    return robolectricState == 0 ? BLUETOOTH_ON : robolectricState;
+  }
+
   boolean isMetered(Transport transport) {
     if (metered != null) return metered;
     return transport == Transport.CELLULAR;
