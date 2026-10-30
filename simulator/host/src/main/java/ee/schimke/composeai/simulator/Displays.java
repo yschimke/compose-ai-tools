@@ -463,12 +463,17 @@ final class Displays {
     if (android.os.Build.VERSION.SDK_INT < 33) return null;
     for (Root root : roots(id, hidden())) {
       if (!root.focusable()) continue;
-      Object dispatcher =
-          ReflectionHelpers.callInstanceMethod(root.impl, "getOnBackInvokedDispatcher");
-      if (dispatcher == null) return null;
-      boolean enabled =
-          ReflectionHelpers.callInstanceMethod(dispatcher, "isOnBackInvokedCallbackEnabled");
-      return enabled ? ReflectionHelpers.callInstanceMethod(dispatcher, "getTopCallback") : null;
+      try {
+        Object dispatcher =
+            ReflectionHelpers.callInstanceMethod(root.impl, "getOnBackInvokedDispatcher");
+        if (dispatcher == null) return null;
+        boolean enabled =
+            ReflectionHelpers.callInstanceMethod(dispatcher, "isOnBackInvokedCallbackEnabled");
+        return enabled ? ReflectionHelpers.callInstanceMethod(dispatcher, "getTopCallback") : null;
+      } catch (RuntimeException e) {
+        // A platform without these hidden methods: Back goes in as the key, as it always did.
+        return null;
+      }
     }
     return null;
   }
