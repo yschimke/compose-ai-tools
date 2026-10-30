@@ -91,14 +91,8 @@ final class HomeScreen {
    */
   void start() {
     grid = currentGrid();
-    for (ResolveInfo info : launchables()) {
-      Icon icon =
-          new Icon(
-              "app",
-              new ComponentName(info.activityInfo.packageName, info.activityInfo.name),
-              null,
-              info.loadLabel(app.getPackageManager()),
-              info.loadIcon(app.getPackageManager()));
+    for (ResolveInfo info : deviceLaunchables()) {
+      Icon icon = iconOf(info);
       int[] cell = findIconCell(true);
       if (cell == null) break;
       icon.cellX = cell[0];
@@ -146,6 +140,62 @@ final class HomeScreen {
             .addCategory(Intent.CATEGORY_LAUNCHER)
             .setPackage(app.getPackageName());
     return app.getPackageManager().queryIntentActivities(launcher, 0);
+  }
+
+  /**
+   * The launchable activities of every app on the device: the app's own ({@link #launchables}),
+   * then those of the device's other apps ({@link DeviceApps}), in launch order.
+   */
+  List<ResolveInfo> deviceLaunchables() {
+    List<ResolveInfo> all = new ArrayList<>(launchables());
+    if (!DeviceBus.enabled()) return all;
+    for (String peer : DevicePeers.packages()) {
+      Intent launcher =
+          new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(peer);
+      all.addAll(app.getPackageManager().queryIntentActivities(launcher, 0));
+    }
+    return all;
+  }
+
+  /**
+   * [info]'s icon on the grid or in the drawer. Another app's resources are in its own process,
+   * not this one: its icon is the default activity icon, and its label the manifest's literal one,
+   * else the one the app told ({@link DeviceApps#labelOf}), else the last part of its package.
+   */
+  Icon iconOf(ResolveInfo info) {
+    ComponentName activity =
+        new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
+    PackageManager pm = app.getPackageManager();
+    if (activity.getPackageName().equals(app.getPackageName())) {
+      return new Icon("app", activity, null, info.loadLabel(pm), info.loadIcon(pm));
+    }
+    CharSequence label = info.nonLocalizedLabel;
+    if (label == null) label = info.activityInfo.nonLocalizedLabel;
+    if (label == null) label = DeviceApps.labelOf(activity.getPackageName());
+    if (label == null && info.activityInfo.applicationInfo != null) {
+      label = info.activityInfo.applicationInfo.nonLocalizedLabel;
+    }
+    if (label == null) {
+      String pkg = activity.getPackageName();
+      label = pkg.substring(pkg.lastIndexOf('.') + 1);
+    }
+    return new Icon("app", activity, null, label, pm.getDefaultActivityIcon());
+  }
+
+  /** Another of the device's apps told its label: its icons on the grid take it. */
+  void relabel(String packageName) {
+    PackageManager pm = app.getPackageManager();
+    for (int i = 0; i < icons.size(); i++) {
+      Icon old = icons.get(i);
+      if (old.activity == null || !old.activity.getPackageName().equals(packageName)) continue;
+      ResolveInfo info = pm.resolveActivity(new Intent().setComponent(old.activity), 0);
+      if (info == null) continue;
+      Icon icon = iconOf(info);
+      icon.cellX = old.cellX;
+      icon.cellY = old.cellY;
+      icons.set(i, icon);
+    }
+    if (activity != null) activity.rebuild();
   }
 
   /** One simulator cycle: re-flow on a display change, widgets placed at launch, new pins. */
@@ -272,6 +322,15 @@ final class HomeScreen {
    */
   JSONObject openApp(ComponentName activity) {
     closeOverlay();
+    if (DeviceApps.isOtherApp(activity.getPackageName())) {
+      // Another of the device's apps: it comes on screen, and this one goes to the background.
+      try {
+        return DeviceApps.current()
+            .show(activity.getPackageName(), DeviceApps.launcherOf(activity));
+      } catch (JSONException e) {
+        throw new IllegalStateException(e);
+      }
+    }
     Navigator.Entry root = appRoot();
     if (root != null
         && root.activity().getComponentName().getClassName().equals(className(activity))) {

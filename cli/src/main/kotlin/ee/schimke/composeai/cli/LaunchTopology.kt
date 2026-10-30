@@ -1,6 +1,11 @@
 package ee.schimke.composeai.cli
 
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /**
  * What `launch` runs: devices, each with one or more apps, every app in a simulator JVM of its own.
@@ -75,5 +80,32 @@ internal object LaunchTopology {
       if (packages.count { it == packages[i] } == 1) aliases.putIfAbsent(packages[i], names[i])
     }
     return names to aliases
+  }
+
+  /**
+   * The routes of the control channel's names, kept as the devices' screens change: a device's name
+   * goes to the app on its screen, its first until another comes forward (`DeviceApps`'s
+   * `foreground` event, `"onScreen":true`).
+   */
+  class Screens(apps: List<App>, private val names: List<String>, aliases: Map<String, String>) {
+    /** Each name of an app sharing its device, to that device. */
+    private val deviceOf =
+      apps.indices
+        .filter { names[it] != apps[it].device }
+        .associate { names[it] to apps[it].device }
+
+    /** For `PairedLaunch`: read as each command is routed. */
+    val aliases: MutableMap<String, String> = ConcurrentHashMap(aliases)
+
+    /** Follows [line], a JSON line a simulator printed with its `device` added. */
+    fun follow(line: String) {
+      if (!line.contains("\"foreground\"")) return
+      val json = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull() ?: return
+      if ((json["event"] as? JsonPrimitive)?.content != "foreground") return
+      if ((json["onScreen"] as? JsonPrimitive)?.booleanOrNull != true) return
+      val name = (json["device"] as? JsonPrimitive)?.content ?: return
+      val device = deviceOf[name] ?: return
+      aliases[device] = name
+    }
   }
 }

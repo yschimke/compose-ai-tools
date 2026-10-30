@@ -60,4 +60,22 @@ class LaunchTopologyTest {
       LaunchTopology.names(listOf(app("phone", "a"), app("phone", "a"))) { it.nameWithoutExtension }
     }
   }
+
+  @Test
+  fun `a device's name follows the app on its screen`() {
+    val apps = listOf(app("phone", "a"), app("phone", "b"), app("watch", "w"))
+    val (names, aliases) = LaunchTopology.names(apps) { it.nameWithoutExtension }
+    val screens = LaunchTopology.Screens(apps, names, aliases)
+    assertEquals("phone/a", screens.aliases["phone"])
+    screens.follow("""{"device":"phone/b","package":"b","onScreen":true,"event":"foreground"}""")
+    assertEquals("phone/b", screens.aliases["phone"])
+    // The app leaving the screen moves nothing; the one coming forward does.
+    screens.follow("""{"device":"phone/a","package":"a","onScreen":false,"event":"foreground"}""")
+    assertEquals("phone/b", screens.aliases["phone"])
+    // An app alone on its device is its device already.
+    screens.follow("""{"device":"watch","package":"w","onScreen":true,"event":"foreground"}""")
+    assertFalse("watch" in screens.aliases)
+    screens.follow("""{"device":"phone/a","id":3,"ok":true,"result":{"onScreen":true}}""")
+    assertEquals("phone/b", screens.aliases["phone"])
+  }
 }

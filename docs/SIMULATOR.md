@@ -293,6 +293,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
 | `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
 | `text` | `text` | types into the focused field |
+| `foreground` | `package`? | of [several apps on a device](#switching-between-them): this app, or the one `package` names, comes on the device's screen and the one there goes to the background; returns the `package` and `onScreen` |
 | `launch` | `display`?, `savedState`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward; after a `kill`, the task is re-created from its saved state |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
 | `clearData` | | `forceStop`, deletes the app's data and external files, resets permissions |
@@ -1606,11 +1607,12 @@ What a reload does not keep or cover:
 
 `--install <other.apk>` (repeatable) puts more apps on the device, each in a simulator JVM of its
 own, as each app runs in a process of its own on a device. The first APK is the one on screen; the
-others start their process with no activity, as an app does when something calls into it. With
-`--control stdio` each is a `device` of the channel, `phone/<package>` (see [devices and their
-apps](#devices-and-their-apps)): a command with `"device":"phone/com.example.other"`, or the
-package alone, goes to that app, one without to the first, and every line the simulators print
-carries its `device`, as with [`--pair`](#a-paired-phone-and-watch).
+others start their process in the background with no activity, as an app does when something calls
+into it. With `--control stdio` each is a `device` of the channel, `phone/<package>` (see [devices
+and their apps](#devices-and-their-apps)): a command with `"device":"phone/com.example.other"`, or
+the package alone, goes to that app, one with `"device":"phone"` or none to the app on the phone's
+screen, and every line the simulators print carries its `device`, as with
+[`--pair`](#a-paired-phone-and-watch).
 
 What the apps share:
 
@@ -1635,9 +1637,32 @@ compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
 → {"id":2,"device":"phone/ee.schimke.probe","cmd":"logcat","op":"dump","filters":{"Probe":"V"}}
 ```
 
-Intents, broadcasts and content providers do not cross between apps yet: a share sheet or an
-`ACTION_VIEW` aimed at another installed app is still a [handoff](#pickers-sharing-and-other-apps),
-and each app's `/sdcard` is its own. `--install` combines with `--pair` (and both with `--app`), but
+### Switching between them
+
+The device has one screen, and one of its apps is on it. Another comes on screen:
+
+- **From the home screen** (`--launcher`): every app's launcher icons are on it and in the drawer,
+  each app's home screen showing them all. Tapping another app's icon brings that app forward.
+- **When an app starts another's activity**: an explicit intent naming it, or an implicit one that
+  only the other app handles (one the app itself also handles stays in the app). The other app
+  starts it, in a task of its own. Its extras arrive as strings, and a caller waiting for a result
+  gets `RESULT_CANCELED` at once, since the result would come from another process.
+- **With the `foreground` command**: `{"cmd":"foreground","device":"phone/com.example.other"}`
+  brings that app forward, as does `{"cmd":"foreground","package":"com.example.other"}` sent to
+  the app on screen. `startActivity` with another app's component starts it there too.
+
+The app that was on screen goes to the background as it does on `HOME`: its top activity is paused
+and stopped. The app coming forward resumes its task, or starts its launcher activity the first
+time. In a window, the app on screen has the device's one window; the other apps' windows are
+hidden, and each app comes forward where the last one was. Each change is a `foreground` event
+from both apps (`{"event":"foreground","package":…,"onScreen":true}`), `info` reports `onScreen`
+and the device's `otherApps`, and `"device":"phone"` follows the app on screen. Another app's icon
+is the default one, since its resources are in its own process, but its label is right: each app
+tells the others its own over the bus.
+
+Broadcasts and content providers do not cross between apps yet, and each app's `/sdcard` is its
+own. On a watch the `foreground` command switches apps, but the watch's launcher lists only its
+own app. `--install` combines with `--pair` (and both with `--app`), but
 not with `--adb`.
 
 ## Devices and their apps
@@ -1655,7 +1680,8 @@ compose-preview launch --app phone:notes.apk --app phone:agent.apk \
 ```
 
 - **On a device**, the apps share its [bus](#several-apps-on-one-device) and know each other's
-  manifests; its first app is on screen and the others start without an activity.
+  manifests; its first app is on screen and the others start in the background without an
+  activity, until one [comes on screen](#switching-between-them).
 - **Between devices** the [Wearable Data Layer](#a-paired-phone-and-watch) connects them, one node
   per device. As Play services does, messages, data items, channels and the remote activity and
   sign-in requests go to the app of the same package on the other node: the phone's
@@ -1663,8 +1689,8 @@ compose-preview launch --app phone:notes.apk --app phone:agent.apk \
   connected and what they are capable of is the device's, seen by every app on it; a node stays
   connected while any of its apps runs.
 - **On the control channel** an app alone on its device is the device's name (`phone`, `watch`, as
-  with `--pair`); apps sharing one are `<device>/<package>`, the device's name standing for its
-  first app and a package alone for its app when only one device has it.
+  with `--pair`); apps sharing one are `<device>/<package>`, the device's name standing for the
+  app on its screen and a package alone for its app when only one device has it.
 
 `--app` does not combine with `--adb`, or with `--data-layer agent`, which plays the other device
 itself.
@@ -1775,9 +1801,10 @@ What does not, or not yet:
   paused nor retried. A foreground service's type is not checked against its manifest
   declaration or permissions.
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
-  Functions calls ([above](#several-apps-on-one-device)); activities, services, broadcasts,
-  content providers and URI grants of another app are not reached yet, and the apps share no
-  storage, clipboard or settings.
+  Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
+  simulator, which comes on screen ([switching](#switching-between-them)); its services,
+  broadcasts, content providers and URI grants are not reached yet, a result from its activity does
+  not come back, and the apps share no storage, clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
