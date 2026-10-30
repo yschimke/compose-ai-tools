@@ -26,12 +26,16 @@ person's clicks still reach the app. `--hide-agent` turns it off; `--headless` d
 **Zoom.** The window, and each secondary display's, is resizable: dragging its edge fits the
 display to the window, letterboxed. ⌘ `=` / `-` / `0` (Ctrl on Linux and Windows), or the
 window's View menu, zoom in, out and back to one device pixel per point; View → Fit to Screen
-fits it to the screen, which is also how a display taller than the screen starts. Only the
+fits it to the screen. A display bigger than the screen starts fitted to 85% of it, and every
+window is kept on its screen, its title bar and View menu first, so it can always be moved,
+closed and zoomed out; a secondary display opens fitted into the room beside the phone. Only the
 picture scales: clicks are mapped back to device pixels, and `screenshot`, `hierarchy` bounds and
 the control channel's coordinates stay in device pixels. The `zoom` command does the same from the
 control channel.
 
 ![The 540×960 display at 92% (fitted to a 1000-point screen), 50% and 150%](design/evidence/simulator-launch/window-zoom.png)
+
+![A 1233×2673 phone at 31% and a 1920×1080 TV display beside it, both fitted on a 1600×1000 screen](design/evidence/simulator-launch/window-fit.png)
 
 It needs Java 21+ for the simulator JVM (`--java <jdk>`, or `COMPOSE_PREVIEW_SIMULATOR_JAVA`; the
 CLI itself still runs on 17) and an Android SDK platform's `android.jar` (`ANDROID_HOME`, or
