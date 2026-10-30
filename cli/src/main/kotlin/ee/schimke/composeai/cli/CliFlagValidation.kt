@@ -282,6 +282,7 @@ internal object CliFlagValidation {
           "--pair",
           "--pair-qualifiers",
           "--fingerprint",
+          "--max-heap",
           "--prepare",
           "--verbose",
           "-v",

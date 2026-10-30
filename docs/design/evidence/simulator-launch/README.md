@@ -150,3 +150,23 @@ with `SecondActivity`, and a 480×360 virtual "Projector" added with `displays a
 presentation.
 
 ![The phone and two display windows under Xvfb](multi-display-window.png)
+
+**A paired phone and watch** (`launch phone.apk --pair wear.apk`). Two throwaway probe apps, one
+button per Wear interaction API (the full table is in
+[`../../SIMULATOR_DATALAYER.md`](../../SIMULATOR_DATALAYER.md)): `RemoteActivityHelper` opening a
+`VIEW` intent on the other device, each way, and the probes' results.
+
+| Phone → watch | Watch → phone |
+| --- | --- |
+| ![Opened on the watch](pair-remote-phone-to-watch.png) | ![Opened on the phone](pair-remote-watch-to-phone.png) |
+
+| Phone probe | Watch probe |
+| --- | --- |
+| ![Phone probe](pair-probe-phone.png) | ![Watch probe](pair-probe-watch.png) |
+
+Home Assistant's real phone and Wear apps, paired: the watch before, and after the phone's
+"Offline demo" tap synced 14 data items to it.
+
+| Watch before | Watch after the phone's demo tap |
+| --- | --- |
+| ![Home Assistant watch before](pair-ha-watch-before.png) | ![Home Assistant watch in demo mode](pair-ha-watch-demo.png) |

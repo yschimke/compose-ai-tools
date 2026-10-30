@@ -156,6 +156,10 @@ internal class LaunchCommand(private val args: List<String>) {
         device = device,
         fontScale = args.flagValue("--font-scale"),
         fingerprint = args.flagValue("--fingerprint"),
+        maxHeap =
+          args.flagValue("--max-heap")?.also {
+            if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
+          },
         headless = headless,
         control = control != null,
         installProviders = "--no-providers" !in args,
@@ -242,6 +246,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val device: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
+    /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
+    val maxHeap: String? = null,
     /**
      * Secondary displays connected at launch (`--display`, repeatable), each a size in dp with
      * options: `1280x720@xhdpi,name=TV,type=external`.
@@ -333,6 +339,7 @@ internal class LaunchCommand(private val args: List<String>) {
     ): List<String> = buildList {
       add(java.path)
       addAll(robolectricJvmArgs)
+      options.maxHeap?.let { add("-Xmx$it") }
       add("--enable-native-access=ALL-UNNAMED")
       if (options.headless) add("-Djava.awt.headless=true")
       val properties =
@@ -422,6 +429,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
                               own window; Presentation and launch-display activities use it.
         --font-scale <f>      Font scale (default 1.0).
+        --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: the JVM's,
+                              a quarter of the machine's memory, for each of a pair).
         --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
                               apps check to skip real work under tests; MeshCore's watch does).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).

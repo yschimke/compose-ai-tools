@@ -46,18 +46,18 @@ final class DataLayerClients {
 
     @Override
     public Task<DataItem> putDataItem(PutDataRequest request) {
-      return Tasks.forResult(new SimItem(node.put(request)));
+      return node.later(new SimItem(node.put(request)));
     }
 
     @Override
     public Task<DataItem> getDataItem(Uri uri) {
       List<DataLayer.Item> found = node.items(uri, FILTER_LITERAL);
-      return Tasks.forResult(found.isEmpty() ? null : new SimItem(found.get(0)));
+      return node.later(found.isEmpty() ? null : new SimItem(found.get(0)));
     }
 
     @Override
     public Task<DataItemBuffer> getDataItems() {
-      return Tasks.forResult(DataLayer.itemBuffer(node.items(null, FILTER_LITERAL)));
+      return node.later(DataLayer.itemBuffer(node.items(null, FILTER_LITERAL)));
     }
 
     @Override
@@ -67,7 +67,7 @@ final class DataLayerClients {
 
     @Override
     public Task<DataItemBuffer> getDataItems(Uri uri, int filterType) {
-      return Tasks.forResult(DataLayer.itemBuffer(node.items(uri, filterType)));
+      return node.later(DataLayer.itemBuffer(node.items(uri, filterType)));
     }
 
     @Override
@@ -77,7 +77,7 @@ final class DataLayerClients {
 
     @Override
     public Task<Integer> deleteDataItems(Uri uri, int filterType) {
-      return Tasks.forResult(node.delete(uri, filterType));
+      return node.later(node.delete(uri, filterType));
     }
 
     @Override
@@ -92,25 +92,25 @@ final class DataLayerClients {
 
     private Task<GetFdForAssetResponse> fdFor(String digest) {
       byte[] bytes = node.asset(digest);
-      if (bytes == null) return Tasks.forException(DataLayer.assetUnavailable(digest));
-      return Tasks.forResult(new AssetResponse(bytes));
+      if (bytes == null) return node.laterFailure(DataLayer.assetUnavailable(digest));
+      return node.later(new AssetResponse(bytes));
     }
 
     @Override
     public Task<Void> addListener(OnDataChangedListener listener) {
       node.dataListeners.add(new DataLayer.Registration<>(listener, null, FILTER_LITERAL));
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Void> addListener(OnDataChangedListener listener, Uri uri, int filterType) {
       node.dataListeners.add(new DataLayer.Registration<>(listener, uri, filterType));
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Boolean> removeListener(OnDataChangedListener listener) {
-      return Tasks.forResult(node.dataListeners.removeIf(r -> r.listener == listener));
+      return node.later(node.dataListeners.removeIf(r -> r.listener == listener));
     }
   }
 
@@ -135,24 +135,24 @@ final class DataLayerClients {
     @Override
     public Task<Void> addListener(OnMessageReceivedListener listener) {
       node.messageListeners.add(new DataLayer.Registration<>(listener, null, FILTER_LITERAL));
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Void> addListener(OnMessageReceivedListener listener, Uri uri, int filterType) {
       node.messageListeners.add(new DataLayer.Registration<>(listener, uri, filterType));
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Boolean> removeListener(OnMessageReceivedListener listener) {
-      return Tasks.forResult(node.messageListeners.removeIf(r -> r.listener == listener));
+      return node.later(node.messageListeners.removeIf(r -> r.listener == listener));
     }
 
     @Override
     public Task<Void> addRpcService(RpcService service, String path) {
       node.rpcServices.put(service, path);
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
@@ -162,7 +162,7 @@ final class DataLayerClients {
 
     @Override
     public Task<Boolean> removeRpcService(RpcService service) {
-      return Tasks.forResult(node.rpcServices.remove(service) != null);
+      return node.later(node.rpcServices.remove(service) != null);
     }
   }
 
@@ -176,22 +176,22 @@ final class DataLayerClients {
 
     @Override
     public Task<Node> getLocalNode() {
-      return Tasks.forResult(node.localNode());
+      return node.later(node.localNode());
     }
 
     @Override
     public Task<List<Node>> getConnectedNodes() {
-      return Tasks.forResult(node.connectedNodes());
+      return node.later(node.connectedNodes());
     }
 
     @Override
     public Task<String> getCompanionPackageForNode(String nodeId) {
-      return Tasks.forResult(node.companionPackage(nodeId));
+      return node.later(node.companionPackage(nodeId));
     }
 
     @Override
     public Task<String> getNodeId(String address) {
-      return Tasks.forResult(null);
+      return node.later(null);
     }
   }
 
@@ -205,37 +205,37 @@ final class DataLayerClients {
 
     @Override
     public Task<CapabilityInfo> getCapability(String name, int nodeFilter) {
-      return Tasks.forResult(node.capability(name));
+      return node.later(node.capability(name));
     }
 
     @Override
     public Task<Map<String, CapabilityInfo>> getAllCapabilities(int nodeFilter) {
-      return Tasks.forResult(node.allCapabilities());
+      return node.later(node.allCapabilities());
     }
 
     @Override
     public Task<Void> addLocalCapability(String name) {
       node.setLocalCapability(name, true);
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Void> removeLocalCapability(String name) {
       node.setLocalCapability(name, false);
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Void> addListener(OnCapabilityChangedListener listener, String name) {
       node.capabilityListeners.add(new DataLayer.Registration<>(listener, null, FILTER_LITERAL));
       node.capabilityNames.put(listener, name);
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
     public Task<Void> addListener(OnCapabilityChangedListener listener, Uri uri, int filterType) {
       node.capabilityListeners.add(new DataLayer.Registration<>(listener, uri, filterType));
-      return Tasks.forResult(null);
+      return node.later(null);
     }
 
     @Override
@@ -246,7 +246,7 @@ final class DataLayerClients {
     @Override
     public Task<Boolean> removeListener(OnCapabilityChangedListener listener) {
       node.capabilityNames.remove(listener);
-      return Tasks.forResult(node.capabilityListeners.removeIf(r -> r.listener == listener));
+      return node.later(node.capabilityListeners.removeIf(r -> r.listener == listener));
     }
   }
 
