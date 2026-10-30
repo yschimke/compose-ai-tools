@@ -337,6 +337,7 @@ internal object AdbText {
         )
       }
       "forceStop",
+      "kill",
       "tap",
       "swipe",
       "key",

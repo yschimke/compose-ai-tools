@@ -115,13 +115,57 @@ eight or 2 GB.
 **Navigation.** `Navigator` drains Robolectric's recorded intents every loop turn and does what the
 system would: activities go onto a back stack through `ActivityController` (the one below is paused
 and stopped, so its window is neither drawn nor touchable), `setResult` reaches a
-`startActivityForResult` caller, `CLEAR_TOP` / `SINGLE_TOP` / `CLEAR_TASK` are honored, a finished
-activity resumes the one below, and services are created, started, bound and destroyed through
+`startActivityForResult` caller, a finished activity resumes the one below, and services are created, started, bound and destroyed through
 `ServiceController` (including `stopSelf`). The launcher activity takes the same path, so the stack
 has one owner. A stopped activity's dialogs and bottom sheets are hidden with it. The app's own
 explicit `sendBroadcast` (a component or package named) reaches its manifest receivers too, on the
 main thread, as a device delivers it; Robolectric delivers an app's broadcasts to runtime receivers
 alone, which is also all an implicit one reaches on a device since API 26.
+
+**Launch modes.** A start does what the target's manifest `android:launchMode` and the intent's
+flags make it do on a device (`LaunchModes`, tested without the framework in `LaunchModesTest`):
+
+| Start | Outcome |
+| --- | --- |
+| `standard` | a new instance on top |
+| `singleTop`, or `FLAG_ACTIVITY_SINGLE_TOP` | `onNewIntent` to the instance on top; a new one when it is lower down |
+| `singleTask`, `singleInstance`, `singleInstancePerTask` | `onNewIntent` to the running instance, everything above it finished; a new one when none runs |
+| `CLEAR_TOP` on a `standard` activity | everything above the topmost instance finishes, and it is replaced by a new one |
+| `CLEAR_TOP` with `SINGLE_TOP`, or on any other launch mode | everything above it finishes and it gets `onNewIntent` |
+| `REORDER_TO_FRONT` (ignored with `CLEAR_TOP`) | the running instance moves to the front, nothing finishes, and it gets `onNewIntent` |
+| `CLEAR_TASK` | the app's activities on the display finish first, whatever else is set |
+| `android:noHistory`, or `FLAG_ACTIVITY_NO_HISTORY` | the activity finishes as soon as another covers it or the app goes home |
+| a launcher's start of a running app (`RESET_TASK_IF_NEEDED`) | the task comes forward; a `clearTaskOnLaunch` root has everything above it finished, and `finishOnTaskLaunch` activities finish |
+
+The simulator keeps one task per display, so `singleInstance` does not get a task of its own: what
+it starts goes on top of it. Each activity a start finishes is a `destroyed` event.
+
+**Saved state and process death.** Three commands exercise the paths an app's state survives by:
+
+- `recreate` re-creates the top activity as a configuration change it does not handle does
+  (`onSaveInstanceState`, `onDestroy`, `onCreate` with the state); on the default display its
+  `ViewModel`s survive, as they do on a device.
+- `kill` is the system killing the app in the background (`am kill`, low memory): every activity
+  is stopped and its state saved through a `Parcel`, as it leaves for the system server, then the
+  activities and services go. The next start of the app — `launch`, the home screen's icon, any
+  `startActivity` — re-creates the task from that state: the top activity resumes with it, those
+  below it are created with theirs and stopped (on a device they wait until Back reaches them).
+  What comes back is what `rememberSaveable`, `SavedStateHandle` and `onSaveInstanceState` kept;
+  `ViewModel`s do not. A state that does not parcel (a value neither `Parcelable` nor
+  `Serializable`) crashes a device's app at the first stop; `kill` reports it in `error` and
+  restores nothing. One JVM cannot lose a process, so the `Application`, singletons and statics
+  live on, and `onDestroy` runs where a dead process runs nothing.
+- `savedState` returns the top activity's instance state: `bundle`, readable JSON (Compose's
+  `rememberSaveable` values sit under `androidx.lifecycle.BundlableSavedStateRegistry.key`), and
+  `savedState`, the parcelled bytes in base64. A resumed activity goes through `onPause`,
+  `onSaveInstanceState` and `onStop` and back, as when the user leaves it and returns. Hand
+  `savedState` back to `launch` or `startActivity` to create the activity from it — a screen in a
+  known state, in any later session of the same build:
+
+```jsonl
+{"id":1,"cmd":"savedState"}
+{"id":2,"cmd":"startActivity","forceStop":true,"intent":{"component":".MainActivity"},"savedState":"<base64 from 1>"}
+```
 
 **Startup** follows a device's order, through a Robolectric test environment of our own: the
 manifest's content providers are created after `attachBaseContext()` and before
@@ -230,12 +274,15 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
 | `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
 | `text` | `text` | types into the focused field |
-| `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
+| `launch` | `display`?, `savedState`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward; after a `kill`, the task is re-created from its saved state |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
 | `clearData` | | `forceStop`, deletes the app's data and external files, resets permissions |
+| `kill` | | the system killing the app in the background: state saved, activities and services gone, the task re-created from the state on the next start (see [Saved state and process death](#how-it-works)) |
+| `recreate` | `display`? | re-creates the top activity from its saved state, as an unhandled configuration change |
+| `savedState` | `display`? | the top activity's instance state: `bundle` (JSON), `bytes`, and `savedState` (base64) for a later `startActivity` |
 | `finish` | `display`? | finishes the top activity without a key press |
 | `activities` | | the back stack, each activity with its `display` |
-| `startActivity` | `intent`, `forceStop`?, `display`? | deep links resolve through the manifest's real intent filters; `display` launches there, as `ActivityOptions.setLaunchDisplayId` does |
+| `startActivity` | `intent`, `forceStop`?, `display`?, `savedState`? | deep links resolve through the manifest's real intent filters; `display` launches there, as `ActivityOptions.setLaunchDisplayId` does; the target's `launchMode` and the flags decide the stack ([launch modes](#how-it-works)); `savedState` (base64, from `savedState`) creates a new instance from that state |
 | `startService` / `stopService` | `intent` | |
 | `bindService` / `unbindService` | `intent` | `onBind`, reports the binder's interface |
 | `services` | | running services, started/bound state, foreground notification |
@@ -823,7 +870,8 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `am start-service` / `start-foreground-service` / `stopservice` | `startService` / `stopService` | |
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
 | `am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation …` | `debugSurface` → `tiles` / `widget` | Android Studio's Wear run configurations: `add-tile` / `add-widget` (`--ecn component`) add to the carousel and show it, replying with its page `index`; `show-tile` (`--ei index`) and `remove-tile` / `remove-widget`. On a phone with the home screen, `add-widget` places an app widget. `set-watchface` and the complication operations are refused: there is no watch face or complication host |
-| `am force-stop` / `kill` | `forceStop` | partly: see below |
+| `am force-stop` | `forceStop` | partly: see below |
+| `am kill` | `kill` | the task comes back from its saved state on the next start; partly: see below |
 | `am stack list` | `activities` | |
 | `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests; a grant lifts "don't ask again" |
 | `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked and never asked about, policy back to grant |
@@ -849,7 +897,9 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `getprop [name]` | `getprop` | |
 | `monkey -p <pkg> 1` | `launch` | only as a launcher; random events are refused |
 
-**Partly:** a single-process simulator cannot kill the process. `am force-stop` destroys every
+**Partly:** a single-process simulator cannot kill the process. `am kill` saves each activity's
+state and destroys them and the services, and the next start re-creates the task from that state
+(see [Saved state and process death](#how-it-works)). `am force-stop` destroys every
 activity (top first) and service, and cancels the app's notifications; the `Application`, its
 singletons, open databases and threads live on, so the next `launch` or `am start` starts
 activities into a warm process rather than a cold one. `pm clear` does that, then deletes the data
@@ -1196,7 +1246,7 @@ What does not, or not yet:
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
-- **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
+- **Process and task model.** One process, one task (so `am kill`, `am force-stop` and `pm clear` are partial:
   see [adb equivalents](#adb-equivalents)). A `NEW_TASK` start of the running root activity with
   its launcher intent brings the task forward, as on a device, so `launch` (or another app's
   "open the app") does not stack a second instance; without `--launcher`, `HOME` does nothing,
