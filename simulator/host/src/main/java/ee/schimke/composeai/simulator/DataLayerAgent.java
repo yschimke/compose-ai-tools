@@ -15,11 +15,11 @@ import org.json.JSONObject;
  * sends comes back as {@code datalayer} events of kind {@code send}.
  *
  * <ul>
- *   <li>{@code connect} {@code id name package capabilities nearby}: a peer node joins
+ *   <li>{@code connect} {@code node name package capabilities nearby}: a peer node joins
  *       (capability listeners, {@code getConnectedNodes}); its {@code hello} answer is the app's
  *       node and capabilities, followed by the app's data items, as a device syncs on connect;
- *   <li>{@code disconnect} {@code id}: it leaves;
- *   <li>{@code capabilities} {@code id capabilities}: its capability set changes;
+ *   <li>{@code disconnect} {@code node}: it leaves;
+ *   <li>{@code capabilities} {@code node capabilities}: its capability set changes;
  *   <li>{@code put} / {@code delete} {@code node path} and a payload: a data item of that node;
  *   <li>{@code message} / {@code request} {@code node path} and a payload: a message, or a request
  *       the app's {@code RpcService} / {@code onRequest} answers (a {@code response} send event);
@@ -45,7 +45,7 @@ final class DataLayerAgent {
     switch (action) {
       case "connect":
         {
-          String id = c.optString("id", defaultPeerId());
+          String id = c.optString("node", defaultPeerId());
           JSONObject hello =
               frame("hello", id)
                   .put("name", c.optString("name", "Agent " + id))
@@ -125,7 +125,10 @@ final class DataLayerAgent {
                 + " (connect, disconnect, capabilities, put, delete, message, request, reply,"
                 + " config)");
     }
-    return new Protocol.Json().put("action", action).put("peers", node.connectedPeerIds()).object();
+    return new Protocol.Json()
+        .put("action", action)
+        .put("peers", new JSONArray(node.connectedPeerIds()))
+        .object();
   }
 
   /** Ids of the agent's own requests, clear of the app's. */
@@ -169,7 +172,7 @@ final class DataLayerAgent {
 
   /** The node a command names, or the only connected one. */
   private String peer(JSONObject c) {
-    String named = c.optString("node", c.optString("id", null));
+    String named = c.optString("node", null);
     if (named != null) return named;
     List<String> peers = node.connectedPeerIds();
     if (peers.size() == 1) return peers.get(0);

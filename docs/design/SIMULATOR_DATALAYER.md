@@ -248,9 +248,9 @@ connected, since the simulator has no BLE device in range.
   manifest service; here both apps are always running, so that path is not exercised.
 - **One phone, one watch.** The hub relays to every node, so more watches would work, but the
   CLI starts exactly two.
-- **Driving it from the control channel.** An agent cannot yet inject a message or data item as
-  if from the peer, which would let one simulator be tested against a scripted counterpart. It
-  can add or drop a capability of its own node: `{"cmd":"dataLayer","addCapability":"…"}`.
+- **Driving it from the control channel** is `--data-layer agent` ([`../SIMULATOR.md`](../SIMULATOR.md)):
+  one simulator, with the agent playing its peers through the same frames the hub relays
+  (`DataLayerAgent`). `ChannelClient` streams are not among them.
 - **MeshCore's own handshake** (above) needs `horologist_phone`, which its phone does not
   declare; the simulator surfaces that rather than papering over it.
 
@@ -261,7 +261,6 @@ The prototype covers what both apps use. To make it the default for `launch --pa
 | Work | Estimate |
 | --- | --- |
 | Fidelity gaps above, with unit tests over a fake link | 1–2 days |
-| Inject-as-peer control commands (`dataLayer` actions; in progress as `--data-layer agent`) | 0.5 day |
 | `ChannelClient` (pipes over the hub) | 2 days |
 | Minified APKs (mapping-file lookup of `Wearable` and the clients) | 2–3 days |
 | MCP server / `docs/SIMULATOR.md` integration of the paired session | 1 day |

@@ -708,6 +708,31 @@ between the apps and reach their listeners and manifest `WearableListenerService
 `PhoneTypeHelper` work across the pair too. A prototype; the design, evidence and what is
 missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
 
+### The agent as the peer
+
+`--data-layer agent` (with `--control stdio`) simulates the Data Layer for one app with no second
+simulator: the control channel plays every peer device. Each frame the app sends is a
+`datalayer` event of kind `send`: `type` `hello` (its node and capabilities, answered on each
+connect), `message` (with a `requestId` for a `sendRequest`), `response`, `data`, `capabilities`,
+`activity` (a `startRemoteActivity`) or `oauth`, with its payload as base64 `data`, a `text`
+preview and, when the bytes are a `DataMap`, a `dataMap` JSON object. The agent answers with
+`{"cmd":"dataLayer","action":…}`:
+
+| `action` | Arguments | The peer… |
+| --- | --- | --- |
+| `connect` | `node?` (its id; `phone-agent` / `watch-agent`), `name?`, `package?`, `capabilities?`, `nearby?` | joins: `getConnectedNodes`, capability listeners, then receives the app's data items |
+| `disconnect` | `node?` | leaves |
+| `capabilities` | `node?`, `capabilities` | changes its capabilities |
+| `put` / `delete` | `node?`, `path`, a payload, `assets?` | writes or deletes a data item, delivered to listeners and services |
+| `message` / `request` | `node?`, `path`, a payload | sends a message, or a request the app answers (a `send` event of type `response`) |
+| `reply` | `requestId`, a payload or `error`; `result` for a remote activity; `responseUrl` for OAuth | answers the app's request |
+| `config` | `requestTimeoutMs` | sets how long the app's requests wait (default 30 s, then `TIMEOUT`) |
+
+A payload is `text`, `data` (base64) or `dataMap` (JSON: strings, booleans and ints bare, other
+values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|…,"value":…}`, nested
+objects as `DataMap`s). `node` defaults to the only connected peer; with none, the app's
+`sendMessage` / `sendRequest` fail with `TARGET_NODE_NOT_CONNECTED`.
+
 `--fingerprint <f>` replaces Robolectric's `Build.FINGERPRINT` (`robolectric`), which some apps
 compare against to skip real work in tests and previews: MeshCore's watch shows canned preview
 data, and never touches the Data Layer, unless it is set.
