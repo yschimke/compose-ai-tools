@@ -81,6 +81,17 @@ internal class SimulatorSupervisor(
   /** An event of the CLI's own on the control channel, such as the APK's `conversion`. */
   fun event(json: JsonObject) = emitJson(json)
 
+  /** Runs [action] in order with the commands, as the CLI's own work (a `--live` reload). */
+  fun execute(action: () -> Unit) {
+    worker.execute {
+      try {
+        action()
+      } catch (e: Exception) {
+        log(prefix("compose-preview launch: $e"))
+      }
+    }
+  }
+
   /** Runs [line], a control-channel command, after every command before it. */
   fun submit(line: String) {
     worker.execute {

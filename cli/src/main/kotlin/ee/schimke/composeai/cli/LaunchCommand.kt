@@ -40,13 +40,23 @@ internal class LaunchCommand(private val args: List<String>) {
       println(USAGE)
       return
     }
-    val apk =
-      CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
-        ?: fail("expected an APK: compose-preview launch <app.apk>")
-    if (!apk.isFile) fail("no such APK: $apk")
     val verbose = "--verbose" in args || "-v" in args
     val control = args.flagValue("--control")
     if (control != null && control != "stdio") fail("--control supports only `stdio`")
+    val live = liveReload()
+    val liveWatch = "--live" in args
+    if (liveWatch && live == null) fail("--live needs --project <dir>: the build to reload from")
+    val apk =
+      CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
+        ?: live?.let { reload ->
+          System.err.println(
+            "compose-preview launch: building ${reload.assembleTask} for the APK to launch"
+          )
+          val (build, built) = reload.assemble()
+          built ?: fail("${reload.assembleTask} failed:\n" + build.errors.joinToString("\n"))
+        }
+        ?: fail("expected an APK: compose-preview launch <app.apk>, or --project <dir>")
+    if (!apk.isFile) fail("no such APK: $apk")
 
     val java =
       when (val result = SimulatorJava.resolve(args.flagValue("--java"))) {
@@ -112,6 +122,8 @@ internal class LaunchCommand(private val args: List<String>) {
         ?.let { File(it).absoluteFile }
         ?.also { if (!it.isFile) fail("no such APK to pair: $it") }
     val conversion = conversionOf(apk)
+    // What every reload compares against: the classes this APK was built from.
+    live?.recordBaseline()
     val pairConversion = pair?.let { conversionOf(it) }
     val classes = conversion.entry.classesJar
     val pairClasses = pairConversion?.entry?.classesJar
@@ -192,6 +204,9 @@ internal class LaunchCommand(private val args: List<String>) {
             args.flagValuesAll("--tile").isNotEmpty(),
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
+        jvmOptions =
+          System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
+            ?: emptyList(),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
     val robolectricProperties = offline.ifEmpty {
@@ -208,6 +223,79 @@ internal class LaunchCommand(private val args: List<String>) {
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
 
+    /** The APK (and its converted classes) under every live-reload overlay. */
+    var base = conversion
+
+    /**
+     * `reload`: compiles the project and restarts the app on the result — changed classes over the
+     * converted APK, relinked resources, or a rebuilt APK when only packaging delivers the change.
+     */
+    fun reload(live: LiveReload, supervisor: SimulatorSupervisor, command: JsonObject): JsonObject {
+      val start = System.nanoTime()
+      val keepData = command.boolean("keepData") ?: (command.boolean("clearData") != true)
+      val plan =
+        synchronized(live) { live.prepare(base.apk, full = command.boolean("full") == true) }
+      fun JsonObject.with(vararg extra: Pair<String, kotlinx.serialization.json.JsonElement>) =
+        JsonObject(
+          this +
+            extra +
+            ("totalMs" to JsonPrimitive(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)))
+        )
+      return when (plan) {
+        is LiveReload.Plan.Failed ->
+          throw IllegalStateException(
+            "the build failed; the app keeps running.\n" + plan.build.errors.joinToString("\n")
+          )
+        is LiveReload.Plan.Unchanged -> buildJsonObject {
+            put("mode", "unchanged")
+            put("build", plan.build.toJson())
+          }
+            .with()
+        is LiveReload.Plan.Overlay -> {
+          val restarted =
+            supervisor.restart(
+              SimulatorSupervisor.Launch(
+                plan.resourceApk,
+                listOfNotNull(plan.overlay) + base.entry.classesJar,
+              ),
+              keepData,
+              reason = "reload",
+            )
+          live.applied()
+          JsonObject(restarted - "totalMs")
+            .with(
+              "mode" to JsonPrimitive(if (plan.resources) "resources" else "classes"),
+              "build" to plan.build.toJson(),
+              "classesChanged" to JsonPrimitive(plan.changedClasses.size),
+              "classes" to
+                kotlinx.serialization.json.JsonArray(
+                  plan.changedClasses.take(MAX_LISTED_CLASSES).map(::JsonPrimitive)
+                ),
+              "resourcesChanged" to JsonPrimitive(plan.resources),
+              "resourceIdsChanged" to JsonPrimitive(plan.resourceIds),
+              "prepareMs" to JsonPrimitive(plan.prepareMs),
+            )
+        }
+        is LiveReload.Plan.Rebuild -> {
+          val converted = conversionOf(plan.apk)
+          base = converted
+          val restarted =
+            supervisor.restart(
+              SimulatorSupervisor.Launch(plan.apk, listOf(converted.entry.classesJar)),
+              keepData,
+              reason = "reload",
+            )
+          JsonObject(restarted - "totalMs")
+            .with(
+              "mode" to JsonPrimitive("apk"),
+              "why" to JsonPrimitive(plan.reason),
+              "build" to plan.build.toJson(),
+              "conversion" to converted.toJson(),
+            )
+        }
+      }
+    }
+
     /** `update`: another APK (a rebuild of this one) in a fresh simulator, keeping the data. */
     fun update(supervisor: SimulatorSupervisor, command: JsonObject): JsonObject {
       val next =
@@ -223,6 +311,7 @@ internal class LaunchCommand(private val args: List<String>) {
         }
       }
       val converted = conversionOf(next)
+      base = converted
       val restarted =
         supervisor.restart(
           SimulatorSupervisor.Launch(next, listOf(converted.entry.classesJar)),
@@ -254,9 +343,15 @@ internal class LaunchCommand(private val args: List<String>) {
           extraCommand = { supervisor, cmd, json ->
             when (cmd) {
               "update" -> update(supervisor, json)
+              "reload" ->
+                live?.let { reload(it, supervisor, json) }
+                  ?: throw IllegalStateException(
+                    "reload needs a launch with --project <dir>, the app's Gradle build"
+                  )
               else -> null
             }
           },
+          outliveExits = live != null,
         )
         .also { it.event(conversion.event()) }
     }
@@ -275,15 +370,45 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       exitProcess(PairedLaunch(listOf(device to supervisor), control = true).run())
     }
+    /** `--live`: every settled edit under the project's sources reloads [supervisor]. */
+    fun watch(live: LiveReload, supervisor: SimulatorSupervisor) {
+      live.watch { changed ->
+        val first = changed.first()
+        supervisor.execute {
+          System.err.println(
+            "compose-preview launch: ${changed.size} source change(s) (${first.fileName}…); reloading"
+          )
+          val event =
+            try {
+              JsonObject(
+                mapOf("event" to JsonPrimitive("reload")) +
+                  reload(live, supervisor, JsonObject(emptyMap()))
+              )
+            } catch (e: Exception) {
+              System.err.println("compose-preview launch: reload failed: ${e.message}")
+              buildJsonObject {
+                put("event", "reload")
+                put("ok", false)
+                put("error", e.message ?: "$e")
+              }
+            }
+          supervisor.event(event)
+        }
+      }
+    }
+
     if (pair == null || pairConversion == null) {
-      if (control == null) {
+      if (control == null && live == null) {
         // A window only: nothing to supervise, so the simulator has the terminal to itself.
         val command = commandFor(SimulatorSupervisor.Launch(apk, listOf(classes)), options)
         if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
         exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
       }
       val supervisor = supervise(null, conversion, options)
-      exitProcess(PairedLaunch(listOf(PHONE to supervisor), control = true).run())
+      if (live != null && liveWatch) watch(live, supervisor)
+      val exit = PairedLaunch(listOf(PHONE to supervisor), control = control != null).run()
+      live?.close()
+      exitProcess(exit)
     }
 
     val hub =
@@ -389,6 +514,8 @@ internal class LaunchCommand(private val args: List<String>) {
      * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
      */
     val tiles: List<String> = emptyList(),
+    /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
+    val jvmOptions: List<String> = emptyList(),
     /** Further system properties: a restarted simulator's data to restore, its launch time. */
     val properties: Map<String, String> = emptyMap(),
   )
@@ -470,6 +597,26 @@ internal class LaunchCommand(private val args: List<String>) {
     return null
   }
 
+  /** `--project`: the app's Gradle build, for `reload` and `--live`. */
+  private fun liveReload(): LiveReload? {
+    val project = args.flagValue("--project")?.let { File(it).absoluteFile } ?: return null
+    if (!File(project, "settings.gradle.kts").isFile && !File(project, "settings.gradle").isFile) {
+      fail("--project $project is not a Gradle build (no settings.gradle(.kts))")
+    }
+    val module =
+      (args.flagValue("--module") ?: "app").let { if (it.startsWith(":")) it else ":$it" }
+    val workDir = java.nio.file.Files.createTempDirectory("compose-preview-live").toFile()
+    Runtime.getRuntime().addShutdownHook(Thread { workDir.deleteRecursively() })
+    return LiveReload(
+      projectDir = project,
+      module = module,
+      variant = args.flagValue("--variant") ?: "debug",
+      gradleArguments = args.flagValuesAll("--gradle-arg"),
+      workDir = workDir,
+      log = { System.err.println(it) },
+    )
+  }
+
   private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 
   private fun JsonObject.boolean(key: String): Boolean? =
@@ -483,6 +630,12 @@ internal class LaunchCommand(private val args: List<String>) {
   companion object {
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+
+    /** Extra options for the simulator JVM, whitespace-separated. */
+    const val JVM_OPTIONS_ENV = "COMPOSE_PREVIEW_SIMULATOR_JVM_OPTIONS"
+
+    /** How many changed classes a reload's answer names. */
+    private const val MAX_LISTED_CLASSES = 20
 
     /**
      * A phone-shaped display that fits on a laptop screen: Robolectric's window draws one device
@@ -520,6 +673,7 @@ internal class LaunchCommand(private val args: List<String>) {
       add(java.path)
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
+      addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
       // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
       // the app's real traffic reaches.
