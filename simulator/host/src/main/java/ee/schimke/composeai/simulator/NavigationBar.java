@@ -120,6 +120,11 @@ final class NavigationBar {
     return describe();
   }
 
+  /** The bar's height when it is along the bottom and showing, else 0. */
+  int sizeAtBottom() {
+    return mode != Mode.NONE && view != null && side.equals("BOTTOM") && shown() ? size : 0;
+  }
+
   JSONObject describe() {
     return new Protocol.Json()
         .put("mode", mode.id)

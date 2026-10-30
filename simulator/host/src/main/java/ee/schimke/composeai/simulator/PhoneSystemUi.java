@@ -135,13 +135,15 @@ final class PhoneSystemUi {
 
   final NavigationBar navigationBar;
   final LockScreen lockScreen;
+  final SoftKeyboard keyboard;
 
   private PhoneSystemUi(
       Application app,
       Navigator navigator,
       Protocol protocol,
       NotificationStream stream,
-      java.util.function.IntConsumer keys) {
+      java.util.function.IntConsumer keys,
+      java.util.function.Consumer<String> typer) {
     this.app = app;
     this.navigator = navigator;
     this.protocol = protocol;
@@ -152,6 +154,7 @@ final class PhoneSystemUi {
     this.insets = robolectricStatusBar();
     this.navigationBar = new NavigationBar(this, app, navigator, protocol);
     this.lockScreen = new LockScreen(this, app, navigator, protocol, stream);
+    this.keyboard = new SoftKeyboard(this, app, navigator, protocol, typer);
   }
 
   /**
@@ -163,9 +166,10 @@ final class PhoneSystemUi {
       Navigator navigator,
       Protocol protocol,
       NotificationStream stream,
-      java.util.function.IntConsumer keys) {
+      java.util.function.IntConsumer keys,
+      java.util.function.Consumer<String> typer) {
     if (FormFactor.current() != FormFactor.PHONE) return null;
-    return new PhoneSystemUi(app, navigator, protocol, stream, keys);
+    return new PhoneSystemUi(app, navigator, protocol, stream, keys, typer);
   }
 
   /** Adds the status bar window: before the first cycle, so the app is laid out below it. */
@@ -200,6 +204,7 @@ final class PhoneSystemUi {
     followApp();
     navigationBar.cycle();
     lockScreen.cycle();
+    keyboard.cycle();
     if (now - lastTick < 1000) return;
     lastTick = now;
     refresh();
@@ -217,6 +222,7 @@ final class PhoneSystemUi {
   JSONObject command(String name, JSONObject c) throws JSONException {
     JSONObject owned = navigationBar.command(name, c);
     if (owned == null) owned = lockScreen.command(name, c);
+    if (owned == null) owned = keyboard.command(name, c);
     if (owned != null) return owned;
     switch (name) {
       case "notifications":
@@ -284,6 +290,7 @@ final class PhoneSystemUi {
       case "quickSettings":
       case "navigationBar":
       case "lockScreen":
+      case "keyboard":
         return true;
       default:
         return false;
@@ -296,6 +303,7 @@ final class PhoneSystemUi {
       closeShade();
       return true;
     }
+    if (keyboard.back()) return true;
     return lockScreen.back();
   }
 
@@ -345,6 +353,7 @@ final class PhoneSystemUi {
         .put("headsUp", headsUp == null ? null : headsUpKey)
         .put("navigationBar", navigationBar.describe())
         .put("lockScreen", lockScreen.describe())
+        .put("keyboard", keyboard.describe())
         .object();
   }
 

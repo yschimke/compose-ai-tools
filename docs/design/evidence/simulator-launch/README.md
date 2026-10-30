@@ -373,3 +373,10 @@ the app held stopped behind it; with `lockScreen {op: pin}` set, tapping a notif
 PIN bouncer, and the right PIN unlocks and opens it (`NowPlayingActivity`).
 
 ![Home, buttons, lock screen, bouncer, opened](phone-navbar-lock.png)
+
+**On-screen keyboard** — `samples/android`'s `ChatActivity` (edge to edge, its composer under
+`imePadding()`): at rest; a tap on the field brings the keyboard up and the composer rides above it
+on the IME insets; "See you!" typed on its keys (shift, then `?123` for the "!"); sent; Back takes
+the keyboard down and the composer drops back.
+
+![Chat, keyboard up, typed, sent, keyboard down](phone-keyboard.png)

@@ -1016,6 +1016,37 @@ key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
 ← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
 ```
 
+### On-screen keyboard
+
+The phone's system UI has a soft keyboard (`SoftKeyboard`), drawn to match the interactive
+previews' keyboard band (the same QWERTY layout, 240dp, palettes, light and dark), but a real
+input method window: its keys type into the app.
+
+![The chat composer, the keyboard up with the field above it, "See you!" typed with shift and symbols, sent, and the keyboard down after Back](design/evidence/simulator-launch/phone-keyboard.png)
+
+It comes up as a device's IME does: when the app asks for it (`InputMethodManager.showSoftInput`,
+`WindowInsetsController.show(ime())`), or when a tap focuses a text editor (an `EditText`, or a
+Compose text field, whose `AndroidComposeView` reports an input session). A field focused by
+default, without a tap, does not raise it. It goes when the app hides it, Back is pressed (before
+the app hears Back), the command hides it, or another activity comes to the top. While it is up the
+app's windows get the IME's `WindowInsets` (`Type.ime()`, over the keyboard), so `imePadding()`,
+`WindowInsets.ime` and `adjustResize` lay the app out above it, as on a device; `imeInsets` says
+whether that reached the app (it uses hidden platform API, API 34+).
+
+Its keys go to the focused field as key events, as the `text` command's do: letters, shift (one
+letter), `?123` (digits and symbols) and back, comma, space, period, delete and enter. `text`
+still types without it.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `keyboard` | `op`? (`status` / `show` / `hide`) | shows or hides it; returns `shown`, `heightPx`, `layout` (`letters` / `shift` / `symbols`), `imeInsets`, and whether the app `requested` it |
+
+A `keyboard` event follows each change, with its `reason` (`app`, `back`, `focus`, `command`).
+View ids: `keyboard`; `key` for each character key (its text is the character, so
+`tap {"resourceId":"sim:id/key","text":"q"}` presses it), and `key_shift`, `key_delete`,
+`key_symbols`, `key_space` and `key_enter`. `samples/android`'s `ChatActivity` (started with
+`startActivity`) is an edge-to-edge composer to try it with.
+
 ### Back
 
 Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
@@ -1709,7 +1740,8 @@ What does not, or not yet:
   where this sandbox refuses the host.
 - **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
   recents screen, notification history, snooze or per-channel settings in the shade, conversation
-  or bubble sections, media controls, or Do Not Disturb; no pattern or password lock, fingerprint
+  or bubble sections, media controls, or Do Not Disturb; one keyboard layout (US QWERTY, no
+  suggestions, emoji, voice or IME switcher); no pattern or password lock, fingerprint
   unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
   when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not
   played. Quick settings tiles are the four above, not the app's `TileService`s. Robolectric posts

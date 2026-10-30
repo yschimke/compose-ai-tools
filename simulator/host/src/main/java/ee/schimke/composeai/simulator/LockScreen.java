@@ -356,6 +356,9 @@ final class LockScreen {
 
   private void detach() {
     if (root == null) return;
+    // The PIN field's soft input goes with it.
+    app.getSystemService(android.view.inputmethod.InputMethodManager.class)
+        .hideSoftInputFromWindow(root.getWindowToken(), 0);
     ui.windows().removeViewImmediate(root);
     ui.dropRow(row);
     root = null;

@@ -136,7 +136,8 @@ final class Session {
                   } catch (JSONException e) {
                     throw new IllegalStateException(e);
                   }
-                })
+                },
+                text -> text(text, android.view.Display.DEFAULT_DISPLAY))
             : null;
     if (phoneUi != null) screen.lockScreen(phoneUi.lockScreen);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.

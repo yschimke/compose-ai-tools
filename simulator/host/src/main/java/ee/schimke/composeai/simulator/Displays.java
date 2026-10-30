@@ -644,7 +644,12 @@ final class Displays {
     for (int i = 0; i < touchable.size(); i++) {
       Root root = touchable.get(i);
       if (i == touchable.size() - 1 || root.touchModal() || root.inside(motion)) {
-        if (action == MotionEvent.ACTION_DOWN) gestureTargets.put(id, root.view);
+        if (action == MotionEvent.ACTION_DOWN) {
+          gestureTargets.put(id, root.view);
+          if (root.params.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW) {
+            lastAppTouch = SystemClock.uptimeMillis();
+          }
+        }
         deliver(root, motion);
         break;
       } else if (motion.getActionMasked() == MotionEvent.ACTION_DOWN
@@ -659,6 +664,9 @@ final class Displays {
     }
     return true;
   }
+
+  /** When a touch last went down on one of the app's own windows, in uptime. */
+  static volatile long lastAppTouch;
 
   /** The window each display's current gesture went to on its down. */
   private static final Map<Integer, View> gestureTargets = new HashMap<>();
