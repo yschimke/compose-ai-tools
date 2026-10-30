@@ -231,6 +231,16 @@ final class Session {
         return components();
       case "dataLayer":
         {
+          if (DataLayerLink.enabled()) {
+            // As if the app's android_wear_capabilities declared (or dropped) one: lets an agent
+            // stand in for a capability an app forgot, and see what its peer does with it.
+            if (c.has("addCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("addCapability"), true);
+            }
+            if (c.has("removeCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("removeCapability"), false);
+            }
+          }
           JSONObject state = DataLayerLink.enabled() ? DataLayer.describeCurrent() : null;
           if (state == null) {
             throw new IllegalStateException("no data layer: launch with --pair <other.apk>");

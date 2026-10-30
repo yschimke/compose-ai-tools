@@ -4,6 +4,8 @@ import android.app.Application;
 import android.app.Instrumentation;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import javax.inject.Inject;
 import javax.inject.Named;
 import org.robolectric.android.internal.AndroidTestEnvironment;
@@ -13,6 +15,7 @@ import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.TestEnvironmentLifecyclePlugin;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowBluetoothAdapter;
+import org.robolectric.shadows.ShadowPackageManager;
 
 /**
  * Robolectric's test environment with the one step it leaves out for an APK: on a device the
@@ -50,6 +53,19 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
     if (adapter.getState() == 0) shadow.setState(BluetoothAdapter.STATE_ON);
   }
 
+  /**
+   * A watch reports {@code android.hardware.type.watch}, which Robolectric leaves out whatever the
+   * qualifiers say. Wear libraries branch on it: {@code RemoteActivityHelper} picks the watch's
+   * path (a broadcast to the Wear OS app, no companion lookup), and apps check it to tell a watch
+   * from a phone.
+   */
+  static void watchFeature(Application app) {
+    int type = app.getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK;
+    if (type != Configuration.UI_MODE_TYPE_WATCH) return;
+    ShadowPackageManager shadow = Shadow.extract(app.getPackageManager());
+    shadow.setSystemFeature(PackageManager.FEATURE_WATCH, true);
+  }
+
   /** Installs the providers immediately before the application's {@code onCreate()}. */
   public static class ProvidersFirstInstrumentation extends RoboMonitoringInstrumentation {
     @Override
@@ -63,6 +79,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Connectivity.connect(app);
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
+      watchFeature(app);
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.

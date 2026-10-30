@@ -2,16 +2,20 @@ package ee.schimke.composeai.simulator;
 
 import android.app.Application;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.ResultReceiver;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.common.data.DataHolder;
@@ -63,6 +67,8 @@ import org.robolectric.RuntimeEnvironment;
  *       sendRequest}, answered by a {@code response};
  *   <li>{@code data} — a data item put or deleted, with the bytes of its assets;
  *   <li>{@code capabilities} — the node's capability set after an add or remove;
+ *   <li>{@code activity} — a {@code RemoteActivityHelper.startRemoteActivity} intent for the peer
+ *       to start, answered by an {@code activityResult};
  *   <li>{@code bye} — the hub's word that a node went away.
  * </ul>
  *
@@ -108,7 +114,23 @@ final class DataLayer {
    * check {@link DataLayerLink#enabled()} first: loading this class needs the app's Play services.
    */
   static void start(Application app) {
+    pairedDeviceType(app);
     get(app);
+  }
+
+  /** {@code PhoneTypeHelper}'s {@code paired_device_os_type} for an Android phone. */
+  static final int PAIRED_DEVICE_ANDROID = 1;
+
+  /**
+   * A watch paired with an Android phone says so in {@code Settings.Global}, which is where {@code
+   * PhoneTypeHelper.getPhoneDeviceType} reads it ({@code DEVICE_TYPE_ANDROID}).
+   */
+  private static void pairedDeviceType(Application app) {
+    int type =
+        app.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_TYPE_MASK;
+    if (type != android.content.res.Configuration.UI_MODE_TYPE_WATCH) return;
+    android.provider.Settings.Global.putInt(
+        app.getContentResolver(), "paired_device_os_type", PAIRED_DEVICE_ANDROID);
   }
 
   /** The node, connecting it on first use. */
@@ -198,6 +220,8 @@ final class DataLayer {
   private final Map<String, Item> items = new LinkedHashMap<>();
   private final Map<String, byte[]> assets = new ConcurrentHashMap<>();
   private final Map<Integer, TaskCompletionSource<byte[]>> pending = new ConcurrentHashMap<>();
+  /** The app's {@code ResultReceiver} for each remote launch awaiting the peer's answer. */
+  private final Map<Integer, ResultReceiver> remoteLaunches = new ConcurrentHashMap<>();
   private final AtomicInteger requestIds = new AtomicInteger();
 
   final List<Registration<DataClient.OnDataChangedListener>> dataListeners =
@@ -242,6 +266,7 @@ final class DataLayer {
       return;
     }
     send(hello(false));
+    listenForRemoteIntents();
     log("node " + localId + " (" + app.getPackageName() + ") capabilities " + localCapabilities);
   }
 
@@ -277,9 +302,18 @@ final class DataLayer {
     return nodes;
   }
 
+  /**
+   * The package of the app that manages [nodeId] on this side: the Wear OS app, as on a device;
+   * null for a node that is not connected. It is not the peer's own package: {@code
+   * RemoteActivityHelper} addresses its broadcast to it, and Horologist's {@code startCompanion}
+   * launches it.
+   */
   synchronized String companionPackage(String nodeId) {
-    Peer peer = peers.get(nodeId);
-    return peer == null ? null : peer.packageName;
+    return peers.containsKey(nodeId) ? RemoteIntents.COMPANION_PACKAGE : null;
+  }
+
+  private synchronized List<String> peerIds() {
+    return new ArrayList<>(peers.keySet());
   }
 
   /**
@@ -505,6 +539,12 @@ final class DataLayer {
           break;
         case "data":
           onData(frame);
+          break;
+        case "activity":
+          onRemoteActivity(frame);
+          break;
+        case "activityResult":
+          onRemoteActivityResult(frame);
           break;
         default:
           System.err.println("datalayer: unknown frame " + frame.optString("type"));
@@ -854,6 +894,153 @@ final class DataLayer {
         }
       }
     };
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Remote activities
+
+  /**
+   * Takes the broadcast {@code RemoteActivityHelper.startRemoteActivity} sends the Wear OS app
+   * ({@code com.google.android.wearable.app}, absent here) and does what that app does: starts the
+   * intent on the other node, and answers the app's {@code ResultReceiver} when the node has.
+   */
+  private void listenForRemoteIntents() {
+    BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+          @Override
+          public void onReceive(Context context, Intent intent) {
+            onRemoteIntent(intent);
+          }
+        };
+    IntentFilter filter = new IntentFilter(RemoteIntents.ACTION_REMOTE_INTENT);
+    main.post(
+        guarded(
+            () -> {
+              if (Build.VERSION.SDK_INT >= 33) {
+                app.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+              } else {
+                app.registerReceiver(receiver, filter);
+              }
+            }));
+  }
+
+  @SuppressWarnings("deprecation") // getParcelableExtra(String): the typed one is API 33+.
+  private void onRemoteIntent(Intent broadcast) {
+    Intent target = broadcast.getParcelableExtra(RemoteIntents.EXTRA_INTENT);
+    ResultReceiver result = broadcast.getParcelableExtra(RemoteIntents.EXTRA_RESULT_RECEIVER);
+    String node =
+        RemoteIntents.target(broadcast.getStringExtra(RemoteIntents.EXTRA_NODE_ID), peerIds());
+    if (target == null || node == null) {
+      answerLaunch(result, RemoteIntents.RESULT_FAILED);
+      activityEvent(
+          "out",
+          node,
+          target,
+          target == null ? "no intent" : "TARGET_NODE_NOT_CONNECTED",
+          RemoteIntents.RESULT_FAILED);
+      return;
+    }
+    int id = requestIds.incrementAndGet();
+    if (result != null) remoteLaunches.put(id, result);
+    send(
+        frame("activity")
+            .put("to", node)
+            .put("requestId", id)
+            .put("intent", Intents.toJson(target)));
+    activityEvent("out", node, target, "sent", null);
+  }
+
+  /** The peer's remote intent: started here when this app has an activity for it. */
+  private void onRemoteActivity(JSONObject frame) throws JSONException {
+    String from = frame.getString("from");
+    int requestId = frame.optInt("requestId");
+    Intent intent = Intents.fromJson(frame.getJSONObject("intent"), app);
+    onMain(
+        () -> {
+          Intent launch = new Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          boolean resolves =
+              !app.getPackageManager().queryIntentActivities(launch, 0).isEmpty();
+          Uri data = launch.getData();
+          RemoteIntents.Outcome outcome =
+              RemoteIntents.outcome(
+                  resolves,
+                  data == null ? null : data.getScheme(),
+                  launch.getPackage(),
+                  app.getPackageName());
+          int code =
+              outcome == RemoteIntents.Outcome.FAIL
+                  ? RemoteIntents.RESULT_FAILED
+                  : RemoteIntents.RESULT_OK;
+          String state;
+          switch (outcome) {
+            case START:
+              // The navigator starts it on its next cycle, like any startActivity from the app.
+              app.startActivity(launch);
+              state = "started";
+              break;
+            case SYSTEM:
+              state = "no browser or Play Store in the simulator; a device would open it there";
+              break;
+            default:
+              state = "no activity in " + app.getPackageName() + " handles it";
+          }
+          send(
+              frame("activityResult")
+                  .put("to", from)
+                  .put("requestId", requestId)
+                  .put("result", code)
+                  .put("state", state));
+          activityEvent("in", from, intent, state, code);
+        });
+  }
+
+  private void onRemoteActivityResult(JSONObject frame) {
+    ResultReceiver result = remoteLaunches.remove(frame.optInt("requestId"));
+    int code = frame.optInt("result", RemoteIntents.RESULT_FAILED);
+    answerLaunch(result, code);
+    Protocol channel = protocol;
+    if (channel == null) return;
+    channel.event(
+        "datalayer",
+        new Protocol.Json()
+            .put("kind", "activityResult")
+            .put("direction", "in")
+            .put("node", frame.optString("from"))
+            .put("result", code)
+            .put("state", frame.optString("state", null))
+            .object());
+  }
+
+  private static void answerLaunch(ResultReceiver result, int code) {
+    if (result == null) return;
+    try {
+      result.send(code, null);
+    } catch (RuntimeException e) {
+      System.err.println("datalayer: cannot answer the remote launch: " + e);
+    }
+  }
+
+  private void activityEvent(
+      String direction, String node, Intent intent, String state, Integer result) {
+    log(
+        "activity "
+            + direction
+            + " "
+            + (node == null ? "" : node + " ")
+            + (intent == null ? "" : intent.toUri(0))
+            + " "
+            + state);
+    Protocol channel = protocol;
+    if (channel == null) return;
+    Protocol.Json json =
+        new Protocol.Json()
+            .put("kind", "activity")
+            .put("direction", direction)
+            .put("node", node)
+            .put("intent", intent == null ? null : Intents.toJson(intent))
+            .put("state", state);
+    if (result != null) json.put("result", result);
+    channel.event("datalayer", json.object());
   }
 
   // ---------------------------------------------------------------------------------------------

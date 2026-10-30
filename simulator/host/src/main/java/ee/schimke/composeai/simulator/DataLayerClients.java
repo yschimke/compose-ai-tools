@@ -454,5 +454,24 @@ final class DataLayerClients {
     public void release() {}
   }
 
+  /** Whether every API is one of the simulator's clients, which are always available. */
+  static boolean allSimulated(Object api, Object[] more) {
+    if (!simulated(api)) return false;
+    if (more != null) for (Object other : more) if (!simulated(other)) return false;
+    return true;
+  }
+
+  private static boolean simulated(Object api) {
+    return api instanceof Data
+        || api instanceof Messages
+        || api instanceof Nodes
+        || api instanceof Capabilities;
+  }
+
+  /** {@code checkApiAvailability}'s answer when every API is available. */
+  static Object available() {
+    return Tasks.forResult(null);
+  }
+
   private DataLayerClients() {}
 }
