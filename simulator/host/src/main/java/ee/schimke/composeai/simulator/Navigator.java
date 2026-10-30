@@ -310,7 +310,8 @@ final class Navigator {
 
     if ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0) {
       for (Entry entry : new ArrayList<>(stack)) {
-        if (entry.displayId != displayId) continue;
+        // The system UI is the home task, not the app's: a task reset leaves it.
+        if (entry.displayId != displayId || entry.system) continue;
         stack.remove(entry);
         destroy(entry);
       }
