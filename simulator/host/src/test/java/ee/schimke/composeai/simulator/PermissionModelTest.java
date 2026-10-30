@@ -286,6 +286,16 @@ public class PermissionModelTest {
     assertEquals(How.DIALOG, m.triage(new String[] {IMAGES, SELECTED}).get(0).how);
   }
 
+  @Test
+  public void permissionNewerThanTheDeviceIsDeniedWithoutAsking() {
+    PermissionModel m = model(33);
+    List<Decision> ds = request(m, GRANT, IMAGES, SELECTED);
+    assertEquals(Arrays.asList(How.DIALOG, How.IGNORED), hows(ds));
+    assertEquals(Arrays.asList(true, false), granted(ds));
+    assertEquals(How.IGNORED, model(32).triage(new String[] {NOTIFY}).get(0).how);
+    assertEquals(How.DIALOG, model(34).triage(new String[] {SELECTED}).get(0).how);
+  }
+
   @Test(expected = IllegalArgumentException.class)
   public void unknownAnswerIsRejected() {
     PermissionModel.expand(Arrays.asList(CAMERA), "maybe");

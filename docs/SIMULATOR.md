@@ -269,7 +269,7 @@ controller decides without a dialog is decided as on a device:
 | not a runtime permission | its install-time state | `installTime` |
 | denied twice in the dialog (Android 11's "don't ask again") | denied until `grant` or `reset` | `dontAskAgain` |
 | in a group with one already granted (contacts, calendar, phone, SMS, nearby devices, storage) | granted | `groupGranted` |
-| `ACCESS_FINE_LOCATION` without `ACCESS_COARSE_LOCATION` (12+); background location asked with foreground location not yet granted, or before it (11+); `BODY_SENSORS_BACKGROUND` likewise before `BODY_SENSORS` (13+) | denied, with the platform's `reason` | `ignored` |
+| newer than the device (`POST_NOTIFICATIONS` below 13, `READ_MEDIA_VISUAL_USER_SELECTED` below 14, the Bluetooth ones below 12); `ACCESS_FINE_LOCATION` without `ACCESS_COARSE_LOCATION` (12+); background location asked with foreground location not yet granted, or before it (11+); `BODY_SENSORS_BACKGROUND` likewise before `BODY_SENSORS` (13+) | denied, with the platform's `reason` | `ignored` |
 
 Everything else is the dialog's (`by: dialog`), answered by the permission's own `grant` / `deny`
 answer, else the policy. Under `ask` the request waits: a `permissions` event with `state:

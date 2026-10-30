@@ -123,6 +123,29 @@ final class PermissionModel {
               "RANGING"),
           group("READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"));
 
+  /** Platform runtime permissions newer than API 30, and the API that added each. */
+  private static final Map<String, Integer> SINCE = new HashMap<>();
+
+  static {
+    for (String n : new String[] {"BLUETOOTH_SCAN", "BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE"}) {
+      SINCE.put("android.permission." + n, 31);
+    }
+    SINCE.put("android.permission.UWB_RANGING", 31);
+    for (String n :
+        new String[] {
+          "POST_NOTIFICATIONS",
+          "NEARBY_WIFI_DEVICES",
+          "READ_MEDIA_IMAGES",
+          "READ_MEDIA_VIDEO",
+          "READ_MEDIA_AUDIO",
+          "BODY_SENSORS_BACKGROUND"
+        }) {
+      SINCE.put("android.permission." + n, 33);
+    }
+    SINCE.put(VISUAL_USER_SELECTED, 34);
+    SINCE.put("android.permission.RANGING", 36);
+  }
+
   private static Set<String> group(String... names) {
     Set<String> set = new HashSet<>();
     for (String n : names) set.add(n.contains(".") ? n : "android.permission." + n);
@@ -212,6 +235,8 @@ final class PermissionModel {
       decisions.add(d);
       if (!manifest.contains(name)) {
         d.how = How.NOT_IN_MANIFEST;
+      } else if (SINCE.getOrDefault(name, 0) > sdk) {
+        ignore(d, "not a permission on API " + sdk + " (added in " + SINCE.get(name) + ")");
       } else if (!runtime.test(name)) {
         d.how = How.INSTALL_TIME;
         d.granted = granted.contains(name);
