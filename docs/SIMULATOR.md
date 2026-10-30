@@ -1035,7 +1035,9 @@ one app, so a person can watch and use the device while a tool drives it.
 ![A click in the window on the installed app's icon launches it](design/evidence/simulator-adb/window-click-launches-app.png)
 ![Over gRPC: the streamed frames as a streamed tap opens Now Playing and GoBack closes it](design/evidence/simulator-adb/grpc-stream-touch-back.png)
 
-**Finding it.** Like an emulator it takes the first free port pair from 5554/5555, tells a
+**Finding it.** Like an emulator it takes the first free port pair from 5554/5555 (free meaning
+nothing answers on 127.0.0.1, so a running emulator's ports are skipped; with its gRPC port free
+too), tells a
 running adb server about itself (`host:emulator:5555`), and is found by one started later, which
 scans 5555–5585. Its serial is `emulator-<console port>`, and `getprop` answers as an emulator's
 system image does (`ro.kernel.qemu`, `ro.boot.qemu.avd_name`, `sys.boot_completed` once the
@@ -1060,10 +1062,13 @@ seconds.
 **The shell.** `adb shell` (one command, a `;` / `&&` / `||` sequence, `| grep` / `| head` /
 `| tail` filters, `2>/dev/null`, `> file`) and an interactive `adb shell`. The device answers
 packages (`pm list packages`, `pm path`, `pm list features`, `pm resolve-activity --brief`),
-`getprop`, `screencap`, `echo`/`id`/`true`, and the files below itself; everything else goes to
+`getprop`, `screencap`, `echo`/`id`/`true`, `export` (ignored) and `exec`, and the files below
+itself; everything else goes to
 the simulator's [adb equivalents](#adb-equivalents), and its JSON answer is printed as a device
 prints it where tools read the text (`Starting: Intent { … }`, `Broadcast completed: …`,
-`Physical size: 540x960`, a setting's value), and otherwise as the JSON. `adb push` / `pull`
+`Physical size: 540x960`, a setting's value, `logcat -d`'s lines), and otherwise as the JSON.
+`adb logcat -d` / `-t` / `-c` work; a following `adb logcat` prints nothing yet, so Studio's
+Logcat window stays empty. `adb push` / `pull`
 and `ls`, `rm`, `mkdir`, `cat` reach `/data/local/tmp` and `/sdcard`, kept under the device's
 directory in the cache; an app's private files are `run-as`, which the simulator answers. A
 native binary pushed there (Studio's deployer) does not run: `can't execute`, exit 126.
@@ -1072,7 +1077,10 @@ native binary pushed there (Studio's deployer) does not run: `can't execute`, ex
 commands above, and finds the emulator gRPC endpoint through the discovery file every emulator
 writes (`$XDG_RUNTIME_DIR/avd/running` on Linux, `~/Library/Caches/TemporaryItems/avd/running` on
 macOS, `%LOCALAPPDATA%\Temp\avd\running` on Windows) beside an AVD directory whose `config.ini`
-gives the display (`hw.lcd.*`) and the device type (`tag.id=android-wear` on a watch). The
+gives the display (`hw.lcd.*`) and the device type (`tag.id=android-wear` on a watch). Studio
+reads that directory before it embeds the device and drops it from Running Devices without all
+of: `config.ini`, the `hardware-qemu.ini` a running emulator writes (its `android.sdk.root` is the
+AVD directory itself here), and `image.sysdir.1`'s `source.properties` with the API level. The
 endpoint implements `EmulatorController` from Studio's own `emulator_controller.proto`
 (`com.android.tools.emulator:proto`), with the discovery file's token:
 
@@ -1085,17 +1093,23 @@ endpoint implements `EmulatorController` from Studio's own `emulator_controller.
 | `setVmState` | shut down or reboot the device |
 | `streamNotification` | boot completed |
 
+Studio's channel has no decompressors, not even `identity`, and grpc-java's server always names
+`grpc-encoding: identity` in its response headers, which fails every call ("Can't find decompressor
+for identity"); the endpoint drops that header, as the emulator's own server never sends it.
+
 Everything else answers `UNIMPLEMENTED`. **Verified here** with real `adb` 37 (devices, shell and
 exit codes, streamed install, `am start`, `screencap`, push / pull, interactive shell, uninstall,
 `DEBUG_SURFACE`) and a gRPC client built on Studio's stubs (status, displays, screenshots in each
 format, the frame stream, mouse input, the token check), the stream following a streamed touch
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
-display. **Not verified:** Android Studio itself,
-which the sandbox this was built in does not have; the discovery file follows the emulator's
-format, and Studio's own fallbacks (its deployer falling back to `pm install` sessions when its
-installer binary cannot run) are what the device relies on.
+display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
+the device appears in Device Manager and Running Devices, which streams the display and takes
+clicks and drags. Studio's process tracker, a native binary, cannot run (`can't execute`, logged
+and harmless). The host process stays out of the macOS Dock and app switcher
+(`apple.awt.UIElement`); only the simulator's window is an app there.
 
-**Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
+**Not yet:** a second display or `--pair` with `--adb`; system gestures from Running Devices (a
+drag from the left edge is a touch for the app, not Back: see [Back](#back)); debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
 watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).

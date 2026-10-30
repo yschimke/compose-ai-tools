@@ -12,6 +12,7 @@ import java.net.Socket
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
@@ -112,6 +113,27 @@ class VirtualDeviceTest {
       AdbText.render(listOf("settings", "get"), obj("cmd" to "settings"), obj("output" to "1")),
     )
     assertEquals(
+      listOf(
+        "10-30 20:24:54.282     0     0 D Tag: one",
+        "10-30 20:24:54.283     0     0 I Tag: two",
+      ),
+      AdbText.render(
+        listOf("logcat", "-d"),
+        obj("cmd" to "logcat"),
+        JsonObject(
+          mapOf(
+            "lines" to
+              kotlinx.serialization.json.JsonArray(
+                listOf(
+                  JsonPrimitive("10-30 20:24:54.282     0     0 D Tag: one"),
+                  JsonPrimitive("10-30 20:24:54.283     0     0 I Tag: two"),
+                )
+              )
+          )
+        ),
+      ),
+    )
+    assertEquals(
       "the app has no tile .X",
       AdbText.error(
         "java.lang.IllegalArgumentException: the app has no tile .X at ee.schimke.composeai.simulator.TileHost.find(TileHost.java:435)"
@@ -161,6 +183,19 @@ class VirtualDeviceTest {
     val ini = File(avd, "config.ini").readText()
     assertTrue("tag.id=android-wear" in ini, ini)
     assertTrue("hw.lcd.width=454" in ini, ini)
+    // Studio's readAvdDefinition: hardware-qemu.ini's SDK root, under which config.ini's system
+    // image has a source.properties with the API level.
+    val hardware =
+      File(avd, "hardware-qemu.ini").readLines().associate {
+        it.substringBefore('=') to it.substringAfter('=')
+      }
+    val sysdir = ini.lines().first { it.startsWith("image.sysdir.1=") }.substringAfter('=')
+    assertEquals(
+      "AndroidVersion.ApiLevel=35",
+      File(File(hardware.getValue("android.sdk.root"), sysdir), "source.properties")
+        .readText()
+        .trim(),
+    )
     val discovery = AvdFiles.discovery(config, avd, 8556, "t0k3n").toMap()
     assertEquals("5556", discovery["port.serial"])
     assertEquals("5557", discovery["port.adb"])
@@ -168,6 +203,21 @@ class VirtualDeviceTest {
     assertEquals("t0k3n", discovery["grpc.token"])
     assertTrue("-qt-hide-window" in discovery.getValue("cmdline"))
     assertEquals("emulator-5556", config.serial)
+  }
+
+  @Test
+  fun `adb logcat's line parses as an export, then the logcat it execs`() {
+    val steps = ShellSyntax.parse("""export ANDROID_LOG_TAGS="''"; exec logcat -d -t 5""")
+    assertEquals(listOf(listOf("export", "ANDROID_LOG_TAGS=''")), steps[0].commands)
+    assertEquals(listOf(listOf("exec", "logcat", "-d", "-t", "5")), steps[1].commands)
+  }
+
+  @Test
+  fun `a port another process listens on is not free, whichever address it listens on`() {
+    java.net.ServerSocket().use { other ->
+      other.bind(java.net.InetSocketAddress(0))
+      assertFalse(DeviceHost.free(other.localPort))
+    }
   }
 
   @Test
