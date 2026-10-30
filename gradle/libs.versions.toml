@@ -238,7 +238,7 @@ json-org = "20250517"
 # Only as `:simulator-host` test fixtures: the real Task classes the simulator's Wearable clients
 # complete (at run time they are the app's own copy).
 play-services-tasks = "18.4.0"
-play-services-basement = "18.9.0"
+play-services-basement = "18.12.0"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.7.0"
