@@ -46,10 +46,50 @@ final class DisplaySpec {
   /** Robolectric qualifiers: given whole, or derived from the size and density. */
   final String qualifiers;
 
+  /** The size and density the qualifiers came from; null when they were given whole. */
+  final Integer widthDp;
+
+  final Integer heightDp;
+  final String density;
+
   DisplaySpec(String name, Kind kind, String qualifiers) {
+    this(name, kind, qualifiers, null, null, null);
+  }
+
+  DisplaySpec(
+      String name, Kind kind, String qualifiers, Integer widthDp, Integer heightDp, String density) {
     this.name = name;
     this.kind = kind;
     this.qualifiers = qualifiers;
+    this.widthDp = widthDp;
+    this.heightDp = heightDp;
+    this.density = density;
+  }
+
+  /**
+   * [base] with what a {@code displays change} gives replacing what it had: anything left out —
+   * the name, the type, the width, the height, the density — stays as it was.
+   */
+  DisplaySpec changed(
+      String name,
+      String kind,
+      Integer widthDp,
+      Integer heightDp,
+      String density,
+      String qualifiers) {
+    String n = name != null ? name : this.name;
+    String k = kind != null ? kind : this.kind.label();
+    if (qualifiers == null && widthDp == null && heightDp == null && density == null) {
+      return new DisplaySpec(
+          n, Kind.of(k), this.qualifiers, this.widthDp, this.heightDp, this.density);
+    }
+    return of(
+        n,
+        k,
+        widthDp != null ? widthDp : this.widthDp,
+        heightDp != null ? heightDp : this.heightDp,
+        density != null ? density : this.density,
+        qualifiers);
   }
 
   /**
@@ -65,20 +105,17 @@ final class DisplaySpec {
       String density,
       String qualifiers) {
     Kind k = kind == null || kind.isBlank() ? Kind.EXTERNAL : Kind.of(kind);
-    String q;
-    if (qualifiers != null && !qualifiers.isBlank()) {
-      q = qualifiers.trim();
-    } else {
-      int w = widthDp == null ? DEFAULT_WIDTH_DP : widthDp;
-      int h = heightDp == null ? DEFAULT_HEIGHT_DP : heightDp;
-      if (w <= 0 || h <= 0) {
-        throw new IllegalArgumentException("a display is at least 1dp each way");
-      }
-      String d = density == null || density.isBlank() ? DEFAULT_DENSITY : density.trim();
-      q = DisplayGeometry.sizeQualifiers(w, h) + "-" + d;
-    }
     String n = name == null || name.isBlank() ? defaultName(k) : name.trim();
-    return new DisplaySpec(n, k, q);
+    if (qualifiers != null && !qualifiers.isBlank()) {
+      return new DisplaySpec(n, k, qualifiers.trim());
+    }
+    int w = widthDp == null ? DEFAULT_WIDTH_DP : widthDp;
+    int h = heightDp == null ? DEFAULT_HEIGHT_DP : heightDp;
+    if (w <= 0 || h <= 0) {
+      throw new IllegalArgumentException("a display is at least 1dp each way");
+    }
+    String d = density == null || density.isBlank() ? DEFAULT_DENSITY : density.trim();
+    return new DisplaySpec(n, k, DisplayGeometry.sizeQualifiers(w, h) + "-" + d, w, h, d);
   }
 
   static String defaultName(Kind kind) {

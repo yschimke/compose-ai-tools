@@ -296,14 +296,16 @@ display draws and takes input on its own:
   take `display`, and act on that display's windows alone: a touch goes to the top-most window
   under it there, a key to that display's focused window. Without `display`, the default display.
 - **Activities.** An activity started with `ActivityOptions.setLaunchDisplayId` — by the app, or
-  by `startActivity` / `launch` with `display` — goes on that display, above that display's own top
-  activity and leaving the others resumed, as a device keeps a task stack per display. It gets that
-  display's configuration (size, density, orientation, window bounds): Now in Android started on a
-  1280×720dp display lays itself out with a navigation rail and list-detail panes while the phone
-  stays on its bottom bar. `activities` and `displays` say which display each is on. When a display
-  changes size, its activities get `onConfigurationChanged` if their manifest `configChanges` covers
-  the change and are otherwise re-created there from their saved state; when it is removed, they
-  finish.
+  by `startActivity` / `launch` with `display` — goes on that display, and one that an activity
+  there starts without naming a display stays on it, as a device launches on the caller's display.
+  It goes above that display's own top activity and leaves the others resumed, as a device keeps a
+  task stack per display. It gets that display's configuration (size, density, orientation, window
+  bounds): Now in Android started on a 1280×720dp display lays itself out with a navigation rail
+  and list-detail panes while the phone stays on its bottom bar. `activities` and `displays` say
+  which display each is on. When a display changes size, its activities get
+  `onConfigurationChanged` if their manifest `configChanges` covers the change and are otherwise
+  re-created there from their saved state; when it is removed, they finish. A `displays change`
+  keeps whatever it leaves out (name, type, width, height, density).
 
 A presentation window sits above the activities on its display, as on a device: an activity the
 app launches onto a display it is presenting on stays under the presentation until the app

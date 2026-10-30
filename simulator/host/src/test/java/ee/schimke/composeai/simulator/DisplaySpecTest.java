@@ -57,4 +57,19 @@ public class DisplaySpecTest {
     assertThrows(IllegalArgumentException.class, () -> DisplaySpec.parse("colour=red"));
     assertThrows(IllegalArgumentException.class, () -> DisplaySpec.parse("0x10"));
   }
+
+  @Test
+  public void aChangeKeepsWhatItLeavesOut() {
+    DisplaySpec tv = DisplaySpec.parse("1280x720@xhdpi,name=TV");
+    DisplaySpec renamed = tv.changed("Monitor", null, null, null, null, null);
+    assertEquals("Monitor", renamed.name);
+    assertEquals(tv.qualifiers, renamed.qualifiers);
+    DisplaySpec denser = tv.changed(null, null, null, null, "xxhdpi", null);
+    assertEquals("TV", denser.name);
+    assertEquals("sw720dp-w1280dp-h720dp-xlarge-long-land-xxhdpi", denser.qualifiers);
+    DisplaySpec taller = tv.changed(null, null, null, 800, null, null);
+    assertEquals(Integer.valueOf(1280), taller.widthDp);
+    assertTrue(taller.qualifiers, taller.qualifiers.endsWith("-xhdpi"));
+    assertEquals(DisplaySpec.Kind.VIRTUAL, tv.changed(null, "virtual", null, null, null, null).kind);
+  }
 }
