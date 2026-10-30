@@ -17,7 +17,8 @@ import org.robolectric.shadows.ShadowContextImpl;
  * registered for that exact intent, action and extras' filter included; an app's own explicit bind
  * resolves by component on a device, and Firebase Sessions binds with an action of {@code "0"}.
  * Also routes the app's explicit broadcasts to its manifest receivers ({@link
- * Navigator#appSentBroadcast}).
+ * Navigator#appSentBroadcast}), and starts the deadline a {@code startForegroundService} sets
+ * ({@link Navigator#expectForeground}).
  * Added to the shadow map by {@link SimulatorSandbox}.
  */
 @Implements(className = "android.app.ContextImpl", isInAndroidSdk = false)
@@ -60,6 +61,14 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
     if (!held || !Navigator.appSentBroadcast(intent)) {
       super.sendBroadcast(intent, receiverPermission);
     }
+  }
+
+  /** Starts the system's clock on the service calling {@code startForeground}. */
+  @Implementation(minSdk = Build.VERSION_CODES.O)
+  @Override
+  protected android.content.ComponentName startForegroundService(Intent service) {
+    Navigator.expectForeground(service);
+    return super.startForegroundService(service);
   }
 
   @Implementation

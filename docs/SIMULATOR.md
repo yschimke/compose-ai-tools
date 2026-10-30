@@ -266,7 +266,8 @@ Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `new
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
 `removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
-`error` for an intent the app sent that nothing handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`alarm`, `job` and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app
+sent that nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -317,6 +318,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
+| `alarms` | `fire`? (an index, or `"next"`), `exact`? (bool) | the alarms set through every context, soonest first, with `inMs`; `fire` delivers one now; `exact` grants or revokes exact alarms ([below](#alarms-jobs-and-downloads)) |
+| `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
+| `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
 | `pick` | `policy`? (`ask` / `cancel`), `answer`? (a request id, or `"next"`), `files`?, `path`?, `cancel`? | the documents, photo and camera pickers the app opened ([below](#pickers-sharing-and-other-apps)); without an answer, the policy and the requests waiting |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
@@ -386,6 +390,38 @@ Every request ends with a `permissions` event, `state: "answered"`, listing what
 An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
 from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
+### Alarms, jobs and downloads
+
+Robolectric records what an app schedules and runs none of it; here the system's side runs, each
+cycle, over every context's `AlarmManager` and `JobScheduler` (each context caches its own, where a
+device has one service).
+
+**Alarms** go off when due on their own clock (`RTC*` on the wall clock, `ELAPSED_REALTIME*` on
+elapsed time): a `PendingIntent` is sent as the system sends it (a broadcast reaches manifest
+receivers, an activity the back stack), an `OnAlarmListener` runs on its handler or executor, and a
+repeating alarm is set again an interval later. Each firing is an `alarm` event. The clock cannot be
+moved forward, so an alarm an hour out waits an hour: `alarms` `fire` delivers it now. Exact alarms
+are allowed when the manifest asks for `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`
+(`canScheduleExactAlarms` true, as on a device that granted them); `alarms` `exact: false` revokes
+them, and `true` grants them with `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`.
+
+**Jobs** start once their minimum latency has passed and the device meets their constraints (a
+network, an unmetered one, charging, idle), or once their deadline passes whatever the constraints:
+the `JobService` is created and bound, and `startJob` goes through its own `JobServiceEngine`, so
+`onStartJob`, `jobFinished` and `onStopJob` behave as on a device. A one-off job leaves the
+schedule as it starts; a periodic one runs again an interval later. `job` events report
+`started` and `finished` (with `wantsReschedule`). WorkManager's `SystemJobService` jobs are left
+alone, since WorkManager runs its work in-process here (`jobs` says so).
+
+**Downloads** enqueued with `DownloadManager` wait for a network, then fetch on a thread of their
+own over the simulated network (the `network` command's offline, slow and blocked hosts apply),
+with the request's headers, into the request's destination (the public `Download` directory by
+default). The request then reads `STATUS_SUCCESSFUL` or `STATUS_FAILED` through `query`, and
+`ACTION_DOWNLOAD_COMPLETE` reaches the app's receivers. `download` events report each step.
+
+**Foreground services.** A service started with `startForegroundService` that has not called
+`startForeground` within 10 seconds is reported as an `error` event (`kind: foregroundService`):
+a device stops the app there (`ForegroundServiceDidNotStartInTimeException`). The app runs on.
 ### Pickers, sharing and other apps
 
 A device answers some intents with a system app: the documents picker, the photo picker, the
@@ -1342,6 +1378,12 @@ What does not, or not yet:
   and the requesting activity is not paused while a request waits. Groups are approximated (a
   dialog per permission, not per group), and Android 16's health permissions that replace
   `BODY_SENSORS` are plain runtime permissions.
+- **Background work.** Alarms, jobs and downloads run ([above](#alarms-jobs-and-downloads)), but
+  there is no Doze, App Standby bucket or battery optimisation deferring them; a job's
+  battery-not-low, storage-not-low and content-URI triggers are not checked, and a
+  `jobFinished(params, true)` is not rescheduled; a download has no notification, and is neither
+  paused nor retried. A foreground service's type is not checked against its manifest
+  declaration or permissions.
 - **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
   the share sheet, browser and dialer are answered ([above](#network-wi-fi-and-bluetooth),
   [above](#pickers-sharing-and-other-apps)); there is no media store of picked photos (the photo

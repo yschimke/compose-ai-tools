@@ -69,6 +69,7 @@ final class Session {
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
   private final Radios radios;
+  private final BackgroundWork background;
   private final SystemPickers pickers;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
@@ -120,6 +121,7 @@ final class Session {
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
+    this.background = new BackgroundWork(app, protocol, navigator);
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
     new Handoffs(app, protocol, navigator);
@@ -162,6 +164,7 @@ final class Session {
     if (home != null) home.cycle();
     displays.cycle();
     radios.cycle();
+    background.cycle();
     overlay.round(FormFactor.isRound());
     android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
     WindowZoom.installMain(metrics.widthPixels, metrics.heightPixels);
@@ -260,7 +263,8 @@ final class Session {
         || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)
-        || Radios.changesUi(name)) {
+        || Radios.changesUi(name)
+        || BackgroundWork.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -304,6 +308,7 @@ final class Session {
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated == null) emulated = radios.command(name, c);
+    if (emulated == null) emulated = background.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
