@@ -278,6 +278,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `picker` | `action`? (`open` / `close`) | the widget picker |
 | `restart` | `keepData`? (true) | the app again in a fresh simulator JVM, its data kept; see [Restart and update](#restart-and-update) |
 | `update` | `apk`, `keepData`? (true) | another APK (a rebuild) in a fresh simulator JVM, as `adb install -r` |
+| `reload` | `full`?, `keepData`? (true) | with `--project`: compiles the edit and restarts the app on the changed classes; see [Live reload](#live-reload) |
 | `snapshotData` | `to` | copies the app's data directory and external storage to `to/data` and `to/external` (what `restart` keeps) |
 | `quit` | | exits |
 
@@ -1045,6 +1046,72 @@ JVM itself is about 0.3 s of the total. The native graphics runtime also binds t
 per process. A new JVM also gives the app a clean process, as a real reinstall does. UI state, such
 as the back stack and scroll positions, is not kept: the app starts at its launcher activity, as
 after `adb install -r`.
+
+## Live reload
+
+`launch --project <dir>` adds the app's Gradle build, so an edit reaches the simulator without an
+APK. `--module` names the app module (default `app`), `--variant` the variant (default `debug`),
+and with no APK given the CLI builds one first. The control channel's **`reload`** then:
+
+1. runs `:<module>:compile<Variant>JavaWithJavac` through the Tooling API, which runs Kotlin's
+   compile, KSP or kapt, and `process<Variant>Resources` (aapt2's link) before it. The connection
+   stays open between reloads, so the daemon stays warm;
+2. compares every project module's compiler output with what it was at launch:
+   `build/tmp/kotlin-classes/<variant>`, AGP 9's built-in Kotlin output,
+   `intermediates/javac/…/classes`, and JVM modules' `build/classes/*/main`. Included builds and
+   `buildSrc` are build logic and are skipped;
+3. copies each class that changed or is new into an overlay directory, renamed as the APK converter
+   names classes. dex2jar turns every `-` in a name into `_`, so kotlinc's `constructor-impl` and
+   `lambda-1` would otherwise call names the converted jar does not have;
+4. restarts the app on the APK's converted classes with the overlay in front, keeping its data, as
+   [`restart`](#restart-and-update) does. Nothing is dexed, packaged or converted. `--project`
+   turns `--standby` on, so the restart takes over a prepared JVM.
+
+When aapt2's linked resources changed, such as an edited layout, string or drawable, the simulator's
+resource APK becomes the launched APK with the new `resources.arsc`, `res/` and manifest swapped
+in. When resource ids moved, the module's R classes are overlaid too. Assets and native libraries
+only reach an APK by packaging it, so a change there, or `{"cmd":"reload","full":true}`, runs
+`assemble<Variant>` and `update`s to the result. A compile error is the command's error, with the
+compiler's `e:` lines, and the running app is left alone.
+
+`--live` reloads after every edit to a module's `src/`, once the edits have settled for 400 ms, and
+reports each as a `reload` event. `--gradle-arg` (repeatable) passes arguments to the build, such
+as `--max-workers=2`.
+
+`reload` answers like `restart`, plus `mode` (`classes`, `resources`, `apk`, or `unchanged` when
+the build changed nothing the app does not already run), `build` (`ok`, `ms`, `tasks`, `errors`),
+`classesChanged` with the first few names, and `prepareMs` for the overlay and resource merge.
+
+Sunflower (Compose, Hilt, Room; `--sdk 36`), its empty garden screen. A three-line edit to the
+`EmptyGarden` composable's `Text` (its text, style and color), then a string resource:
+
+| Before | Three-line Compose edit (6.3 s) | String resource edit (11.1 s) |
+| --- | --- | --- |
+| ![](design/evidence/simulator-launch/live-reload-sunflower-before.png) | ![](design/evidence/simulator-launch/live-reload-sunflower-code.png) | ![](design/evidence/simulator-launch/live-reload-sunflower-resource.png) |
+
+| Edit | Answered in | Where the time went |
+| --- | --- | --- |
+| Three lines of a composable | 6.3 s | compile 3.4 s, overlay 0.1 s (6 classes), restart from the standby 2.3 s |
+| A string resource | 11.1 s | compile 2.3 s, resource merge 1.7 s, restart 6.7 s: the standby held the old resources, so a cold JVM |
+| A type error | 3.3 s | compile only; the error is the `e:` line, and the app keeps running |
+
+That session's launch from the project took 46 s to `ready`: an up-to-date `assembleDebug` (13 s),
+and a conversion of the APK that reused its previous build's unchanged classes (12 s).
+
+What a reload does not keep or cover:
+
+- **UI state.** The back stack, scroll positions and anything not on disk are lost: the app starts
+  at its launcher activity, as after `adb install -r`. Compose's own hot reload, which keeps
+  state, redefines classes in place; that needs the JetBrains Runtime's enhanced class
+  redefinition and is not attempted.
+- **Desugared library APIs.** Overlaid classes are kotlinc's and javac's JVM output, not D8's. An
+  app using core library desugaring passes `java.time` where the APK's classes expect `j$.time`,
+  so a changed class must not exchange those types with one that did not change.
+- **Release builds.** Shrunk (R8) APKs rename classes; reload against a debug variant.
+- **Modules elsewhere.** A module outside the project directory, or in an included build, is not
+  overlaid; edit those and reload with `full`.
+- **Pairs.** In a `--pair` session, `reload` and `--live` are the phone's: `--project` builds the
+  phone app.
 
 ## A paired phone and watch
 

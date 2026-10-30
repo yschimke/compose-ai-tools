@@ -241,6 +241,8 @@ dependencies {
   implementation(libs.composeai.daemon.core)
   // ClassGraph for the `serve --playground` scoped `@Preview` scan of a just-compiled snippet.
   implementation(libs.classgraph)
+  // `launch --project`'s live reload renames overlaid classes as the APK converter's dex2jar did.
+  implementation(libs.asm.commons)
   // `compose/overrides` wire shape (`PreviewOverrideDeclaration`) for editable knobs. Pure JVM.
   implementation(libs.composeai.data.preview.overrides.core)
   // `compose/remotecompose` wire shape for Remote Compose knobs. Pure JVM (schema only; the
