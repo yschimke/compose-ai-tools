@@ -113,6 +113,8 @@ final class WearSystemUi {
   private ScrollView notifications;
   private LinearLayout notificationList;
   private FrameLayout carousel;
+  /** The carousel page's list (widgets or the add page), which the crown scrolls; else null. */
+  private ScrollView carouselScroll;
   private ScrollView quickSettings;
   private LinearLayout quickSettingsList;
   private final Set<String> expanded = new HashSet<>();
@@ -805,6 +807,7 @@ final class WearSystemUi {
   /** Shows the carousel's current page: the widgets list, one tile, or the add page. */
   private void buildCarousel() {
     for (int i = carousel.getChildCount() - 1; i >= 0; i--) carousel.removeViewAt(i);
+    carouselScroll = null;
     String page = tiles.page();
     TileHost.Item item = tiles.item(page);
     if (item != null && item.tile()) {
@@ -883,45 +886,46 @@ final class WearSystemUi {
   /**
    * The added Wear Widgets on one page, as a scrolling list in the manner of Wear Compose's {@code
    * TransformingLazyColumn}: items shrink and fade as they near the round screen's top and bottom
-   * edges. Each shows the widget's picker preview and label.
+   * edges. Each widget is its container and nothing more, as a watch shows it: the document paints
+   * its own background, the host only masks it to the container's shape and adds no card, frame or
+   * label. Small (2x1) and large (2x2) containers are centred, 8dp apart.
    */
   private View widgetsPage() {
     LinearLayout list = column(context);
-    list.setPadding(dp(20), dp(50), dp(20), dp(60));
+    list.setGravity(Gravity.CENTER_HORIZONTAL);
+    list.setPadding(0, dp(48), 0, dp(64));
     for (TileHost.Item item : tiles.widgets()) {
-      LinearLayout card = new LinearLayout(context);
-      card.setOrientation(LinearLayout.VERTICAL);
-      card.setGravity(Gravity.CENTER_HORIZONTAL);
-      card.setPadding(dp(10), dp(10), dp(10), dp(10));
-      card.setBackground(rounded(0xFF202124, 26));
-      tag(card, "widget", item.component.getClassName());
-      card.addView(
-          widgetFrame(item),
-          new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(WIDGET_HEIGHT_DP)));
-      TextView label = text(item.label, 14, Color.WHITE, true);
-      label.setGravity(Gravity.CENTER);
-      card.addView(label);
-      if (item.description != null) {
-        TextView description = text(item.description, 11, 0xFFBDC1C6, false);
-        description.setGravity(Gravity.CENTER);
-        card.addView(description);
-      }
-      list.addView(card, wide());
+      WidgetClient.Container container = container(item);
+      FrameLayout frame = widgetFrame(item, container);
+      tag(frame, "widget", item.component.getClassName());
+      LinearLayout.LayoutParams params =
+          new LinearLayout.LayoutParams(dp(container.widthDp), dp(container.heightDp));
+      params.topMargin = dp(8);
+      list.addView(frame, params);
     }
     TextView add = chip("+ Add widget", v -> showAddPage());
     tag(add, "tiles_add_page", null);
-    list.addView(add, wide());
+    LinearLayout.LayoutParams addParams =
+        new LinearLayout.LayoutParams(dp(160), ViewGroup.LayoutParams.WRAP_CONTENT);
+    addParams.topMargin = dp(12);
+    list.addView(add, addParams);
     ScrollView scroll = new TransformingScrollView(context);
     scroll.setVerticalScrollBarEnabled(false);
     scroll.addView(list);
+    carouselScroll = scroll;
     return scroll;
   }
 
-  private static final int WIDGET_WIDTH_DP = 166;
-  private static final int WIDGET_HEIGHT_DP = 100;
+  /** The host slot [item] gets on this watch: its container type, on this display's shape. */
+  private WidgetClient.Container container(TileHost.Item item) {
+    return WidgetClient.Container.of(
+        item.containerType,
+        FormFactor.isRound(),
+        app.getResources().getConfiguration().screenWidthDp);
+  }
 
   /** [item]'s frame: its document once played, its preview image until then. */
-  private FrameLayout widgetFrame(TileHost.Item item) {
+  private FrameLayout widgetFrame(TileHost.Item item, WidgetClient.Container container) {
     FrameLayout frame = widgetFrames.get(item.key());
     if (frame != null) {
       if (frame.getParent() != null) ((ViewGroup) frame.getParent()).removeView(frame);
@@ -937,7 +941,7 @@ final class WearSystemUi {
       frame.addView(image, matchParent());
     }
     WidgetClient client = tiles.widgetClient(item);
-    client.attach(context, frame, WIDGET_WIDTH_DP, WIDGET_HEIGHT_DP);
+    client.attach(context, frame, container);
     client.request();
     return frame;
   }
@@ -994,6 +998,7 @@ final class WearSystemUi {
     ScrollView scroll = new TransformingScrollView(context);
     scroll.setVerticalScrollBarEnabled(false);
     scroll.addView(list);
+    carouselScroll = scroll;
     return scroll;
   }
 
@@ -1182,6 +1187,9 @@ final class WearSystemUi {
         return notifications;
       case QUICK_SETTINGS:
         return quickSettings;
+      case TILES:
+        // The widgets page and the add page scroll; a tile page is the tile's own.
+        return carouselScroll != null && carouselScroll.isAttachedToWindow() ? carouselScroll : null;
       default:
         return null;
     }

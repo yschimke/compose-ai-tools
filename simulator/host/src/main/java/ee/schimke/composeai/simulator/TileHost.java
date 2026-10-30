@@ -58,6 +58,9 @@ final class TileHost {
     /** The preview drawable's resource id, or 0. */
     final int preview;
 
+    /** A widget's container ({@code preferredType}, else its only {@code <container>}). */
+    int containerType = WidgetClient.LARGE;
+
     Item(ComponentName component, String kind, String label, String description, int preview) {
       this.component = component;
       this.kind = kind;
@@ -191,30 +194,83 @@ final class TileHost {
     String label = null;
     String description = null;
     int preview = 0;
+    Integer preferred = null;
+    List<Integer> containers = new ArrayList<>();
     int xml = widgetXml(service);
     if (xml != 0) {
       try (XmlResourceParser parser = app.getResources().getXml(xml)) {
         int event;
         while ((event = parser.next()) != XmlPullParser.END_DOCUMENT) {
           if (event != XmlPullParser.START_TAG) continue;
+          if (parser.getName().equals("container")) {
+            for (int i = 0; i < parser.getAttributeCount(); i++) {
+              String name = parser.getAttributeName(i);
+              if (name.equals("type")) {
+                Integer type = containerType(parser, i);
+                if (type != null) containers.add(type);
+              } else if (preview == 0 && name.equals("previewImage")) {
+                preview = parser.getAttributeResourceValue(i, 0);
+              }
+            }
+            continue;
+          }
           for (int i = 0; i < parser.getAttributeCount(); i++) {
             String name = parser.getAttributeName(i);
             if (name.equals("label")) label = attribute(parser, i);
             else if (name.equals("description")) description = attribute(parser, i);
             else if (name.equals("previewImage")) preview = parser.getAttributeResourceValue(i, 0);
+            else if (name.equals("preferredType")) preferred = containerType(parser, i);
           }
-          break;
         }
       } catch (Exception e) {
         // An unreadable provider XML: the service's own label.
       }
     }
-    return new Item(
-        new ComponentName(service.packageName, service.name),
-        "widget",
-        label != null ? label : label(service),
-        description,
-        preview);
+    Item item =
+        new Item(
+            new ComponentName(service.packageName, service.name),
+            "widget",
+            label != null ? label : label(service),
+            description,
+            preview);
+    // As Glance Wear's parser: preferredType, else small; a provider with one container has that.
+    item.containerType =
+        preferred != null
+            ? preferred
+            : containers.size() == 1 ? containers.get(0) : WidgetClient.SMALL;
+    return item;
+  }
+
+  /**
+   * A container type attribute as Glance Wear reads it: an {@code @integer/} reference
+   * ({@code glance_wear_container_type_small}), a name ({@code SMALL} / {@code LARGE}) or a number.
+   * Null when it is none of those, or the tile-compat type, which a widget cannot use.
+   */
+  private Integer containerType(XmlResourceParser parser, int i) {
+    int value;
+    int res = parser.getAttributeResourceValue(i, 0);
+    if (res != 0) {
+      try {
+        value = app.getResources().getInteger(res);
+      } catch (RuntimeException e) {
+        return null;
+      }
+    } else {
+      String text = parser.getAttributeValue(i);
+      if (text == null) return null;
+      if (text.equalsIgnoreCase("SMALL")) {
+        value = WidgetClient.SMALL;
+      } else if (text.equalsIgnoreCase("LARGE")) {
+        value = WidgetClient.LARGE;
+      } else {
+        try {
+          value = Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    }
+    return value == WidgetClient.SMALL || value == WidgetClient.LARGE ? value : null;
   }
 
   private String attribute(XmlResourceParser parser, int i) {
@@ -388,6 +444,7 @@ final class TileHost {
             .put("label", item.label)
             .put("description", item.description)
             .put("preview", item.preview != 0)
+            .put("container", item.tile() ? null : item.containerType == WidgetClient.SMALL ? "small" : "large")
             .put("added", added.containsKey(item.key()));
     TileClient client = clients.get(item.key());
     if (client != null) {
