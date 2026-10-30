@@ -240,7 +240,7 @@ final class PhoneSystemUi {
               closeShade();
               return describe();
             case "clear":
-              return stream.clearAll();
+              return clearShown();
             default:
               // The list: the stream's.
               return null;
@@ -811,7 +811,7 @@ final class PhoneSystemUi {
     if (!clearable) return;
     TextView clear = pill("Clear all", false);
     simId(clear, "notifications_clear_all");
-    clear.setOnClickListener(v -> run(stream::clearAll));
+    clear.setOnClickListener(v -> run(this::clearShown));
     LinearLayout.LayoutParams lp =
         new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -983,6 +983,18 @@ final class PhoneSystemUi {
 
   // ---------------------------------------------------------------------------------------------
   // Notifications
+
+  /**
+   * The shade's "Clear all": dismisses each notification it lists that a person could, leaving
+   * those it does not show (a blocked channel's, say), as SystemUI does.
+   */
+  private JSONObject clearShown() {
+    JSONArray cleared = new JSONArray();
+    for (NotificationStream.Item item : barItems()) {
+      if (stream.dismiss(item).optBoolean("dismissed")) cleared.put(item.key);
+    }
+    return new Protocol.Json().put("cleared", cleared).object();
+  }
 
   /** Whether [item] is a player's: {@code MediaStyle}, platform or AndroidX's. */
   static boolean isMedia(NotificationStream.Item item) {

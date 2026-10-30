@@ -910,8 +910,8 @@ shows its children, not the summary.
   closes the shade, as on a device;
 - its action buttons press the action; a reply action opens an inline reply field under it, with
   the input's label and the app's suggested replies, and send fills the `RemoteInput`;
-- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one a
-  person could;
+- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one
+  it shows that a person could;
 - Back, HOME, a swipe up, or a tap below the list closes the shade.
 
 A **media player** stands in for a player's `MediaStyle` notification (platform or AndroidX),
@@ -936,7 +936,7 @@ actions are offered, not its `WearableExtender` ones. Commands:
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification; without `op`, the list ([Wear system UI](#wear-system-ui)) |
+| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification the shade shows (not those it hides); without `op`, the list ([Wear system UI](#wear-system-ui)) |
 | `notification` | `key`, `op`: `expand` / `collapse`, or the Wear ops | expands or collapses one in the shade |
 | `quickSettings` | `wifi`?, `data`?, `airplane`? | switches those radios, opens the shade, and returns the battery, radios and default network |
 | `statusBar` | | `surface`, and the bar: `visible`, `heightPx`, `time`, `notifications` (keys, in the bar's order), `wifi`, `cellular`, `airplane`, `battery`, `charging`, `darkIcons`, `background`; `shade`, `headsUp` |
