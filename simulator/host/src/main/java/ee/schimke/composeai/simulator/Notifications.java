@@ -1,26 +1,12 @@
 package ee.schimke.composeai.simulator;
 
 import android.app.Notification;
-import android.app.NotificationManager;
-import android.content.Context;
 import android.os.Bundle;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.robolectric.shadow.api.Shadow;
-import org.robolectric.shadows.ShadowNotificationManager;
 
-/** What the app has posted to the (shadow) notification manager. */
+/** A notification in brief, as a foreground service reports it; {@link NotificationStream} has the rest. */
 final class Notifications {
-
-  static JSONArray all(Context context) {
-    NotificationManager manager = context.getSystemService(NotificationManager.class);
-    ShadowNotificationManager shadow = Shadow.extract(manager);
-    JSONArray array = new JSONArray();
-    for (Notification notification : shadow.getAllNotifications()) {
-      array.put(describe(notification, null));
-    }
-    return array;
-  }
 
   static JSONObject describe(Notification notification, Integer id) {
     Bundle extras = notification.extras;

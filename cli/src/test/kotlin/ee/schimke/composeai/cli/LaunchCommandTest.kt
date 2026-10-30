@@ -253,6 +253,33 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.showAgent") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.device") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.displays") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launcher") })
+  }
+
+  @Test
+  fun `the Wear launcher and its tiles become system properties`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            launcher = true,
+            tiles = listOf(".StatusTile", "com.example.WeatherTile"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launcher=true" in command)
+    assertTrue("-Dcomposeai.simulator.tiles=.StatusTile,com.example.WeatherTile" in command)
   }
 
   @Test

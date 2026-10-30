@@ -224,6 +224,7 @@ internal object CliFlags {
       "--java",
       "--pair",
       "--pair-qualifiers",
+      "--tile",
       "--fingerprint",
       // bundle externalize
       "--res-out",

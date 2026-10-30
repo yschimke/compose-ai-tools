@@ -60,6 +60,9 @@ final class Session {
   private final DeviceDisplay display;
   private final DeviceState state;
   private final Displays displays;
+  private final NotificationStream notifications;
+  /** The Wear system UI ({@code --launcher}), or null. */
+  private final WearSystemUi wear;
   private final WidgetHost widgets;
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
@@ -99,14 +102,21 @@ final class Session {
     this.files = new AppFiles(app);
     this.state = new DeviceState(app, navigator);
     this.displays = new Displays(app, navigator, protocol);
+    this.notifications = new NotificationStream(app, navigator, protocol);
+    this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
     this.widgets = new WidgetHost(app, navigator, protocol);
-    this.home = HomeScreen.enabled() ? new HomeScreen(app, navigator, protocol, widgets) : null;
+    // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
+    this.home =
+        HomeScreen.enabled() && wear == null
+            ? new HomeScreen(app, navigator, protocol, widgets)
+            : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
 
   void start() {
     displays.start();
+    if (wear != null) wear.start();
     if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
@@ -142,6 +152,8 @@ final class Session {
     Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
     overlay.round(FormFactor.isRound());
     logcat.poll();
+    notifications.cycle();
+    if (wear != null) wear.cycle();
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
@@ -218,7 +230,9 @@ final class Session {
     if (DeviceDisplay.changesUi(name)
         || DeviceState.changesUi(name)
         || Displays.changesUi(name)
-        || HomeScreen.changesUi(name)) {
+        || HomeScreen.changesUi(name)
+        || WearSystemUi.changesUi(name)
+        || NotificationStream.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -254,6 +268,8 @@ final class Session {
     JSONObject emulated = display.command(name, c);
     if (emulated == null) emulated = state.command(name, c);
     if (emulated == null) emulated = displays.command(name, c);
+    if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated != null) return emulated;
     switch (name) {
@@ -268,8 +284,6 @@ final class Session {
         return new Protocol.Json().put("activities", navigator.describeStack()).object();
       case "services":
         return new Protocol.Json().put("services", navigator.describeServices()).object();
-      case "notifications":
-        return new Protocol.Json().put("notifications", Notifications.all(app)).object();
       case "components":
         return components();
       case "dataLayer":
@@ -472,6 +486,7 @@ final class Session {
     json.put("displays", displays.list());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
+    if (wear != null) json.put("surface", wear.surface());
     if (home != null) json.put("surface", home.surface());
     json.put("backStack", navigator.backStack().size());
     json.put("services", navigator.describeServices().length());
