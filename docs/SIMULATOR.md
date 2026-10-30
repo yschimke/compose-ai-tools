@@ -438,9 +438,12 @@ What does not, or not yet:
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
   the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
 - **Wear.** No watch face, launcher or system tiles carousel; a Tile, complication or widget
-  service is reachable only through `bindService`. Ambient mode is not entered (no
+  service is reachable only through `bindService` (the plan for a Wear system UI:
+  [design/SIMULATOR_WEAR_LAUNCHER.md](design/SIMULATOR_WEAR_LAUNCHER.md)). Ambient mode is not entered (no
   `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
   `SERVICE_INVALID`, as Play services' other APIs do.
+- **Home screen.** No launcher: leaving the app's root finishes it, and app widgets are not hosted
+  (the plan: [design/SIMULATOR_PHONE_LAUNCHER.md](design/SIMULATOR_PHONE_LAUNCHER.md)).
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not
