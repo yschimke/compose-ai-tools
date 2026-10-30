@@ -273,6 +273,7 @@ internal object CliFlagValidation {
           "--qualifiers",
           "--device",
           "--display",
+          "--form-factor",
           "--font-scale",
           "--sdk",
           "--jar",

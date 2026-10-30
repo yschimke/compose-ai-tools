@@ -106,6 +106,25 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       }
     }
+    val detected = ApkFormFactor.inspect(apk)
+    val formFactor =
+      args.flagValue("--form-factor")?.let {
+        ApkFormFactor.byId(it)
+          ?: fail("--form-factor takes ${ApkFormFactor.entries.joinToString(" | ") { f -> f.id }}")
+      } ?: detected.formFactor
+    // A glasses app pairs a phone launcher with its projected activity: on the glasses' display
+    // the projected one runs. Without one (a launcher that is itself projected, or a forced
+    // `--form-factor glimmer`), the launcher does.
+    val launchActivity = detected.projectedActivity.takeIf { formFactor == ApkFormFactor.GLIMMER }
+    if (formFactor != ApkFormFactor.PHONE) {
+      System.err.println(
+        "compose-preview launch: ${formFactor.id} app; display ${formFactor.qualifiers}" +
+          (if (args.flagValue("--qualifiers") != null || args.flagValue("--device") != null)
+            " (overridden by --qualifiers / --device)"
+          else "")
+      )
+    }
+
     val headless = "--headless" in args || GraphicsEnvironment.isHeadless()
     if (headless && control == null) {
       System.err.println(
@@ -126,7 +145,9 @@ internal class LaunchCommand(private val args: List<String>) {
                 AndroidBundleLaunch.MIN_SDK,
                 AndroidBundleLaunch.MAX_SDK,
               ),
-            qualifiers = args.flagValue("--qualifiers") ?: DEFAULT_QUALIFIERS,
+            qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
+            formFactor = formFactor.id,
+            launchActivity = launchActivity,
             device = device,
             fontScale = args.flagValue("--font-scale"),
             headless = headless,
@@ -147,6 +168,12 @@ internal class LaunchCommand(private val args: List<String>) {
   data class Options(
     val sdk: Int,
     val qualifiers: String,
+    /**
+     * [ApkFormFactor.id]; `info` reports it. A display with the `round` qualifier is drawn round.
+     */
+    val formFactor: String = ApkFormFactor.PHONE.id,
+    /** The activity to start instead of the launcher: a Glimmer app's projected activity. */
+    val launchActivity: String? = null,
     val fontScale: String?,
     val headless: Boolean,
     val control: Boolean,
@@ -222,7 +249,7 @@ internal class LaunchCommand(private val args: List<String>) {
      * A phone-shaped display that fits on a laptop screen: Robolectric's window draws one device
      * pixel per screen pixel, so a 420 dpi phone would be 2400 pixels tall.
      */
-    const val DEFAULT_QUALIFIERS = "w360dp-h640dp-hdpi"
+    val DEFAULT_QUALIFIERS = ApkFormFactor.PHONE.qualifiers
 
     /**
      * The simulator's device presets (`DisplayGeometry.PRESETS` in `:simulator-host`), which the
@@ -253,6 +280,8 @@ internal class LaunchCommand(private val args: List<String>) {
           "robolectric.deviceconfig.sdk" to options.sdk.toString(),
           "composeai.simulator.qualifiers" to options.qualifiers,
         )
+      properties["composeai.simulator.formFactor"] = options.formFactor
+      options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -311,7 +340,11 @@ internal class LaunchCommand(private val args: List<String>) {
         --headless            No window (the default when there is no display).
         --hide-agent          Do not draw the control channel's actions over the window.
         --qualifiers <q>      Resource qualifiers for the display, Robolectric syntax
-                              (default $DEFAULT_QUALIFIERS; e.g. w411dp-h891dp-xxhdpi-night).
+                              (default by form factor; e.g. w411dp-h891dp-xxhdpi-night).
+        --form-factor <f>     phone | wear | glimmer | xr; detected from the APK when absent.
+                              phone ${ApkFormFactor.PHONE.qualifiers}, wear ${ApkFormFactor.WEAR.qualifiers}
+                              (drawn round), glimmer ${ApkFormFactor.GLIMMER.qualifiers},
+                              xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
         --display <spec>      Connect a secondary display at launch (repeatable): a size in

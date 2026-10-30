@@ -305,6 +305,57 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `a wear launch passes the round watch display and its form factor`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("watch.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = ApkFormFactor.WEAR.qualifiers,
+            formFactor = ApkFormFactor.WEAR.id,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.qualifiers=w227dp-h227dp-round-watch-xhdpi" in command)
+    assertTrue("-Dcomposeai.simulator.formFactor=wear" in command)
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launchActivity") })
+  }
+
+  @Test
+  fun `a glimmer launch names the projected activity to start`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("glasses.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = ApkFormFactor.GLIMMER.qualifiers,
+            formFactor = ApkFormFactor.GLIMMER.id,
+            launchActivity = "com.example.GlassesActivity",
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launchActivity=com.example.GlassesActivity" in command)
+  }
+
+  @Test
   fun `a simulator and robolectric from different releases are reported`() {
     val sidecar = listOf(File("0109-robolectric-4.17.jar"), File("0126-shadows-framework-4.17.jar"))
     assertNull(LaunchCommand.robolectricMismatch(listOf(File("simulator-4.17.jar")), sidecar))

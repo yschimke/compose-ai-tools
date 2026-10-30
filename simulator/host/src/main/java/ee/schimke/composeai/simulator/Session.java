@@ -131,6 +131,7 @@ final class Session {
     navigator.pump();
     displays.cycle();
     Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
+    overlay.round(FormFactor.isRound());
     logcat.poll();
     if (!ready && navigator.top() != null) {
       ready = true;
@@ -212,6 +213,7 @@ final class Session {
       case "tap":
       case "longPress":
       case "swipe":
+      case "rotary":
       case "key":
       case "text":
       case "back":
@@ -288,6 +290,8 @@ final class Session {
         return tap(c, c.optLong("durationMs", 800));
       case "swipe":
         return swipe(c);
+      case "rotary":
+        return rotary(c);
       case "key":
         {
           Object keys = c.get("key");
@@ -410,7 +414,9 @@ final class Session {
     }
     json.put("application", app.getClass().getName());
     json.put("sdk", Build.VERSION.SDK_INT);
+    json.put("formFactor", FormFactor.current().id());
     json.put("qualifiers", RuntimeEnvironment.getQualifiers());
+    json.put("round", FormFactor.isRound());
     json.put("width", metrics.widthPixels);
     json.put("height", metrics.heightPixels);
     json.put("density", metrics.density);
@@ -489,6 +495,11 @@ final class Session {
             ? ui.takeScreenshot()
             : Displays.capture(displayId);
     if (bitmap == null) throw new IllegalStateException("nothing on screen to capture");
+    if (displayId == android.view.Display.DEFAULT_DISPLAY
+        && FormFactor.isRound()
+        && !c.optBoolean("square", false)) {
+      bitmap = FormFactor.cropRound(bitmap);
+    }
     Protocol.Json json =
         new Protocol.Json().put("width", bitmap.getWidth()).put("height", bitmap.getHeight());
     if (c.has("path")) {
@@ -580,6 +591,59 @@ final class Session {
             inject(
                 touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x2, y2), displayId));
     return new Protocol.Json().put("durationMs", duration).put("steps", steps).object();
+  }
+
+  /**
+   * Turns a Wear watch's crown (or a rotating bezel): {@code count} {@code ACTION_SCROLL} events
+   * from the rotary encoder, {@code intervalMs} apart, each carrying {@code delta} on {@code
+   * AXIS_SCROLL}. As on a device they go to the top window's focused view, where Compose's {@code
+   * rotaryScrollable} (Wear's {@code ScalingLazyColumn}, {@code TransformingLazyColumn}) scrolls by
+   * {@code -delta} times the scaled vertical scroll factor: a positive delta scrolls up.
+   */
+  private JSONObject rotary(JSONObject c) throws JSONException {
+    float delta = (float) c.optDouble("delta", -1);
+    int count = Math.max(1, c.optInt("count", 1));
+    long interval = Math.max(1, c.optLong("intervalMs", 20));
+    DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+    float x = metrics.widthPixels / 2f;
+    float y = metrics.heightPixels / 2f;
+    for (int i = 0; i < count; i++) {
+      Runnable turn =
+          () -> {
+            long now = SystemClock.uptimeMillis();
+            MotionEvent.PointerProperties[] properties = {new MotionEvent.PointerProperties()};
+            properties[0].id = 0;
+            properties[0].toolType = MotionEvent.TOOL_TYPE_UNKNOWN;
+            MotionEvent.PointerCoords[] coords = {new MotionEvent.PointerCoords()};
+            coords[0].x = x;
+            coords[0].y = y;
+            coords[0].setAxisValue(MotionEvent.AXIS_SCROLL, delta);
+            MotionEvent event =
+                MotionEvent.obtain(
+                    now, now, MotionEvent.ACTION_SCROLL, 1, properties, coords, 0, 0, 1f, 1f, 0, 0,
+                    InputDevice.SOURCE_ROTARY_ENCODER, 0);
+            dispatchToFocus(event);
+            event.recycle();
+          };
+      if (i == 0) turn.run();
+      else later(interval * i, turn);
+    }
+    float factor = android.view.ViewConfiguration.get(app).getScaledVerticalScrollFactor();
+    return new Protocol.Json()
+        .put("delta", delta)
+        .put("count", count)
+        .put("scrollPx", -delta * factor * count)
+        .object();
+  }
+
+  /**
+   * Delivers a rotary event as the system does: to the top window's view hierarchy, which routes it
+   * to the focused view. Robolectric's {@code UiAutomation} would send it as a touch.
+   */
+  private boolean dispatchToFocus(MotionEvent event) {
+    Navigator.Entry top = navigator.top();
+    if (top == null || top.activity().getWindow() == null) return false;
+    return top.activity().getWindow().getDecorView().dispatchGenericMotionEvent(event);
   }
 
   private JSONObject key(int code, boolean longPress, int displayId) {

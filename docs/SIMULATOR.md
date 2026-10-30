@@ -122,6 +122,42 @@ the simulated SDK lacks comes from the SDK's `android.jar` stub, the newest plat
 apps reference newer platform classes behind `SDK_INT` checks, which ART leaves unresolved and the
 JVM's verifier does not.
 
+## Form factors
+
+`launch` reads the APK's binary manifest and its dex for the device it was built for, and picks the
+display and the input that device has. `--form-factor phone|wear|glimmer|xr` overrides the
+detection, `--qualifiers` the display.
+
+| Form factor | Detected by | Display | Input beyond touch |
+| --- | --- | --- | --- |
+| phone | anything else | `w360dp-h640dp-hdpi` | |
+| wear | a required `<uses-feature android:name="android.hardware.type.watch">` | `w227dp-h227dp-round-watch-xhdpi`, 454×454, drawn round | `rotary` (the crown) |
+| glimmer | an activity whose `requiredDisplayCategory` is `xr_projected`, or code referencing `androidx.xr.glimmer` | `w960dp-h720dp-land-mdpi`, the AI-glasses display the Glimmer previews use (30 pixels per degree at density 1) | |
+| xr | a `<uses-feature android:name="android.software.xr.api.*">`, or code referencing `androidx.xr.compose` / `androidx.xr.scenecore` | `w1024dp-h720dp-land-mdpi`, a Home Space panel | |
+
+**Wear.** The display is Android Studio's `wearos_large_round`, with the `round` and `watch`
+qualifiers, so `Configuration.isScreenRound()` and the `watch` UI mode read as on a watch and Wear
+Compose lays out for a round screen. As the preview renderer does for a round `@Preview`, a
+`screenshot` is cropped to the inscribed circle, transparent outside it (`"square":true` keeps the
+corners), and the window paints the corners black. `rotary` sends the crown's rotary-encoder
+`ACTION_SCROLL` events to the focused view, which is what `rotaryScrollable` (Wear's
+`ScalingLazyColumn` and `TransformingLazyColumn`) scrolls on: Robolectric's `UiAutomation` would
+deliver them as touches.
+
+**Glimmer.** Jetpack Compose Glimmer is plain Compose: the app runs as is, on the glasses display, a
+pure-black additive canvas, and its cards and list items answer `tap`. When the app declares an
+activity for the projected display, as a glasses app beside its phone launcher does, that activity
+is started instead of the launcher (on a device the phone app sends it to the glasses); otherwise,
+as with `--form-factor glimmer` on an app without one, the launcher is. The glasses' touchpad is not
+simulated yet: Glimmer navigates by moving focus, and in the simulator neither a touch-navigation
+stroke (`SOURCE_TOUCH_NAVIGATION`) nor a Tab key moved focus into a Glimmer list; the window's
+Compose view never took input focus.
+
+**XR.** An Android XR app runs in Home Space, the way it runs on a phone or on a headset before it
+asks for Full Space: `LocalSpatialCapabilities` reports no spatial UI, so the app composes its 2D
+branch, and spatial UI takes its 2D fallback (an `Orbiter` renders inline at the panel's edge). With `androidx.xr.compose` 1.0.0-beta02 that fallback,
+`Orbiter` included, composes with no XR runtime on the classpath.
+
 ## The control channel
 
 With `--control stdio`, each line on stdin is one JSON command and each line on stdout is one JSON
@@ -147,15 +183,16 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `info` | | package, version, SDK, qualifiers, display size, `display` (as below), top activity |
+| `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity |
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
-| `screenshot` | `path`?, `display`? (an id, or `"all"`) | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path` |
+| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
 | `longPress` | as `tap`, `durationMs`? | |
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
+| `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
@@ -400,6 +437,17 @@ What does not, or not yet:
   fold is always at the middle of the window. Location reaches the platform `LocationManager`
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
   the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
+- **Wear.** No watch face, launcher or system tiles carousel; a Tile, complication or widget
+  service is reachable only through `bindService`. Ambient mode is not entered (no
+  `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
+  `SERVICE_INVALID`, as Play services' other APIs do.
+- **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
+  to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
+  Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not
+  on the simulator's classpath (`--jar` can add them).
+- **Glimmer.** No touchpad and no input focus (above): focus-driven navigation does not work;
+  the display is shown as is, not composited onto a scene as the preview environment backdrops
+  do, and there is no projection from a phone app.
 - **Stack traces say `Unknown Source`** for app frames (dex2jar keeps line numbers, not the source
   file attribute).
 - **SDK level.** One of Robolectric's supported levels (`--sdk`, default 35), fetched as

@@ -217,6 +217,7 @@ internal object CliFlags {
       "--control",
       "--display",
       "--qualifiers",
+      "--form-factor",
       "--sdk",
       "--jar",
       "--java",
