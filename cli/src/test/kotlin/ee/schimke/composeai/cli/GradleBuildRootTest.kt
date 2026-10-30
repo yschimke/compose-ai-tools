@@ -5,7 +5,9 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Which build the CLI drives (issue #5031).
@@ -67,5 +69,40 @@ class GradleBuildRootTest {
   @Test
   fun `null when there is neither settings nor a wrapper`() {
     assertNull(findGradleProjectRoot(dir("bare/deep")))
+  }
+
+  @Test
+  fun `a lightbuild project resolves to its generated gradle build`() {
+    val project = dir("lb").also { touch(it, LIGHTBUILD_PROJECT_FILE) }
+    val generated = dir("lb/$LIGHTBUILD_GRADLE_DIR").also { touch(it, "settings.gradle") }
+    touch(generated, "gradlew")
+
+    assertEquals(generated, findGradleProjectRoot(project))
+    assertEquals(generated, findGradleProjectRoot(dir("lb/app-core/src/main")))
+    // Inside the generated build itself, its own settings file is found first.
+    assertEquals(generated, findGradleProjectRoot(generated))
+  }
+
+  @Test
+  fun `only lightbuild's generated build counts as one pin must not write to`() {
+    val project = dir("lb").also { touch(it, LIGHTBUILD_PROJECT_FILE) }
+    val generated = dir("lb/$LIGHTBUILD_GRADLE_DIR").also { touch(it, "settings.gradle") }
+
+    assertTrue(isLightbuildGradleRoot(generated))
+    // findGradleProjectRoot hands back `<project>/./.lightbuild/gradle` when started from `.`.
+    assertTrue(isLightbuildGradleRoot(File(File(project, "."), LIGHTBUILD_GRADLE_DIR)))
+    assertFalse(isLightbuildGradleRoot(project))
+    val plain = dir("plain").also { touch(it, "settings.gradle.kts") }
+    assertFalse(isLightbuildGradleRoot(plain))
+  }
+
+  @Test
+  fun `an unbuilt lightbuild project does not fall through to an enclosing build`() {
+    val repo = dir("repo").also { touch(it, "gradlew") }
+    touch(repo, "settings.gradle.kts")
+    val project = dir("repo/lb").also { touch(it, LIGHTBUILD_PROJECT_FILE) }
+
+    assertNull(findGradleProjectRoot(dir("repo/lb/app")))
+    assertEquals(project, findLightbuildProjectRoot(dir("repo/lb/app")))
   }
 }
