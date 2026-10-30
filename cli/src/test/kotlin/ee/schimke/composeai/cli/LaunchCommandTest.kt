@@ -280,6 +280,32 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `a network mode becomes a system property and java net is opened`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            network = "cellular,airplane",
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.network=cellular,airplane" in command)
+    assertTrue("--add-opens=java.base/java.net=ALL-UNNAMED" in command)
+    assertTrue(LaunchCommand.NETWORK_MODES.containsAll(listOf("offline", "captive", "airplane")))
+  }
+
+  @Test
   fun `a wear launch passes the round watch display and its form factor`() {
     val command =
       LaunchCommand.simulatorCommand(

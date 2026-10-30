@@ -132,6 +132,14 @@ final class Navigator {
         answerPermissions(intent, forResult == null ? -1 : forResult.requestCode);
         continue;
       }
+      Entry requester = stack.peek();
+      if (systemUi != null
+          && systemUi.handle(
+              intent,
+              forResult == null ? -1 : forResult.requestCode,
+              requester == null ? null : requester.activity())) {
+        continue;
+      }
       try {
         startActivity(intent, forResult == null ? -1 : forResult.requestCode);
       } catch (RuntimeException e) {
@@ -384,19 +392,39 @@ final class Navigator {
         new Intent(ACTION_REQUEST_PERMISSIONS)
             .putExtra(EXTRA_REQUEST_PERMISSIONS_NAMES, names)
             .putExtra(EXTRA_REQUEST_PERMISSIONS_RESULTS, results);
+    dispatchResult(requester, REQUEST_PERMISSIONS_WHO_PREFIX, requestCode, Activity.RESULT_OK, data);
+  }
+
+  /**
+   * Hands [requester] the result of an activity the system ran for it (a dialog it showed), as
+   * {@code onActivityResult} and androidx's {@code ActivityResultRegistry} expect it.
+   */
+  void deliverResult(Activity requester, int requestCode, int resultCode, Intent data) {
+    dispatchResult(requester, null, requestCode, resultCode, data);
+  }
+
+  private static void dispatchResult(
+      Activity requester, String who, int requestCode, int resultCode, Intent data) {
     // Hidden: (who, requestCode, resultCode, data), plus a trailing `reason` since API 28.
     for (java.lang.reflect.Method method : Activity.class.getDeclaredMethods()) {
       if (!method.getName().equals("dispatchActivityResult")) continue;
-      Object[] args = {REQUEST_PERMISSIONS_WHO_PREFIX, requestCode, Activity.RESULT_OK, data, null};
+      Object[] args = {who, requestCode, resultCode, data, null};
       try {
         method.setAccessible(true);
         method.invoke(requester, java.util.Arrays.copyOf(args, method.getParameterCount()));
       } catch (ReflectiveOperationException e) {
-        throw new IllegalStateException("cannot deliver the permission result", e);
+        throw new IllegalStateException("cannot deliver the activity result", e);
       }
       return;
     }
   }
+
+  /** Answers intents only the system handles (its dialogs and settings screens); see Radios. */
+  interface SystemUi {
+    boolean handle(Intent intent, int requestCode, Activity requester);
+  }
+
+  SystemUi systemUi;
 
   /**
    * The activity that asked for [names] with [requestCode]: Robolectric keeps each activity's last

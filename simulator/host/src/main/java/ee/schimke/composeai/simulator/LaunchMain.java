@@ -31,6 +31,9 @@ public final class LaunchMain {
       System.setOut(System.err);
     }
     System.setProperty("robolectric.useContextStartActivity", "true");
+    // Before any app code builds an HTTP client: the simulated network decides what its traffic
+    // reaches (NetworkSim drives it). Online and untouched until then.
+    ee.schimke.composeai.simulator.net.NetworkGate.install();
     // The app's crash reporter (Crashlytics, for one) installs its own handler and chains to the
     // one it found, so set ours first: an app crash is printed instead of ending the process
     // silently. One on this thread (the sandbox failing to start, say) ends the simulator, which

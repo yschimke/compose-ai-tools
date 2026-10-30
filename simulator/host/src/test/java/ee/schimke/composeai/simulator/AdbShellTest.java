@@ -235,7 +235,23 @@ public class AdbShellTest {
     assertThrows(AdbShell.UnsupportedException.class, () -> t("wm size big"));
     assertEquals(false, t("svc wifi disable").get("wifi"));
     assertEquals(true, t("cmd connectivity airplane-mode enable").get("airplane"));
-    assertThrows(AdbShell.UnsupportedException.class, () -> t("svc data disable"));
+    assertEquals(false, t("svc data disable").get("data"));
+    assertEquals("disable", t("svc bluetooth disable").get("op"));
+    assertEquals("bluetooth", t("cmd bluetooth_manager enable").get("cmd"));
+    assertEquals(true, t("cmd netpolicy set restrict-background true").get("dataSaver"));
+    assertThrows(AdbShell.UnsupportedException.class, () -> t("svc power stayon true"));
+  }
+
+  @Test
+  public void wifi() {
+    assertEquals("wifi", t("cmd wifi status").get("cmd"));
+    assertEquals("scan", t("cmd wifi start-scan").get("op"));
+    Map<String, Object> connect = t("cmd wifi connect-network Cafe wpa2 secret");
+    assertEquals("connect", connect.get("op"));
+    assertEquals("Cafe", connect.get("ssid"));
+    assertEquals(true, t("cmd wifi set-wifi-enabled enabled").get("wifi"));
+    assertEquals("wifi", t("dumpsys wifi").get("cmd"));
+    assertEquals("bluetooth", t("dumpsys bluetooth_manager").get("cmd"));
   }
 
   @Test

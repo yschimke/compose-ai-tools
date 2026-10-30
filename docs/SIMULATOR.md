@@ -108,8 +108,10 @@ manifest's content providers are created after `attachBaseContext()` and before
 - the process name, unset for an APK too, defaults to the package as on a device: WorkManager
   compares it with its own to decide it may run work at all;
 - a launcher declared as an `<activity-alias>` starts its `targetActivity`;
-- a validated Wi-Fi network: the active network gets internet capabilities and each registered
-  `NetworkCallback` is told it is available, so offline banners clear and `CONNECTED` work runs;
+- a validated Wi-Fi network (or what `launch --network` names): `ConnectivityManager` answers
+  from the simulator's own network model and each registered `NetworkCallback` is told what a
+  device would tell it, so offline banners clear and `CONNECTED` work runs (see
+  [Network, Wi-Fi and Bluetooth](#network-wi-fi-and-bluetooth));
 - a binder for every manifest service, so the app's own `bindService` connects; the service is
   created and bound when the app first calls the binder. Robolectric matches a bind by its whole
   intent, so each bind's own intent is registered as the app makes it, resolved by component as
@@ -209,7 +211,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `content` | `op` (`query` / `insert` / `update` / `delete`), `uri`, `values`?, as `query` | provider reads and writes; `values` is `{"col":value}` or `{"col":{"type":"long","value":1}}` |
 | `settings` | `op` (`get` / `put` / `delete`), `namespace` (`system` / `secure` / `global`), `key`, `value`? | `Settings.*`; a put the system acts on is applied (below) |
-| `network` | `wifi`?, `airplane`? | switches the simulated Wi-Fi network off and on; returns the state |
+| `network` | `mode`? (`wifi` / `cellular` / `ethernet` / `vpn` / `captive` / `offline`), `wifi`?, `data`?, `airplane`?, `metered`?, `cellular`? (`5g` / `lte` / `3g` / `2g`), `downKbps`? / `upKbps`?, `latencyMs`?, `kbps`?, `block`? (hosts), `dataSaver`? | the networks, radios and the app's real traffic ([below](#network-wi-fi-and-bluetooth)); returns the state |
+| `wifi` | `op` (`status` / `scan` / `connect` / `disconnect` / `request`), `networks`?, `ssid`?, `bssid`?, `rssi`?, `answer`?, `policy`?, `requestId`? | access points in range, the one associated with, and the app's peer-to-peer requests |
+| `bluetooth` | `op` (`status` / `enable` / `disable` / `request` / `advertise` / `found` / `remove` / `bond` / `unbond` / `notify` / `disconnect`), `address`?, `name`?, `rssi`?, `serviceUuids`?, `serviceData`?, `manufacturerData`?, `gatt`?, `characteristic`?, `value`?, `answer`?, `policy`? | the adapter, its enable dialog, peripherals in range and a GATT server behind each |
 | `logcat` | `op` (`dump` / `clear` / `follow` / `stop`), `filters`? (`{tag: level}`), `default`? (level), `regex`?, `tail`? | the app's `android.util.Log`, as `threadtime` lines; `follow` streams `log` events |
 | `files` | `op` (`list` / `read` / `write` / `mkdir` / `delete` / `pull` / `push`), `path`, `to`? / `from`?, `text`? / `base64`?, `recursive`? | the app's storage; every answer carries `hostPath` |
 | `getprop` | `name`? | `ro.build.*`, `ro.product.*` and a few more, from `Build` |
@@ -267,6 +271,100 @@ An **intent** is `{"action","data","type","package","component","categories","fl
 `{"type":"long","value":1}` names it (`string int long float double boolean uri component null
 string[] int[]`).
 
+### Network, Wi-Fi and Bluetooth
+
+The device's radios and what it is connected through, as an app sees them and as its traffic meets
+them. `launch --network wifi|cellular|ethernet|vpn|captive|offline` (with `,airplane`, or
+`airplane` alone) starts in a mode; `network` changes it at run time.
+
+**Networks.** `ConnectivityManager` answers from the simulator's networks, each with consistent
+transports, capabilities, link properties (`wlan0`, `rmnet_data0`, `eth0`, `tun0`) and legacy
+`NetworkInfo`:
+
+| Mode | Default network | Notes |
+| --- | --- | --- |
+| `wifi` | Wi-Fi: `INTERNET`, `VALIDATED`, `NOT_METERED`; its `WifiInfo` as transport info | the default |
+| `cellular` | cellular, metered (no `NOT_METERED`); `TelephonyManager` data network type `LTE` (`NR`, `HSPAP`, `EDGE` for `cellular` `5g` / `3g` / `2g`), data state connected | needs `data` (mobile data) on and airplane mode off |
+| `ethernet` | Ethernet, unmetered | stays in airplane mode |
+| `vpn` | a VPN (`TRANSPORT_VPN` and Wi-Fi, no `NOT_VPN`) over a Wi-Fi network | a `NOT_VPN` request (the default `NetworkRequest`) sees the Wi-Fi network |
+| `captive` | Wi-Fi behind a captive portal: `CAPTIVE_PORTAL`, never `VALIDATED`; no internet | |
+| `offline` | none: `getActiveNetwork()` and `getActiveNetworkInfo()` are null | |
+
+`metered` overrides metering (a metered hotspot, an unmetered plan); `downKbps` / `upKbps` override
+the bandwidth estimates. A change reaches each callback as a device delivers it: a
+default-network callback follows the default network, a `registerNetworkCallback` sees each network
+its request is satisfied by (`canBeSatisfiedBy`) — so WorkManager's `UNMETERED` constraint, a
+`NOT_METERED` request, waits on cellular and runs on Wi-Fi — and a `requestNetwork` gets the best
+match. A network that appears is `onAvailable`, `onCapabilitiesChanged`, `onLinkPropertiesChanged`
+and `onBlockedStatusChanged`; one that changes is `onCapabilitiesChanged`; one that goes is
+`onLost`. A callback registered later hears the current state on the next cycle.
+`CONNECTIVITY_ACTION` is sent when the default network changes, and `isActiveNetworkMetered`,
+`getNetworkCapabilities` and `NetworkInfo` agree with the callbacks. `dataSaver` sets
+`getRestrictBackgroundStatus` and sends `ACTION_RESTRICT_BACKGROUND_CHANGED`.
+
+**Radios.** `wifi`, `data` and `airplane` are the device's switches, and `airplane_mode_on`,
+`wifi_on`, `mobile_data` and `bluetooth_on` in `Settings.Global` follow them (a `settings put` of
+any of them does the same). Airplane mode takes cellular away and turns Wi-Fi and Bluetooth off,
+sends `AIRPLANE_MODE` and puts `TelephonyManager`'s service state at `STATE_POWER_OFF`; Wi-Fi or
+Bluetooth can be turned back on while it lasts, and turning it off restores what was on before.
+
+**Real traffic.** The app's own connections meet the simulated network. With no network, or one
+without internet (`captive`), a connection to a host name fails with `UnknownHostException: Unable
+to resolve host "…": No address associated with hostname`, one to an address with `ConnectException:
+… ENETUNREACH (Network is unreachable)`, and connections already open are cut (`Software caused
+connection abort`), so a pooled keep-alive connection does not carry a request through an outage.
+The machine itself (loopback) stays reachable, except through a proxy the host JVM is configured
+with. Online, `latencyMs` delays each connect and each response, `kbps` caps each socket's
+throughput both ways (and the bandwidth estimates with it), and `block` refuses hosts (`api.x.com`,
+`*.ads.net`) as if they did not resolve. Three `java.net` seams do this (`NetworkGate`): a
+`ProxySelector` that answers `DIRECT` for an unreachable host, so a host JVM behind an HTTP proxy
+still fails on the name; the JVM's `InetAddress` resolver, wrapped; and a `SocketImplFactory` around
+the platform's sockets. Clients on `java.net.Socket` — OkHttp, `HttpURLConnection`, Ktor's OkHttp
+and Android engines — are covered; NIO channels (Ktor CIO, `java.net.http.HttpClient`) and SOCKS
+proxies see only the resolver. The reply's `traffic` counts what was `refused` and `cut`.
+
+**Wi-Fi.** `WifiManager` reports the radio (`WIFI_STATE_CHANGED` when it changes), the access point
+(SSID `AndroidWifi` unless `wifi connect` names another; `NETWORK_STATE_CHANGED` on each
+association), and the scan results `wifi scan` puts in range (`SCAN_RESULTS_AVAILABLE`); `wifi
+connect` associates with one, Wi-Fi becoming the network. The app's requests:
+
+- a `requestNetwork` with a `WifiNetworkSpecifier` (Android 10+'s peer-to-peer connect), which a
+  device shows as a system dialog: a `wifiRequest` event names the SSID or pattern, and it is
+  answered by `wifi request` `policy` (`accept`, the default; `reject`; `ask` to hold it) or by
+  `answer`. Accepted, the callback gets `onAvailable` for a local-only Wi-Fi network (no
+  `INTERNET`) while the default network stays; rejected, `onUnavailable`. Releasing the callback
+  disconnects it;
+- `addNetworkSuggestions`, reported as a `wifiSuggestions` event; connecting to a suggestion that
+  asked for it (`setIsAppInteractionRequired`) sends the app
+  `WIFI_NETWORK_SUGGESTION_POST_CONNECTION`;
+- the settings screens and panels (`Settings.Panel.ACTION_INTERNET_CONNECTIVITY`, `ACTION_WIFI`,
+  `WIFI_SETTINGS`, `WIFI_ADD_NETWORKS`, `BLUETOOTH_SETTINGS`, airplane mode, data usage…), reported
+  as a `systemUi` event and, if started for a result, closed with `RESULT_CANCELED`.
+
+**Bluetooth.** The adapter is on unless airplane mode or `bluetooth disable` turned it off; each
+change sends `ACTION_STATE_CHANGED` through `TURNING_ON` / `TURNING_OFF`, including the app's own
+`enable()`. `ACTION_REQUEST_ENABLE`, a dialog on a device, is reported as a `bluetoothRequest` event
+and answered by `bluetooth request` `policy` (`accept`, the default; `reject`; `ask`) or `answer`,
+the activity result following. In range:
+
+- `bluetooth advertise` puts a BLE peripheral on air: its name, service UUIDs (16- or 128-bit),
+  service and manufacturer data and TX power become real advertising bytes, parsed by the framework
+  into a `ScanRecord`, and each `BluetoothLeScanner` scan whose filters match gets it
+  (`onScanResult`, `onBatchScanResults` with a report delay, a `PendingIntent` scan's intent, or the
+  old `startLeScan` callback) — now, and when a scan starts later, reported as a `bleScan` event;
+- `bluetooth found` answers classic discovery: `startDiscovery()` sends `DISCOVERY_STARTED`,
+  `ACTION_FOUND` for each such device, and `DISCOVERY_FINISHED` after 12 seconds;
+- `bluetooth bond` adds to `getBondedDevices()` (`ACTION_BOND_STATE_CHANGED`).
+
+A connectable peripheral with a `gatt` spec (`{"services":[{"uuid","characteristics":[{"uuid",
+"properties":["read","write","writeNoResponse","notify","indicate"],"value"}]}]}`) is a GATT server:
+`connectGatt` connects on the next cycle, `discoverServices` finds those services (each notifying
+characteristic with its `2902` descriptor), a read answers with the value, and the app's writes,
+reads, MTU requests and subscriptions are `gatt` events — the agent plays the peripheral, answering
+with `bluetooth notify` (`onCharacteristicChanged`) or `disconnect`. A `connectGatt` to a device not
+in range fails with status 133, as a device's times out. Bytes are hex (`"0a1b"`), `{"text":…}`,
+`{"base64":…}` or a number array.
+
 ### adb equivalents
 
 `{"cmd":"shell","command":"am start -a android.intent.action.VIEW -d https://…"}` takes an `adb
@@ -297,12 +395,14 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `pm list packages` / `pm path` / `pm dump` | `packages` / `package` | the one installed package |
 | `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
 | `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress` |
-| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on` (network), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
+| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on`, `global mobile_data`, `global bluetooth_on` (radios), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
 | `content query` / `insert` / `update` / `delete` | `content` | `--uri --projection a:b --where --sort --bind name:type:value` (`s b i l f d n`) |
 | `cmd uimode night yes` / `no` / `auto` | `qualifiers` `+night` / `+notnight` | |
 | `wm size [WxH\|reset]` / `wm density [N\|reset]` | `display` | pixels, as on a device: a density change keeps the pixel size; `reset` restores the launch qualifiers (both) |
-| `svc wifi enable` / `disable`, `cmd wifi set-wifi-enabled`, `cmd connectivity airplane-mode` | `network` | `onLost` / `onAvailable` to `NetworkCallback`s, `CONNECTIVITY_ACTION`; airplane mode also sets the setting and broadcasts `AIRPLANE_MODE` |
-| `dumpsys activity [activities\|top\|services]`, `dumpsys notification`, `dumpsys window`, `dumpsys package`, `dumpsys connectivity` | `activities`, `services`, `notifications`, `info`, `package`, `network` | JSON, not dumpsys text |
+| `svc wifi` / `svc data enable` / `disable`, `cmd wifi set-wifi-enabled`, `cmd connectivity airplane-mode`, `cmd netpolicy set restrict-background` | `network` | the radios and data saver, as [above](#network-wi-fi-and-bluetooth) |
+| `cmd wifi status` / `list-scan-results` / `start-scan` / `connect-network <ssid> …` | `wifi` | |
+| `svc bluetooth enable` / `disable`, `cmd bluetooth_manager enable` / `disable` | `bluetooth` | |
+| `dumpsys activity [activities\|top\|services]`, `dumpsys notification`, `dumpsys window`, `dumpsys package`, `dumpsys connectivity` / `wifi` / `bluetooth_manager` | `activities`, `services`, `notifications`, `info`, `package`, `network` / `wifi` / `bluetooth` | JSON, not dumpsys text |
 | `logcat` `-d -c -s -t -e`, `TAG:LEVEL` / `*:LEVEL` | `logcat` | without `-d` / `-c` / `-t` it follows: `log` events until `{"cmd":"logcat","op":"stop"}`; `-v -b --pid` ignored; times are wall-clock, pid/tid are Robolectric's |
 | `screencap -p [file]` | `screenshot` | PNG only |
 | `uiautomator dump [file]` | `hierarchy` `flat` | JSON nodes, not UI Automator XML |
@@ -327,7 +427,7 @@ quit and launch again.
 | `install`, `uninstall`, `pm install` | the simulator runs the one APK it was launched with |
 | `am instrument`, `am profile`, `am start -P/--start-profiler`, `am dumpheap` | no instrumentation runner, profiler or ART heap |
 | `intent:` URIs, `--selector`, `--ela`/`--efa` array extras | not mapped; use `-a -d -n` and the scalar or `--esa`/`--eia` extras |
-| `svc data`, `svc power`, `svc bluetooth` | the only simulated network is Wi-Fi; no power or radio model (Bluetooth is on, nothing in range) |
+| `svc power`, `svc nfc`, `svc usb` | no power, NFC or USB model |
 | `settings list` | Robolectric's settings store cannot be enumerated |
 | `dumpsys meminfo` / `gfxinfo` / `battery` / others | no such services: one JVM, Robolectric's graphics |
 | `input roll` / `motionevent`, `monkey` with events | not mapped; use `tap`, `swipe` and `key` |
@@ -368,10 +468,17 @@ What does not, or not yet:
   Each request is reported as a `permissions` event naming what was granted and denied; there is
   no "don't ask again".
 - **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
-  share sheet, settings screens) reaches no activity and is reported as an `error` event.
-- **Bluetooth.** The adapter is on with nothing in range: scans run and find no devices.
-- **Network.** Reported as connected Wi-Fi; requests go out through the host JVM, its proxy and
-  its trust store.
+  share sheet, other settings screens) reaches no activity and is reported as an `error` event;
+  the radio dialogs and settings panels are answered ([above](#network-wi-fi-and-bluetooth)).
+- **Bluetooth.** On, with nothing in range until the agent puts peripherals there
+  ([above](#network-wi-fi-and-bluetooth)). Robolectric's adapter reports LE off in airplane mode
+  even when Bluetooth is turned back on. No classic sockets (RFCOMM), audio profiles, LE
+  advertising by the app, or GATT server in the app. `CompanionDeviceManager.associate` is not
+  answered.
+- **Network.** Online, requests go out through the host JVM, its proxy and its trust store; the
+  simulated network decides only whether they may, and how fast. A mode is one default network (a
+  VPN adds the Wi-Fi beneath it): no Wi-Fi-to-cellular fallback when Wi-Fi drops, no roaming,
+  no per-app blocked status under data saver.
 - **Split APKs and App Bundles** need merging into one APK first; protected APKs are out.
 - **Fidelity.** Robolectric's native graphics, not a device's GPU: close, not pixel-identical. The
   window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default, and

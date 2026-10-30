@@ -71,7 +71,12 @@ final class SimulatorSandbox {
         shadowProviders
             .getBaseShadowMap()
             .newBuilder()
-            .addShadowClasses(SimulatorShadowContextImpl.class)
+            .addShadowClasses(
+                SimulatorShadowContextImpl.class,
+                SimulatorShadowConnectivityManager.class,
+                SimulatorShadowWifiManager.class,
+                SimulatorShadowTelephonyManager.class,
+                SimulatorShadowBluetoothGatt.class)
             .build();
     androidSandbox.replaceShadowMap(shadowMap);
     ClassHandler classHandler =
@@ -94,6 +99,8 @@ final class SimulatorSandbox {
         .doNotAcquireClass("org.robolectric.shadow.api.ShadowPicker")
         .doNotAcquireClass("org.robolectric.simulator.SimulatorPanelRegistry");
     builder
+        // One NetworkGate for the launcher, which installs it, and the sandbox, which drives it.
+        .doNotAcquirePackage("ee.schimke.composeai.simulator.net.")
         .doNotAcquirePackage("org.bouncycastle.")
         .doNotAcquirePackage("org.conscrypt.")
         .doNotAcquirePackage("org.objectweb.asm")

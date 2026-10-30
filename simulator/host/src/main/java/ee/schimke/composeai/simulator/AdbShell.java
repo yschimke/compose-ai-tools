@@ -612,12 +612,54 @@ final class AdbShell {
       case "wifi":
         {
           String sub = a.required("wifi command");
-          Map<String, Object> command = cmd("network");
-          if (sub.equals("set-wifi-enabled")) {
-            command.put("wifi", enable(a.required("enabled|disabled")));
-          } else if (!sub.equals("status")) {
-            throw new UnsupportedException("cmd wifi " + sub + " is not supported");
+          switch (sub) {
+            case "set-wifi-enabled":
+              {
+                Map<String, Object> command = cmd("network");
+                command.put("wifi", enable(a.required("enabled|disabled")));
+                return command;
+              }
+            case "status":
+            case "list-scan-results":
+              return cmd("wifi");
+            case "start-scan":
+              {
+                Map<String, Object> command = cmd("wifi");
+                command.put("op", "scan");
+                return command;
+              }
+            case "connect-network":
+              {
+                Map<String, Object> command = cmd("wifi");
+                command.put("op", "connect");
+                command.put("ssid", a.required("ssid"));
+                a.rest(); // open|owe|wpa2|wpa3 [passphrase] [-m] ...: any key opens it here.
+                return command;
+              }
+            default:
+              throw new UnsupportedException("cmd wifi " + sub + " is not supported");
           }
+        }
+      case "bluetooth_manager":
+        {
+          String sub = a.required("enable|disable");
+          if (!sub.equals("enable") && !sub.equals("disable")) {
+            throw new UnsupportedException("cmd bluetooth_manager " + sub + " is not supported");
+          }
+          Map<String, Object> command = cmd("bluetooth");
+          command.put("op", sub);
+          return command;
+        }
+      case "netpolicy":
+        {
+          String sub = a.required("netpolicy command");
+          String what = a.hasNext() ? a.next() : "";
+          if (!sub.equals("set") || !what.equals("restrict-background")) {
+            throw new UnsupportedException(
+                "cmd netpolicy " + sub + " " + what + " is not supported (set restrict-background)");
+          }
+          Map<String, Object> command = cmd("network");
+          command.put("dataSaver", enable(a.required("true|false")));
           return command;
         }
       default:
@@ -865,13 +907,24 @@ final class AdbShell {
 
   private static Map<String, Object> svc(Args a) {
     String sub = a.required("svc command");
-    if (!sub.equals("wifi")) {
-      throw new UnsupportedException(
-          "svc " + sub + " is not supported: the simulated network is Wi-Fi only (svc wifi)");
+    switch (sub) {
+      case "wifi":
+      case "data":
+        {
+          Map<String, Object> command = cmd("network");
+          command.put(sub, enable(a.required("enable|disable")));
+          return command;
+        }
+      case "bluetooth":
+        {
+          Map<String, Object> command = cmd("bluetooth");
+          command.put("op", enable(a.required("enable|disable")) ? "enable" : "disable");
+          return command;
+        }
+      default:
+        throw new UnsupportedException(
+            "svc " + sub + " is not supported: svc wifi, data and bluetooth are");
     }
-    Map<String, Object> command = cmd("network");
-    command.put("wifi", enable(a.required("enable|disable")));
-    return command;
   }
 
   private static Map<String, Object> dumpsys(Args a) {
@@ -909,8 +962,11 @@ final class AdbShell {
           return command;
         }
       case "connectivity":
-      case "wifi":
         return cmd("network");
+      case "wifi":
+        return cmd("wifi");
+      case "bluetooth_manager":
+        return cmd("bluetooth");
       default:
         throw new UnsupportedException("dumpsys " + service + " is not supported");
     }

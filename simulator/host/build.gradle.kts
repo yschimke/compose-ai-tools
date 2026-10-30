@@ -74,5 +74,11 @@ dependencies {
   compileOnly(libs.dex2jar.tools)
 
   testImplementation(libs.junit)
+  // The real `org.json` (android.jar has only stubs), for the tests of classes that read JSON.
+  testImplementation(libs.json.org)
   testImplementation(libs.dex2jar.tools)
 }
+
+// `NetworkGate` reaches into `java.net`'s socket and resolver internals, as the launched simulator
+// JVM lets it (`LaunchCommand` opens the package there too).
+tasks.withType<Test>().configureEach { jvmArgs("--add-opens=java.base/java.net=ALL-UNNAMED") }

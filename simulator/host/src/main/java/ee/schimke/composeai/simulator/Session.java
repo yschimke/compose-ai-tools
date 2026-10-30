@@ -62,6 +62,7 @@ final class Session {
   private final AppFiles files;
   private final DeviceDisplay display;
   private final DeviceState state;
+  private final Radios radios;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -97,6 +98,7 @@ final class Session {
     this.logcat = new Logcat(protocol);
     this.files = new AppFiles(app);
     this.state = new DeviceState(app, navigator);
+    this.radios = new Radios(app, protocol, navigator);
   }
 
   void start() {
@@ -129,7 +131,7 @@ final class Session {
   /** One simulator cycle, on the main thread. */
   void cycle() {
     navigator.pump();
-    Connectivity.notifyCallbacks(RuntimeEnvironment.getApplication());
+    radios.cycle();
     overlay.round(FormFactor.isRound());
     logcat.poll();
     if (!ready && navigator.top() != null) {
@@ -205,7 +207,9 @@ final class Session {
   }
 
   private static boolean changesUi(String name) {
-    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name)) return true;
+    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name) || Radios.changesUi(name)) {
+      return true;
+    }
     switch (name) {
       case "tap":
       case "longPress":
@@ -227,7 +231,6 @@ final class Session {
       case "clearData":
       case "display":
       case "settings":
-      case "network":
       case "content":
         return true;
       default:
@@ -238,6 +241,7 @@ final class Session {
   private JSONObject run(String name, JSONObject c) throws Exception {
     JSONObject emulated = display.command(name, c);
     if (emulated == null) emulated = state.command(name, c);
+    if (emulated == null) emulated = radios.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -348,17 +352,6 @@ final class Session {
         return device.packageInfo();
       case "packages":
         return device.packages(c);
-      case "network":
-        {
-          Boolean wifi = c.has("wifi") ? c.getBoolean("wifi") : null;
-          Boolean airplane = c.has("airplane") ? c.getBoolean("airplane") : null;
-          JSONObject state = Connectivity.set(app, wifi, airplane);
-          if (airplane != null) {
-            navigator.broadcast(
-                new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", airplane));
-          }
-          return state;
-        }
       case "logcat":
         return logcat.command(c);
       case "files":

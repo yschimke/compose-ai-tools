@@ -106,6 +106,13 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       }
     }
+    val network = args.flagValue("--network")
+    if (network != null) {
+      val bad = network.split(',').map { it.trim() }.filter { it !in NETWORK_MODES }
+      if (bad.isNotEmpty()) {
+        fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
+      }
+    }
     val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
@@ -149,6 +156,7 @@ internal class LaunchCommand(private val args: List<String>) {
             formFactor = formFactor.id,
             launchActivity = launchActivity,
             device = device,
+            network = network,
             fontScale = args.flagValue("--font-scale"),
             headless = headless,
             control = control != null,
@@ -181,6 +189,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val showAgent: Boolean = true,
     /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
     val device: String? = null,
+    /** [NETWORK_MODES], comma-separated (`cellular,airplane`); Wi-Fi when null. */
+    val network: String? = null,
   )
 
   private fun convert(
@@ -251,6 +261,13 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val DEVICES = listOf("phone", "foldable", "foldable-folded", "tablet", "desktop")
 
+    /**
+     * What `--network` takes (`NetworkModel.Mode` in `:simulator-host`, plus `airplane`), which the
+     * control channel's `network` command switches between at run time.
+     */
+    val NETWORK_MODES =
+      listOf("wifi", "cellular", "ethernet", "vpn", "captive", "offline", "airplane")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -264,6 +281,9 @@ internal class LaunchCommand(private val args: List<String>) {
       add(java.path)
       addAll(robolectricJvmArgs)
       add("--enable-native-access=ALL-UNNAMED")
+      // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
+      // the app's real traffic reaches.
+      add("--add-opens=java.base/java.net=ALL-UNNAMED")
       if (options.headless) add("-Djava.awt.headless=true")
       val properties =
         linkedMapOf(
@@ -277,6 +297,7 @@ internal class LaunchCommand(private val args: List<String>) {
       properties["composeai.simulator.formFactor"] = options.formFactor
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
+      options.network?.let { properties["composeai.simulator.network"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
@@ -338,6 +359,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
+        --network <mode>      Start on wifi (default), cellular (metered), ethernet, vpn,
+                              captive (Wi-Fi without internet) or offline; add ,airplane
+                              (or just airplane) for airplane mode. Offline, the app's
+                              real connections fail as on a device.
         --font-scale <f>      Font scale (default 1.0).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).
