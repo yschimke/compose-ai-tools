@@ -16,8 +16,8 @@ import java.util.zip.ZipFile
  *
  * Layout under [root] (`<cache>/composeai/simulator/` by default):
  * ```
- * <apk sha256>.lock            held while an entry is converted
- * <apk sha256>.inuse           held, shared, by every simulator running from the entry
+ * <apk sha256>.lock            held while an entry is converted (never deleted)
+ * <apk sha256>.inuse           held, shared, by every simulator running from it (never deleted)
  * <apk sha256>/
  *   source.txt                 the APK path last converted
  *   <converter stamp>/
@@ -178,9 +178,9 @@ internal class ApkConversionCache(
   /** Deletes an APK entry unless a conversion or a simulator holds it; whether it did. */
   private fun remove(dir: File): Boolean =
     withExclusive(dir.name) {
+      // The lock files stay: unlinking one while another process waits on its inode would let a
+      // third lock a new file at the same path, and both would convert into the same entry.
       dir.deleteRecursively()
-      lockFile(dir.name).delete()
-      inUseFile(dir.name).delete()
     }
 
   /**

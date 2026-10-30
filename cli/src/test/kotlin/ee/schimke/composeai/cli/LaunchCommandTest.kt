@@ -189,6 +189,23 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `pruning deletes an entry but never its lock files`() = fixture { root ->
+    val cacheDir = File(root, "cache")
+    val cache = ApkConversionCache(cacheDir, keepApks = 1)
+    val convert: (File, File?) -> String = { out, _ ->
+      out.writeText("classes")
+      "{}"
+    }
+    val old = cache.ensure(root.child("a.apk", "a"), "stamp", convert)
+    cache.use(old).close()
+    cache.ensure(root.child("b.apk", "b"), "stamp", convert)
+    assertFalse(old.apkDir.exists())
+    // A waiter may hold these inodes: unlinking one would let a newcomer lock a fresh file.
+    assertTrue(File(cacheDir, "${old.apkDir.name}.lock").isFile)
+    assertTrue(File(cacheDir, "${old.apkDir.name}.inuse").isFile)
+  }
+
+  @Test
   fun `the cache is held under its size cap`() = fixture { root ->
     val cache = ApkConversionCache(File(root, "cache"), maxBytes = 25)
     val entries =
