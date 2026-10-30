@@ -77,6 +77,13 @@ internal fun isLightbuildProject(dir: File): Boolean = File(dir, LIGHTBUILD_PROJ
 internal fun lightbuildGradleRoot(dir: File): File? =
   File(dir, LIGHTBUILD_GRADLE_DIR).takeIf { hasSettingsFile(it) }
 
+/** True when [root] is the Gradle build Lightbuild generated, which it rewrites on every build. */
+internal fun isLightbuildGradleRoot(root: File): Boolean {
+  val normalized = root.absoluteFile.normalize()
+  val project = normalized.parentFile?.parentFile ?: return false
+  return normalized == File(project, LIGHTBUILD_GRADLE_DIR) && isLightbuildProject(project)
+}
+
 /** The nearest Lightbuild project root at or above [start], built or not. */
 internal fun findLightbuildProjectRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start

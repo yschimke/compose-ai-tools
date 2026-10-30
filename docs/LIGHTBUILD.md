@@ -32,6 +32,10 @@ Lightbuild 0.0.30's `empty-activity-lightbuild` template (`android create
 empty-activity-lightbuild`): Gradle 9.5.0, AGP 9.2.0, Kotlin 2.3.20. Both
 `@Preview`s in its `app-core` library render.
 
+`compose-preview pin` refuses to write in a Lightbuild project: its only
+`gradle.properties` is in the generated build, so the pin would be lost on the
+next `lightbuild build`. Set `COMPOSE_PREVIEW_VERSION` in the environment instead.
+
 Previews in a library module work; `MainActivity` in the template lives in that
 library while its theme is declared in the `app` module's manifest, so the
 activity-tour render of it does not carry the app's theme.
