@@ -69,6 +69,7 @@ final class Session {
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
   private final Radios radios;
+  private final SystemPickers pickers;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -119,6 +120,9 @@ final class Session {
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
+    // After the radios' dialogs: the system's pickers, then intents that leave the app.
+    this.pickers = new SystemPickers(app, protocol, navigator, files);
+    new Handoffs(app, protocol, navigator);
   }
 
   void start() {
@@ -282,6 +286,7 @@ final class Session {
       case "display":
       case "settings":
       case "content":
+      case "pick":
         return true;
       default:
         return false;
@@ -444,6 +449,8 @@ final class Session {
       case "permissions":
         checkPackage(c);
         return navigator.permissions.command(c);
+      case "pick":
+        return pickers.command(c);
       case "settings":
         return device.settings(c);
       case "display":
