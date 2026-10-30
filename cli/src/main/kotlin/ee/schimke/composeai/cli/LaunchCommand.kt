@@ -181,6 +181,9 @@ internal class LaunchCommand(private val args: List<String>) {
         tiles = args.flagValuesAll("--tile"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
+    val robolectricProperties = offline.ifEmpty {
+      provisionAndroidAll(robolectricJars, options.sdk)
+    }
     fun commandFor(apk: File, classes: File, options: Options) =
       simulatorCommand(
         java = java.binary,
@@ -188,7 +191,7 @@ internal class LaunchCommand(private val args: List<String>) {
         apk = apk,
         classes = listOf(classes) + extraJars,
         options = options,
-        robolectricProperties = offline,
+        robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
     val dataLayerMode = args.flagValue("--data-layer")
@@ -332,6 +335,36 @@ internal class LaunchCommand(private val args: List<String>) {
     check(exit == 0) { "the APK converter exited $exit" }
     return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
   }
+
+  /**
+   * Robolectric's system properties for an online launch: SDK [sdk]'s `android-all` provisioned
+   * into [RobolectricDepsProvision.defaultDir] (from Robolectric's own Maven-local copy when it has
+   * one) and Robolectric pointed there offline.
+   *
+   * Left to itself, Robolectric's `MavenDependencyResolver` fetches under one lock for every
+   * artifact on the host, `~/.robolectric-download-lock`: held for a whole download, so a launch
+   * whose jar is already there waits behind another's 200 MB fetch, with no network timeout; and
+   * deleted on release, so with three or more JVMs (`--pair`, several agents) two end up holding it
+   * at once. Provisioning here takes a lock per artifact once, before any simulator JVM starts.
+   * When it cannot, the launch goes on online as before, and says why.
+   */
+  private fun provisionAndroidAll(robolectricJars: List<File>, sdk: Int): Map<String, String> =
+    try {
+      val artifact = RobolectricDepsProvision.artifactFor(robolectricJars, sdk).artifact
+      val directory = RobolectricDepsProvision.defaultDir()
+      RobolectricDepsProvision.ensure(
+        artifact,
+        directory,
+        seed = RobolectricDepsProvision.mavenLocalCopy(artifact),
+      )
+      robolectricOfflineProperties(directory.path)
+    } catch (e: Exception) {
+      System.err.println(
+        "compose-preview launch: could not provision android-all for SDK $sdk ($e); " +
+          "Robolectric will fetch it"
+      )
+      emptyMap()
+    }
 
   private fun sidecar(name: String): List<File> =
     locateBundleSidecarJars(name).ifEmpty {
