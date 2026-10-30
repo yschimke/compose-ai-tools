@@ -183,6 +183,8 @@ internal class SimulatorSupervisor(
   }
 
   @Volatile private var lastFailure: String? = null
+  /** The data a replacement that failed to start was to restore. */
+  @Volatile private var orphanedData: File? = null
 
   /**
    * Replaces the running simulator with one running [next]: snapshots the app's data first when
@@ -195,6 +197,15 @@ internal class SimulatorSupervisor(
     var snapshot: File? = null
     var snapshotMs = 0L
     var kept: JsonElement = JsonPrimitive(false)
+    if (keepData && (old == null || !old.process.isAlive)) {
+      // The last attempt stopped the old simulator and then failed to start: its data is here.
+      orphanedData?.let { dir ->
+        snapshot = dir
+        kept = JsonPrimitive(true)
+      }
+    }
+    orphanedData?.takeIf { it != snapshot }?.deleteRecursively()
+    orphanedData = null
     if (keepData && old != null && old.process.isAlive) {
       val dir = Files.createTempDirectory("compose-preview-data").toFile()
       val t = System.nanoTime()
@@ -247,7 +258,8 @@ internal class SimulatorSupervisor(
         child.retired = true
         destroyTree(child.process)
         current = null
-        snapshot?.deleteRecursively()
+        // Kept for the next restart, update or reload: the app it came from is gone.
+        orphanedData = snapshot
         throw IllegalStateException("${lastFailure}\n${tail()}")
       }
     lastFailure = null

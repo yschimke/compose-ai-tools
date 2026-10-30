@@ -358,7 +358,8 @@ internal class LaunchCommand(private val args: List<String>) {
             }
           },
           outliveExits = live != null,
-          standby = standby && control != null,
+          // The watch of a pair is not what reloads: no second JVM waiting for it.
+          standby = standby && control != null && device != WATCH,
         )
         .also {
           bases[it] = conversion
@@ -764,7 +765,8 @@ internal class LaunchCommand(private val args: List<String>) {
 
       --control stdio adds a JSON-lines control channel on stdin/stdout: tap, swipe, type,
       read the UI hierarchy, take screenshots, start activities and services, send broadcasts,
-      query providers. See docs/SIMULATOR.md. This is what agents and the MCP server use. The
+      query providers; "restart" and "update" {"apk":…} replace the app in a fresh JVM, its
+      data kept. See docs/SIMULATOR.md. This is what agents and the MCP server use. The
       window stays up, so you watch the agent drive the app: each tap and swipe it sends is
       drawn over the window (never into its screenshots) and the command shown along the
       bottom. --headless drops the window; with no display there is none anyway.
@@ -821,6 +823,17 @@ internal class LaunchCommand(private val args: List<String>) {
                               "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
                               connects, disconnects, puts, deletes, messages and replies.
         --pair-qualifiers <q> The paired watch's display (default ${ApkFormFactor.WEAR.qualifiers}).
+        --project <dir>       The app's Gradle build: the APK becomes optional (it is built),
+                              and the control channel's "reload" compiles an edit and restarts
+                              the app on just the changed classes, with no dexing or APK.
+        --module <name>       With --project: the app module (default app).
+        --variant <name>      With --project: the variant (default debug).
+        --live                With --project: reload after every edit to the sources.
+        --gradle-arg <arg>    With --project: a Gradle argument (repeatable), e.g.
+                              --max-workers=2 or --configuration-cache.
+        --standby             Keep a second simulator JVM prepared up to the app's own code,
+                              so "restart" and "reload" take seconds (the default with
+                              --project; --no-standby turns it off).
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.
         --verbose, -v         Print the cache entry and the launched command.
