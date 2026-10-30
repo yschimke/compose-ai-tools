@@ -9,6 +9,7 @@ compose-preview launch app-debug.apk                               # a window
 compose-preview launch app-debug.apk --control stdio               # a window an agent drives
 compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
 compose-preview launch app-debug.apk --prepare                     # convert and cache only
+compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
 compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
 ```
 
@@ -219,6 +220,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
+| `dataLayer` | | with `--pair`: this node, its peers and their capabilities, every data item |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
@@ -388,6 +390,17 @@ quit and launch again.
 | `pm disable` / `enable` components | not mapped |
 | `logcat -b crash/events/radio`, `bugreport` | there is one buffer: the app's `android.util.Log` |
 
+## A paired phone and watch
+
+`--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
+`--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
+`Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
+simulator instead of Play services, so messages, requests, data items and capabilities cross
+between the apps and reach their listeners and manifest `WearableListenerService`s. With
+`--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
+`device`, and each crossing is a `datalayer` event. A prototype; the design, evidence and what is
+missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
+
 ## Constraints
 
 What runs: apps whose UI is Compose or Views over the framework Robolectric shadows, with their
@@ -406,7 +419,7 @@ What does not, or not yet:
 
 - **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
 - **Google Play services, Maps, billing, DRM** — not present in Robolectric's framework; their
-  APIs report `SERVICE_INVALID`. Firebase starts, and its backends answer as they would any
+  APIs report `SERVICE_INVALID` (the Wearable Data Layer is simulated under `--pair`). Firebase starts, and its backends answer as they would any
   unregistered client.
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
