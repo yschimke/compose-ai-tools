@@ -89,5 +89,27 @@ final class DisplayGeometry {
     return new int[] {left, y, right, y + hingePx};
   }
 
+  /** The resource qualifier for [dpi]: a named bucket where there is one, else {@code <n>dpi}. */
+  static String densityQualifier(int dpi) {
+    switch (dpi) {
+      case 120:
+        return "ldpi";
+      case 160:
+        return "mdpi";
+      case 213:
+        return "tvdpi";
+      case 240:
+        return "hdpi";
+      case 320:
+        return "xhdpi";
+      case 480:
+        return "xxhdpi";
+      case 640:
+        return "xxxhdpi";
+      default:
+        return dpi + "dpi";
+    }
+  }
+
   private DisplayGeometry() {}
 }

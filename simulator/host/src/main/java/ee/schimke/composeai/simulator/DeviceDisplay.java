@@ -38,9 +38,14 @@ final class DeviceDisplay {
   private int rotation;
   private String preset = System.getProperty(DisplayGeometry.DEVICE_PROPERTY);
 
+  /** The launch's density, which a preset without its own returns to (after {@code desktop}). */
+  private final String launchDensity;
+
   DeviceDisplay(Application app, Navigator navigator) {
     this.app = app;
     this.navigator = navigator;
+    this.launchDensity =
+        DisplayGeometry.densityQualifier(app.getResources().getDisplayMetrics().densityDpi);
   }
 
   /** The control-channel commands this class owns, or null when [name] is not one of them. */
@@ -100,7 +105,8 @@ final class DeviceDisplay {
     // Presets are given in their natural orientation; a device starts upright.
     rotation = 0;
     folds.set(p.posture, Foldables.NONE.equals(p.posture) ? null : "vertical", null);
-    resize(p.widthDp, p.heightDp, density != null ? density : p.density);
+    String d = density != null ? density : p.density != null ? p.density : launchDensity;
+    resize(p.widthDp, p.heightDp, d);
     preset = p.name;
     return describe();
   }

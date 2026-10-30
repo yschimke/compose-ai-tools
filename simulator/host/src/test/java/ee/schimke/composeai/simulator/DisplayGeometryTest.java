@@ -70,4 +70,10 @@ public class DisplayGeometryTest {
   public void anUnknownPresetIsAnError() {
     DisplayGeometry.preset("watch");
   }
+
+  @Test
+  public void densityQualifiersUseTheNamedBuckets() {
+    assertEquals("hdpi", DisplayGeometry.densityQualifier(240));
+    assertEquals("420dpi", DisplayGeometry.densityQualifier(420));
+  }
 }

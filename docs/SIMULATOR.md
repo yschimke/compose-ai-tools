@@ -194,7 +194,7 @@ ones); locale, night mode and density carry over. Each reply is the `display` ob
 
 The presets are Android Studio's reference devices: `phone` 411×891dp, `foldable` 673×841dp open
 with a flat vertical fold, `foldable-folded` its 411×891dp outer screen with none, `tablet`
-1280×800dp, `desktop` 1920×1080dp at mdpi. They keep the current density otherwise (the window
+1280×800dp, `desktop` 1920×1080dp at mdpi. The others use the launch's density (the window
 draws one device pixel per screen pixel). `launch --device <preset>` starts on one.
 
 **Folds** reach the app through Jetpack WindowManager, the way a device's do. A device's system
