@@ -949,7 +949,14 @@ Sunflower (Compose, Hilt, Room; `--sdk 36`), its empty garden screen. A three-li
 | --- | --- | --- |
 | ![](design/evidence/simulator-launch/live-reload-sunflower-before.png) | ![](design/evidence/simulator-launch/live-reload-sunflower-code.png) | ![](design/evidence/simulator-launch/live-reload-sunflower-resource.png) |
 
-LIVE_TIMINGS
+| Edit | Answered in | Where the time went |
+| --- | --- | --- |
+| Three lines of a composable | 6.3 s | compile 3.4 s, overlay 0.1 s (6 classes), restart from the standby 2.3 s |
+| A string resource | 11.1 s | compile 2.3 s, resource merge 1.7 s, restart 6.7 s: the standby held the old resources, so a cold JVM |
+| A type error | 3.3 s | compile only; the error is the `e:` line, and the app keeps running |
+
+That session's launch from the project took 46 s to `ready`: an up-to-date `assembleDebug` (13 s),
+and a conversion of the APK that reused its previous build's unchanged classes (12 s).
 
 What a reload does not keep or cover:
 
