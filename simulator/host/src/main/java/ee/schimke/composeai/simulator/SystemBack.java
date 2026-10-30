@@ -37,6 +37,39 @@ final class SystemBack {
    * the focused window takes it as {@code KEYCODE_BACK}, which the caller then injects.
    */
   static JSONObject dispatch(Navigator navigator, int displayId) throws JSONException {
+    Target target = target(navigator, displayId);
+    if (target == null) return null;
+    switch (target.route) {
+      case SYSTEM:
+        onBackPressed(target.owner);
+        return new Protocol.Json().put("via", "system").object();
+      case ACTIVITY:
+        onBackPressed(target.owner);
+        return new Protocol.Json().put("via", "Activity.onBackPressed").object();
+      case CALLBACK:
+        BackRoute.deliver(steps(target.callback), Build.VERSION.SDK_INT);
+        return new Protocol.Json()
+            .put("via", "OnBackInvokedCallback")
+            .put("callback", target.callback.getClass().getName())
+            .object();
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * The callback a Back swipe on display [displayId] drives, its progress and all, as a device's
+   * gesture handler hands the swipe to the focused window's top {@code OnBackInvokedCallback}; null
+   * when Back goes elsewhere (the key, the activity, the home screen), which the swipe then is on
+   * release.
+   */
+  static OnBackInvokedCallback swipeCallback(Navigator navigator, int displayId) {
+    Target target = target(navigator, displayId);
+    return target != null && target.route == BackRoute.CALLBACK ? target.callback : null;
+  }
+
+  /** Where Back on display [displayId] goes; null with no focused window. */
+  private static Target target(Navigator navigator, int displayId) {
     View window = Displays.focusedWindow(displayId);
     if (window == null) return null;
     Navigator.Entry top = navigator.top(displayId);
@@ -52,21 +85,21 @@ final class SystemBack {
     boolean activityDefault =
         owner != null && callback != null && callback == defaultCallback(owner);
     boolean hasCallback = callback instanceof OnBackInvokedCallback;
-    switch (BackRoute.of(systemWindow, hasCallback, activityDefault)) {
-      case SYSTEM:
-        onBackPressed(owner);
-        return new Protocol.Json().put("via", "system").object();
-      case ACTIVITY:
-        onBackPressed(owner);
-        return new Protocol.Json().put("via", "Activity.onBackPressed").object();
-      case CALLBACK:
-        BackRoute.deliver(steps((OnBackInvokedCallback) callback), Build.VERSION.SDK_INT);
-        return new Protocol.Json()
-            .put("via", "OnBackInvokedCallback")
-            .put("callback", callback.getClass().getName())
-            .object();
-      default:
-        return null;
+    return new Target(
+        BackRoute.of(systemWindow, hasCallback, activityDefault),
+        owner,
+        hasCallback ? (OnBackInvokedCallback) callback : null);
+  }
+
+  private static final class Target {
+    final BackRoute route;
+    final Activity owner;
+    final OnBackInvokedCallback callback;
+
+    Target(BackRoute route, Activity owner, OnBackInvokedCallback callback) {
+      this.route = route;
+      this.owner = owner;
+      this.callback = callback;
     }
   }
 

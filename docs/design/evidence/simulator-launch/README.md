@@ -337,3 +337,13 @@ answered the same request with.
 | MeshCore watch, error `reply` | The phone's answer `reply`ed |
 | --- | --- |
 | ![MeshCore, error](agent-mc-watch-error.png) | ![MeshCore, answered](agent-mc-watch-answered.png) |
+
+## The Back gesture
+
+![edge back swipe](edge-back-swipe.png)
+
+`samples/android`'s `NowPlayingActivity` opts in to predictive back on its `<activity>` and scales
+and slides with a `PredictiveBackHandler`'s progress. Over `--control stdio --headless` on macOS:
+`touch` down at x=4 and moves to x=60, 120 and 280 (the screen follows the finger), back to x=30,
+up there (cancelled: still Now Playing), then a second swipe lifted at x=300 (committed: Home).
+Frames are `screenshot`s taken between the moves.

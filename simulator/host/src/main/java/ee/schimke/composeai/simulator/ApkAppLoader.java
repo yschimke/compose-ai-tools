@@ -111,6 +111,7 @@ public final class ApkAppLoader implements Runnable {
     manifest.getAppComponentFactory(); // Parses the APK, if setup did not: its target SDK.
 
     Application application = RuntimeEnvironment.getApplication();
+    BackOptIn.apply(application);
     ActivityInfo info = firstActivity(application);
     String name = info.targetActivity != null ? info.targetActivity : info.name;
     try {
