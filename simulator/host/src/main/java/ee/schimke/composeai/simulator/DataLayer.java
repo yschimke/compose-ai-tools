@@ -103,9 +103,12 @@ final class DataLayer {
     return DataLayerLink.enabled();
   }
 
-  /** Starts the node before {@code Application.onCreate()}, so the peer sees it at once. */
+  /**
+   * Starts the node before {@code Application.onCreate()}, so the peer sees it at once. Callers
+   * check {@link DataLayerLink#enabled()} first: loading this class needs the app's Play services.
+   */
   static void start(Application app) {
-    if (enabled()) get(app);
+    get(app);
   }
 
   /** The node, connecting it on first use. */

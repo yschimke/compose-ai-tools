@@ -63,7 +63,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Connectivity.connect(app);
       bluetoothOn(app);
       Navigator.registerBindableServices(app);
-      DataLayer.start(app);
+      // DataLayer names Play services types: an unpaired app may not have them, so it is never
+      // even loaded unless the launch is paired.
+      if (DataLayerLink.enabled()) DataLayer.start(app);
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
     }

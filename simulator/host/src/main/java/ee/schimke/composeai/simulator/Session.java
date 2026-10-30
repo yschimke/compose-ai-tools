@@ -87,7 +87,8 @@ final class Session {
     this.ui = ui;
     this.protocol = protocol;
     this.navigator = new Navigator(app, protocol);
-    DataLayer.attach(protocol);
+    // Only when paired: DataLayer needs the app's Play services classes to load at all.
+    if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
 
   void start() {
@@ -222,7 +223,7 @@ final class Session {
         return components();
       case "dataLayer":
         {
-          JSONObject state = DataLayer.describeCurrent();
+          JSONObject state = DataLayerLink.enabled() ? DataLayer.describeCurrent() : null;
           if (state == null) {
             throw new IllegalStateException("no data layer: launch with --pair <other.apk>");
           }
