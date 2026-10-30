@@ -19,8 +19,15 @@ public final class Sdk {
     private VERSION() {}
   }
 
-  /** No Wear SDK service is simulated. */
+  /**
+   * The ambient service ({@link com.google.wear.services.ambient.AmbientManager}), which Wear
+   * Compose's {@code rememberAmbientModeManager()} uses whatever {@code WEAR_SDK_INT} says; no
+   * other Wear SDK service is simulated.
+   */
   public static <T> T getWearManager(android.content.Context context, Class<T> type) {
+    if (type == com.google.wear.services.ambient.AmbientManager.class) {
+      return type.cast(com.google.wear.services.ambient.AmbientManager.INSTANCE);
+    }
     return null;
   }
 

@@ -63,6 +63,8 @@ final class Session {
   private final NotificationStream notifications;
   /** The Wear system UI ({@code --launcher}), or null. */
   private final WearSystemUi wear;
+  /** On, ambient or off, and the gestures between them. */
+  private final ScreenPower screen;
   private final WidgetHost widgets;
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
@@ -105,6 +107,7 @@ final class Session {
     this.displays = new Displays(app, navigator, protocol);
     this.notifications = new NotificationStream(app, navigator, protocol);
     this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
+    this.screen = new ScreenPower(app, navigator, protocol, wear);
     this.widgets = new WidgetHost(app, navigator, protocol);
     // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
     this.home =
@@ -118,6 +121,7 @@ final class Session {
 
   void start() {
     displays.start();
+    screen.start();
     if (wear != null) wear.start();
     if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
@@ -156,6 +160,7 @@ final class Session {
     logcat.poll();
     notifications.cycle();
     if (wear != null) wear.cycle();
+    screen.cycle();
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
@@ -232,6 +237,7 @@ final class Session {
     if (DeviceDisplay.changesUi(name)
         || DeviceState.changesUi(name)
         || Displays.changesUi(name)
+        || ScreenPower.changesUi(name)
         || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)
@@ -270,6 +276,7 @@ final class Session {
     JSONObject emulated = display.command(name, c);
     if (emulated == null) emulated = state.command(name, c);
     if (emulated == null) emulated = displays.command(name, c);
+    if (emulated == null) emulated = screen.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
@@ -339,13 +346,18 @@ final class Session {
           return new Protocol.Json().put("nodes", array).object();
         }
       case "tap":
-        return tap(c, 0);
       case "longPress":
-        return tap(c, c.optLong("durationMs", 800));
       case "swipe":
-        return swipe(c);
       case "rotary":
-        return rotary(c);
+        {
+          // A sleeping screen wakes on the first touch or turn, which goes no further.
+          JSONObject woke = onDefaultDisplay(c) ? screen.input(name) : null;
+          if (woke != null) return woke;
+          if (name.equals("tap")) return tap(c, 0);
+          if (name.equals("longPress")) return tap(c, c.optLong("durationMs", 800));
+          if (name.equals("swipe")) return swipe(c);
+          return rotary(c);
+        }
       case "key":
         {
           Object keys = c.get("key");
@@ -445,6 +457,10 @@ final class Session {
     }
   }
 
+  private boolean onDefaultDisplay(JSONObject c) {
+    return displays.target(c) == android.view.Display.DEFAULT_DISPLAY;
+  }
+
   /** The home screen's and widgets' commands; refused without {@code --launcher} where needed. */
   private JSONObject launcherCommand(String name, JSONObject c) throws JSONException {
     if (home != null) return home.command(name, c);
@@ -480,6 +496,7 @@ final class Session {
     json.put("displays", displays.list());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
+    json.put("screen", screen.state());
     if (wear != null) json.put("surface", wear.surface());
     if (home != null) json.put("surface", home.surface());
     json.put("backStack", navigator.backStack().size());
@@ -553,6 +570,13 @@ final class Session {
             ? ui.takeScreenshot()
             : Displays.capture(displayId);
     if (bitmap == null) throw new IllegalStateException("nothing on screen to capture");
+    if (displayId == android.view.Display.DEFAULT_DISPLAY && screen.dark()) {
+      // Off, or dozing with nothing that draws in ambient: the panel shows black.
+      Bitmap black =
+          Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+      black.eraseColor(android.graphics.Color.BLACK);
+      bitmap = black;
+    }
     if (displayId == android.view.Display.DEFAULT_DISPLAY
         && FormFactor.isRound()
         && !c.optBoolean("square", false)) {
@@ -704,7 +728,12 @@ final class Session {
     return top.activity().getWindow().getDecorView().dispatchGenericMotionEvent(event);
   }
 
-  private JSONObject key(int code, boolean longPress, int displayId) {
+  private JSONObject key(int code, boolean longPress, int displayId) throws JSONException {
+    if (displayId == android.view.Display.DEFAULT_DISPLAY) {
+      // POWER, SLEEP and WAKEUP are the system's; any other key wakes a sleeping screen first.
+      JSONObject power = screen.key(code);
+      if (power != null) return power.put("keyCode", code);
+    }
     if (code == KeyEvent.KEYCODE_HOME
         && home != null
         && displayId == android.view.Display.DEFAULT_DISPLAY) {
