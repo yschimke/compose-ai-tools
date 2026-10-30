@@ -6,6 +6,8 @@ import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
+import io.github.classgraph.ClassMemberInfo
+import io.github.classgraph.FieldInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
@@ -17,6 +19,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.floatOrNull
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
 
 /**
  * Pure-JVM library that scans compiled Kotlin classes for `@Preview` functions and produces a
@@ -302,6 +309,70 @@ object PreviewDiscovery {
 
   // On a `Color` property's backing field (BINARY, `@Target(FIELD)`), so unlike Showkase's
   // SOURCE-retained `@ShowkaseColor` it survives into bytecode.
+  /**
+   * This class's catalog-annotated fields in source order, which is the order a catalog sheet lists
+   * its tokens in ([inDeclarationOrder]).
+   */
+  internal fun catalogFieldsInDeclarationOrder(classInfo: ClassInfo): List<FieldInfo> =
+    inDeclarationOrder(
+      classInfo,
+      classInfo.fieldInfo.filter { field ->
+        CATALOG_FIELD_FQNS.any { field.getAllAnnotationInfo(it) != null }
+      },
+    )
+
+  /**
+   * [members] of [classInfo] in source order. ClassGraph 5 sorts a class's fields and methods by
+   * name, which reordered catalog sheets and the previews a class declares; the order is read back
+   * from the class file, whose members javac and kotlinc both emit in declaration order. The class
+   * is read only when there is more than one member to order. Members are matched by name and
+   * descriptor, so overloads keep their own places; one the class file doesn't list sorts last.
+   */
+  internal fun <T : ClassMemberInfo> inDeclarationOrder(
+    classInfo: ClassInfo,
+    members: List<T>,
+  ): List<T> {
+    if (members.size < 2) return members
+    val order = HashMap<String, Int>()
+    runCatching {
+      classInfo.resource?.open()?.use { stream ->
+        ClassReader(stream)
+          .accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+              override fun visitField(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                value: Any?,
+              ): FieldVisitor? {
+                order.putIfAbsent("$name:$descriptor", order.size)
+                return null
+              }
+
+              override fun visitMethod(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                exceptions: Array<out String>?,
+              ): MethodVisitor? {
+                order.putIfAbsent("$name$descriptor", order.size)
+                return null
+              }
+            },
+            ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES or ClassReader.SKIP_DEBUG,
+          )
+      }
+    }
+    return members.sortedBy { member ->
+      val key =
+        if (member is FieldInfo) "${member.name}:${member.typeDescriptorString}"
+        else "${member.name}${member.typeDescriptorString}"
+      order[key] ?: Int.MAX_VALUE
+    }
+  }
+
   internal const val COLOR_CATALOG_FQN = "ee.schimke.composeai.preview.ColorCatalog"
 
   // Type-scale sibling of `@ColorCatalog`, on a `TextStyle` backing field.
@@ -309,6 +380,8 @@ object PreviewDiscovery {
 
   // Shape sibling, on a `Shape` or `Shapes` backing field.
   internal const val SHAPE_CATALOG_FQN = "ee.schimke.composeai.preview.ShapeCatalog"
+  private val CATALOG_FIELD_FQNS =
+    listOf(COLOR_CATALOG_FQN, TYPOGRAPHY_CATALOG_FQN, SHAPE_CATALOG_FQN)
 
   // On a `PreviewWrapperProvider` class (`@Target(CLASS)`) rather than a field.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
@@ -531,7 +604,13 @@ object PreviewDiscovery {
             // @Preview" warnings (#1039).
             if (classInfo.name !in projectClassFqns) continue
             scanClassCount++
-            for (method in classInfo.methodInfo) {
+            // Source order, so a class's previews keep the order they are written in; reading the
+            // class file is only worth it when there's more than one annotated method to order.
+            val methods =
+              if (classInfo.methodInfo.count { it.allAnnotationInfo.isNotEmpty() } > 1)
+                inDeclarationOrder(classInfo, classInfo.methodInfo)
+              else classInfo.methodInfo
+            for (method in methods) {
               val annotations = method.allAnnotationInfo ?: continue
               if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
               for (ann in annotations) {
@@ -558,7 +637,7 @@ object PreviewDiscovery {
             // Catalog design tokens on backing fields: collect coordinates and display metadata;
             // values are reflected at render time. Kind is dispatched by declared type
             // ([catalogTokenKindFor]).
-            for (field in classInfo.fieldInfo) {
+            for (field in catalogFieldsInDeclarationOrder(classInfo)) {
               field.getAllAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
                 rawColorCatalogTokens +=
                   rawCatalogToken(
