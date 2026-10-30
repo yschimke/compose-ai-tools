@@ -70,6 +70,49 @@ class ApkFormFactorTest {
   }
 
   @Test
+  fun `a glasses app's projected activity is found beside its phone launcher`() {
+    val root = Files.createTempDirectory("form-factor").toFile()
+    try {
+      val apk = File(root, "glasses.apk")
+      ZipOutputStream(apk.outputStream()).use { zip ->
+        zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+        zip.write(
+          manifest(
+            Element("manifest", mapOf("package" to "com.example.glasses")),
+            Element("activity", mapOf("name" to ".PhoneActivity")),
+            Element(
+              "activity",
+              mapOf(
+                "name" to ".GlassesActivity",
+                "requiredDisplayCategory" to "android.hardware.display.category.XR_PROJECTED",
+              ),
+            ),
+          )
+        )
+        zip.closeEntry()
+      }
+      assertEquals(
+        ApkFormFactor.Detected(ApkFormFactor.GLIMMER, "com.example.glasses.GlassesActivity"),
+        ApkFormFactor.inspect(apk),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a forced glimmer launch of an app with no projected activity keeps its launcher`() {
+    val signals =
+      ManifestSignals.read(
+        manifest(
+          Element("manifest", mapOf("package" to "com.example")),
+          Element("activity", mapOf("name" to "com.example.Main")),
+        )
+      )
+    assertEquals(emptyList(), signals.projectedActivities)
+  }
+
+  @Test
   fun `code that uses glimmer or xr compose decides when the manifest does not`() {
     fun dex(type: String) = sequenceOf("dex\n035\u0000...$type...".toByteArray())
     val none = ManifestSignals()

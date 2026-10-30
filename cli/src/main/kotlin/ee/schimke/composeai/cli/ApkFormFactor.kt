@@ -45,11 +45,24 @@ internal enum class ApkFormFactor(
    */
   XR("xr", "w1024dp-h720dp-land-mdpi");
 
+  /**
+   * What [inspect] found. [projectedActivity] is the fully qualified class (or alias) of the first
+   * activity whose `requiredDisplayCategory` is projected: an AI-glasses app typically pairs a
+   * phone launcher with it, and a Glimmer launch starts it instead of the launcher.
+   */
+  data class Detected(val formFactor: ApkFormFactor, val projectedActivity: String?)
+
   companion object {
     fun byId(id: String): ApkFormFactor? = entries.firstOrNull { it.id == id.lowercase() }
 
     /** Detects [apk]'s form factor; [PHONE] when nothing marks it, or it cannot be read. */
-    fun detect(apk: File): ApkFormFactor = runCatching {
+    fun detect(apk: File): ApkFormFactor = inspect(apk).formFactor
+
+    /**
+     * [apk]'s form factor and its projected (glasses) activity, if it declares one; [PHONE] and no
+     * activity when nothing marks it, or it cannot be read.
+     */
+    fun inspect(apk: File): Detected = runCatching {
       ZipFile(apk).use { zip ->
         val manifest =
           zip.getEntry("AndroidManifest.xml")?.let { zip.getInputStream(it).readBytes() }
@@ -60,16 +73,16 @@ internal enum class ApkFormFactor(
             .asSequence()
             .filter { DEX.matches(it.name) }
             .map { zip.getInputStream(it).readBytes() }
-        classify(signals, dex)
+        Detected(classify(signals, dex), signals.projectedActivities.firstOrNull())
       }
     }
-      .getOrDefault(PHONE)
+      .getOrDefault(Detected(PHONE, null))
 
     private val DEX = Regex("""classes\d*\.dex""")
 
     internal fun classify(signals: ManifestSignals, dex: Sequence<ByteArray>): ApkFormFactor {
       if (WATCH_FEATURE in signals.requiredFeatures) return WEAR
-      if (signals.displayCategories.any { it in XR_PROJECTED }) return GLIMMER
+      if (signals.projectedActivities.isNotEmpty()) return GLIMMER
       val xrFeature = signals.features.any { it.startsWith(XR_FEATURE_PREFIX) }
       var glimmer = false
       var spatial = false
@@ -120,13 +133,13 @@ internal enum class ApkFormFactor(
 
 /**
  * What [ApkFormFactor] reads from a compiled (binary XML) `AndroidManifest.xml`: every
- * `uses-feature` name, those not marked `required="false"`, and every activity's
- * `requiredDisplayCategory`.
+ * `uses-feature` name, those not marked `required="false"`, and the activities (or aliases) whose
+ * `requiredDisplayCategory` is projected, fully qualified against the manifest's `package`.
  */
 internal data class ManifestSignals(
   val features: Set<String> = emptySet(),
   val requiredFeatures: Set<String> = emptySet(),
-  val displayCategories: Set<String> = emptySet(),
+  val projectedActivities: List<String> = emptyList(),
 ) {
   companion object {
     private const val RES_STRING_POOL_TYPE = 0x0001
@@ -148,7 +161,8 @@ internal data class ManifestSignals(
       val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
       val features = linkedSetOf<String>()
       val required = linkedSetOf<String>()
-      val categories = linkedSetOf<String>()
+      val projected = mutableListOf<String>()
+      var packageName = ""
       var strings: List<String> = emptyList()
       var resourceIds = IntArray(0)
       var offset = buffer.getShort(2).toInt() and 0xffff // the file header's size
@@ -165,13 +179,19 @@ internal data class ManifestSignals(
           RES_XML_START_ELEMENT_TYPE -> {
             val ext = offset + headerSize
             val element = strings.getOrNull(buffer.getInt(ext + 4)) ?: ""
-            if (element == "uses-feature" || element == "activity" || element == "activity-alias") {
+            if (
+              element == "manifest" ||
+                element == "uses-feature" ||
+                element == "activity" ||
+                element == "activity-alias"
+            ) {
               val attributeStart = buffer.getShort(ext + 8).toInt() and 0xffff
               val attributeSize = buffer.getShort(ext + 10).toInt() and 0xffff
               val count = buffer.getShort(ext + 12).toInt() and 0xffff
               var name: String? = null
               var isRequired = true
               var category: String? = null
+              var manifestPackage: String? = null
               for (i in 0 until count) {
                 val at = ext + attributeStart + i * attributeSize
                 val nameIndex = buffer.getInt(at + 4)
@@ -192,20 +212,34 @@ internal data class ManifestSignals(
                     isRequired =
                       if (dataType == TYPE_INT_BOOLEAN) data != 0 else text?.toBoolean() ?: true
                   attribute == "requiredDisplayCategory" -> category = text
+                  attribute == "package" -> manifestPackage = text
                 }
               }
               if (element == "uses-feature" && name != null) {
                 features += name
                 if (isRequired) required += name
               }
-              if (category != null) categories += category
+              if (element == "manifest") packageName = manifestPackage ?: ""
+              if (
+                element != "uses-feature" && name != null && category in ApkFormFactor.XR_PROJECTED
+              ) {
+                projected += qualify(packageName, name)
+              }
             }
           }
         }
         offset += size
       }
-      return ManifestSignals(features, required, categories)
+      return ManifestSignals(features, required, projected)
     }
+
+    /** An activity name as the manifest writes it (`.Glasses`, `Glasses`, or qualified). */
+    private fun qualify(packageName: String, name: String): String =
+      when {
+        name.startsWith(".") -> packageName + name
+        '.' !in name && packageName.isNotEmpty() -> "$packageName.$name"
+        else -> name
+      }
 
     private fun stringPool(buffer: ByteBuffer, chunk: Int): List<String> {
       val count = buffer.getInt(chunk + 8)

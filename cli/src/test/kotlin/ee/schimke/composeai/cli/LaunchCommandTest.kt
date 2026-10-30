@@ -276,6 +276,32 @@ class LaunchCommandTest {
       )
     assertTrue("-Dcomposeai.simulator.qualifiers=w227dp-h227dp-round-watch-xhdpi" in command)
     assertTrue("-Dcomposeai.simulator.formFactor=wear" in command)
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launchActivity") })
+  }
+
+  @Test
+  fun `a glimmer launch names the projected activity to start`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("glasses.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = ApkFormFactor.GLIMMER.qualifiers,
+            formFactor = ApkFormFactor.GLIMMER.id,
+            launchActivity = "com.example.GlassesActivity",
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launchActivity=com.example.GlassesActivity" in command)
   }
 
   @Test

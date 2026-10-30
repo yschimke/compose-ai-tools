@@ -144,8 +144,10 @@ corners), and the window paints the corners black. `rotary` sends the crown's ro
 deliver them as touches.
 
 **Glimmer.** Jetpack Compose Glimmer is plain Compose: the app runs as is, on the glasses display, a
-pure-black additive canvas, and its cards and list items answer `tap`. A projected activity is
-started as the launcher, where on a device the phone app projects it. The glasses' touchpad is not
+pure-black additive canvas, and its cards and list items answer `tap`. When the app declares an
+activity for the projected display, as a glasses app beside its phone launcher does, that activity
+is started instead of the launcher (on a device the phone app sends it to the glasses); otherwise,
+as with `--form-factor glimmer` on an app without one, the launcher is. The glasses' touchpad is not
 simulated yet: Glimmer navigates by moving focus, and in the simulator neither a touch-navigation
 stroke (`SOURCE_TOUCH_NAVIGATION`) nor a Tab key moved focus into a Glimmer list; the window's
 Compose view never took input focus.

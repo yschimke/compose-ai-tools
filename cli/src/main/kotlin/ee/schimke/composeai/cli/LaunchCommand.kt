@@ -97,11 +97,16 @@ internal class LaunchCommand(private val args: List<String>) {
       return
     }
 
+    val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
         ApkFormFactor.byId(it)
           ?: fail("--form-factor takes ${ApkFormFactor.entries.joinToString(" | ") { f -> f.id }}")
-      } ?: ApkFormFactor.detect(apk)
+      } ?: detected.formFactor
+    // A glasses app pairs a phone launcher with its projected activity: on the glasses' display
+    // the projected one runs. Without one (a launcher that is itself projected, or a forced
+    // `--form-factor glimmer`), the launcher does.
+    val launchActivity = detected.projectedActivity.takeIf { formFactor == ApkFormFactor.GLIMMER }
     if (formFactor != ApkFormFactor.PHONE) {
       System.err.println(
         "compose-preview launch: ${formFactor.id} app; display ${formFactor.qualifiers}" +
@@ -131,6 +136,7 @@ internal class LaunchCommand(private val args: List<String>) {
               ),
             qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
             formFactor = formFactor.id,
+            launchActivity = launchActivity,
             fontScale = args.flagValue("--font-scale"),
             headless = headless,
             control = control != null,
@@ -153,6 +159,8 @@ internal class LaunchCommand(private val args: List<String>) {
      * [ApkFormFactor.id]; `info` reports it. A display with the `round` qualifier is drawn round.
      */
     val formFactor: String = ApkFormFactor.PHONE.id,
+    /** The activity to start instead of the launcher: a Glimmer app's projected activity. */
+    val launchActivity: String? = null,
     val fontScale: String?,
     val headless: Boolean,
     val control: Boolean,
@@ -247,6 +255,7 @@ internal class LaunchCommand(private val args: List<String>) {
           "composeai.simulator.qualifiers" to options.qualifiers,
         )
       properties["composeai.simulator.formFactor"] = options.formFactor
+      options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
