@@ -111,6 +111,7 @@ final class Navigator {
     this.app = app;
     this.shadowApp = Shadow.extract(app);
     this.protocol = protocol;
+    this.permissions = new Permissions(app);
     current = this;
   }
 
@@ -128,7 +129,7 @@ final class Navigator {
     while ((intent = shadowApp.getNextStartedActivity()) != null) {
       ShadowActivity.IntentForResult forResult = takeForResult(intent);
       if (ACTION_REQUEST_PERMISSIONS.equals(intent.getAction())) {
-        grantPermissions(intent, forResult == null ? -1 : forResult.requestCode);
+        answerPermissions(intent, forResult == null ? -1 : forResult.requestCode);
         continue;
       }
       try {
@@ -326,22 +327,30 @@ final class Navigator {
     return false;
   }
 
+  /** How permission requests are answered; the {@code permissions} command sets it. */
+  final Permissions permissions;
+
   /**
-   * Answers a runtime permission request as a user tapping "Allow" would: the permissions are
-   * granted, and the result reaches the requesting activity the way the system's dialog delivers
-   * it, so {@code onRequestPermissionsResult} and androidx's {@code ActivityResultRegistry} both
-   * see it. Robolectric has no permission dialog; the request would otherwise never complete.
+   * Answers a runtime permission request as the system's dialog would, by {@link Permissions}
+   * (granting unless told otherwise): the answers are applied, and the result reaches the
+   * requesting activity the way the dialog delivers it, so {@code onRequestPermissionsResult} and
+   * androidx's {@code ActivityResultRegistry} both see it. Robolectric has no permission dialog;
+   * the request would otherwise never complete.
    */
-  private void grantPermissions(Intent request, int requestCode) {
+  private void answerPermissions(Intent request, int requestCode) {
     String[] names = request.getStringArrayExtra(EXTRA_REQUEST_PERMISSIONS_NAMES);
     if (names == null) names = new String[0];
-    shadowApp.grantPermissions(names);
-    int[] results = new int[names.length];
-    java.util.Arrays.fill(results, PackageManager.PERMISSION_GRANTED);
+    int[] results = permissions.answer(names);
+    JSONArray granted = new JSONArray();
+    JSONArray denied = new JSONArray();
+    for (int i = 0; i < names.length; i++) {
+      (results[i] == PackageManager.PERMISSION_GRANTED ? granted : denied).put(names[i]);
+    }
     protocol.event(
         "permissions",
         new Protocol.Json()
-            .put("granted", new JSONArray(java.util.Arrays.asList(names)))
+            .put("granted", granted)
+            .put("denied", denied)
             .put("requestCode", requestCode)
             .object());
     Activity requester = requesterOf(names, requestCode);

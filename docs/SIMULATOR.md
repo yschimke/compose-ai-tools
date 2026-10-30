@@ -169,6 +169,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `notifications` | | what the app posted |
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `components` | | the manifest's activities, services, receivers, providers |
+| `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names) | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+land`, `+night`) | a configuration change on the top activity |
 | `quit` | | exits |
 
@@ -209,8 +210,10 @@ What does not, or not yet:
   instance rather than bringing the task forward; `HOME` does nothing.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
-- **Runtime permissions** are granted when the app asks, as a user tapping "Allow" would, and
-  reported as a `permissions` event; there is no dialog and no way yet to deny.
+- **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
+  tapping "Allow" would, unless the `permissions` command says to deny them (all, or by name).
+  Each request is reported as a `permissions` event naming what was granted and denied; there is
+  no "don't ask again".
 - **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
   share sheet, settings screens) reaches no activity and is reported as an `error` event.
 - **Bluetooth.** The adapter is on with nothing in range: scans run and find no devices.
