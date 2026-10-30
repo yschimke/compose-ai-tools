@@ -126,5 +126,20 @@ final class DisplayGeometry {
     }
   }
 
+  /**
+   * A split screen's two windows on a [widthDp] x [heightDp] display: {@code {firstWidth,
+   * firstHeight, secondWidth, secondHeight}}. A foldable splits along its fold ([foldVertical],
+   * null for none): side by side for one running top to bottom. Without one the longer side is cut,
+   * side by side on a landscape display and one above the other on a portrait one. The second
+   * window takes the odd dp.
+   */
+  static int[] splitHalves(int widthDp, int heightDp, Boolean foldVertical) {
+    boolean sideBySide = foldVertical != null ? foldVertical : widthDp >= heightDp;
+    if (sideBySide) {
+      return new int[] {widthDp / 2, heightDp, widthDp - widthDp / 2, heightDp};
+    }
+    return new int[] {widthDp, heightDp / 2, widthDp, heightDp - heightDp / 2};
+  }
+
   private DisplayGeometry() {}
 }

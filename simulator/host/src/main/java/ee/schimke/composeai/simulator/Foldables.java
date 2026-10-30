@@ -117,8 +117,37 @@ public final class Foldables implements WindowLayoutComponent {
   }
 
   /** A quarter turn of the display: the fold turns with it. */
+  /** The fold as it is, for {@link #restore}. */
+  Saved save() {
+    return new Saved(state, vertical, hingeDp);
+  }
+
+  /** Puts back the fold [saved]; listeners hear of it on the next {@link #publish}. */
+  void restore(Saved saved) {
+    state = saved.state;
+    vertical = saved.vertical;
+    hingeDp = saved.hingeDp;
+  }
+
+  static final class Saved {
+    final int state;
+    final boolean vertical;
+    final float hingeDp;
+
+    Saved(int state, boolean vertical, float hingeDp) {
+      this.state = state;
+      this.vertical = vertical;
+      this.hingeDp = hingeDp;
+    }
+  }
+
   void rotated() {
     vertical = !vertical;
+  }
+
+  /** Whether the fold runs top to bottom; meaningful while {@link #folded}. */
+  boolean vertical() {
+    return vertical;
   }
 
   boolean folded() {

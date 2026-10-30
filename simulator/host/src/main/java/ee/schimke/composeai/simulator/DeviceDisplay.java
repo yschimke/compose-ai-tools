@@ -220,6 +220,48 @@ final class DeviceDisplay {
     configurationChanged();
   }
 
+  /** The display's size, preset and fold, which a split screen gives back when it ends. */
+  static final class Saved {
+    final int widthDp;
+    final int heightDp;
+    final String preset;
+    final Foldables.Saved fold;
+
+    Saved(int widthDp, int heightDp, String preset, Foldables.Saved fold) {
+      this.widthDp = widthDp;
+      this.heightDp = heightDp;
+      this.preset = preset;
+      this.fold = fold;
+    }
+  }
+
+  /** Whether the display's fold runs top to bottom; null when it has none. */
+  Boolean foldVertical() {
+    return folds.folded() ? folds.vertical() : null;
+  }
+
+  Saved save() {
+    Configuration config = app.getResources().getConfiguration();
+    return new Saved(config.screenWidthDp, config.screenHeightDp, preset, folds.save());
+  }
+
+  /**
+   * The app's window is [widthDp] x [heightDp], its part of a split screen. No fold runs through
+   * it: a foldable splits along its fold, which is the edge between the two windows.
+   */
+  void splitTo(int widthDp, int heightDp) {
+    preset = null;
+    folds.set(Foldables.NONE, null, null);
+    resize(widthDp, heightDp, null);
+  }
+
+  /** The whole display again, as it was before a split ([saved]). */
+  void restore(Saved saved) {
+    preset = saved.preset;
+    folds.restore(saved.fold);
+    resize(saved.widthDp, saved.heightDp, null);
+  }
+
   /**
    * Resizes the display to [widthDp] x [heightDp], keeping the density unless [density] names one
    * ({@code hdpi}, {@code 420dpi}, ...). The smallest width, screen size and aspect buckets and

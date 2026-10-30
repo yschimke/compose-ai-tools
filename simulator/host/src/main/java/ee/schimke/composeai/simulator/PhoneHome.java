@@ -184,10 +184,7 @@ public class PhoneHome extends Activity {
         });
     view.setOnLongClickListener(
         v -> {
-          // Another app's shortcuts are in its own process.
-          if (icon.activity != null && !DeviceApps.isOtherApp(icon.activity.getPackageName())) {
-            home.showShortcuts(icon.activity);
-          }
+          if (icon.activity != null) home.showShortcuts(icon.activity);
           return true;
         });
     return view;
@@ -270,11 +267,30 @@ public class PhoneHome extends Activity {
     return sheet;
   }
 
-  /** The long-press popup of [activity]'s icon: its shortcuts, then Widgets when it has any. */
+  /**
+   * The long-press popup of [activity]'s icon: its shortcuts, then Widgets when it has any; for
+   * another app of the device, whose shortcuts are in its own process, Split screen.
+   */
   private View shortcutPopup(ComponentName activity) {
     FrameLayout scrim = dismissingScrim();
     LinearLayout card = card();
     simId(card, "shortcuts");
+    if (DeviceApps.isOtherApp(activity.getPackageName())) {
+      TextView split = popupRow("Split screen", null);
+      simId(split, "shortcut_split");
+      split.setOnClickListener(
+          v -> {
+            home.closeOverlay();
+            try {
+              DeviceApps.current().split(activity.getPackageName());
+            } catch (org.json.JSONException e) {
+              throw new IllegalStateException(e);
+            }
+          });
+      card.addView(split);
+      place(scrim, card, iconRect(activity));
+      return scrim;
+    }
     List<Shortcuts.Shortcut> shortcuts = home.shortcuts.forActivity(activity);
     for (Shortcuts.Shortcut shortcut : shortcuts) {
       TextView row =

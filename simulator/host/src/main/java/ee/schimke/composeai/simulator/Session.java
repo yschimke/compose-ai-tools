@@ -153,7 +153,7 @@ final class Session {
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
     // An activity of another of the device's apps (--app): that app comes on screen and starts it.
-    this.deviceApps = new DeviceApps(app, navigator, protocol);
+    this.deviceApps = new DeviceApps(app, navigator, protocol, display);
     if (home != null) deviceApps.attach(home);
     new Handoffs(app, protocol, navigator);
     this.appActions = new AppActions(app, navigator);
@@ -398,6 +398,8 @@ final class Session {
         return appFunctions.command(c);
       case "foreground":
         return deviceApps.command(c);
+      case "split":
+        return deviceApps.splitCommand(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);
@@ -675,6 +677,7 @@ final class Session {
     json.put("screen", screen.state());
     if (DeviceBus.enabled()) {
       json.put("onScreen", deviceApps.onScreen());
+      json.put("split", deviceApps.describeSplit());
       json.put("otherApps", new JSONArray(DevicePeers.packages()));
     }
     if (wear != null) json.put("surface", wear.surface());
