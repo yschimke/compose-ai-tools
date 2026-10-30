@@ -293,6 +293,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
 | `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
 | `text` | `text` | types into the focused field |
+| `split` | `package`, or `action: "off"` | of [several apps on a device](#split-screen): this app and the one `package` names share the screen, this one first; `off` gives this one the whole screen again. Returns this app's `split` and `display` |
 | `foreground` | `package`? | of [several apps on a device](#switching-between-them): this app, or the one `package` names, comes on the device's screen and the one there goes to the background; returns the `package` and `onScreen` |
 | `launch` | `display`?, `savedState`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward; after a `kill`, the task is re-created from its saved state |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
@@ -1661,6 +1662,36 @@ from both apps (`{"event":"foreground","package":…,"onScreen":true}`), `info` 
 and the device's `otherApps`, and `"device":"phone"` follows the app on screen. Another app's icon
 is the default one, since its resources are in its own process, but its label is right: each app
 tells the others its own over the bus.
+
+### Split screen
+
+Two of the device's apps can share its screen, as on a foldable or a tablet:
+
+- **From the home screen**: long-press another app's icon and choose **Split screen**. The app
+  whose home screen it is takes the first half, and the other app the second.
+- **With the `split` command**: `{"cmd":"split","package":"com.example.other"}`, sent to an app,
+  puts that app first and the other second. `{"cmd":"split","action":"off"}` gives the app it is
+  sent to the whole screen again.
+
+The display is cut along a foldable's fold, which puts each app on one side of the hinge. Without a
+fold it is cut across its longer side: side by side in landscape, one above the other in portrait.
+On the open `foldable` preset (673×841dp, its fold top to bottom) that is 336 and 337dp wide.
+
+What each app sees of its half:
+
+- **Its size**: its configuration and window metrics are its half, as its window's bounds are on a
+  device, so its layout and window size class follow. No fold runs through either half: the fold
+  is the edge between them.
+- **Multi-window mode**: `isInMultiWindowMode()` is true for every activity, from `onCreate`, and
+  each gets `onMultiWindowModeChanged`. Both apps stay resumed.
+
+In a window, the second app's window opens beside the first's. Each app's `info` reports its
+`split` (`side`, `with`), and its `foreground` event carries its `side`.
+
+The split ends when either app goes to the background or another app comes on screen. The app left
+on screen gets the whole display back, its preset and fold included. Each app's display is its own
+half, so a `screenshot` is that app's half and each app draws its own status bar, with no divider
+between the halves.
 
 Broadcasts and content providers do not cross between apps yet, and each app's `/sdcard` is its
 own. On a watch the `foreground` command switches apps, but the watch's launcher lists only its

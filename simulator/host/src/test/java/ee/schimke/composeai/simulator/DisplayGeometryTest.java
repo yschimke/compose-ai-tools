@@ -86,4 +86,20 @@ public class DisplayGeometryTest {
     // SCREENLAYOUT_SIZE_XLARGE | SCREENLAYOUT_LONG_YES: a 1080p external display at mdpi
     assertEquals(0x24, DisplayGeometry.screenLayout(1920, 1080));
   }
+
+  @Test
+  public void aSplitScreenFollowsTheFoldElseTheLongerSide() {
+    // An open book-style foldable, portrait, folds top to bottom: side by side, the odd dp second.
+    assertArrayEquals(
+        new int[] {336, 841, 337, 841}, DisplayGeometry.splitHalves(673, 841, true));
+    // The same display with no fold: one above the other.
+    assertArrayEquals(
+        new int[] {673, 420, 673, 421}, DisplayGeometry.splitHalves(673, 841, null));
+    // A tabletop fold runs side to side: one above the other.
+    assertArrayEquals(
+        new int[] {841, 336, 841, 337}, DisplayGeometry.splitHalves(841, 673, false));
+    // A landscape tablet: side by side.
+    assertArrayEquals(
+        new int[] {640, 800, 640, 800}, DisplayGeometry.splitHalves(1280, 800, null));
+  }
 }

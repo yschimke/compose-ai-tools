@@ -5,6 +5,7 @@ import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
 import android.view.Display;
 import java.awt.AWTEvent;
 import java.awt.GraphicsEnvironment;
@@ -21,6 +22,8 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowActivity;
 import org.robolectric.simulator.SimulatorPanelRegistry;
 
 /**
@@ -35,6 +38,14 @@ import org.robolectric.simulator.SimulatorPanelRegistry;
  * screen goes to the background as an app does on {@code HOME}: its top activity is paused and
  * stopped, and its windows are hidden. The app coming forward shows its windows where the other's
  * were, and resumes its task, or starts its launcher activity, or the intent it was handed.
+ *
+ * <p>Two apps can share the screen ({@code split}, or Split screen on another app's icon): the
+ * display is cut in two along its longer side, where a foldable folds. Each app's display becomes
+ * its half, as its window's bounds and configuration do on a device, with no fold running through
+ * it; its activities are in multi-window mode ({@code isInMultiWindowMode}, {@code
+ * onMultiWindowModeChanged}) and both stay resumed. In a window the second app's opens beside the
+ * first's. The split ends when either app goes to the background or another comes on screen, and
+ * the app left on screen gets the whole display back, its preset and fold included.
  *
  * <p>An activity of another app started for a result gets {@code RESULT_CANCELED} at once: the
  * result would come back from another process. The intent's extras reach the other app as strings.
@@ -62,23 +73,71 @@ final class DeviceApps {
   private final Application app;
   private final Navigator navigator;
   private final Protocol protocol;
+  private final DeviceDisplay display;
   private HomeScreen home;
+
+  /** While the screen is split: this app's side, {@code first} or {@code second}; else null. */
+  private String side;
+
+  /** The app on the split screen's other side. */
+  private String partner;
+
+  /** The whole display, given back when the split ends. */
+  private DeviceDisplay.Saved whole;
+
+  /** Whether the app's activities are in multi-window mode, new ones included. */
+  private static volatile boolean multiWindow;
   private volatile boolean onScreen = !Boolean.getBoolean(BACKGROUND_PROPERTY);
 
   /** The windows hidden while in the background, shown again on coming forward. */
   private final Set<Window> hidden = new LinkedHashSet<>();
 
-  DeviceApps(Application app, Navigator navigator, Protocol protocol) {
+  DeviceApps(Application app, Navigator navigator, Protocol protocol, DeviceDisplay display) {
     this.app = app;
     this.navigator = navigator;
     this.protocol = protocol;
+    this.display = display;
     current = this;
     if (!DeviceBus.enabled()) return;
+    // Every activity created while the screen is split is in multi-window mode from onCreate,
+    // those a configuration change re-creates included.
+    app.registerActivityLifecycleCallbacks(
+        new Application.ActivityLifecycleCallbacks() {
+          @Override
+          public void onActivityPreCreated(Activity activity, android.os.Bundle state) {
+            if (multiWindow && !(activity instanceof PhoneHome) && onDefaultDisplay(activity)) {
+              ShadowActivity shadow = Shadow.extract(activity);
+              shadow.setInMultiWindowMode(true);
+            }
+          }
+
+          @Override
+          public void onActivityCreated(Activity activity, android.os.Bundle state) {}
+
+          @Override
+          public void onActivityStarted(Activity activity) {}
+
+          @Override
+          public void onActivityResumed(Activity activity) {}
+
+          @Override
+          public void onActivityPaused(Activity activity) {}
+
+          @Override
+          public void onActivityStopped(Activity activity) {}
+
+          @Override
+          public void onActivitySaveInstanceState(Activity activity, android.os.Bundle state) {}
+
+          @Override
+          public void onActivityDestroyed(Activity activity) {}
+        });
     navigator.addSystemUi(this::handle);
     DeviceBus.onBroadcast(EVENT, this::heard);
     DeviceBus.onBroadcast(LABEL, this::heardLabel);
-    if (!onScreen && !GraphicsEnvironment.isHeadless()) {
-      // The simulator's windows open as it starts; an app in the background keeps them hidden.
+    if (!GraphicsEnvironment.isHeadless()) {
+      // An app in the background keeps its windows hidden: those open as it starts, and any it
+      // opens later (a secondary display's), whether or not it started on screen.
       Toolkit.getDefaultToolkit()
           .addAWTEventListener(
               event -> {
@@ -91,7 +150,7 @@ final class DeviceApps {
                 }
               },
               AWTEvent.WINDOW_EVENT_MASK);
-      SwingUtilities.invokeLater(this::hideWindows);
+      if (!onScreen) SwingUtilities.invokeLater(this::hideWindows);
     }
   }
 
@@ -138,14 +197,12 @@ final class DeviceApps {
    */
   JSONObject show(String packageName, Intent intent) throws JSONException {
     if (packageName.equals(app.getPackageName())) {
+      leaveSplit();
       JSONObject shown = comeForward(intent, null);
       DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", packageName).object());
       return shown;
     }
-    if (!isOtherApp(packageName)) {
-      throw new IllegalArgumentException(
-          "no app " + packageName + " on this device; it has " + DevicePeers.packages());
-    }
+    checkShowable(packageName, intent);
     JSONObject window = windowBounds();
     goBackground();
     DeviceBus.broadcast(
@@ -158,18 +215,191 @@ final class DeviceApps {
     return new Protocol.Json().put("package", packageName).put("onScreen", true).object();
   }
 
+  /**
+   * Refuses, before this app leaves the screen, to show another app that could not come forward:
+   * one not on the device, or, with no [intent] to start, one with no launcher activity (a
+   * service-only app).
+   */
+  private void checkShowable(String packageName, Intent intent) {
+    if (!isOtherApp(packageName)) {
+      throw new IllegalArgumentException(
+          "no app " + packageName + " on this device; it has " + DevicePeers.packages());
+    }
+    if (intent != null) return;
+    Intent launcher =
+        new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName);
+    if (app.getPackageManager().queryIntentActivities(launcher, 0).isEmpty()) {
+      throw new IllegalArgumentException(
+          packageName + " has no launcher activity to show; start one of its activities instead");
+    }
+  }
+
   /** The {@code foreground} command: this app, or the {@code package} named, comes on screen. */
   JSONObject command(JSONObject c) throws JSONException {
     return show(c.optString("package", app.getPackageName()), null);
   }
 
+  /**
+   * The {@code split} command: this app and the one {@code package} names share the screen, this
+   * one first; {@code "action":"off"} gives this one the whole screen again.
+   */
+  JSONObject splitCommand(JSONObject c) throws JSONException {
+    if ("off".equals(c.optString("action"))) return show(app.getPackageName(), null);
+    if (!c.has("package")) {
+      throw new IllegalArgumentException(
+          "split takes the package of another app of the device: " + DevicePeers.packages());
+    }
+    return split(c.getString("package"));
+  }
+
+  /**
+   * This app takes the first half of the screen and [other] the second, starting its launcher
+   * activity or resuming its task there.
+   */
+  JSONObject split(String other) throws JSONException {
+    checkShowable(other, null);
+    // Comes on screen alone first: whatever else was there goes to the background.
+    if (!onScreen || side != null) show(app.getPackageName(), null);
+    Configuration config = app.getResources().getConfiguration();
+    int[] halves =
+        DisplayGeometry.splitHalves(
+            config.screenWidthDp, config.screenHeightDp, display.foldVertical());
+    boolean sideBySide = halves[1] == config.screenHeightDp;
+    enterSplit("first", other, halves[0], halves[1]);
+    if (home != null) {
+      Navigator.Entry top = navigator.top(Display.DEFAULT_DISPLAY);
+      // From the home screen's icon: this app's own task takes the first half.
+      if (top == null || top.system) home.launch();
+    }
+    JSONObject split =
+        new Protocol.Json()
+            .put("side", "second")
+            .put("partner", app.getPackageName())
+            .put("widthDp", halves[2])
+            .put("heightDp", halves[3])
+            .object();
+    Runnable tell =
+        () -> {
+          Window main = mainWindow();
+          JSONObject window = null;
+          if (main != null) {
+            window =
+                new Protocol.Json()
+                    .put("x", main.getX() + (sideBySide ? main.getWidth() : 0))
+                    .put("y", main.getY() + (sideBySide ? 0 : main.getHeight()))
+                    .object();
+          }
+          DeviceBus.broadcast(
+              EVENT,
+              new Protocol.Json().put("to", other).put("split", split).put("window", window).object());
+        };
+    // In a window: once it has shrunk to the first half, the second opens beside it.
+    if (GraphicsEnvironment.isHeadless()) tell.run();
+    else SwingUtilities.invokeLater(tell);
+    return new Protocol.Json()
+        .put("package", app.getPackageName())
+        .put("split", describeSplit())
+        .put("display", display.describe())
+        .object();
+  }
+
   private void heard(String from, JSONObject body) throws JSONException {
     String to = body.optString("to");
+    JSONObject split = body.optJSONObject("split");
     if (to.equals(app.getPackageName())) {
       JSONObject spec = body.optJSONObject("intent");
+      if (split != null) {
+        enterSplit(
+            split.getString("side"),
+            split.getString("partner"),
+            split.getInt("widthDp"),
+            split.getInt("heightDp"));
+      } else {
+        leaveSplit();
+      }
       comeForward(spec == null ? null : Intents.fromJson(spec, app), body.optJSONObject("window"));
+    } else if (split != null && app.getPackageName().equals(split.optString("partner"))) {
+      // The first half: it stays as it is.
     } else if (onScreen) {
       goBackground();
+    }
+  }
+
+  /**
+   * HOME, pressed in this app's half of a split screen: the split ends, the other app goes to the
+   * background, and this one's home screen takes the whole display.
+   */
+  void endSplitForHome() {
+    if (side == null) return;
+    leaveSplit();
+    DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", app.getPackageName()).object());
+    event();
+  }
+
+  /** Where this app is on a split screen, or null. */
+  JSONObject describeSplit() {
+    if (side == null) return null;
+    return new Protocol.Json().put("side", side).put("with", partner).object();
+  }
+
+  private void enterSplit(String side, String partner, int widthDp, int heightDp) {
+    if (this.side == null) whole = display.save();
+    this.side = side;
+    this.partner = partner;
+    boolean was = multiWindow;
+    multiWindow = true;
+    markMultiWindow();
+    display.splitTo(widthDp, heightDp);
+    displayChangedUnderTop();
+    if (!was) multiWindowChanged();
+  }
+
+  /** The split ends for this app: the whole display again, out of multi-window mode. */
+  private void leaveSplit() {
+    if (side == null) return;
+    side = null;
+    partner = null;
+    multiWindow = false;
+    markMultiWindow();
+    display.restore(whole);
+    displayChangedUnderTop();
+    whole = null;
+    multiWindowChanged();
+  }
+
+  private static boolean onDefaultDisplay(Activity activity) {
+    try {
+      Display d = activity.getDisplay();
+      return d == null || d.getDisplayId() == Display.DEFAULT_DISPLAY;
+    } catch (UnsupportedOperationException e) {
+      return true;
+    }
+  }
+
+  /**
+   * The activities under the top one hear of the display's new size too, the home screen and a
+   * stopped task included: the display change went to the top activity only.
+   */
+  private void displayChangedUnderTop() {
+    navigator.displayChanged(Display.DEFAULT_DISPLAY);
+  }
+
+  private void markMultiWindow() {
+    for (Navigator.Entry entry : navigator.backStack()) {
+      if (entry.system || entry.displayId != Display.DEFAULT_DISPLAY) continue;
+      ShadowActivity shadow = Shadow.extract(entry.activity());
+      shadow.setInMultiWindowMode(multiWindow);
+    }
+  }
+
+  /** {@code onMultiWindowModeChanged}, as the system calls it on each of the app's activities. */
+  private void multiWindowChanged() {
+    Configuration config = app.getResources().getConfiguration();
+    for (Navigator.Entry entry : navigator.backStack()) {
+      if (entry.system || entry.displayId != Display.DEFAULT_DISPLAY) continue;
+      Activity activity = entry.activity();
+      if (activity.isFinishing() || activity.isDestroyed()) continue;
+      activity.onMultiWindowModeChanged(multiWindow, new Configuration(config));
     }
   }
 
@@ -218,7 +448,6 @@ final class DeviceApps {
   }
 
   private JSONObject comeForward(Intent intent, JSONObject window) throws JSONException {
-    boolean was = onScreen;
     onScreen = true;
     showWindows(window);
     JSONObject result;
@@ -236,7 +465,8 @@ final class DeviceApps {
         result = navigator.startActivity(launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), -1);
       }
     }
-    if (!was) event();
+    // Even when it was on screen already: the device's name follows the last app to come forward.
+    event();
     return new Protocol.Json()
         .put("package", app.getPackageName())
         .put("onScreen", true)
@@ -246,6 +476,7 @@ final class DeviceApps {
 
   private void goBackground() {
     if (!onScreen) return;
+    leaveSplit();
     onScreen = false;
     if (home != null) {
       Navigator.Entry top = navigator.top(Display.DEFAULT_DISPLAY);
@@ -260,7 +491,11 @@ final class DeviceApps {
   private void event() {
     protocol.event(
         EVENT,
-        new Protocol.Json().put("package", app.getPackageName()).put("onScreen", onScreen).object());
+        new Protocol.Json()
+            .put("package", app.getPackageName())
+            .put("onScreen", onScreen)
+            .put("split", side)
+            .object());
   }
 
   // ---------------------------------------------------------------------------------------------

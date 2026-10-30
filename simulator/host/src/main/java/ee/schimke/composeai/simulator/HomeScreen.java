@@ -304,6 +304,9 @@ final class HomeScreen {
 
   /** {@code HOME}: the app goes to the background, overlays close, the home screen shows. */
   JSONObject goHome() {
+    // HOME on a split screen ends it: the home screen takes the whole display.
+    DeviceApps apps = DeviceApps.current();
+    if (apps != null) apps.endSplitForHome();
     overlay = null;
     if (activity != null) activity.closeOverlay();
     return navigator.goHome();
