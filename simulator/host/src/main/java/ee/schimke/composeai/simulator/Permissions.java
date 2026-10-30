@@ -48,7 +48,6 @@ final class Permissions {
               "ACCESS_FINE_LOCATION",
               "ACCESS_MEDIA_LOCATION",
               "ACTIVITY_RECOGNITION",
-              "ADD_VOICEMAIL",
               "ANSWER_PHONE_CALLS",
               "BLUETOOTH_ADVERTISE",
               "BLUETOOTH_CONNECT",
@@ -107,8 +106,9 @@ final class Permissions {
 
   /** A runtime permission: the platform's, or one the app defines as dangerous. */
   static boolean isRuntime(PackageManager pm, String name) {
-    // Health Connect's are all runtime.
+    // Health Connect's are all runtime; ADD_VOICEMAIL is the one outside `android.permission.`.
     if (name.startsWith("android.permission.health.")) return true;
+    if (name.equals("com.android.voicemail.permission.ADD_VOICEMAIL")) return true;
     if (name.startsWith("android.permission.")) {
       return RUNTIME.contains(name.substring("android.permission.".length()));
     }
