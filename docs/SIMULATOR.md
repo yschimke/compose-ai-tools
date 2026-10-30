@@ -823,16 +823,34 @@ the activity takes it first):
 - **Any other window gets `KEYCODE_BACK`**, which `Activity.onKeyUp` turns into `onBackPressed`;
   `ComponentActivity` hands that to the same `OnBackPressedDispatcher`, and with nothing registered
   the activity finishes. Robolectric 4.17 does not turn on the targetSdk 36 default, so an app
-  opts in only through the manifest attribute.
+  opts in only through the manifest attribute, on the `<application>` or on an `<activity>` (which
+  overrides the application's either way). Neither Robolectric's `ApplicationInfo` for an APK nor
+  the platform's legacy `PackageParser` carries it, so the simulator reads it from the APK's
+  manifest and sets the flags `WindowOnBackInvokedDispatcher` checks (`BackOptIn`).
 - **The simulator's own home** (`WearHome`, `PhoneHome`) takes Back itself whatever the app opted
   in to: back from a launcher, stream or tile surface goes to the watch face.
 
 Finishing the root activity lands on the watch face (or home screen) with `--launcher`, and
 otherwise empties the back stack (`activity` event `empty`).
 
-The predictive back *gesture* is not simulated: a `swipe` from a watch's left edge is a touch, which
-Wear Compose's `SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has
-not opted in. An opted-in window gets no `handleOnBackProgressed` stream from a swipe; use `back`.
+**The Back gesture.** On a phone, a swipe in from the left or right edge is Back, as gesture
+navigation makes it, however the touch arrives: the simulator's window, `touch` (Android Studio's
+Running Devices), `swipe`, `adb shell input swipe`. As a device's `EdgeBackGestureHandler` does,
+a touch that goes down within 24dp of an edge is the app's until it moves inward past the touch
+slop, more across than along the edge; then the app's pointer is cancelled (as `pilferPointers`
+does) and the swipe is the system's. An opted-in window's top callback follows it: an
+`OnBackAnimationCallback` (API 34+) hears `onBackStarted`, `onBackProgressed` with each move
+(`BackEvent` progress linear across the rest of the display, and the edge), then `onBackInvoked` when
+the finger lifts 48dp or more in, or `onBackCancelled` when it lifts short of that. That is what
+androidx's `PredictiveBackHandler`, Navigation and Material animate from. A window that has not
+opted in gets Back on a committed release, the same Back as the `back` command. A touch that moves
+along the edge first stays the app's.
+
+![A Back swipe over the sample's predictive-back screen: following the finger, back toward the edge, cancelled, then committed](design/evidence/simulator-launch/edge-back-swipe.png)
+
+A watch has no edge gesture: a `swipe` from its left edge is a touch, which Wear Compose's
+`SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has not opted
+in; an opted-in watch window gets no `onBackProgressed` stream from a swipe, so use `back`.
 
 ### Wear system UI
 
@@ -1141,12 +1159,11 @@ format, the frame stream, mouse input, the token check), the stream following a 
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
 display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
 the device appears in Device Manager and Running Devices, which streams the display and takes
-clicks and drags. Studio's process tracker, a native binary, cannot run (`can't execute`, logged
+clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's process tracker, a native binary, cannot run (`can't execute`, logged
 and harmless). The host process stays out of the macOS Dock and app switcher
 (`apple.awt.UIElement`); only the simulator's window is an app there.
 
-**Not yet:** a second display or `--pair` with `--adb`; system gestures from Running Devices (a
-drag from the left edge is a touch for the app, not Back: see [Back](#back)); debugging (`jdwp:`, `track-jdwp` lists
+**Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
 watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
