@@ -306,18 +306,12 @@ final class Navigator {
         continue;
       }
       Entry requester = stack.peek();
-      if (systemUi != null
-          && systemUi.handle(
-              intent,
-              forResult == null ? -1 : forResult.requestCode,
-              requester == null ? null : requester.activity())) {
+      int requestCode = forResult == null ? -1 : forResult.requestCode;
+      if (handledBySystem(intent, requestCode, requester == null ? null : requester.activity())) {
         continue;
       }
       try {
-        startActivity(
-            intent,
-            forResult == null ? -1 : forResult.requestCode,
-            forResult == null ? null : forResult.options);
+        startActivity(intent, requestCode, forResult == null ? null : forResult.options);
       } catch (RuntimeException e) {
         protocol.event(
             "error",
@@ -325,7 +319,13 @@ final class Navigator {
                 .put("kind", "startActivity")
                 .put("intent", Intents.toJson(intent))
                 .put("message", String.valueOf(e))
+                .put("answer", requestCode >= 0 ? "RESULT_CANCELED" : null)
                 .object());
+        // A device throws ActivityNotFoundException at the call; Robolectric records the start
+        // and returns. A caller waiting for a result hears it was cancelled rather than nothing.
+        if (requester != null && requestCode >= 0 && stack.contains(requester)) {
+          deliverResult(requester.activity(), requestCode, Activity.RESULT_CANCELED, null);
+        }
       }
     }
     while ((intent = shadowApp.getNextStartedService()) != null) {
@@ -1112,12 +1112,33 @@ final class Navigator {
     }
   }
 
-  /** Answers intents only the system handles (its dialogs and settings screens); see Radios. */
+  /**
+   * Answers intents only the system handles (its dialogs, pickers and settings screens, and other
+   * apps' screens): {@link Radios}, {@link SystemPickers}, {@link Handoffs}.
+   */
   interface SystemUi {
     boolean handle(Intent intent, int requestCode, Activity requester);
   }
 
-  SystemUi systemUi;
+  private final List<SystemUi> systemUis = new ArrayList<>();
+
+  /** Adds [ui] after those already added; the first to handle an intent takes it. */
+  void addSystemUi(SystemUi ui) {
+    systemUis.add(ui);
+  }
+
+  private boolean handledBySystem(Intent intent, int requestCode, Activity requester) {
+    for (SystemUi ui : systemUis) {
+      if (ui.handle(intent, requestCode, requester)) return true;
+    }
+    return false;
+  }
+
+  /** Whether [activity] is still on the back stack, to hand a late result to. */
+  boolean isRunning(Activity activity) {
+    for (Entry entry : stack) if (entry.activity() == activity) return true;
+    return false;
+  }
 
   /**
    * The activity that asked for [names] with [requestCode]: Robolectric keeps each activity's last

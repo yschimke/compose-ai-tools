@@ -140,10 +140,8 @@ class RobolectricDepsProvisionTest {
     assertEquals(File(out, "android-all-instrumented-15-robolectric-1-i7.jar"), jar)
     assertEquals(body, jar.readText())
     assertEquals(listOf(jar.name), files(out), "no temporary files left behind")
-    assertEquals(
-      listOf(artifact.url(), artifact.url() + ".sha512", artifact.url() + ".sha256"),
-      fetched,
-    )
+    val mirrored = artifact.url(RobolectricDepsProvision.CENTRAL_MIRROR)
+    assertEquals(listOf(mirrored, "$mirrored.sha512", "$mirrored.sha256"), fetched)
 
     // Present: nothing is fetched again.
     fetched.clear()
@@ -204,7 +202,37 @@ class RobolectricDepsProvisionTest {
         log = {},
       )
     }
-    assertEquals(1, jarAttempts)
+    // Once per repository: a 404 is not retried, but Central may have what the mirror lacks.
+    assertEquals(RobolectricDepsProvision.REPOSITORIES.size, jarAttempts)
+  }
+
+  @Test
+  fun `Central serves what the mirror cannot`() = fixture { dir ->
+    val body = "bytes"
+    val sha1 = RobolectricDepsProvision.digest(File(dir, "b").apply { writeText(body) }, "SHA-1")
+    val fetched = mutableListOf<String>()
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      fetched += url
+      when {
+        url.startsWith(RobolectricDepsProvision.CENTRAL_MIRROR) -> error("HTTP 404")
+        url.endsWith(".jar") -> dest.writeText(body)
+        url.endsWith(".sha1") -> dest.writeText(sha1)
+        else -> error("HTTP 404")
+      }
+    }
+    val logs = mutableListOf<String>()
+    val jar =
+      RobolectricDepsProvision.ensure(
+        artifact,
+        File(dir, "deps"),
+        fetcher = fetcher,
+        pause = {},
+        log = { logs += it },
+      )
+    assertEquals(body, jar.readText())
+    assertEquals(artifact.url(RobolectricDepsProvision.CENTRAL_MIRROR), fetched.first())
+    assertTrue(artifact.url() in fetched, "$fetched")
+    assertTrue(logs.any { it.contains("could not fetch") }, logs.toString())
   }
 
   @Test
@@ -260,7 +288,7 @@ class RobolectricDepsProvisionTest {
         seed = seed,
       )
     assertEquals(body, jar.readText())
-    assertTrue(artifact.url() in fetched, "$fetched")
+    assertTrue(artifact.url(RobolectricDepsProvision.CENTRAL_MIRROR) in fetched, "$fetched")
   }
 
   @Test

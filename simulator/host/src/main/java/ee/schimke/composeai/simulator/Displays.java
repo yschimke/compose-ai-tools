@@ -746,6 +746,7 @@ final class Displays {
           });
       frame.getContentPane().add(panel);
       frame.pack();
+      WindowZoom.install(frame, panel, width, height);
       JPanel main = SimulatorPanelRegistry.getActivePanel();
       Window owner = main == null ? null : SwingUtilities.getWindowAncestor(main);
       if (owner != null) {
@@ -767,6 +768,11 @@ final class Displays {
 
     void resize(int width, int height) {
       if (panel == null) return;
+      WindowZoom zoom = WindowZoom.of(panel);
+      if (zoom != null) {
+        zoom.deviceSize(width, height);
+        return;
+      }
       panel.setPreferredSize(new Dimension(width, height));
       frame.pack();
     }

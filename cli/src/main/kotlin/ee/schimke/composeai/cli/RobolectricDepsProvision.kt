@@ -26,6 +26,16 @@ import java.util.UUID
 internal object RobolectricDepsProvision {
   internal const val MAVEN_CENTRAL = "https://repo1.maven.org/maven2"
 
+  /**
+   * Google's mirror of Maven Central. Cloud sandboxes share a few egress addresses, and Central
+   * rate-limits per address (HTTP 429) where the mirror has far more headroom; Central stays behind
+   * it for anything published too recently to be mirrored yet.
+   */
+  internal const val CENTRAL_MIRROR = "https://maven-central.storage-download.googleapis.com/maven2"
+
+  /** Where [ensure] looks, in order. */
+  internal val REPOSITORIES = listOf(CENTRAL_MIRROR, MAVEN_CENTRAL)
+
   /** One Maven artifact Robolectric resolves, named as its `DependencyJar` names it. */
   data class Artifact(
     val groupId: String,
@@ -181,10 +191,11 @@ internal object RobolectricDepsProvision {
     }
 
   /**
-   * Ensure [directory] holds [artifact] under [Artifact.fileName], fetching and verifying it
-   * against the strongest checksum Maven Central publishes (`.sha512`, `.sha256`, `.sha1`). A file
-   * already there is trusted, as Robolectric trusts it: one only ever appears there whole, by an
-   * atomic rename. Throws with the reason when it cannot.
+   * Ensure [directory] holds [artifact] under [Artifact.fileName], fetching it from the first of
+   * [repositories] that serves it and verifying it against the strongest checksum that same
+   * repository publishes (`.sha512`, `.sha256`, `.sha1`). A file already there is trusted, as
+   * Robolectric trusts it: one only ever appears there whole, by an atomic rename. Throws with the
+   * reason when it cannot.
    *
    * Concurrent callers, in this JVM or another (`launch --pair` starts two, and several agents can
    * share a host), take a lock on `.<fileName>.lock` beside it for the one artifact, so one fetches
@@ -195,12 +206,12 @@ internal object RobolectricDepsProvision {
    *
    * With [seed] (Robolectric's own copy in its Maven-local repository, [mavenLocalCopy]) the jar is
    * linked or copied from there instead of fetched, once it matches a checksum: the one Robolectric
-   * stored beside it, else the one [repository] publishes.
+   * stored beside it, else the one the first of [repositories] publishes.
    */
   fun ensure(
     artifact: Artifact,
     directory: File = defaultDir(),
-    repository: String = MAVEN_CENTRAL,
+    repositories: List<String> = REPOSITORIES,
     fetcher: Fetcher = defaultFetcher,
     attempts: Int = 3,
     pause: (attempt: Int) -> Unit = { Thread.sleep(2_000L * it) },
@@ -213,22 +224,29 @@ internal object RobolectricDepsProvision {
     return withArtifactLock(directory, artifact) {
       if (target.isFile && target.length() > 0) return@withArtifactLock target
       removeAbandoned(directory, artifact)
-      val url = artifact.url(repository)
       val temporary = File(directory, ".${artifact.fileName}.${UUID.randomUUID()}.tmp")
       try {
-        if (seed != null && seedFrom(seed, temporary, url, directory, fetcher, attempts, pause)) {
+        val firstUrl = artifact.url(repositories.first())
+        if (
+          seed != null && seedFrom(seed, temporary, firstUrl, directory, fetcher, attempts, pause)
+        ) {
           log("compose-preview: ${artifact.fileName} from ${seed.parentFile}")
         } else {
-          log("compose-preview: fetching ${artifact.fileName} from $url")
-          retrying(attempts, pause) { fetcher.fetchTo(url, temporary) }
-          val (algorithm, expected) =
-            checksum(url, directory, fetcher, attempts, pause)
-              ?: error("Maven Central publishes no .sha512, .sha256 or .sha1 for $url")
-          val actual = digest(temporary, algorithm)
-          check(actual.equals(expected, ignoreCase = true)) {
-            "$algorithm of ${artifact.fileName} is $actual, but $url.${extension(algorithm)} " +
-              "says $expected"
+          var failure: Exception? = null
+          for (repository in repositories) {
+            val url = artifact.url(repository)
+            try {
+              fetchVerified(artifact, url, temporary, directory, fetcher, attempts, pause, log)
+              failure = null
+              break
+            } catch (e: Exception) {
+              if (e is NetworkDisabledException) throw e
+              temporary.delete()
+              failure = e
+              log("compose-preview: could not fetch ${artifact.fileName} from $url (${e.message})")
+            }
           }
+          failure?.let { throw it }
         }
         try {
           Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
@@ -287,6 +305,29 @@ internal object RobolectricDepsProvision {
    * Robolectric's own `.sha512` beside it (or a `.sha256` / `.sha1` Maven left), else [url]'s.
    * False, with [temporary] removed, when it does not or no checksum can be had.
    */
+  /** Fetches [url] to [temporary] and checks it against the checksum published beside it. */
+  private fun fetchVerified(
+    artifact: Artifact,
+    url: String,
+    temporary: File,
+    directory: File,
+    fetcher: Fetcher,
+    attempts: Int,
+    pause: (Int) -> Unit,
+    log: (String) -> Unit,
+  ) {
+    log("compose-preview: fetching ${artifact.fileName} from $url")
+    retrying(attempts, pause) { fetcher.fetchTo(url, temporary) }
+    val (algorithm, expected) =
+      checksum(url, directory, fetcher, attempts, pause)
+        ?: error("$url has no .sha512, .sha256 or .sha1 beside it")
+    val actual = digest(temporary, algorithm)
+    check(actual.equals(expected, ignoreCase = true)) {
+      "$algorithm of ${artifact.fileName} is $actual, but $url.${extension(algorithm)} " +
+        "says $expected"
+    }
+  }
+
   private fun seedFrom(
     seed: File,
     temporary: File,

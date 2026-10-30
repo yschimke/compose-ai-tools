@@ -70,6 +70,7 @@ final class Session {
   private final HomeScreen home;
   private final Radios radios;
   private final BackgroundWork background;
+  private final SystemPickers pickers;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -121,6 +122,9 @@ final class Session {
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
     this.background = new BackgroundWork(app, protocol, navigator);
+    // After the radios' dialogs: the system's pickers, then intents that leave the app.
+    this.pickers = new SystemPickers(app, protocol, navigator, files);
+    new Handoffs(app, protocol, navigator);
   }
 
   void start() {
@@ -162,6 +166,8 @@ final class Session {
     radios.cycle();
     background.cycle();
     overlay.round(FormFactor.isRound());
+    android.util.DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+    WindowZoom.installMain(metrics.widthPixels, metrics.heightPixels);
     logcat.poll();
     notifications.cycle();
     if (wear != null) wear.cycle();
@@ -286,6 +292,7 @@ final class Session {
       case "display":
       case "settings":
       case "content":
+      case "pick":
         return true;
       default:
         return false;
@@ -425,6 +432,8 @@ final class Session {
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
           return navigator.startActivity(intent, -1, launchOptions(c), savedState);
         }
+      case "zoom":
+        return WindowZoom.command(c.has("value") ? String.valueOf(c.get("value")) : null);
       case "kill":
         checkPackage(c);
         return navigator.kill();
@@ -449,6 +458,8 @@ final class Session {
       case "permissions":
         checkPackage(c);
         return navigator.permissions.command(c);
+      case "pick":
+        return pickers.command(c);
       case "settings":
         return device.settings(c);
       case "display":

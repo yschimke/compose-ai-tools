@@ -128,6 +128,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       pairedDevice();
       PlayServicesPackages.sync(app);
       Alarms.grantExact(app);
+      // The documents and photo pickers, camera, share sheet and browser an intent can reach.
+      SystemApps.install(app);
+      DocumentsStore.install(app);
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.
