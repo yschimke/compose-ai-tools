@@ -229,6 +229,7 @@ internal object CliFlags {
       "--network",
       "--max-heap",
       "--data-layer",
+      "--play-services",
       // bundle externalize
       "--res-out",
       "--ext",

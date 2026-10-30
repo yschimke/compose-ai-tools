@@ -289,6 +289,7 @@ internal object CliFlagValidation {
           "--network",
           "--max-heap",
           "--data-layer",
+          "--play-services",
           "--prepare",
           "--verbose",
           "-v",

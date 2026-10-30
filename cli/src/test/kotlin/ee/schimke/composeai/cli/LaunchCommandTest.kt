@@ -33,7 +33,7 @@ class LaunchCommandTest {
     val apk = root.child("app.apk", "dex bytes")
     val cache = ApkConversionCache(File(root, "cache"))
     var conversions = 0
-    val convert: (File) -> String = { out ->
+    val convert: (File, File?) -> String = { out, _ ->
       conversions++
       out.writeText("classes")
       """{"classes":1}"""
@@ -58,7 +58,7 @@ class LaunchCommandTest {
     fixture { root ->
       val apk = root.child("app.apk", "v1")
       val cache = ApkConversionCache(File(root, "cache"))
-      val convert: (File) -> String = { out ->
+      val convert: (File, File?) -> String = { out, _ ->
         out.writeText("classes")
         "{}"
       }
@@ -71,10 +71,9 @@ class LaunchCommandTest {
       assertFalse(newConverter.cached)
       assertFalse(rebuilt.cached)
       assertFalse(v1.classesJar.exists(), "the superseded stamp is removed")
-      assertTrue(newConverter.classesJar.exists())
-      assertTrue(
-        rebuilt.classesJar.parentFile.parentFile != newConverter.classesJar.parentFile.parentFile
-      )
+      assertTrue(rebuilt.apkDir != newConverter.apkDir)
+      assertTrue(rebuilt.classesJar.exists())
+      assertFalse(newConverter.classesJar.exists(), "the earlier build of the same path is removed")
     }
 
   @Test
@@ -82,14 +81,14 @@ class LaunchCommandTest {
     val apk = root.child("app.apk")
     val cache = ApkConversionCache(File(root, "cache"))
     val failure = runCatching {
-      cache.ensure(apk, "stamp") { out ->
+      cache.ensure(apk, "stamp") { out, _ ->
         out.writeText("half")
         error("dex2jar fell over")
       }
     }
     assertTrue(failure.isFailure)
     val retried =
-      cache.ensure(apk, "stamp") { out ->
+      cache.ensure(apk, "stamp") { out, _ ->
         out.writeText("classes")
         "{}"
       }
@@ -104,14 +103,14 @@ class LaunchCommandTest {
       (1..3).map { i ->
         val apk = root.child("app$i.apk", "apk $i")
         cache
-          .ensure(apk, "stamp") { out ->
+          .ensure(apk, "stamp") { out, _ ->
             out.writeText("classes")
             "{}"
           }
           .also { it.classesJar.parentFile.parentFile.setLastModified(1_000L * i) }
       }
     // A fourth use prunes down to two.
-    cache.ensure(root.child("app4.apk", "apk 4"), "stamp") { out ->
+    cache.ensure(root.child("app4.apk", "apk 4"), "stamp") { out, _ ->
       out.writeText("classes")
       "{}"
     }
@@ -121,14 +120,107 @@ class LaunchCommandTest {
   }
 
   @Test
-  fun `the converter stamp follows the converter jars`() = fixture { root ->
-    val platform = root.child("android-36/android.jar", "platform")
-    val host = root.child("simulator-host.jar", "v1")
-    val dex2jar = root.child("dex-tools.jar", "d2j")
-    val before = ApkConversionCache.converterStamp(listOf(host, dex2jar), platform)
-    assertEquals(before, ApkConversionCache.converterStamp(listOf(dex2jar, host), platform))
-    host.writeText("v2")
-    assertTrue(before != ApkConversionCache.converterStamp(listOf(host, dex2jar), platform))
+  fun `the converter stamp follows the converter, not the rest of the simulator host`() =
+    fixture { root ->
+      val platform = root.child("android-36/android.jar", "platform")
+      val host = File(root, "simulator-host.jar")
+      fun writeHost(converter: String, other: String) =
+        java.util.zip.ZipOutputStream(host.outputStream()).use { zip ->
+          for ((name, text) in
+            listOf(
+              "${ApkConversionCache.CONVERTER_CLASSES}.class" to converter,
+              "${ApkConversionCache.CONVERTER_CLASSES}\$Index.class" to converter,
+              "ee/schimke/composeai/simulator/Navigator.class" to other,
+            )) {
+            zip.putNextEntry(java.util.zip.ZipEntry(name))
+            zip.write(text.toByteArray())
+            zip.closeEntry()
+          }
+        }
+      val dex2jar = root.child("dex-tools.jar", "d2j")
+      writeHost("converter v1", "navigator v1")
+      val before = ApkConversionCache.converterStamp(listOf(host, dex2jar), platform)
+      assertEquals(before, ApkConversionCache.converterStamp(listOf(dex2jar, host), platform))
+      writeHost("converter v1", "navigator v2")
+      assertEquals(before, ApkConversionCache.converterStamp(listOf(host, dex2jar), platform))
+      writeHost("converter v2", "navigator v2")
+      assertTrue(before != ApkConversionCache.converterStamp(listOf(host, dex2jar), platform))
+      dex2jar.writeText("d2j v2")
+      assertTrue(before != ApkConversionCache.converterStamp(listOf(host, dex2jar), platform))
+    }
+
+  @Test
+  fun `a rebuilt apk is converted from its previous build, which is then removed`() =
+    fixture { root ->
+      val apk = root.child("app.apk", "build 1")
+      val cache = ApkConversionCache(File(root, "cache"))
+      val previousSeen = mutableListOf<File?>()
+      val convert: (File, File?) -> String = { out, previous ->
+        previousSeen += previous
+        out.writeText("classes")
+        ApkConversionCache.indexOf(out).writeText("index")
+        "{}"
+      }
+      val first = cache.ensure(apk, "stamp", convert)
+      assertTrue(ApkConversionCache.indexOf(first.classesJar).isFile, "the index is kept")
+      apk.writeText("build 2")
+      val second = cache.ensure(apk, "stamp", convert)
+
+      assertEquals(listOf(null, first.classesJar), previousSeen)
+      assertFalse(first.apkDir.exists(), "the superseded build is removed")
+      assertTrue(second.classesJar.isFile)
+    }
+
+  @Test
+  fun `an entry in use is never pruned`() = fixture { root ->
+    val cache = ApkConversionCache(File(root, "cache"), keepApks = 1)
+    val convert: (File, File?) -> String = { out, _ ->
+      out.writeText("classes")
+      "{}"
+    }
+    val running = cache.ensure(root.child("a.apk", "a"), "stamp", convert)
+    cache.use(running).use {
+      // A newer APK's conversion would evict the older one, but its simulator still runs.
+      cache.ensure(root.child("b.apk", "b"), "stamp", convert)
+      assertTrue(running.classesJar.isFile)
+    }
+    cache.ensure(root.child("c.apk", "c"), "stamp", convert)
+    assertFalse(running.classesJar.exists(), "evicted once released")
+  }
+
+  @Test
+  fun `pruning deletes an entry but never its lock files`() = fixture { root ->
+    val cacheDir = File(root, "cache")
+    val cache = ApkConversionCache(cacheDir, keepApks = 1)
+    val convert: (File, File?) -> String = { out, _ ->
+      out.writeText("classes")
+      "{}"
+    }
+    val old = cache.ensure(root.child("a.apk", "a"), "stamp", convert)
+    cache.use(old).close()
+    cache.ensure(root.child("b.apk", "b"), "stamp", convert)
+    assertFalse(old.apkDir.exists())
+    // A waiter may hold these inodes: unlinking one would let a newcomer lock a fresh file.
+    assertTrue(File(cacheDir, "${old.apkDir.name}.lock").isFile)
+    assertTrue(File(cacheDir, "${old.apkDir.name}.inuse").isFile)
+  }
+
+  @Test
+  fun `the cache is held under its size cap`() = fixture { root ->
+    val cache = ApkConversionCache(File(root, "cache"), maxBytes = 25)
+    val entries =
+      (1..3).map { i ->
+        cache
+          .ensure(root.child("app$i.apk", "apk $i"), "stamp") { out, _ ->
+            out.writeText("0123456789")
+            "{}"
+          }
+          .also { it.apkDir.setLastModified(1_000L * i) }
+      }
+    // Each entry, with its summary and source path, is over the cap: only the newest is kept.
+    assertFalse(entries[0].classesJar.exists())
+    assertFalse(entries[1].classesJar.exists())
+    assertTrue(entries[2].classesJar.exists())
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -515,6 +607,34 @@ class LaunchCommandTest {
     assertTrue("-Dcomposeai.simulator.network=cellular,airplane" in command)
     assertTrue("--add-opens=java.base/java.net=ALL-UNNAMED" in command)
     assertTrue(LaunchCommand.NETWORK_MODES.containsAll(listOf("offline", "captive", "airplane")))
+  }
+
+  @Test
+  fun `a Play services state becomes a system property, and installed is the default`() {
+    fun command(playServices: String?) =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            playServices = playServices,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.playServices=none" in command("none"))
+    assertFalse(command(null).any { it.startsWith("-Dcomposeai.simulator.playServices") })
+    assertTrue(
+      LaunchCommand.PLAY_SERVICES_STATES.containsAll(listOf("installed", "none", "outdated"))
+    )
   }
 
   @Test
