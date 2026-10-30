@@ -317,6 +317,7 @@ final class Permissions {
    */
   JSONObject command(JSONObject c) throws JSONException {
     model();
+    prune();
     if (c.optBoolean("reset", false)) reset();
     if (c.has("policy")) {
       String p = c.getString("policy");
@@ -422,8 +423,14 @@ final class Permissions {
     return all;
   }
 
+  /** Drops waiting requests whose activity is gone (finished, force-stopped): nothing to answer. */
+  private void prune() {
+    pending.removeIf(r -> r.requester != null && r.requester.isDestroyed());
+  }
+
   JSONObject state() {
     PermissionModel model = model();
+    prune();
     JSONObject current = new JSONObject();
     JSONArray rationale = new JSONArray();
     JSONArray dontAskAgain = new JSONArray();
