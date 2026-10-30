@@ -5,7 +5,7 @@ runs, the commands and the limits are in [`docs/SIMULATOR.md` → Home screen an
 widgets](../SIMULATOR.md#home-screen-and-widgets), the evidence in
 [`evidence/simulator-launch/`](evidence/simulator-launch/README.md#home-screen-and-widgets).
 Real apps: Home Assistant RemoteCompose's pin flow and Cadence's widget run (evidence README →
-Real apps), and MeshCore's on `--sdk 37`, the only API it enables its widget on; Muzei was not
+Real apps), and MeshCore's on `--sdk 37`, the first API it enables its widget on; Muzei was not
 reachable. Still
 open from this brief: the MCP schema (compose-preview-mcp, a separate PR), and the shade. Two departures: a
 widget is named `widgetId` and a shortcut `shortcutId` in commands, since `id` is the command's
