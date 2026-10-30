@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -87,6 +88,58 @@ final class CompanionDevices {
     }
   }
 
+  /**
+   * One of an {@code AssociationRequest}'s Bluetooth device filters ({@code BluetoothDeviceFilter} /
+   * {@code BluetoothLeDeviceFilter}), as far as the simulator knows its devices: an address, a name
+   * pattern and service UUIDs, each optional. A filter the simulator cannot evaluate (a Wi-Fi one)
+   * is {@link #NONE}, which matches no Bluetooth device.
+   */
+  static final class Filter {
+    static final Filter NONE = new Filter(null, null, new ArrayList<>(), true);
+
+    final String address;
+    final Pattern name;
+    final List<String> serviceUuids;
+    private final boolean never;
+
+    Filter(String address, Pattern name, List<String> serviceUuids) {
+      this(address, name, serviceUuids, false);
+    }
+
+    private Filter(String address, Pattern name, List<String> serviceUuids, boolean never) {
+      this.address = address;
+      this.name = name;
+      this.serviceUuids = serviceUuids;
+      this.never = never;
+    }
+
+    /** Whether a device in range (address, name, advertised service UUIDs) passes. */
+    boolean matches(String deviceAddress, String deviceName, List<String> deviceUuids) {
+      if (never) return false;
+      if (address != null && !address.equalsIgnoreCase(deviceAddress)) return false;
+      if (name != null && (deviceName == null || !name.matcher(deviceName).find())) return false;
+      for (String uuid : serviceUuids) {
+        boolean found = false;
+        for (String advertised : deviceUuids) found |= advertised.equalsIgnoreCase(uuid);
+        if (!found) return false;
+      }
+      return true;
+    }
+  }
+
+  /** A Bluetooth device in range, as {@link BluetoothSim} reports it. */
+  static final class Device {
+    final String address;
+    final String name;
+    final List<String> serviceUuids;
+
+    Device(String address, String name, List<String> serviceUuids) {
+      this.address = address;
+      this.name = name;
+      this.serviceUuids = serviceUuids;
+    }
+  }
+
   /** An {@code associate()} the chooser has not answered. */
   static final class Request {
     final int id;
@@ -148,11 +201,13 @@ final class CompanionDevices {
   }
 
   /**
-   * The app's {@code associate()}: answered now by policy, or held for the agent. [bluetooth] are
-   * the Bluetooth devices in range ({@code {address, name}}).
+   * The app's {@code associate()}: answered now by policy, or held for the agent. [filters] are the
+   * request's device filters (empty: any device); [bluetooth] the Bluetooth devices in range, of
+   * which the chooser lists those matching any filter, as the system's does.
    */
   static void associate(
-      String profile, boolean filtered, List<String[]> bluetooth, Consumer<Candidate> answer) {
+      String profile, List<Filter> filters, List<Device> bluetooth, Consumer<Candidate> answer) {
+    boolean filtered = !filters.isEmpty();
     List<Candidate> candidates = new ArrayList<>();
     String chosenPolicy;
     Request request;
@@ -163,7 +218,13 @@ final class CompanionDevices {
         }
       }
       if (!DEVICE_PROFILE_WATCH.equals(profile)) {
-        for (String[] device : bluetooth) candidates.add(new Candidate(device[0], device[1], null));
+        for (Device device : bluetooth) {
+          boolean passes = !filtered;
+          for (Filter filter : filters) {
+            passes |= filter.matches(device.address, device.name, device.serviceUuids);
+          }
+          if (passes) candidates.add(new Candidate(device.address, device.name, null));
+        }
       }
       request = new Request(nextRequest++, profile, candidates, answer);
       chosenPolicy = policy;

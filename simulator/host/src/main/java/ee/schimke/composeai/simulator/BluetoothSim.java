@@ -116,14 +116,20 @@ final class BluetoothSim {
   }
 
   /**
-   * The devices in range, {@code {address, name}}: what a companion-device chooser would list
-   * ({@link SimulatorShadowCompanionDeviceManager}).
+   * The devices in range, with their names and advertised service UUIDs: what a companion-device
+   * chooser would list ({@link SimulatorShadowCompanionDeviceManager}).
    */
-  List<String[]> inRange() {
-    List<String[]> result = new ArrayList<>();
+  List<CompanionDevices.Device> inRange() {
+    List<CompanionDevices.Device> result = new ArrayList<>();
     for (Map.Entry<String, Peripheral> e : peripherals.entrySet()) {
-      String name = e.getValue().spec == null ? null : e.getValue().spec.optString("name", null);
-      result.add(new String[] {e.getKey(), name == null ? e.getKey() : name});
+      JSONObject spec = e.getValue().spec;
+      String name = spec == null ? null : spec.optString("name", null);
+      List<String> uuids = new ArrayList<>();
+      JSONArray advertised = spec == null ? null : spec.optJSONArray("serviceUuids");
+      for (int i = 0; advertised != null && i < advertised.length(); i++) {
+        uuids.add(advertised.optString(i));
+      }
+      result.add(new CompanionDevices.Device(e.getKey(), name, uuids));
     }
     return result;
   }
