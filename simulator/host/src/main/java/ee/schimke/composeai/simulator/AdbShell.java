@@ -192,6 +192,14 @@ final class AdbShell {
         command = cmd("getprop");
         if (a.hasNext()) command.put("name", a.next());
         break;
+      case "setprop":
+        command = cmd("setprop");
+        command.put("name", a.required("property"));
+        command.put("value", a.hasNext() ? a.next() : "");
+        break;
+      case "service":
+        command = service(a);
+        break;
       case "monkey":
         command = monkey(a);
         break;
@@ -605,6 +613,22 @@ final class AdbShell {
     }
   }
 
+  /**
+   * {@code service call activity 1599295570}: the {@code SYSPROPS_TRANSACTION} poke that makes
+   * every process re-read system properties ({@code debug.layout} after a {@code setprop}).
+   */
+  private static Map<String, Object> service(Args a) {
+    String sub = a.required("service command");
+    String name = a.hasNext() ? a.next() : "";
+    String code = a.hasNext() ? a.next() : "";
+    if (sub.equals("call") && name.equals("activity") && code.equals("1599295570")) {
+      return cmd("sysprops");
+    }
+    throw new UnsupportedException(
+        "service " + sub + " " + name + " " + code + ": only the SYSPROPS_TRANSACTION poke"
+            + " (service call activity 1599295570) is supported");
+  }
+
   private static String permission(String name) {
     return name.contains(".") ? name : "android.permission." + name;
   }
@@ -624,19 +648,14 @@ final class AdbShell {
         {
           String sub = a.required("uimode command");
           if (!sub.equals("night")) throw new UnsupportedException("cmd uimode " + sub);
-          Map<String, Object> command = cmd("qualifiers");
-          String mode = a.required("yes|no|auto");
-          switch (mode) {
-            case "yes":
-              command.put("value", "+night");
-              break;
-            case "no":
-            case "auto":
-              command.put("value", "+notnight");
-              break;
-            default:
-              throw new UnsupportedException("cmd uimode night " + mode + ": yes, no or auto");
+          // Bare, it reports the mode (`Night mode: no`), as Android Studio's Device Settings reads.
+          Map<String, Object> command = cmd("uimode");
+          if (!a.hasNext()) return command;
+          String mode = a.next();
+          if (!mode.equals("yes") && !mode.equals("no") && !mode.equals("auto")) {
+            throw new UnsupportedException("cmd uimode night " + mode + ": yes, no or auto");
           }
+          command.put("night", mode);
           return command;
         }
       case "connectivity":

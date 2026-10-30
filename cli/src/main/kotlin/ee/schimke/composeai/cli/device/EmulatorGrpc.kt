@@ -16,6 +16,7 @@ import com.android.emulator.control.KeyboardEvent
 import com.android.emulator.control.MouseEvent
 import com.android.emulator.control.Notification
 import com.android.emulator.control.PhysicalModelValue
+import com.android.emulator.control.Rotation
 import com.android.emulator.control.TouchEvent
 import com.android.emulator.control.VmConfiguration
 import com.android.emulator.control.VmRunState
@@ -275,6 +276,13 @@ internal class EmulatorGrpc(
           PhysicalModelValue.PhysicalType.HEART_RATE ->
             device.simulator().request("health", "heartRate" to JsonPrimitive(value.toDouble()))
           PhysicalModelValue.PhysicalType.WRIST_TILT -> device.simulator().request("tilt")
+          // Studio's Rotate Left / Right: the device turned about z, in degrees counterclockwise,
+          // which is the display's `Surface.ROTATION_*` in quarter turns.
+          PhysicalModelValue.PhysicalType.ROTATION -> {
+            val z = request.value.dataList.getOrNull(2) ?: 0f
+            val quarters = Math.floorMod(Math.round(z / 90f), 4)
+            device.simulator().request("rotate", "value" to JsonPrimitive(quarters * 90))
+          }
           else -> throw UnsupportedOperationException("physical model ${request.target}")
         }
         Empty.getDefaultInstance()
@@ -422,8 +430,18 @@ internal class EmulatorGrpc(
           if (image === original) png
           else ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
       }
+    // The display's rotation, which Studio turns its frame and its rotate actions by.
+    val quarters = Math.floorMod((result["rotation"]?.jsonPrimitive?.intOrNull ?: 0) / 90, 4)
     val format =
-      ImageFormat.newBuilder(request).setWidth(image.width).setHeight(image.height).clearTransport()
+      ImageFormat.newBuilder(request)
+        .setWidth(image.width)
+        .setHeight(image.height)
+        .setRotation(
+          Rotation.newBuilder()
+            .setRotation(Rotation.SkinRotation.forNumber(quarters))
+            .setZAxis(quarters * 90.0)
+        )
+        .clearTransport()
     val builder =
       Image.newBuilder()
         .setSeq(seq)

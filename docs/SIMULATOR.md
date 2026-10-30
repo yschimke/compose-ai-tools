@@ -1278,11 +1278,12 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `pm list packages` / `pm path` / `pm dump` | `packages` / `package` | the one installed package |
 | `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
 | `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress` |
-| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on`, `global mobile_data`, `global bluetooth_on` (radios), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
+| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on`, `global mobile_data`, `global bluetooth_on` (radios), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read; a `system font_scale` never put reads as the configuration's scale |
 | `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress`; `-d <id>` acts on that display |
 | `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on` (network), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
 | `content query` / `insert` / `update` / `delete` | `content` | `--uri --projection a:b --where --sort --bind name:type:value` (`s b i l f d n`) |
-| `cmd uimode night yes` / `no` / `auto` | `qualifiers` `+night` / `+notnight` | |
+| `cmd uimode night` [`yes` / `no` / `auto`] | `uimode` | sets night mode as a configuration change (`auto` is day); prints `Night mode: yes`, and bare reports it, as Android Studio's Device Settings reads |
+| `setprop debug.layout true`, `service call activity 1599295570` | `setprop`, `sysprops` | Show layout bounds: the property, then the poke that makes every window re-read it (`getprop debug.layout` reports it); other properties are refused |
 | `wm size [WxH\|reset]` / `wm density [N\|reset]` | `display` | pixels, as on a device: a density change keeps the pixel size; `reset` restores the launch qualifiers (both) |
 | `svc wifi` / `svc data enable` / `disable`, `cmd wifi set-wifi-enabled`, `cmd connectivity airplane-mode`, `cmd netpolicy set restrict-background` | `network` | the radios and data saver, as [above](#network-wi-fi-and-bluetooth) |
 | `cmd wifi status` / `list-scan-results` / `start-scan` / `connect-network <ssid> …` | `wifi` | |
@@ -1420,8 +1421,8 @@ endpoint implements `EmulatorController` from Studio's own `emulator_controller.
 | --- | --- |
 | `getStatus`, `getVmState`, `getDisplayConfigurations` | booted state, the hardware config, `getprop`; one display |
 | `getScreenshot`, `streamScreenshot` | `screenshot`, as PNG, RGB888 or RGBA8888, scaled to fit the requested size; the stream sends a frame when the display changes, at most 15 a second; a local client's shared-memory file is written when it names one |
-| `sendTouch`, `sendMouse`, `streamInputEvent` | `touch` down / move / up (the first pointer), `key` (W3C key names: `GoHome`, `GoBack`, `AppSwitch`, `Power`, `Enter`, arrows…) or `text`; the wheel turns a watch's crown (`rotary`) |
-| `setGps`, `setPhysicalModel` (heart rate, wrist tilt) | `location`, `health`, `tilt` |
+| `sendTouch`, `sendMouse`, `streamInputEvent` | `touch` down / move / up (the first pointer), `key` (W3C key names: `GoHome`, `GoBack`, `AppSwitch`, `Power`, `Enter`, `AudioVolumeUp` / `Down` / `Mute`, arrows…) or `text`; the wheel turns a watch's crown (`rotary`) |
+| `setGps`, `setPhysicalModel` (heart rate, wrist tilt, rotation) | `location`, `health`, `tilt`, `rotate` (Studio's Rotate Left / Right: the z angle in quarter turns); every frame's `format.rotation` reports the display's rotation |
 | `setVmState` | shut down or reboot the device |
 | `streamNotification` | boot completed |
 
@@ -1434,7 +1435,15 @@ exit codes, streamed install, `am start`, `screencap`, push / pull, interactive 
 `DEBUG_SURFACE`) and a gRPC client built on Studio's stubs (status, displays, screenshots in each
 format, the frame stream, mouse input, the token check), the stream following a streamed touch
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
-display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
+display. Studio's Device Settings panel (Dark Theme, Font Size, Display Size, Show Layout Bounds)
+is adb shell: `cmd uimode night`, `settings get|put system font_scale`, `wm density` and
+`setprop debug.layout` with its `service call` poke, each answered as a device does
+([adb equivalents](#adb-equivalents)). The volume keys step the media volume (`AudioManager`, after
+the app has seen the key) and show the phone's volume panel with `--launcher`.
+
+![Over adb and gRPC as Studio sends them: Dark Theme on (the sample's chat follows it, the keyboard too); Show Layout Bounds; Volume Up's panel; Rotate Right](design/evidence/simulator-adb/studio-device-settings.png)
+
+**Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
 the device appears in Device Manager and Running Devices, which streams the display and takes
 clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's process tracker, a native binary, cannot run (`can't execute`, logged
 and harmless). The host process stays out of the macOS Dock and app switcher
