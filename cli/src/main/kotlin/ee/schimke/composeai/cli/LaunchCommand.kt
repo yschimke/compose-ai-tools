@@ -124,6 +124,12 @@ internal class LaunchCommand(private val args: List<String>) {
         fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
       }
     }
+    val playServices =
+      args.flagValue("--play-services")?.also {
+        if (it !in PLAY_SERVICES_STATES) {
+          fail("--play-services takes ${PLAY_SERVICES_STATES.joinToString(" | ")}")
+        }
+      }
     val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
@@ -162,6 +168,7 @@ internal class LaunchCommand(private val args: List<String>) {
         launchActivity = launchActivity,
         device = device,
         network = network,
+        playServices = playServices,
         fontScale = args.flagValue("--font-scale"),
         fingerprint = args.flagValue("--fingerprint"),
         maxHeap =
@@ -288,6 +295,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val device: String? = null,
     /** [NETWORK_MODES], comma-separated (`cellular,airplane`); Wi-Fi when null. */
     val network: String? = null,
+    /** One of [PLAY_SERVICES_STATES]; installed when null. */
+    val playServices: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
     /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
@@ -486,6 +495,12 @@ internal class LaunchCommand(private val args: List<String>) {
     val NETWORK_MODES =
       listOf("wifi", "cellular", "ethernet", "vpn", "captive", "offline", "airplane")
 
+    /**
+     * What `--play-services` takes (`PlayServices.State` in `:simulator-host`), which the control
+     * channel's `playServices` command switches between at run time.
+     */
+    val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -518,6 +533,7 @@ internal class LaunchCommand(private val args: List<String>) {
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.network?.let { properties["composeai.simulator.network"] = it }
+      options.playServices?.let { properties["composeai.simulator.playServices"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -601,6 +617,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               captive (Wi-Fi without internet) or offline; add ,airplane
                               (or just airplane) for airplane mode. Offline, the app's
                               real connections fail as on a device.
+        --play-services <s>   Google Play services as availability checks report it:
+                              installed (default; SUCCESS, version 25.42.34), none
+                              (SERVICE_MISSING), outdated, disabled or invalid, for an
+                              app's error paths. With --pair, both devices.
         --display <spec>      Connect a secondary display at launch (repeatable): a size in
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its

@@ -518,6 +518,34 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `a Play services state becomes a system property, and installed is the default`() {
+    fun command(playServices: String?) =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            playServices = playServices,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.playServices=none" in command("none"))
+    assertFalse(command(null).any { it.startsWith("-Dcomposeai.simulator.playServices") })
+    assertTrue(
+      LaunchCommand.PLAY_SERVICES_STATES.containsAll(listOf("installed", "none", "outdated"))
+    )
+  }
+
+  @Test
   fun `a wear launch passes the round watch display and its form factor`() {
     val command =
       LaunchCommand.simulatorCommand(
