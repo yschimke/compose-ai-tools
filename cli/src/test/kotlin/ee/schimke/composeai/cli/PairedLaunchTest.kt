@@ -57,6 +57,32 @@ class PairedLaunchTest {
   }
 
   @Test
+  fun `an agent data layer node has no hub`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = java.io.File("java"),
+        classpath = emptyList(),
+        apk = java.io.File("wear.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = ApkFormFactor.WEAR.qualifiers,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            dataLayer = LaunchCommand.DataLayerNode(0, LaunchCommand.WATCH, agent = true),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assert("-Dcomposeai.simulator.datalayer.agent=true" in command)
+    assert("-Dcomposeai.simulator.datalayer.node=watch-sim" in command)
+    assert(command.none { it.startsWith("-Dcomposeai.simulator.datalayer.hub=") })
+  }
+
+  @Test
   fun `the hub relays a frame to the other node and says bye when one leaves`() {
     DataLayerHub().start().use { hub ->
       val phone = Socket(InetAddress.getLoopbackAddress(), hub.port)

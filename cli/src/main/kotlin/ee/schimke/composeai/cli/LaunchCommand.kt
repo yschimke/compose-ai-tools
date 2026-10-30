@@ -191,6 +191,21 @@ internal class LaunchCommand(private val args: List<String>) {
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
+    val dataLayerMode = args.flagValue("--data-layer")
+    if (dataLayerMode != null) {
+      if (dataLayerMode != "agent") fail("--data-layer supports only `agent`")
+      if (pair != null) fail("--data-layer agent plays the paired device itself; drop --pair")
+      if (control == null) fail("--data-layer agent needs --control stdio: the agent is the peer")
+      val device = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
+      val command =
+        commandFor(
+          apk,
+          classes,
+          options.copy(dataLayer = DataLayerNode(hubPort = 0, device = device, agent = true)),
+        )
+      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+      exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+    }
     if (pair == null || pairClasses == null) {
       val command = commandFor(apk, classes, options)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
@@ -236,8 +251,11 @@ internal class LaunchCommand(private val args: List<String>) {
     exitProcess(exit)
   }
 
-  /** A paired simulator's node of the simulated Wearable Data Layer. */
-  data class DataLayerNode(val hubPort: Int, val device: String) {
+  /**
+   * A simulator's node of the simulated Wearable Data Layer: paired through the hub on [hubPort],
+   * or with the control channel as every peer ([agent]).
+   */
+  data class DataLayerNode(val hubPort: Int, val device: String, val agent: Boolean = false) {
     val nodeId: String
       get() = "$device-sim"
 
@@ -410,7 +428,8 @@ internal class LaunchCommand(private val args: List<String>) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
       }
       options.dataLayer?.let {
-        properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
+        if (it.agent) properties["composeai.simulator.datalayer.agent"] = "true"
+        else properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
         properties["composeai.simulator.datalayer.node"] = it.nodeId
         properties["composeai.simulator.datalayer.name"] = it.displayName
       }
@@ -509,6 +528,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               data items and capabilities cross between the two apps. With
                               --control stdio, a command's "device":"watch" sends it to the
                               watch, and every output line carries its "device".
+        --data-layer agent    Simulate the Wearable Data Layer with no second simulator: the
+                              control channel plays the peer devices. What the app sends is a
+                              "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
+                              connects, disconnects, puts, deletes, messages and replies.
         --pair-qualifiers <q> The paired watch's display (default ${ApkFormFactor.WEAR.qualifiers}).
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.

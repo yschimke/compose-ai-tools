@@ -288,6 +288,7 @@ internal object CliFlagValidation {
           "--fingerprint",
           "--network",
           "--max-heap",
+          "--data-layer",
           "--prepare",
           "--verbose",
           "-v",
