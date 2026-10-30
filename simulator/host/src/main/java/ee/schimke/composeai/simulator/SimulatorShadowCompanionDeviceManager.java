@@ -3,6 +3,7 @@ package ee.schimke.composeai.simulator;
 import android.companion.AssociationInfo;
 import android.companion.AssociationRequest;
 import android.companion.CompanionDeviceManager;
+import android.bluetooth.le.ScanFilter;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.UUID;
+import java.util.regex.Pattern;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -141,12 +144,13 @@ public class SimulatorShadowCompanionDeviceManager extends ShadowCompanionDevice
   private void answer(
       AssociationRequest request, CompanionDeviceManager.Callback callback, Executor executor) {
     String profile = profile(request);
-    boolean filtered = filtered(request);
+    List<CompanionDevices.Filter> filters = filters(request);
     BluetoothSim bluetooth = BluetoothSim.current();
-    List<String[]> devices = bluetooth == null ? new ArrayList<>() : bluetooth.inRange();
+    List<CompanionDevices.Device> devices =
+        bluetooth == null ? new ArrayList<>() : bluetooth.inRange();
     CompanionDevices.associate(
         profile,
-        filtered,
+        filters,
         devices,
         chosen ->
             executor.execute(
@@ -177,13 +181,84 @@ public class SimulatorShadowCompanionDeviceManager extends ShadowCompanionDevice
     return request.getDeviceProfile();
   }
 
-  /** Whether the request names device filters (hidden {@code getDeviceFilters()}). */
-  private static boolean filtered(AssociationRequest request) {
+  /**
+   * The request's device filters (hidden {@code getDeviceFilters()}), read through their hidden
+   * getters: {@code BluetoothDeviceFilter}'s address, name pattern and service UUIDs, {@code
+   * BluetoothLeDeviceFilter}'s name pattern and {@code ScanFilter} (address, name, service UUID).
+   */
+  private static List<CompanionDevices.Filter> filters(AssociationRequest request) {
+    List<CompanionDevices.Filter> result = new ArrayList<>();
+    List<?> filters;
     try {
-      List<?> filters = ReflectionHelpers.callInstanceMethod(request, "getDeviceFilters");
-      return filters != null && !filters.isEmpty();
+      filters = ReflectionHelpers.callInstanceMethod(request, "getDeviceFilters");
     } catch (RuntimeException e) {
-      return false;
+      return result;
+    }
+    if (filters == null) return result;
+    for (Object filter : filters) result.add(filter(filter));
+    return result;
+  }
+
+  private static CompanionDevices.Filter filter(Object filter) {
+    String type = filter.getClass().getSimpleName();
+    if (type.equals("BluetoothDeviceFilter")) {
+      List<UUID> uuids = new ArrayList<>();
+      List<?> services = call(filter, "getServiceUuids");
+      if (services != null) for (Object uuid : services) uuids.add(uuid(uuid));
+      List<?> masks = call(filter, "getServiceUuidMasks");
+      if (masks != null && !masks.isEmpty()) {
+        // Masked classic UUIDs: rare, and not worth guessing at.
+        for (Object mask : masks) if (mask != null) return CompanionDevices.Filter.NONE;
+      }
+      return CompanionDevices.Filter.classic(
+          call(filter, "getAddress"), call(filter, "getNamePattern"), uuids);
+    }
+    if (type.equals("BluetoothLeDeviceFilter")) {
+      byte[] raw = call(filter, "getRawDataFilter");
+      if (raw != null && raw.length > 0) return CompanionDevices.Filter.NONE;
+      ScanFilter scan = call(filter, "getScanFilter");
+      Pattern name = call(filter, "getNamePattern");
+      String address = null;
+      UUID service = null;
+      UUID mask = null;
+      if (scan != null) {
+        // Predicates over advertising payloads the simulator does not match on: unevaluable, so
+        // they narrow the chooser to nothing rather than to everything.
+        if (scan.getServiceDataUuid() != null
+            || scan.getManufacturerId() >= 0
+            || scan.getServiceSolicitationUuid() != null) {
+          return CompanionDevices.Filter.NONE;
+        }
+        address = scan.getDeviceAddress();
+        if (scan.getDeviceName() != null) {
+          String exact = Pattern.quote(scan.getDeviceName());
+          // Both the scan filter's exact name and the filter's own pattern, when it has one.
+          name =
+              Pattern.compile(
+                  name == null
+                      ? "^" + exact + "$"
+                      : "^(?=[\\s\\S]*(?:" + name.pattern() + "))" + exact + "$");
+        }
+        if (scan.getServiceUuid() != null) {
+          service = scan.getServiceUuid().getUuid();
+          if (scan.getServiceUuidMask() != null) mask = scan.getServiceUuidMask().getUuid();
+        }
+      }
+      return CompanionDevices.Filter.ble(address, name, service, mask);
+    }
+    return CompanionDevices.Filter.NONE;
+  }
+
+  private static UUID uuid(Object parcelUuid) {
+    return UUID.fromString(String.valueOf(parcelUuid));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T call(Object target, String method) {
+    try {
+      return (T) ReflectionHelpers.callInstanceMethod(target, method);
+    } catch (RuntimeException e) {
+      return null;
     }
   }
 }

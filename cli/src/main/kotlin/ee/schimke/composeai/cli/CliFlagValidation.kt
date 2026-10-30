@@ -289,6 +289,8 @@ internal object CliFlagValidation {
           "--network",
           "--max-heap",
           "--data-layer",
+          "--adb",
+          "--grpc-port",
           "--play-services",
           "--standby",
           "--no-standby",
