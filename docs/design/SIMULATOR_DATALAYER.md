@@ -232,8 +232,9 @@ connected, since the simulator has no BLE device in range.
   `/wear/settings` to `/wear/values`, plus its `/wear/stream` messages.
 - **Home Assistant's watch app alone.** `connect` a phone, then `put` the phone's items captured
   above: the watch switches to the phone's demo mode, as when paired. Its `/wear/lease`
-  heartbeats arrive as `send` events. On `disconnect` its next `sendMessage` fails with
-  `TARGET_NODE_NOT_CONNECTED`; its UI keeps the synced data, as on a device.
+  heartbeats arrive as `send` events. On `disconnect` the phone leaves `getConnectedNodes` and
+  its capability is reported gone to the watch's listeners; the UI keeps the synced data and
+  shows no disconnected state, so the run cannot show more than that.
 - **MeshCore, the Horologist handshake.** The watch alone (with `--fingerprint`): a phone that
   connects without `horologist_phone` gets no request; once its `capabilities` add it, the
   watch's gRPC `GetConnectionStatus` arrives as a `send` with a `requestId`. A `reply` with an
