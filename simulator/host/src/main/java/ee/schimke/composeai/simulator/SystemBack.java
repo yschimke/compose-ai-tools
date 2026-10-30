@@ -39,31 +39,44 @@ final class SystemBack {
     View window = Displays.focusedWindow(displayId);
     if (window == null) return null;
     Navigator.Entry top = navigator.top(displayId);
-    if (top != null && top.system) {
-      Activity home = top.activity();
-      if (home.getWindow() != null && home.getWindow().getDecorView() == window) {
+    Activity home = top != null && top.system ? top.activity() : null;
+    boolean systemWindow =
+        home != null && home.getWindow() != null && home.getWindow().getDecorView() == window;
+    Object callback = systemWindow ? null : Displays.backCallback(displayId);
+    switch (BackRoute.of(systemWindow, callback instanceof OnBackInvokedCallback)) {
+      case SYSTEM:
         onBackPressed(home);
         return new Protocol.Json().put("via", "system").object();
-      }
+      case CALLBACK:
+        BackRoute.deliver(steps((OnBackInvokedCallback) callback), Build.VERSION.SDK_INT);
+        return new Protocol.Json()
+            .put("via", "OnBackInvokedCallback")
+            .put("callback", callback.getClass().getName())
+            .object();
+      default:
+        return null;
     }
-    Object callback = Displays.backCallback(displayId);
-    if (callback == null) return null;
-    invoke((OnBackInvokedCallback) callback);
-    return new Protocol.Json()
-        .put("via", "OnBackInvokedCallback")
-        .put("callback", callback.getClass().getName())
-        .object();
   }
 
-  /**
-   * As {@code ViewRootImpl} hands a Back key to an opted-in window: an animated callback hears the
-   * press start (at the left edge, progress 0), then the callback is invoked on the release.
-   */
-  private static void invoke(OnBackInvokedCallback callback) {
-    if (Build.VERSION.SDK_INT >= 34 && callback instanceof OnBackAnimationCallback) {
-      ((OnBackAnimationCallback) callback).onBackStarted(new BackEvent(0, 0, 0, BackEvent.EDGE_LEFT));
-    }
-    callback.onBackInvoked();
+  /** [callback] as {@link BackRoute.Steps}: an animated one starts at the left edge, progress 0. */
+  private static BackRoute.Steps steps(OnBackInvokedCallback callback) {
+    return new BackRoute.Steps() {
+      @Override
+      public boolean animated() {
+        return Build.VERSION.SDK_INT >= 34 && callback instanceof OnBackAnimationCallback;
+      }
+
+      @Override
+      public void started() {
+        ((OnBackAnimationCallback) callback)
+            .onBackStarted(new BackEvent(0, 0, 0, BackEvent.EDGE_LEFT));
+      }
+
+      @Override
+      public void invoked() {
+        callback.onBackInvoked();
+      }
+    };
   }
 
   @SuppressWarnings("deprecation")
