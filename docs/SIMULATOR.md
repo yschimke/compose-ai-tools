@@ -26,12 +26,17 @@ person's clicks still reach the app. `--hide-agent` turns it off; `--headless` d
 **Zoom.** The window, and each secondary display's, is resizable: dragging its edge fits the
 display to the window, letterboxed. ⌘ `=` / `-` / `0` (Ctrl on Linux and Windows), or the
 window's View menu, zoom in, out and back to one device pixel per point; View → Fit to Screen
-fits it to the screen, which is also how a display taller than the screen starts. Only the
+fits it to the screen. A display bigger than the screen starts fitted to 85% of it, and every
+window is kept on its screen, its title bar and View menu first, so it can always be moved,
+closed and zoomed out; a secondary display opens fitted into the room beside the phone. The
+window goes behind others like any window; View → Keep on Top floats it above them. Only the
 picture scales: clicks are mapped back to device pixels, and `screenshot`, `hierarchy` bounds and
 the control channel's coordinates stay in device pixels. The `zoom` command does the same from the
 control channel.
 
 ![The 540×960 display at 92% (fitted to a 1000-point screen), 50% and 150%](design/evidence/simulator-launch/window-zoom.png)
+
+![A 1233×2673 phone at 31% and a 1920×1080 TV display beside it, both fitted on a 1600×1000 screen](design/evidence/simulator-launch/window-fit.png)
 
 It needs Java 21+ for the simulator JVM (`--java <jdk>`, or `COMPOSE_PREVIEW_SIMULATOR_JAVA`; the
 CLI itself still runs on 17) and an Android SDK platform's `android.jar` (`ANDROID_HOME`, or
@@ -261,7 +266,8 @@ Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `new
 `destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
 finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
 `removed`), `log` (while `logcat` follows), `pick` and `handoff` ([below](#pickers-sharing-and-other-apps)),
-`error` for an intent the app sent that nothing handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+`alarm`, `job` and `download` ([below](#alarms-jobs-and-downloads)), `error` for an intent the app
+sent that nothing handles (and for a foreground service that misses its deadline), and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
 widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
 UI](#wear-system-ui)).
 
@@ -272,7 +278,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | --- | --- | --- |
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
-| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, and where the display is on screen (`screenX`, `screenY`). Errors with `--headless` |
+| `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
@@ -312,6 +318,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
+| `alarms` | `fire`? (an index, or `"next"`), `exact`? (bool) | the alarms set through every context, soonest first, with `inMs`; `fire` delivers one now; `exact` grants or revokes exact alarms ([below](#alarms-jobs-and-downloads)) |
+| `jobs` | `run`? (a job id) | the `JobScheduler` jobs pending and what each `waitingFor` (`latency`, `network`, `charging`, …); `run` starts one now |
+| `downloads` | | the `DownloadManager` requests: `pending`, `running`, `successful` or `failed`, with destination and bytes |
 | `pick` | `policy`? (`ask` / `cancel`), `answer`? (a request id, or `"next"`), `files`?, `path`?, `cancel`? | the documents, photo and camera pickers the app opened ([below](#pickers-sharing-and-other-apps)); without an answer, the policy and the requests waiting |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
@@ -381,6 +390,38 @@ Every request ends with a `permissions` event, `state: "answered"`, listing what
 An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
 from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
+### Alarms, jobs and downloads
+
+Robolectric records what an app schedules and runs none of it; here the system's side runs, each
+cycle, over every context's `AlarmManager` and `JobScheduler` (each context caches its own, where a
+device has one service).
+
+**Alarms** go off when due on their own clock (`RTC*` on the wall clock, `ELAPSED_REALTIME*` on
+elapsed time): a `PendingIntent` is sent as the system sends it (a broadcast reaches manifest
+receivers, an activity the back stack), an `OnAlarmListener` runs on its handler or executor, and a
+repeating alarm is set again an interval later. Each firing is an `alarm` event. The clock cannot be
+moved forward, so an alarm an hour out waits an hour: `alarms` `fire` delivers it now. Exact alarms
+are allowed when the manifest asks for `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`
+(`canScheduleExactAlarms` true, as on a device that granted them); `alarms` `exact: false` revokes
+them, and `true` grants them with `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`.
+
+**Jobs** start once their minimum latency has passed and the device meets their constraints (a
+network, an unmetered one, charging, idle), or once their deadline passes whatever the constraints:
+the `JobService` is created and bound, and `startJob` goes through its own `JobServiceEngine`, so
+`onStartJob`, `jobFinished` and `onStopJob` behave as on a device. A one-off job leaves the
+schedule as it starts; a periodic one runs again an interval later. `job` events report
+`started` and `finished` (with `wantsReschedule`). WorkManager's `SystemJobService` jobs are left
+alone, since WorkManager runs its work in-process here (`jobs` says so).
+
+**Downloads** enqueued with `DownloadManager` wait for a network, then fetch on a thread of their
+own over the simulated network (the `network` command's offline, slow and blocked hosts apply),
+with the request's headers, into the request's destination (the public `Download` directory by
+default). The request then reads `STATUS_SUCCESSFUL` or `STATUS_FAILED` through `query`, and
+`ACTION_DOWNLOAD_COMPLETE` reaches the app's receivers. `download` events report each step.
+
+**Foreground services.** A service started with `startForegroundService` that has not called
+`startForeground` within 10 seconds is reported as an `error` event (`kind: foregroundService`):
+a device stops the app there (`ForegroundServiceDidNotStartInTimeException`). The app runs on.
 ### Pickers, sharing and other apps
 
 A device answers some intents with a system app: the documents picker, the photo picker, the
@@ -782,16 +823,34 @@ the activity takes it first):
 - **Any other window gets `KEYCODE_BACK`**, which `Activity.onKeyUp` turns into `onBackPressed`;
   `ComponentActivity` hands that to the same `OnBackPressedDispatcher`, and with nothing registered
   the activity finishes. Robolectric 4.17 does not turn on the targetSdk 36 default, so an app
-  opts in only through the manifest attribute.
+  opts in only through the manifest attribute, on the `<application>` or on an `<activity>` (which
+  overrides the application's either way). Neither Robolectric's `ApplicationInfo` for an APK nor
+  the platform's legacy `PackageParser` carries it, so the simulator reads it from the APK's
+  manifest and sets the flags `WindowOnBackInvokedDispatcher` checks (`BackOptIn`).
 - **The simulator's own home** (`WearHome`, `PhoneHome`) takes Back itself whatever the app opted
   in to: back from a launcher, stream or tile surface goes to the watch face.
 
 Finishing the root activity lands on the watch face (or home screen) with `--launcher`, and
 otherwise empties the back stack (`activity` event `empty`).
 
-The predictive back *gesture* is not simulated: a `swipe` from a watch's left edge is a touch, which
-Wear Compose's `SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has
-not opted in. An opted-in window gets no `handleOnBackProgressed` stream from a swipe; use `back`.
+**The Back gesture.** On a phone, a swipe in from the left or right edge is Back, as gesture
+navigation makes it, however the touch arrives: the simulator's window, `touch` (Android Studio's
+Running Devices), `swipe`, `adb shell input swipe`. As a device's `EdgeBackGestureHandler` does,
+a touch that goes down within 24dp of an edge is the app's until it moves inward past the touch
+slop, more across than along the edge; then the app's pointer is cancelled (as `pilferPointers`
+does) and the swipe is the system's. An opted-in window's top callback follows it: an
+`OnBackAnimationCallback` (API 34+) hears `onBackStarted`, `onBackProgressed` with each move
+(`BackEvent` progress linear across the rest of the display, and the edge), then `onBackInvoked` when
+the finger lifts 48dp or more in, or `onBackCancelled` when it lifts short of that. That is what
+androidx's `PredictiveBackHandler`, Navigation and Material animate from. A window that has not
+opted in gets Back on a committed release, the same Back as the `back` command. A touch that moves
+along the edge first stays the app's.
+
+![A Back swipe over the sample's predictive-back screen: following the finger, back toward the edge, cancelled, then committed](design/evidence/simulator-launch/edge-back-swipe.png)
+
+A watch has no edge gesture: a `swipe` from its left edge is a touch, which Wear Compose's
+`SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has not opted
+in; an opted-in watch window gets no `onBackProgressed` stream from a swipe, so use `back`.
 
 ### Wear system UI
 
@@ -1031,7 +1090,9 @@ one app, so a person can watch and use the device while a tool drives it.
 ![A click in the window on the installed app's icon launches it](design/evidence/simulator-adb/window-click-launches-app.png)
 ![Over gRPC: the streamed frames as a streamed tap opens Now Playing and GoBack closes it](design/evidence/simulator-adb/grpc-stream-touch-back.png)
 
-**Finding it.** Like an emulator it takes the first free port pair from 5554/5555, tells a
+**Finding it.** Like an emulator it takes the first free port pair from 5554/5555 (free meaning
+nothing answers on 127.0.0.1, so a running emulator's ports are skipped; with its gRPC port free
+too), tells a
 running adb server about itself (`host:emulator:5555`), and is found by one started later, which
 scans 5555–5585. Its serial is `emulator-<console port>`, and `getprop` answers as an emulator's
 system image does (`ro.kernel.qemu`, `ro.boot.qemu.avd_name`, `sys.boot_completed` once the
@@ -1056,10 +1117,13 @@ seconds.
 **The shell.** `adb shell` (one command, a `;` / `&&` / `||` sequence, `| grep` / `| head` /
 `| tail` filters, `2>/dev/null`, `> file`) and an interactive `adb shell`. The device answers
 packages (`pm list packages`, `pm path`, `pm list features`, `pm resolve-activity --brief`),
-`getprop`, `screencap`, `echo`/`id`/`true`, and the files below itself; everything else goes to
+`getprop`, `screencap`, `echo`/`id`/`true`, `export` (ignored) and `exec`, and the files below
+itself; everything else goes to
 the simulator's [adb equivalents](#adb-equivalents), and its JSON answer is printed as a device
 prints it where tools read the text (`Starting: Intent { … }`, `Broadcast completed: …`,
-`Physical size: 540x960`, a setting's value), and otherwise as the JSON. `adb push` / `pull`
+`Physical size: 540x960`, a setting's value, `logcat -d`'s lines), and otherwise as the JSON.
+`adb logcat -d` / `-t` / `-c` work; a following `adb logcat` prints nothing yet, so Studio's
+Logcat window stays empty. `adb push` / `pull`
 and `ls`, `rm`, `mkdir`, `cat` reach `/data/local/tmp` and `/sdcard`, kept under the device's
 directory in the cache; an app's private files are `run-as`, which the simulator answers. A
 native binary pushed there (Studio's deployer) does not run: `can't execute`, exit 126.
@@ -1068,7 +1132,10 @@ native binary pushed there (Studio's deployer) does not run: `can't execute`, ex
 commands above, and finds the emulator gRPC endpoint through the discovery file every emulator
 writes (`$XDG_RUNTIME_DIR/avd/running` on Linux, `~/Library/Caches/TemporaryItems/avd/running` on
 macOS, `%LOCALAPPDATA%\Temp\avd\running` on Windows) beside an AVD directory whose `config.ini`
-gives the display (`hw.lcd.*`) and the device type (`tag.id=android-wear` on a watch). The
+gives the display (`hw.lcd.*`) and the device type (`tag.id=android-wear` on a watch). Studio
+reads that directory before it embeds the device and drops it from Running Devices without all
+of: `config.ini`, the `hardware-qemu.ini` a running emulator writes (its `android.sdk.root` is the
+AVD directory itself here), and `image.sysdir.1`'s `source.properties` with the API level. The
 endpoint implements `EmulatorController` from Studio's own `emulator_controller.proto`
 (`com.android.tools.emulator:proto`), with the discovery file's token:
 
@@ -1081,15 +1148,20 @@ endpoint implements `EmulatorController` from Studio's own `emulator_controller.
 | `setVmState` | shut down or reboot the device |
 | `streamNotification` | boot completed |
 
+Studio's channel has no decompressors, not even `identity`, and grpc-java's server always names
+`grpc-encoding: identity` in its response headers, which fails every call ("Can't find decompressor
+for identity"); the endpoint drops that header, as the emulator's own server never sends it.
+
 Everything else answers `UNIMPLEMENTED`. **Verified here** with real `adb` 37 (devices, shell and
 exit codes, streamed install, `am start`, `screencap`, push / pull, interactive shell, uninstall,
 `DEBUG_SURFACE`) and a gRPC client built on Studio's stubs (status, displays, screenshots in each
 format, the frame stream, mouse input, the token check), the stream following a streamed touch
 tap and a `GoBack` key, and a real mouse click in the simulator's window under a virtual X
-display. **Not verified:** Android Studio itself,
-which the sandbox this was built in does not have; the discovery file follows the emulator's
-format, and Studio's own fallbacks (its deployer falling back to `pm install` sessions when its
-installer binary cannot run) are what the device relies on.
+display. **Verified with Android Studio** (2026.1.1 preview, macOS, beside a running emulator):
+the device appears in Device Manager and Running Devices, which streams the display and takes
+clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's process tracker, a native binary, cannot run (`can't execute`, logged
+and harmless). The host process stays out of the macOS Dock and app switcher
+(`apple.awt.UIElement`); only the simulator's window is an app there.
 
 **Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
@@ -1323,6 +1395,12 @@ What does not, or not yet:
   and the requesting activity is not paused while a request waits. Groups are approximated (a
   dialog per permission, not per group), and Android 16's health permissions that replace
   `BODY_SENSORS` are plain runtime permissions.
+- **Background work.** Alarms, jobs and downloads run ([above](#alarms-jobs-and-downloads)), but
+  there is no Doze, App Standby bucket or battery optimisation deferring them; a job's
+  battery-not-low, storage-not-low and content-URI triggers are not checked, and a
+  `jobFinished(params, true)` is not rescheduled; a download has no notification, and is neither
+  paused nor retried. A foreground service's type is not checked against its manifest
+  declaration or permissions.
 - **System UI.** The radio dialogs and settings panels, the documents, photo and camera pickers,
   the share sheet, browser and dialer are answered ([above](#network-wi-fi-and-bluetooth),
   [above](#pickers-sharing-and-other-apps)); there is no media store of picked photos (the photo

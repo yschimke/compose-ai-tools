@@ -68,6 +68,57 @@ public class WindowZoomTest {
   }
 
   @Test
+  public void aWindowThatFitsMovesWhollyOntoTheScreen() {
+    java.awt.Rectangle screen = new java.awt.Rectangle(0, 25, 1440, 875);
+    // Placed below the menu bar's bottom edge and past the dock.
+    assertEquals(
+        new java.awt.Point(100, 400),
+        WindowZoom.onScreen(new java.awt.Rectangle(100, 600, 400, 500), screen));
+    // Its title bar under the macOS menu bar.
+    assertEquals(
+        new java.awt.Point(100, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(100, 0, 400, 500), screen));
+    // Off the right edge, beside the phone.
+    assertEquals(
+        new java.awt.Point(1040, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(1300, 25, 400, 500), screen));
+  }
+
+  @Test
+  public void aWindowBiggerThanTheScreenKeepsItsTitleBarOnIt() {
+    java.awt.Rectangle screen = new java.awt.Rectangle(0, 25, 1440, 875);
+    assertEquals(
+        new java.awt.Point(0, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(200, 300, 2000, 1500), screen));
+  }
+
+  @Test
+  public void theDisplayIsCentredInABiggerWindow() {
+    assertEquals(
+        new java.awt.Rectangle(50, 100, 300, 600), WindowZoom.letterbox(300, 600, 400, 800));
+  }
+
+  @Test
+  public void aWindowSmallerThanTheDisplayStillShowsIt() {
+    // A pixel of rounding past the window, or a drag ahead of the refit: the display fills the
+    // window rather than falling back to a minimum size.
+    assertEquals(new java.awt.Rectangle(0, 0, 300, 600), WindowZoom.letterbox(301, 601, 300, 600));
+    assertEquals(new java.awt.Rectangle(0, 0, 100, 200), WindowZoom.letterbox(300, 600, 100, 200));
+  }
+
+  @Test
+  public void theLetterboxLaysTheDisplayOutInsideTheWindow() {
+    javax.swing.JPanel holder = new javax.swing.JPanel(new WindowZoom.Letterbox());
+    javax.swing.JComponent display = new javax.swing.JPanel();
+    display.setPreferredSize(new Dimension(540, 960));
+    holder.add(display);
+    holder.setSize(270, 400);
+    holder.doLayout();
+    assertEquals(new java.awt.Rectangle(0, 0, 270, 400), display.getBounds());
+    assertEquals(new Dimension(1, 1), holder.getMinimumSize());
+  }
+
+  @Test
   public void aClickMapsBackToTheDevicePixelUnderIt() {
     assertEquals(200, WindowZoom.toDevice(100, 0.5, 1080));
     assertEquals(40, WindowZoom.toDevice(81, 2, 1080));

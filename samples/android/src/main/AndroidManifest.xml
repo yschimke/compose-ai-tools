@@ -23,6 +23,7 @@
         -->
         <activity
             android:name="com.example.sampleandroid.NowPlayingActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>

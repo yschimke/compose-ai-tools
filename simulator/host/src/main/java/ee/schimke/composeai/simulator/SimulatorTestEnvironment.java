@@ -127,6 +127,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       fingerprint();
       pairedDevice();
       PlayServicesPackages.sync(app);
+      Alarms.grantExact(app);
       // The documents and photo pickers, camera, share sheet and browser an intent can reach.
       SystemApps.install(app);
       DocumentsStore.install(app);

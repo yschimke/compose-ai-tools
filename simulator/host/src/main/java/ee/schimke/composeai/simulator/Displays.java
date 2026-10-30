@@ -613,6 +613,16 @@ final class Displays {
       return true;
     }
     MotionEvent motion = (MotionEvent) event;
+    if (edgeBack != null && edgeBack.intercept(motion, id)) return true;
+    return dispatchTouch(motion, id);
+  }
+
+  /** Gesture navigation's Back swipe, on a phone; null where the device has none. */
+  static EdgeBackGesture edgeBack;
+
+  /** [motion] to the windows on display [id], past any system gesture. */
+  static boolean dispatchTouch(MotionEvent motion, int id) {
+    List<Root> roots = roots(id, hidden());
     List<Root> touchable = new ArrayList<>();
     for (Root root : roots) if (root.touchable()) touchable.add(root);
     for (int i = 0; i < touchable.size(); i++) {
@@ -746,7 +756,8 @@ final class Displays {
           });
       frame.getContentPane().add(panel);
       frame.pack();
-      WindowZoom.install(frame, panel, width, height);
+      WindowZoom zoom = WindowZoom.install(frame, panel, width, height);
+      WindowZoom.main();
       JPanel main = SimulatorPanelRegistry.getActivePanel();
       Window owner = main == null ? null : SwingUtilities.getWindowAncestor(main);
       if (owner != null) {
@@ -758,6 +769,7 @@ final class Displays {
           }
         }
         frame.setLocation(x, owner.getY());
+        zoom.fitBeside(x);
       }
       frame.setVisible(true);
     }

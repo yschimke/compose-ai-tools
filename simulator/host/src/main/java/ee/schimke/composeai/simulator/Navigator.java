@@ -1523,6 +1523,73 @@ final class Navigator {
         .object();
   }
 
+  /**
+   * How long a service started with {@code startForegroundService} has to call {@code
+   * startForeground}: {@code ActivityManagerService}'s {@code SERVICE_START_FOREGROUND_TIMEOUT}.
+   */
+  static final long FOREGROUND_DEADLINE_MS = 10_000;
+
+  /** Services started with {@code startForegroundService}, with the uptime they must be by. */
+  private static final java.util.Queue<Object[]> foregroundStarts =
+      new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+  private final Map<ComponentName, Long> foregroundDeadlines = new LinkedHashMap<>();
+
+  /** From {@link SimulatorShadowContextImpl}: the app called {@code startForegroundService}. */
+  static void expectForeground(Intent intent) {
+    foregroundStarts.add(
+        new Object[] {
+          new Intent(intent), android.os.SystemClock.uptimeMillis() + FOREGROUND_DEADLINE_MS
+        });
+  }
+
+  /**
+   * Each service started with {@code startForegroundService} that has not called {@code
+   * startForeground} by its deadline is reported as an {@code error} event, once: a device
+   * stops the app ({@code ForegroundServiceDidNotStartInTimeException}, an ANR before Android 12).
+   * The app runs on here.
+   */
+  void checkForegroundDeadlines() {
+    Object[] start;
+    while ((start = foregroundStarts.poll()) != null) {
+      ComponentName component;
+      try {
+        component = resolveService((Intent) start[0]);
+      } catch (IllegalArgumentException e) {
+        continue;
+      }
+      foregroundDeadlines.put(component, (Long) start[1]);
+    }
+    long now = android.os.SystemClock.uptimeMillis();
+    for (Iterator<Map.Entry<ComponentName, Long>> it = foregroundDeadlines.entrySet().iterator();
+        it.hasNext(); ) {
+      Map.Entry<ComponentName, Long> e = it.next();
+      Running running = services.get(e.getKey());
+      if (running != null) {
+        ShadowService shadow = Shadow.extract(running.controller.get());
+        if (shadow.getLastForegroundNotification() != null) {
+          it.remove();
+          continue;
+        }
+      }
+      if (now < e.getValue()) continue;
+      it.remove();
+      protocol.event(
+          "error",
+          new Protocol.Json()
+              .put("kind", "foregroundService")
+              .put("service", e.getKey().getClassName())
+              .put(
+                  "message",
+                  "Context.startForegroundService() did not then call Service.startForeground()"
+                      + " within "
+                      + FOREGROUND_DEADLINE_MS / 1000
+                      + " s: a device stops the app"
+                      + " (ForegroundServiceDidNotStartInTimeException)")
+              .object());
+    }
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Broadcasts
 
