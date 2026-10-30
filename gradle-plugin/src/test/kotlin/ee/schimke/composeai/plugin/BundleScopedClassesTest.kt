@@ -1,8 +1,11 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.discovery.Capture
 import ee.schimke.composeai.discovery.PreviewInfo
 import ee.schimke.composeai.discovery.PreviewManifest
+import ee.schimke.composeai.discovery.PreviewTarget
+import ee.schimke.composeai.discovery.TargetConfidence
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipEntry
@@ -124,6 +127,58 @@ class BundleScopedClassesTest {
     // Control: with nothing wired the bundle is still well-formed but cannot contain the class —
     // proving the two tests above pass because of the scoped wiring, not some ambient classpath.
     assertThat(appJarEntries(task.output.get().asFile)).doesNotContain(previewClassRel)
+  }
+
+  @Test
+  fun `an IR builder catalog keeps callable component owners while replay-only bundles prune them`() {
+    for (authoring in listOf(false, true)) {
+      val outDir = tmp.newFolder("ir-$authoring")
+      val scoped = tmp.newFolder("ir-classes-$authoring")
+      File(scoped, previewClassRel).apply {
+        parentFile.mkdirs()
+        writeBytes(moduleClassBytes())
+      }
+      val task = newBundleTask(outDir)
+      val source = task.previewsJson.get().asFile
+      val manifest = json.decodeFromString(PreviewManifest.serializer(), source.readText())
+      source.writeText(
+        json.encodeToString(
+          PreviewManifest.serializer(),
+          manifest.copy(
+            previews =
+              listOf(
+                manifest.previews
+                  .single()
+                  .copy(
+                    className = "sample.StickerKt",
+                    captures = listOf(Capture(renderOutput = "renders/sample.png")),
+                    componentTargets =
+                      listOf(
+                        PreviewTarget(
+                          className = previewClassFqn,
+                          functionName = "sample",
+                          confidence = TargetConfidence.HIGH,
+                        )
+                      ),
+                  )
+              )
+          ),
+        )
+      )
+      File(outDir, "renders/sample.$IR_EXT_REMOTECOMPOSE").writeBytes(byteArrayOf(1, 2, 3, 4))
+      task.moduleClassDirs.from(scoped)
+      if (authoring) {
+        val policy =
+          File(outDir, "ui-builder.policy.json").apply {
+            writeText("""{"schema":"compose-ui-builder-policy/v1","catalogId":"sample"}""")
+          }
+        task.uiBuilderPolicyCandidates.from(policy)
+      }
+      task.pack()
+      val entries = appJarEntries(task.output.get().asFile)
+      if (authoring) assertThat(entries).contains(previewClassRel)
+      else assertThat(entries).doesNotContain(previewClassRel)
+    }
   }
 
   /** Entry names inside `classes/app.jar`, read out of the PNG+ZIP polyglot bundle. */

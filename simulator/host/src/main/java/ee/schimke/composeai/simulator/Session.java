@@ -277,6 +277,8 @@ final class Session {
         return navigator.broadcast(intent(c));
       case "query":
         return query(c);
+      case "permissions":
+        return navigator.permissions.command(c);
       case "qualifiers":
         return qualifiers(c.getString("value"));
       default:
