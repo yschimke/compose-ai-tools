@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Implementation;
@@ -200,27 +201,56 @@ public class SimulatorShadowCompanionDeviceManager extends ShadowCompanionDevice
 
   private static CompanionDevices.Filter filter(Object filter) {
     String type = filter.getClass().getSimpleName();
-    List<String> uuids = new ArrayList<>();
     if (type.equals("BluetoothDeviceFilter")) {
+      List<UUID> uuids = new ArrayList<>();
       List<?> services = call(filter, "getServiceUuids");
-      if (services != null) for (Object uuid : services) uuids.add(String.valueOf(uuid));
-      return new CompanionDevices.Filter(
+      if (services != null) for (Object uuid : services) uuids.add(uuid(uuid));
+      List<?> masks = call(filter, "getServiceUuidMasks");
+      if (masks != null && !masks.isEmpty()) {
+        // Masked classic UUIDs: rare, and not worth guessing at.
+        for (Object mask : masks) if (mask != null) return CompanionDevices.Filter.NONE;
+      }
+      return CompanionDevices.Filter.classic(
           call(filter, "getAddress"), call(filter, "getNamePattern"), uuids);
     }
     if (type.equals("BluetoothLeDeviceFilter")) {
+      byte[] raw = call(filter, "getRawDataFilter");
+      if (raw != null && raw.length > 0) return CompanionDevices.Filter.NONE;
       ScanFilter scan = call(filter, "getScanFilter");
       Pattern name = call(filter, "getNamePattern");
       String address = null;
+      UUID service = null;
+      UUID mask = null;
       if (scan != null) {
-        address = scan.getDeviceAddress();
-        if (name == null && scan.getDeviceName() != null) {
-          name = Pattern.compile("^" + Pattern.quote(scan.getDeviceName()) + "$");
+        // Predicates over advertising payloads the simulator does not match on: unevaluable, so
+        // they narrow the chooser to nothing rather than to everything.
+        if (scan.getServiceDataUuid() != null
+            || scan.getManufacturerId() >= 0
+            || scan.getServiceSolicitationUuid() != null) {
+          return CompanionDevices.Filter.NONE;
         }
-        if (scan.getServiceUuid() != null) uuids.add(scan.getServiceUuid().toString());
+        address = scan.getDeviceAddress();
+        if (scan.getDeviceName() != null) {
+          String exact = Pattern.quote(scan.getDeviceName());
+          // Both the scan filter's exact name and the filter's own pattern, when it has one.
+          name =
+              Pattern.compile(
+                  name == null
+                      ? "^" + exact + "$"
+                      : "^(?=[\\s\\S]*(?:" + name.pattern() + "))" + exact + "$");
+        }
+        if (scan.getServiceUuid() != null) {
+          service = scan.getServiceUuid().getUuid();
+          if (scan.getServiceUuidMask() != null) mask = scan.getServiceUuidMask().getUuid();
+        }
       }
-      return new CompanionDevices.Filter(address, name, uuids);
+      return CompanionDevices.Filter.ble(address, name, service, mask);
     }
     return CompanionDevices.Filter.NONE;
+  }
+
+  private static UUID uuid(Object parcelUuid) {
+    return UUID.fromString(String.valueOf(parcelUuid));
   }
 
   @SuppressWarnings("unchecked")

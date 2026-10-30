@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.json.JSONObject;
@@ -75,85 +76,119 @@ public class CompanionDevicesTest {
     assertEquals(1, CompanionDevices.find(chosen.get().address).id);
   }
 
-  private static CompanionDevices.Device device(String address, String name, String... uuids) {
-    return new CompanionDevices.Device(address, name, List.of(uuids));
+  private static final String HEART_RATE = "0000180d-0000-1000-8000-00805f9b34fb";
+
+  private static CompanionDevices.Device ble(String address, String name, String... uuids) {
+    return new CompanionDevices.Device(address, name, true, List.of(uuids));
+  }
+
+  private static CompanionDevices.Device classic(String address, String name, String... uuids) {
+    return new CompanionDevices.Device(address, name, false, List.of(uuids));
+  }
+
+  private static CompanionDevices.Filter bleName(String pattern) {
+    return CompanionDevices.Filter.ble(null, Pattern.compile(pattern), null, null);
+  }
+
+  private static String chosen(List<CompanionDevices.Filter> filters, List<CompanionDevices.Device> inRange) {
+    AtomicReference<String> answered = new AtomicReference<>();
+    CompanionDevices.associate(
+        null, filters, inRange, c -> answered.set(c == null ? "failed" : c.address));
+    return answered.get();
   }
 
   @Test
   public void aFilteredRequestListsBluetoothDevicesInRange() {
     CompanionDevices.peerConnected("watch-sim", "Simulated Watch", false);
-    List<CompanionDevices.Device> radios = List.of(device("C0:FF:EE:00:00:01", "MeshCore radio"));
-    AtomicReference<CompanionDevices.Candidate> chosen = new AtomicReference<>();
-    CompanionDevices.associate(
-        null,
-        List.of(new CompanionDevices.Filter(null, Pattern.compile("MeshCore"), List.of())),
-        radios,
-        chosen::set);
-    assertEquals("C0:FF:EE:00:00:01", chosen.get().address);
+    assertEquals(
+        "C0:FF:EE:00:00:01",
+        chosen(List.of(bleName("MeshCore")), List.of(ble("C0:FF:EE:00:00:01", "MeshCore radio"))));
     assertEquals("MeshCore radio", CompanionDevices.find("c0:ff:ee:00:00:01").displayName);
   }
 
   /** The chooser lists only devices a filter matches: an unrelated one is never associated. */
   @Test
   public void bluetoothDevicesThatMatchNoFilterAreNotCandidates() {
-    String heartRate = "0000180d-0000-1000-8000-00805f9b34fb";
     List<CompanionDevices.Device> inRange =
         List.of(
-            device("AA:AA:AA:AA:AA:01", "Kitchen speaker"),
-            device("AA:AA:AA:AA:AA:02", "Chest strap", heartRate),
-            device("AA:AA:AA:AA:AA:03", "MeshCore-1234"));
-    AtomicReference<CompanionDevices.Candidate> chosen = new AtomicReference<>();
+            ble("AA:AA:AA:AA:AA:01", "Kitchen speaker"),
+            ble("AA:AA:AA:AA:AA:02", "Chest strap", HEART_RATE),
+            ble("AA:AA:AA:AA:AA:03", "MeshCore-1234"));
     // By service UUID.
-    CompanionDevices.associate(
-        null,
-        List.of(new CompanionDevices.Filter(null, null, List.of(heartRate.toUpperCase()))),
-        inRange,
-        chosen::set);
-    assertEquals("AA:AA:AA:AA:AA:02", chosen.get().address);
+    assertEquals(
+        "AA:AA:AA:AA:AA:02",
+        chosen(
+            List.of(CompanionDevices.Filter.ble(null, null, UUID.fromString(HEART_RATE), null)),
+            inRange));
     // By address.
-    CompanionDevices.associate(
-        null,
-        List.of(new CompanionDevices.Filter("aa:aa:aa:aa:aa:03", null, List.of())),
-        inRange,
-        chosen::set);
-    assertEquals("AA:AA:AA:AA:AA:03", chosen.get().address);
+    assertEquals(
+        "AA:AA:AA:AA:AA:03",
+        chosen(List.of(CompanionDevices.Filter.ble("aa:aa:aa:aa:aa:03", null, null, null)), inRange));
     // Any of several filters; the first device in range that one matches.
-    CompanionDevices.associate(
-        null,
-        List.of(
-            new CompanionDevices.Filter(null, Pattern.compile("^MeshCore-"), List.of()),
-            new CompanionDevices.Filter(null, Pattern.compile("strap"), List.of())),
-        inRange,
-        chosen::set);
-    assertEquals("AA:AA:AA:AA:AA:02", chosen.get().address);
-    // Nothing matches: no device, so the request fails rather than taking the speaker.
-    chosen.set(null);
-    AtomicReference<String> answered = new AtomicReference<>();
-    CompanionDevices.associate(
-        null,
-        List.of(new CompanionDevices.Filter(null, Pattern.compile("Watch"), List.of())),
-        inRange,
-        c -> answered.set(c == null ? "failed" : c.address));
-    assertEquals("failed", answered.get());
+    assertEquals(
+        "AA:AA:AA:AA:AA:02", chosen(List.of(bleName("^MeshCore-"), bleName("strap")), inRange));
+    // Nothing matches: the request fails rather than taking the speaker.
+    assertEquals("failed", chosen(List.of(bleName("Watch")), inRange));
   }
 
+  /** {@code bluetooth advertise} takes {@code 180D}; a filter names the full UUID. */
+  @Test
+  public void shortAdvertisedUuidsMatchTheirFullForm() {
+    assertEquals(
+        "AA:AA:AA:AA:AA:02",
+        chosen(
+            List.of(CompanionDevices.Filter.ble(null, null, UUID.fromString(HEART_RATE), null)),
+            List.of(ble("AA:AA:AA:AA:AA:01", "Other", "180F"), ble("AA:AA:AA:AA:AA:02", "Strap", "180D"))));
+  }
+
+  /** {@code ScanFilter.setServiceUuid(uuid, mask)}: only the mask's bits are compared. */
+  @Test
+  public void serviceUuidMasksAreHonoured() {
+    UUID wanted = UUID.fromString("12345678-0000-1000-8000-00805f9b34fb");
+    UUID topBits = UUID.fromString("ffff0000-0000-0000-0000-000000000000");
+    List<CompanionDevices.Device> inRange =
+        List.of(
+            ble("AA:AA:AA:AA:AA:01", "Other", "abcd0000-0000-1000-8000-00805f9b34fb"),
+            ble("AA:AA:AA:AA:AA:02", "Ours", "1234ffff-0000-1000-8000-00805f9b34fb"));
+    assertEquals(
+        "AA:AA:AA:AA:AA:02",
+        chosen(List.of(CompanionDevices.Filter.ble(null, null, wanted, topBits)), inRange));
+    // Without the mask the UUID must be equal, and neither is.
+    assertEquals(
+        "failed", chosen(List.of(CompanionDevices.Filter.ble(null, null, wanted, null)), inRange));
+  }
+
+  /** A BLE filter lists only BLE peripherals, a classic one only classic devices. */
+  @Test
+  public void filtersApplyOnlyToTheirMedium() {
+    List<CompanionDevices.Device> inRange =
+        List.of(classic("AA:AA:AA:AA:AA:01", "Car kit"), ble("AA:AA:AA:AA:AA:02", "Car tag"));
+    assertEquals("AA:AA:AA:AA:AA:02", chosen(List.of(bleName("Car")), inRange));
+    assertEquals(
+        "AA:AA:AA:AA:AA:01",
+        chosen(
+            List.of(CompanionDevices.Filter.classic(null, Pattern.compile("Car"), List.of())),
+            inRange));
+  }
+
+  /**
+   * A filter the simulator cannot evaluate (a Wi-Fi one; a BLE one with raw-data, service-data or
+   * manufacturer-data predicates, which the shadow reads as {@code NONE}) matches nothing.
+   */
   @Test
   public void aFilterTheSimulatorCannotEvaluateMatchesNoBluetoothDevice() {
-    AtomicReference<String> answered = new AtomicReference<>();
-    CompanionDevices.associate(
-        null,
-        List.of(CompanionDevices.Filter.NONE),
-        List.of(device("AA:AA:AA:AA:AA:01", "Kitchen speaker")),
-        c -> answered.set(c == null ? "failed" : c.address));
-    assertEquals("failed", answered.get());
+    assertEquals(
+        "failed",
+        chosen(
+            List.of(CompanionDevices.Filter.NONE),
+            List.of(ble("AA:AA:AA:AA:AA:01", "Kitchen speaker"), classic("AA:AA:AA:AA:AA:02", "Car"))));
   }
 
   @Test
   public void anUnfilteredRequestListsEveryDeviceInRange() {
-    AtomicReference<CompanionDevices.Candidate> chosen = new AtomicReference<>();
-    CompanionDevices.associate(
-        null, ANY, List.of(device("AA:AA:AA:AA:AA:01", "Kitchen speaker")), chosen::set);
-    assertEquals("AA:AA:AA:AA:AA:01", chosen.get().address);
+    assertEquals(
+        "AA:AA:AA:AA:AA:01",
+        chosen(new ArrayList<>(), List.of(classic("AA:AA:AA:AA:AA:01", "Kitchen speaker"))));
   }
 
   @Test

@@ -129,7 +129,7 @@ final class BluetoothSim {
       for (int i = 0; advertised != null && i < advertised.length(); i++) {
         uuids.add(advertised.optString(i));
       }
-      result.add(new CompanionDevices.Device(e.getKey(), name, uuids));
+      result.add(new CompanionDevices.Device(e.getKey(), name, e.getValue().ble, uuids));
     }
     return result;
   }
