@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- `MainActivity`'s static app shortcuts, shown on a long press of the launcher icon. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut
+      android:shortcutId="now_playing"
+      android:enabled="true"
+      android:icon="@drawable/ic_settings"
+      android:shortcutShortLabel="@string/shortcut_now_playing_short"
+      android:shortcutLongLabel="@string/shortcut_now_playing_long">
+    <intent
+        android:action="android.intent.action.VIEW"
+        android:targetPackage="com.example.sampleandroid"
+        android:targetClass="com.example.sampleandroid.NowPlayingActivity" />
+  </shortcut>
+</shortcuts>
