@@ -225,7 +225,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
 | `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
-| `back` | | the Back key — the app's own back handling decides |
+| `back` | `display`? | Back, as the system delivers it (see [Back](#back)); `key BACK` and `adb shell input keyevent KEYCODE_BACK` do the same. The reply's `via` says how: `key`, `OnBackInvokedCallback`, `Activity.onBackPressed` or `system` |
 | `text` | `text` | types into the focused field |
 | `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
@@ -250,9 +250,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `package` / `packages` | `filter`? | version, APK path, data dir, permission state / the one package |
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
-| `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
+| `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
-| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
+| `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item, the open `ChannelClient` channels; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `companion` | `policy?` (`accept` / `reject` / `ask`), `answer?` (`accept` / `reject`), `requestId?`, `address?`, `disassociate?` (an id) | `CompanionDeviceManager`'s associations (each Data Layer peer is one, with a stable MAC; on the phone a watch has `DEVICE_PROFILE_WATCH`) and how `associate()` is answered: by policy (default `accept`, the first candidate: a peer, or a Bluetooth device in range that matches one of the request's device filters (address, name pattern, service UUIDs)), or with `ask` a `companion` event `{state: chooser, request}` that waits for `answer`. API 33+ answers `onAssociationCreated`; earlier APIs' chooser `IntentSender` is not driven, so `onFailure` |
 | `playServices` | `state`? (`installed` / `none` / `outdated` / `disabled` / `invalid`) | Google Play services as availability checks report it ([below](#google-play-services)); returns the state, status and version |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
@@ -274,6 +274,46 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
 | `picker` | `action`? (`open` / `close`) | the widget picker |
 | `quit` | | exits |
+
+### Runtime permissions
+
+A request — `ActivityResultContracts.RequestMultiplePermissions`, `RequestPermission`,
+`Activity.requestPermissions`, `ActivityCompat.requestPermissions`, Accompanist — is answered in
+place of the system's dialog, and its result reaches the activity the way the dialog's does:
+`onRequestPermissionsResult`, and the `ActivityResultRegistry` with `EXTRA_PERMISSIONS` /
+`EXTRA_PERMISSION_GRANT_RESULTS`, in request order with duplicates kept. What the permission
+controller decides without a dialog is decided as on a device:
+
+| A requested permission that is | gets | `by` |
+| --- | --- | --- |
+| already granted | granted, even under `deny` | `alreadyGranted` |
+| not in the manifest | denied | `notInManifest` |
+| not a runtime permission | its install-time state | `installTime` |
+| denied twice in the dialog (Android 11's "don't ask again") | denied until `grant` or `reset` | `dontAskAgain` |
+| in a group with one already granted (contacts, calendar, phone, SMS, nearby devices, storage) | granted | `groupGranted` |
+| newer than the device (`POST_NOTIFICATIONS` below 13, `READ_MEDIA_VISUAL_USER_SELECTED` below 14, the Bluetooth ones below 12); `ACCESS_FINE_LOCATION` without `ACCESS_COARSE_LOCATION` (12+); background location asked with foreground location not yet granted, or before it (11+); `BODY_SENSORS_BACKGROUND` likewise before `BODY_SENSORS` (13+) | denied, with the platform's `reason` | `ignored` |
+
+Everything else is the dialog's (`by: dialog`), answered by the permission's own `grant` / `deny`
+answer, else the policy. Under `ask` the request waits: a `permissions` event with `state:
+"waiting"`, its `requestId` and the permissions it `ask`s about, until `permissions` with `answer`:
+`grant`, `deny`, `dismiss` (backed out: denied, not counted), `approximate` (coarse location only),
+`selected` (`READ_MEDIA_VISUAL_USER_SELECTED` only, the 14+ partial photo access), or an object of
+permission → `grant` / `deny` / `dismiss` for each one. Switching the policy back to `grant` or
+`deny` answers what is waiting. A dialog deny is counted: after one,
+`shouldShowRequestPermissionRationale` is true; after two it is false again and the permission is
+denied without asking. `grant` (or `pm grant`) lifts that, as Settings does; `reset` forgets it.
+Every request ends with a `permissions` event, `state: "answered"`, listing what was `granted` and
+`denied` and, per permission, `by`, `rationale` and `dontAskAgain`:
+
+```
+→ {"id":1,"cmd":"permissions","policy":"ask"}
+← {"event":"permissions","state":"waiting","requestId":3,"requestCode":7,"ask":["android.permission.ACCESS_FINE_LOCATION","android.permission.ACCESS_COARSE_LOCATION"],"results":[]}
+→ {"id":2,"cmd":"permissions","answer":"approximate"}
+← {"event":"permissions","state":"answered","requestId":3,"granted":["android.permission.ACCESS_COARSE_LOCATION"],"denied":["android.permission.ACCESS_FINE_LOCATION"],"results":[…]}
+```
+
+An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
+from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
 ### Display, fold and device state
 
@@ -609,6 +649,33 @@ under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widge
 `id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
 belongs to the default display: a secondary display gets no launcher.
 
+### Back
+
+Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
+the activity takes it first):
+
+- **A window that opted in to the callback API** (API 33+, `android:enableOnBackInvokedCallback`)
+  never sees a key. Its top `OnBackInvokedCallback` is invoked, as `ViewRootImpl` intercepts
+  `KEYCODE_BACK` before the view tree; an `OnBackAnimationCallback` hears `onBackStarted` first,
+  at the left edge with progress 0. That callback is androidx's `OnBackPressedDispatcher` while it
+  has an enabled callback — Compose's `BackHandler`, Wear's `SwipeDismissableNavHost`, Navigation,
+  Horologist — so one Back pops one screen. While nothing in the app wants Back, the top callback is
+  the activity's own default, which asks the system server to finish the activity or move its task
+  back; with no server under Robolectric, `onBackPressed` stands in, and the activity finishes.
+- **Any other window gets `KEYCODE_BACK`**, which `Activity.onKeyUp` turns into `onBackPressed`;
+  `ComponentActivity` hands that to the same `OnBackPressedDispatcher`, and with nothing registered
+  the activity finishes. Robolectric 4.17 does not turn on the targetSdk 36 default, so an app
+  opts in only through the manifest attribute.
+- **The simulator's own home** (`WearHome`, `PhoneHome`) takes Back itself whatever the app opted
+  in to: back from a launcher, stream or tile surface goes to the watch face.
+
+Finishing the root activity lands on the watch face (or home screen) with `--launcher`, and
+otherwise empties the back stack (`activity` event `empty`).
+
+The predictive back *gesture* is not simulated: a `swipe` from a watch's left edge is a touch, which
+Wear Compose's `SwipeToDismissBox` (in `SwipeDismissableNavHost`) handles itself in a window that has
+not opted in. An opted-in window gets no `handleOnBackProgressed` stream from a swipe; use `back`.
+
 ### Wear system UI
 
 On a Wear app, `--launcher` (or a `--tile`) puts a Wear OS system UI under it instead of the phone
@@ -750,8 +817,8 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
 | `am force-stop` / `kill` | `forceStop` | partly: see below |
 | `am stack list` | `activities` | |
-| `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests |
-| `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked, policy back to grant |
+| `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests; a grant lifts "don't ask again" |
+| `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked and never asked about, policy back to grant |
 | `pm clear` | `clearData` | partly: see below |
 | `pm list packages` / `pm path` / `pm dump` | `packages` / `package` | the one installed package |
 | `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
@@ -814,7 +881,10 @@ runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
 `--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
 `Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
 simulator instead of Play services, so messages, requests, data items and capabilities cross
-between the apps and reach their listeners and manifest `WearableListenerService`s. Each peer
+between the apps and reach their listeners and manifest `WearableListenerService`s, and
+`ChannelClient` channels stream bytes between them (`openChannel`, the streams, `sendFile` /
+`receiveFile`, `ChannelCallback`s and `CHANNEL_EVENT` services). As with Play services, no task a
+client returns is complete yet: each completes on a later turn of the main looper. Each peer
 is also a `CompanionDeviceManager` association (the [`companion`](#the-control-channel) command),
 and on the watch `RemoteActivityHelper.availabilityStatus` follows the peer's connects and
 disconnects. With
@@ -832,10 +902,13 @@ missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
 simulator: the control channel plays every peer device. Each frame the app sends is a
 `datalayer` event of kind `send`: `type` `hello` (its node and capabilities, answered on each
 connect), `message` (with a `requestId` for a `sendRequest`), `response`, `data`, `capabilities`,
-`activity` (a `startRemoteActivity`) or `oauth`, with its payload as base64 `data`, a `text`
+`activity` (a `startRemoteActivity`), `oauth`, or a channel's `channelOpen` (with its `token` and
+`path`), `channelData`, `channelEof` and `channelClose`, with its payload as base64 `data`, a `text`
 preview and, when the bytes are a `DataMap`, a `dataMap` JSON object; a data item's assets come
 as `assets` (key → base64, up to 4 MiB of base64 each, larger ones named in `assetsOmitted`).
-Both are in the form `put` takes, so a captured item can be put back as it was. The agent answers with
+Both are in the form `put` takes, so a captured item can be put back as it was. A channel's life
+on either side is also a `datalayer` event of kind `channel` (`state` `opened`, `data`,
+`inputClosed`, `outputClosed`, `closed`, with the `channel` token). The agent answers with
 `{"cmd":"dataLayer","action":…}`:
 
 | `action` | Arguments | The peer… |
@@ -847,6 +920,10 @@ Both are in the form `put` takes, so a captured item can be put back as it was. 
 | `message` / `request` | `node?`, `path`, a payload | sends a message, or a request the app answers (a `send` event of type `response`) |
 | `reply` | `requestId`, a payload or `error`; `result` for a remote activity; `responseUrl` for OAuth | answers the app's request |
 | `config` | `requestTimeoutMs` | sets how long the app's requests wait (default 30 s, then `TIMEOUT`) |
+| `channelOpen` | `node?`, `path`, `channel?` (a token; one is made up) | opens a `ChannelClient` channel to the app (`onChannelOpened`, `CHANNEL_EVENT` services); answers its `channel` token |
+| `channelWrite` | `channel`, a payload | writes bytes the app's input stream reads |
+| `channelEof` | `channel` | closes its output: the app's input ends (`onInputClosed`) |
+| `channelClose` | `channel`, `errorCode?` | closes the channel (`onChannelClosed`, `CLOSE_REASON_REMOTE_CLOSE`) |
 
 A payload is `text`, `data` (base64) or `dataMap` (JSON: strings, booleans and ints bare, other
 values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|"intList"|"dataMapList"|…,
@@ -888,10 +965,10 @@ What does not, or not yet:
   and there are no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
-- **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
-  tapping "Allow" would, unless the `permissions` command says to deny them (all, or by name).
-  Each request is reported as a `permissions` event naming what was granted and denied; there is
-  no "don't ask again".
+- **Runtime permissions** have no dialog on screen: the agent answers in its place ([above](#runtime-permissions)),
+  and the requesting activity is not paused while a request waits. Groups are approximated (a
+  dialog per permission, not per group), and Android 16's health permissions that replace
+  `BODY_SENSORS` are plain runtime permissions.
 - **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
   share sheet, other settings screens) reaches no activity and is reported as an `error` event;
   the radio dialogs and settings panels are answered ([above](#network-wi-fi-and-bluetooth)).

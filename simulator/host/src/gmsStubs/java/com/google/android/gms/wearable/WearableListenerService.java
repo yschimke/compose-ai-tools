@@ -19,4 +19,12 @@ public abstract class WearableListenerService extends android.app.Service
   public void onPeerConnected(Node peer) {}
 
   public void onPeerDisconnected(Node peer) {}
+
+  public void onChannelOpened(ChannelClient.Channel channel) {}
+
+  public void onChannelClosed(ChannelClient.Channel channel, int closeReason, int errorCode) {}
+
+  public void onInputClosed(ChannelClient.Channel channel, int closeReason, int errorCode) {}
+
+  public void onOutputClosed(ChannelClient.Channel channel, int closeReason, int errorCode) {}
 }
