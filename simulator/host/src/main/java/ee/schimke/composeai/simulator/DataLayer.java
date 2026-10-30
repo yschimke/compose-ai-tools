@@ -336,23 +336,17 @@ final class DataLayer {
   // ---------------------------------------------------------------------------------------------
   // Clients
 
-  /**
-   * A task that completes with [value] on the main looper's next turn, as Play services' do (its
-   * answer comes over a binder): never already complete when the app gets it. Code that awaits
-   * a task and expects to suspend (Horologist's {@code DataLayerViewModel} init) misbehaves when
-   * it is.
-   */
+  /** Completes every task the clients hand out on the main looper; see {@link DeferredTasks}. */
+  final DeferredTasks tasks = new DeferredTasks(main::post);
+
+  /** A task that completes with [value] on the main looper's next turn ({@link DeferredTasks}). */
   <T> Task<T> later(T value) {
-    TaskCompletionSource<T> result = new TaskCompletionSource<>();
-    main.post(() -> result.trySetResult(value));
-    return result.getTask();
+    return tasks.result(value);
   }
 
   /** As {@link #later(Object)}, failing with [error]. */
   <T> Task<T> laterFailure(Exception error) {
-    TaskCompletionSource<T> result = new TaskCompletionSource<>();
-    main.post(() -> result.trySetException(error));
-    return result.getTask();
+    return tasks.failure(error);
   }
 
   Object dataClient(Context context) {
@@ -461,7 +455,8 @@ final class DataLayer {
           () -> {
             TaskCompletionSource<byte[]> waiting = pending.remove(id);
             if (waiting == null) return;
-            waiting.trySetException(
+            tasks.fail(
+                waiting,
                 new ApiException(new Status(TIMEOUT, "no answer to " + path + " in " + timeout + " ms")));
             event("response", "in", nodeId, path, null, null, "timeout");
           },
@@ -889,13 +884,14 @@ final class DataLayer {
     if (response == null) return;
     String error = frame.optString("error", null);
     if (error != null) {
-      response.trySetException(new ApiException(new Status(INTERNAL_ERROR, error)));
+      // The hub's reader thread: the app's task completes on its main looper, as Play services'.
+      tasks.fail(response, new ApiException(new Status(INTERNAL_ERROR, error)));
       event("response", "in", frame.optString("from"), null, null, null);
       return;
     }
     byte[] data = decode(frame.optString("data", null));
     event("response", "in", frame.optString("from"), null, data, null);
-    response.trySetResult(data);
+    tasks.succeed(response, data);
   }
 
   private void onData(JSONObject frame) throws JSONException {
