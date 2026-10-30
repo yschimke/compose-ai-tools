@@ -22,6 +22,11 @@ import kotlinx.serialization.json.put
 import org.gradle.tooling.BuildException
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.Remapper
 
 /**
  * `launch --project <dir>`: the app's Gradle build behind the simulator, so an edit reaches it
@@ -166,10 +171,7 @@ internal class LiveReload(
     if (changed.isNotEmpty() || resourceIds) {
       overlay = File(dir, "classes").apply { mkdirs() }
       for (name in changed) {
-        val source = now.classes.getValue(name).second
-        val target = File(overlay, name)
-        target.parentFile.mkdirs()
-        source.copyTo(target, overwrite = true)
+        writeOverlayClass(now.classes.getValue(name).second.readBytes(), overlay)
       }
       if (resourceIds) {
         // Moved ids: every R class, as the module's classes now see them.
@@ -342,9 +344,12 @@ internal class LiveReload(
 
   /** aapt2's linked resources: a resource-only APK. */
   private fun linkedResourcesFile(): File? =
-    File(moduleDir, "build/intermediates/linked_resources_binary_format/$variant")
-      .walkTopDown()
-      .firstOrNull { it.isFile && it.name.endsWith(".ap_") }
+    // AGP 9 keeps aapt2's output under linked_resources_binary_format, AGP 8 under processed_res.
+    listOf("linked_resources_binary_format", "processed_res")
+      .map { File(moduleDir, "build/intermediates/$it/$variant") }
+      .firstNotNullOfOrNull { dir ->
+        dir.walkTopDown().firstOrNull { it.isFile && it.name.endsWith(".ap_") }
+      }
 
   private fun symbolsFile(): File? =
     File(intermediates("runtime_symbol_list"), "R.txt").takeIf { it.isFile }
@@ -458,13 +463,51 @@ internal class LiveReload(
       return (crc.value shl 32) xor file.length()
     }
 
+    /**
+     * The converter's dex2jar replaces every `-` in class, method and field names with `_`
+     * (`constructor-impl` is `constructor_impl`, `lambda-1` is `lambda_1` in the converted jar), so
+     * an overlaid class, straight from kotlinc, would call names that do not exist there: Compose
+     * code fails at its first value-class call with `NoSuchMethodError`. Each overlaid class gets
+     * the same names, declared and referenced, and is written under its renamed path.
+     */
+    internal fun writeOverlayClass(bytes: ByteArray, into: File): String {
+      val reader = ClassReader(bytes)
+      val writer = ClassWriter(0)
+      reader.accept(ClassRemapper(writer, DexNames), 0)
+      val name = DexNames.map(reader.className)
+      val target = File(into, "$name.class")
+      target.parentFile.mkdirs()
+      target.writeBytes(writer.toByteArray())
+      return name
+    }
+
+    /** dex2jar's name sanitizing (`LambadaNameSafeClassAdapter`): `-` becomes `_`. */
+    private object DexNames : Remapper(Opcodes.ASM9) {
+      private fun fix(name: String?): String? = name?.replace('-', '_')
+
+      override fun map(internalName: String): String = fix(internalName)!!
+
+      override fun mapMethodName(owner: String, name: String, descriptor: String): String =
+        fix(name)!!
+
+      override fun mapFieldName(owner: String, name: String, descriptor: String): String =
+        fix(name)!!
+
+      override fun mapInvokeDynamicMethodName(name: String, descriptor: String): String =
+        fix(name)!!
+
+      override fun mapInnerClassName(name: String, ownerName: String?, innerName: String?) =
+        fix(super.mapInnerClassName(name, ownerName, innerName))
+
+      override fun mapRecordComponentName(owner: String, name: String, descriptor: String) =
+        fix(name)!!
+    }
+
     private fun unzipClasses(jar: File, into: File) {
       ZipFile(jar).use { zip ->
         for (entry in zip.entries()) {
           if (entry.isDirectory || !entry.name.endsWith(".class")) continue
-          val target = File(into, entry.name)
-          target.parentFile.mkdirs()
-          zip.getInputStream(entry).use { input -> target.outputStream().use { input.copyTo(it) } }
+          writeOverlayClass(zip.getInputStream(entry).use { it.readBytes() }, into)
         }
       }
     }
@@ -517,12 +560,13 @@ internal class LiveReload(
     @Synchronized
     fun errorLines(): List<String> {
       val lines = buffer.toString(Charsets.UTF_8).lines()
-      val errors = lines.filter {
-        it.startsWith("e: ") ||
-          it.contains(": error:") ||
-          it.startsWith("* What went wrong") ||
-          it.startsWith("> ")
-      }
+      // The compilers' own lines, then Gradle's "What went wrong" paragraph.
+      val compiler = lines.filter { it.startsWith("e: ") || it.contains(": error:") }
+      val wrong = lines.indexOfFirst { it.startsWith("* What went wrong") }
+      val summary =
+        if (wrong < 0) emptyList()
+        else lines.drop(wrong + 1).takeWhile { !it.startsWith("* Try") }.filter { it.isNotBlank() }
+      val errors = compiler + summary
       return (errors.ifEmpty { lines.filter { it.isNotBlank() }.takeLast(20) }).take(40)
     }
   }

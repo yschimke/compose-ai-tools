@@ -29,6 +29,47 @@ class LiveReloadTest {
       writeText(text)
     }
 
+  /** A class file for [internalName] under [dir], whose content differs by [marker]. */
+  private fun File.writeClass(dir: String, internalName: String, marker: String): File {
+    val writer = org.objectweb.asm.ClassWriter(0)
+    writer.visit(
+      org.objectweb.asm.Opcodes.V17,
+      org.objectweb.asm.Opcodes.ACC_PUBLIC,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    writer.visitField(org.objectweb.asm.Opcodes.ACC_PUBLIC, marker, "I", null, null).visitEnd()
+    writer.visitEnd()
+    return File(this, "$dir/$internalName.class").apply {
+      parentFile.mkdirs()
+      writeBytes(writer.toByteArray())
+    }
+  }
+
+  private fun File.marker(): String {
+    var field = ""
+    org.objectweb.asm
+      .ClassReader(readBytes())
+      .accept(
+        object : org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+          override fun visitField(
+            access: Int,
+            name: String,
+            descriptor: String?,
+            signature: String?,
+            value: Any?,
+          ): org.objectweb.asm.FieldVisitor? {
+            field = name
+            return null
+          }
+        },
+        0,
+      )
+    return field
+  }
+
   private fun zip(file: File, entries: Map<String, String>): File {
     file.parentFile.mkdirs()
     ZipOutputStream(file.outputStream()).use { zip ->
@@ -61,14 +102,12 @@ class LiveReloadTest {
   fun `a reload overlays only the classes that changed or are new`() = fixture { root ->
     val project = File(root, "project").apply { write("settings.gradle.kts", "") }
     val kotlin = "app/build/tmp/kotlin-classes/debug"
-    project.write("$kotlin/com/example/A.class", "a1")
-    project.write("$kotlin/com/example/B.class", "b1")
+    val javac = "lib/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes"
+    project.writeClass(kotlin, "com/example/A", "a1")
+    project.writeClass(kotlin, "com/example/B", "b1")
     // A library module's javac output, and build logic that is not the app.
-    project.write(
-      "lib/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/lib/L.class",
-      "l1",
-    )
-    project.write("buildSrc/build/classes/kotlin/main/Plugin.class", "p1")
+    project.writeClass(javac, "lib/L", "l1")
+    project.writeClass("buildSrc/build/classes/kotlin/main", "Plugin", "p1")
     val apk = zip(File(root, "app.apk"), mapOf("classes.dex" to "dex"))
     val builds = mutableListOf<List<String>>()
     val live = live(project, File(root, "work"), builds)
@@ -76,20 +115,17 @@ class LiveReloadTest {
 
     assertIs<LiveReload.Plan.Unchanged>(live.prepare(apk, full = false))
 
-    project.write("$kotlin/com/example/A.class", "a2")
-    project.write("$kotlin/com/example/C.class", "c1")
-    project.write(
-      "lib/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/lib/L.class",
-      "l2",
-    )
-    project.write("buildSrc/build/classes/kotlin/main/Plugin.class", "p2")
+    project.writeClass(kotlin, "com/example/A", "a2")
+    project.writeClass(kotlin, "com/example/C", "c1")
+    project.writeClass(javac, "lib/L", "l2")
+    project.writeClass("buildSrc/build/classes/kotlin/main", "Plugin", "p2")
     val plan = assertIs<LiveReload.Plan.Overlay>(live.prepare(apk, full = false))
 
     assertEquals(
       listOf("com/example/A.class", "com/example/C.class", "lib/L.class"),
       plan.changedClasses,
     )
-    assertEquals("a2", File(plan.overlay, "com/example/A.class").readText())
+    assertEquals("a2", File(plan.overlay, "com/example/A.class").marker())
     assertFalse(File(plan.overlay, "com/example/B.class").exists())
     assertFalse(plan.resources)
     assertEquals(apk, plan.resourceApk, "unchanged resources come from the launched APK")
@@ -98,7 +134,7 @@ class LiveReloadTest {
     // Once running, the same build is nothing new; a further edit is.
     live.applied()
     assertIs<LiveReload.Plan.Unchanged>(live.prepare(apk, full = false))
-    project.write("$kotlin/com/example/B.class", "b2")
+    project.writeClass(kotlin, "com/example/B", "b2")
     val next = assertIs<LiveReload.Plan.Overlay>(live.prepare(apk, full = false))
     assertEquals(
       listOf("com/example/A.class", "com/example/B.class", "com/example/C.class", "lib/L.class"),
@@ -151,11 +187,17 @@ class LiveReloadTest {
       }
 
       project.write(symbols, "int string hello 0x7f010000\nint string bye 0x7f010001")
-      zip(File(project, rJar), mapOf("com/example/R\$string.class" to "r"))
+      val rClass = File(root, "r").writeClass("classes", "com/example/R\$string", "r")
+      File(project, rJar).parentFile.mkdirs()
+      ZipOutputStream(File(project, rJar).outputStream()).use { zip ->
+        zip.putNextEntry(ZipEntry("com/example/R\$string.class"))
+        zip.write(rClass.readBytes())
+        zip.closeEntry()
+      }
       zip(File(project, linked), mapOf("resources.arsc" to "newer"))
       val ids = assertIs<LiveReload.Plan.Overlay>(live.prepare(apk, full = false))
       assertTrue(ids.resourceIds)
-      assertEquals("r", File(ids.overlay, "com/example/R\$string.class").readText())
+      assertEquals("r", File(ids.overlay, "com/example/R\$string.class").marker())
     }
 
   @Test
@@ -201,4 +243,75 @@ class LiveReloadTest {
 
   private fun ZipFile.text(name: String): String? =
     getEntry(name)?.let { getInputStream(it).readBytes().decodeToString() }
+
+  @Test
+  fun `overlaid classes take the converter's names, without dashes`() = fixture { root ->
+    // A Kotlin value-class call and a `lambda-1` class, as kotlinc writes them.
+    val writer = org.objectweb.asm.ClassWriter(0)
+    writer.visit(
+      org.objectweb.asm.Opcodes.V17,
+      org.objectweb.asm.Opcodes.ACC_PUBLIC,
+      "app/Screen\$lambda-1",
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val method =
+      writer.visitMethod(
+        org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC,
+        "draw-0d7_KjU",
+        "()V",
+        null,
+        null,
+      )
+    method.visitCode()
+    method.visitMethodInsn(
+      org.objectweb.asm.Opcodes.INVOKESTATIC,
+      "androidx/compose/runtime/Updater",
+      "constructor-impl",
+      "()V",
+      false,
+    )
+    method.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+    writer.visitEnd()
+
+    val name = LiveReload.writeOverlayClass(writer.toByteArray(), root)
+
+    assertEquals("app/Screen\$lambda_1", name)
+    val written = File(root, "app/Screen\$lambda_1.class")
+    assertTrue(written.isFile)
+    val calls = mutableListOf<String>()
+    val methods = mutableListOf<String>()
+    org.objectweb.asm
+      .ClassReader(written.readBytes())
+      .accept(
+        object : org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+          override fun visitMethod(
+            access: Int,
+            name: String,
+            descriptor: String?,
+            signature: String?,
+            exceptions: Array<out String>?,
+          ): org.objectweb.asm.MethodVisitor {
+            methods += name
+            return object : org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+              override fun visitMethodInsn(
+                opcode: Int,
+                owner: String,
+                name: String,
+                descriptor: String,
+                isInterface: Boolean,
+              ) {
+                calls += "$owner.$name"
+              }
+            }
+          }
+        },
+        0,
+      )
+    assertEquals(listOf("draw_0d7_KjU"), methods)
+    assertEquals(listOf("androidx/compose/runtime/Updater.constructor_impl"), calls)
+  }
 }
