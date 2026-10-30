@@ -67,7 +67,7 @@ final class EdgeBackGesture {
     if (action > MotionEvent.ACTION_CANCEL) return swipe.active();
     switch (swipe.on(action, motion.getX(), motion.getY())) {
       case START:
-        cancelAppPointer(motion, displayId);
+        cancelAppPointer(motion, swipe, displayId);
         callback = SystemBack.swipeCallback(navigator, displayId);
         animated = Build.VERSION.SDK_INT >= 34 && callback instanceof OnBackAnimationCallback;
         if (animated) {
@@ -106,10 +106,15 @@ final class EdgeBackGesture {
         TRIGGER_DP * metrics.density);
   }
 
-  /** As {@code InputManager.pilferPointers}: the windows that had the touch see it cancelled. */
-  private static void cancelAppPointer(MotionEvent motion, int displayId) {
+  /**
+   * As {@code InputManager.pilferPointers}: the window that had the touch sees it cancelled. Each
+   * event is hit-tested where it is, so the cancel goes in where the touch went down, to the window
+   * that got the {@code DOWN}, not one the finger has since moved over.
+   */
+  private static void cancelAppPointer(MotionEvent motion, EdgeSwipe swipe, int displayId) {
     MotionEvent cancel = MotionEvent.obtain(motion);
     cancel.setAction(MotionEvent.ACTION_CANCEL);
+    cancel.setLocation(swipe.startX(), swipe.startY());
     Displays.dispatchTouch(cancel, displayId);
     cancel.recycle();
   }

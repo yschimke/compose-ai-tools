@@ -38,6 +38,15 @@ public class EdgeSwipeTest {
   }
 
   @Test
+  public void itRemembersWhereTheTouchWentDownForTheAppsCancel() {
+    swipe.on(DOWN, 6, 410);
+    swipe.on(MOVE, 30, 425);
+    swipe.on(MOVE, 200, 440);
+    assertEquals(6, swipe.startX(), 0);
+    assertEquals(410, swipe.startY(), 0);
+  }
+
+  @Test
   public void liftingShortOfTheTriggerCancels() {
     swipe.on(DOWN, 2, 300);
     assertEquals(Step.START, swipe.on(MOVE, 40, 300));

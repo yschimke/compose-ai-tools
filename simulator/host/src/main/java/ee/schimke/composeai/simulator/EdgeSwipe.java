@@ -120,6 +120,15 @@ final class EdgeSwipe {
     return edge;
   }
 
+  /** Where the touch went down: what the app's window was hit-tested at. */
+  float startX() {
+    return startX;
+  }
+
+  float startY() {
+    return startY;
+  }
+
   /** How far across, from 0 at the edge to 1 at the far side, as {@code BackEvent.getProgress}. */
   float progress() {
     return progress;
