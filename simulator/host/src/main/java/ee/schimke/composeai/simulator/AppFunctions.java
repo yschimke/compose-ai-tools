@@ -41,6 +41,70 @@ final class AppFunctions {
   /** What {@code adb shell cmd app_function execute-app-function} calls as. */
   static final String CALLER = "com.android.shell";
 
+  /** The {@link DeviceBus} op another app's {@code executeAppFunction} sends. */
+  static final String BUS_OP = "appFunction.execute";
+
+  /**
+   * Runs the functions other apps on the device call ({@link SimulatorShadowAppFunctionManager}):
+   * each with the caller's package, as the platform passes it, and the answer sent back.
+   */
+  static void serveOnBus(Application app) {
+    DeviceBus.on(
+        BUS_OP,
+        (from, body, reply) -> {
+          if (Build.VERSION.SDK_INT < 36) {
+            reply.send(failure(1000, "App Functions need the platform's AppFunctionService: --sdk 36"));
+            return;
+          }
+          ComponentName component;
+          try {
+            component = service(app, app.getPackageName());
+          } catch (IllegalStateException e) {
+            // AppFunctionException.ERROR_FUNCTION_NOT_FOUND.
+            reply.send(failure(1003, e.getMessage()));
+            return;
+          }
+          Api36.execute(
+              Navigator.serviceFor(component),
+              app.getPackageName(),
+              body.getString("function"),
+              body.optJSONObject("params") == null ? new JSONObject() : body.getJSONObject("params"),
+              from,
+              reply::send);
+        });
+  }
+
+  /** The {@code AppFunctionService} of [pkg], which must be the app's own. */
+  static ComponentName service(Application app, String pkg) {
+    Intent intent = new Intent(SERVICE_ACTION).setPackage(pkg);
+    for (ResolveInfo info : app.getPackageManager().queryIntentServices(intent, 0)) {
+      if (info.serviceInfo != null) {
+        return new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
+      }
+    }
+    throw new IllegalStateException(pkg + " declares no " + SERVICE_ACTION);
+  }
+
+  /** Whether the app's manifest asks for [permission]. */
+  static boolean declares(Application app, String permission) {
+    try {
+      String[] requested =
+          app.getPackageManager()
+              .getPackageInfo(app.getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS)
+              .requestedPermissions;
+      return requested != null && java.util.Arrays.asList(requested).contains(permission);
+    } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+      return false;
+    }
+  }
+
+  /** A result as {@link Api36} reports one, for an error the system raises itself. */
+  static JSONObject failure(int code, String message) {
+    return new Protocol.Json()
+        .put("error", new Protocol.Json().put("code", code).put("message", message).object())
+        .object();
+  }
+
   private final Application app;
   private final Protocol protocol;
   private int nextId = 1;
@@ -82,6 +146,7 @@ final class AppFunctions {
         app.getPackageName(),
         c.getString("execute"),
         params == null ? new JSONObject() : params,
+        CALLER,
         result -> {
           JSONObject event = result;
           try {
@@ -161,7 +226,12 @@ final class AppFunctions {
     }
 
     static void execute(
-        Service service, String pkg, String function, JSONObject params, Result result)
+        Service service,
+        String pkg,
+        String function,
+        JSONObject params,
+        String caller,
+        Result result)
         throws Exception {
       if (!(service instanceof android.app.appfunctions.AppFunctionService)) {
         throw new IllegalStateException(
@@ -198,7 +268,7 @@ final class AppFunctions {
       ((android.app.appfunctions.AppFunctionService) service)
           .onExecuteFunction(
               request,
-              CALLER,
+              caller,
               new android.content.pm.SigningInfo(),
               new android.os.CancellationSignal(),
               receiver);

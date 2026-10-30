@@ -14,6 +14,7 @@ compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an ext
 compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
 compose-preview launch --form-factor wear                          # no app: a watch face, nothing installed
 compose-preview launch --adb                                       # a device adb and Android Studio see
+compose-preview launch agent.apk --install app.apk --control stdio # two apps on one device
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -1373,6 +1374,42 @@ What a reload does not keep or cover:
 - **Pairs.** In a `--pair` session, `reload` and `--live` are the phone's: `--project` builds the
   phone app.
 
+## Several apps on one device
+
+`--install <other.apk>` (repeatable) puts more apps on the device, each in a simulator JVM of its
+own, as each app runs in a process of its own on a device. The first APK is the one on screen; the
+others start their process with no activity, as an app does when something calls into it. With
+`--control stdio` each is a `device` of the channel, named by its package: a command with
+`"device":"com.example.other"` goes to that app, one without to the first, and every line the
+simulators print carries its `device`, as with [`--pair`](#a-paired-phone-and-watch).
+
+What the apps share:
+
+- **Their manifests.** Each app's `PackageManager` holds the others, parsed from their APKs as the
+  system parses them at install: `getPackageInfo`, `queryIntentActivities` / `queryIntentServices`
+  and package visibility find them, and `packages` (`pm list packages`) lists every app.
+- **A bus**, the Data Layer hub's relay, that calls between apps cross as the binder carries them
+  on a device, each request run on the receiving app's main thread.
+- **App Functions.** `AppFunctionManager.executeAppFunction` from an app that declares
+  `EXECUTE_APP_FUNCTIONS` (an agent, an assistant) reaches the target app's `AppFunctionService`
+  in its own simulator, which runs the function with the caller's package and returns its result
+  document; without the permission the call is `ERROR_DENIED`, and an app that is not installed is
+  `ERROR_FUNCTION_NOT_FOUND`. An app calling its own functions needs no permission. API 36
+  (`--sdk 36`).
+
+```
+compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
+→ {"id":1,"cmd":"packages"}
+← {"device":"ee.schimke.agent","id":1,"ok":true,"result":{"packages":["ee.schimke.agent","ee.schimke.probe"],…}}
+   (the agent calls executeAppFunction("ee.schimke.probe", "…ProbeFunctions#add", {a: 20, b: 22}):
+    the probe's service runs with callingPackage ee.schimke.agent, and the agent's receiver gets 42)
+→ {"id":2,"device":"ee.schimke.probe","cmd":"logcat","op":"dump","filters":{"Probe":"V"}}
+```
+
+Intents, broadcasts and content providers do not cross between apps yet: a share sheet or an
+`ACTION_VIEW` aimed at another installed app is still a [handoff](#pickers-sharing-and-other-apps),
+and each app's `/sdcard` is its own. `--install` does not combine with `--pair` or `--adb`.
+
 ## A paired phone and watch
 
 `--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
@@ -1478,6 +1515,10 @@ What does not, or not yet:
   `jobFinished(params, true)` retry waits its initial backoff each time, not a growing one; a download has no notification, and is neither
   paused nor retried. A foreground service's type is not checked against its manifest
   declaration or permissions.
+- **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
+  Functions calls ([above](#several-apps-on-one-device)); activities, services, broadcasts,
+  content providers and URI grants of another app are not reached yet, and the apps share no
+  storage, clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global

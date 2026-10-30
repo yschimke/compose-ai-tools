@@ -223,6 +223,7 @@ internal object CliFlags {
       "--jar",
       "--java",
       "--pair",
+      "--install",
       "--gradle-arg",
       "--pair-qualifiers",
       "--tile",

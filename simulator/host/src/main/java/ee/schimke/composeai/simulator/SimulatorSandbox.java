@@ -93,6 +93,8 @@ final class SimulatorSandbox {
                 ShadowGoogleApiAvailability.class,
                 // androidx.appsearch's storages, in memory (AppSearchSessions).
                 ShadowLocalStorage.class,
+                // Cross-app App Functions calls, over the device bus of --install.
+                SimulatorShadowAppFunctionManager.class,
                 ShadowPlatformStorage.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
