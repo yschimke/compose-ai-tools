@@ -347,3 +347,21 @@ and slides with a `PredictiveBackHandler`'s progress. Over `--control stdio --he
 `touch` down at x=4 and moves to x=60, 120 and 280 (the screen follows the finger), back to x=30,
 up there (cancelled: still Now Playing), then a second swipe lifted at x=300 (committed: Home).
 Frames are `screenshot`s taken between the moves.
+
+## Status bar and notification shade
+
+`launch --launcher` on `samples/android`'s debug APK (`docs/SIMULATOR.md` → Status bar and
+notification shade), headless on JDK 21, full-size `screenshot`s. `NotificationDemoReceiver` posts
+a `MessagingStyle` conversation with a reply action on a high-importance channel, a `BigTextStyle`
+digest, a `BigPictureStyle` photo and an ongoing download.
+
+Top row: the app laid out below the status bar (taking its gray status bar colour); the broadcast
+posts the four, and the conversation shows heads-up; a swipe down from the bar opens the shade,
+newest and interrupting first, the top one expanded, all inflated from the notifications' own
+`RemoteViews`; the Reply button opens the inline reply field with the suggested replies. Bottom
+row: "Sounds good" sent — the app's receiver reads the `RemoteInput` and posts the conversation
+again with the reply; `notification {op: expand}` on the photo shows its big picture; a tap on it
+sends its content intent, which starts `NowPlayingActivity` and closes the shade; HOME, with
+`network {airplane: true}` and `battery {level: 12}`, the bar over the wallpaper.
+
+![App, heads-up, shade, reply field, replied, picture, opened, home](phone-shade.png)

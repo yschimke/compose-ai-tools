@@ -1,13 +1,14 @@
 # Handover: a phone launcher with app widgets for the simulator
 
-**Status:** surfaces 1–4 built (`launch --launcher`, `--widget`); the shade (5) is not. What
+**Status:** all five surfaces built (`launch --launcher`, `--widget`); the shade (5) with a status
+bar, in [Status bar and notification shade](../SIMULATOR.md#status-bar-and-notification-shade). What
 runs, the commands and the limits are in [`docs/SIMULATOR.md` → Home screen and
 widgets](../SIMULATOR.md#home-screen-and-widgets), the evidence in
 [`evidence/simulator-launch/`](evidence/simulator-launch/README.md#home-screen-and-widgets).
 Real apps: Home Assistant RemoteCompose's pin flow and Cadence's widget run (evidence README →
 Real apps), and MeshCore's on `--sdk 37`, the first API it enables its widget on; Muzei was not
 reachable. Still
-open from this brief: the MCP schema (compose-preview-mcp, a separate PR), and the shade. Two departures: a
+open from this brief: the MCP schema for the shade's `statusBar` command (compose-preview-mcp). Two departures: a
 widget is named `widgetId` and a shortcut `shortcutId` in commands, since `id` is the command's
 own; and a pin request brings the home screen forward rather than drawing its sheet over the app.
 

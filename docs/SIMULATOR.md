@@ -880,6 +880,81 @@ under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widge
 `id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
 belongs to the default display: a secondary display gets no launcher.
 
+### Status bar and notification shade
+
+On a phone, `--launcher` also brings the system UI over every app: a **status bar** along the top
+of the default display, the **notification shade** pulled down from it, and a **heads-up** card for
+a notification that interrupts. Each is a window of its own above the app's (`PhoneSystemUi`), as
+SystemUI's are, so screenshots show it and it takes touches over whatever is on screen.
+
+![App under the status bar, heads-up, shade, inline reply, replied, expanded picture, tap opened the app, home in airplane mode at 12%](design/evidence/simulator-launch/phone-shade.png)
+
+**The status bar** shows the clock, an icon per notification, Wi-Fi, mobile signal or airplane mode,
+and the battery (low and charging drawn as such), from the same state the `network`, `wifi` and
+`battery` commands set. Robolectric's own status bar inset is switched on with it, so the app is
+laid out below the bar (`WindowInsets` report it), or under it when it draws edge to edge. The bar
+takes the window's status bar colour when the app is laid out below it, light or dark icons as the
+app asked (`APPEARANCE_LIGHT_STATUS_BARS`), and hides, taking no touches, while the app hides it.
+The home screen draws its wallpaper under it.
+
+**The shade** opens with a swipe down from the bar or `notifications {"op":"open"}`: the clock,
+quick settings tiles (Internet, mobile data, airplane mode, battery) and each notification the app
+has showing, interrupting ones first and newest first. Each is inflated from its own `RemoteViews`,
+as the preview renderer in `runtimes/notification` does: `createContentView()` collapsed,
+`createBigContentView()` expanded (the top one starts expanded), measured at the heights SystemUI
+gives them, so the platform's templates (`MessagingStyle`, `BigPictureStyle`, progress, actions)
+and an app's custom views draw as on a device. The template's expand button toggles one. A group
+shows its children, not the summary.
+
+- a tap on a notification sends its content intent (auto-cancel honored); an activity it starts
+  closes the shade, as on a device;
+- its action buttons press the action; a reply action opens an inline reply field under it, with
+  the input's label and the app's suggested replies, and send fills the `RemoteInput`;
+- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one a
+  person could;
+- Back, HOME, a swipe up, or a tap below the list closes the shade.
+
+A **heads-up** card shows the heads-up view of a newly posted notification on a high-importance
+channel for five seconds, while the shade is closed: a tap opens it, a sideways swipe dismisses it,
+a swipe up puts it away, and a reply action opens the shade at its reply field.
+
+These are the stream the Wear system UI draws too (`NotificationStream`), so the
+[`notification`](#wear-system-ui) command acts on the same notifications: `tap`, `action`,
+`reply`, `dismiss` and `snooze` work with the shade open or not. On a phone a notification's own
+actions are offered, not its `WearableExtender` ones. Commands:
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification; without `op`, the list ([Wear system UI](#wear-system-ui)) |
+| `notification` | `key`, `op`: `expand` / `collapse`, or the Wear ops | expands or collapses one in the shade |
+| `quickSettings` | `wifi`?, `data`?, `airplane`? | switches those radios, opens the shade, and returns the battery, radios and default network |
+| `statusBar` | | `surface`, and the bar: `visible`, `heightPx`, `time`, `notifications` (keys, in the bar's order), `wifi`, `cellular`, `airplane`, `battery`, `charging`, `darkIcons`, `background`; `shade`, `headsUp` |
+
+`info`'s `surface` is `notificationShade` while the shade is open, and a `surface` event follows it
+opening and closing; a `headsUp` event names the key a card shows. The views carry ids for `find`
+and `tap`: `status_bar` (its description reads out the clock, notifications, radios and battery),
+`notification_shade`, `shade_clock`, `qs_wifi`, `qs_data`, `qs_airplane`, `qs_battery`,
+`notification_card` (description: the key), `notification_expand` (the key),
+`notification_action` (`<key>/<index>`, with the button's text), `notification_reply`
+(`<key>/<index>/<choice>`), `notification_reply_text` and `notification_reply_send`
+(`<key>/<index>`), `notifications_clear_all`, `notifications_empty` and `heads_up`. The sample app
+posts a set to try it with:
+
+```
+→ {"cmd":"permissions","grant":["android.permission.POST_NOTIFICATIONS"]}
+→ {"cmd":"broadcast","intent":{"action":"com.example.sampleandroid.POST_NOTIFICATIONS","component":".NotificationDemoReceiver"}}
+← {"event":"headsUp","key":"1"}
+→ {"cmd":"swipe","x1":270,"y1":10,"x2":270,"y2":700}
+← {"event":"surface","surface":"notificationShade"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_action","desc":"1/0"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_reply","desc":"1/0/Sounds good"}
+← {"event":"systemUi","result":{"key":"1","action":"Reply","reply":"Sounds good","sent":{"kind":"broadcast",…}}}
+← {"event":"notification","state":"updated","key":"1",…}
+```
+
+A touch gesture stays with the window its down went to, on any display, as a device's input
+dispatcher keeps it: a drag that starts on the status bar is the bar's however far it goes.
+
 ### Back
 
 Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
@@ -1565,12 +1640,17 @@ What does not, or not yet:
   paired phone: `checkApiAvailability` reports the `Wearable` clients `API_UNAVAILABLE`, as
   Play services' other APIs.
 - **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
-  own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
+  own widgets and shortcuts: there is one package. No wallpaper picker,
   keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).
   A pin request brings the home screen forward rather than showing its sheet over the app, and
   `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
   framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
   where this sandbox refuses the host.
+- **Status bar and shade.** Phones only, with `--launcher`. No navigation bar, notification
+  history, snooze or per-channel settings in the shade, conversation or bubble sections, media
+  controls, lock-screen notifications, or Do Not Disturb; notification sounds and vibration are not
+  played. Quick settings tiles are the four above, not the app's `TileService`s. Robolectric posts
+  every notification of one task at the same instant, so ties are ordered by `when`, then id.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not

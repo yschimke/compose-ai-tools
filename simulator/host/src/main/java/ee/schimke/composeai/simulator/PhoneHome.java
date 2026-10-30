@@ -54,6 +54,9 @@ public class PhoneHome extends Activity {
     setTheme(android.R.style.Theme_Material_NoActionBar);
     super.onCreate(savedInstanceState);
     setTitle("Home");
+    // Edge to edge, as a launcher is: the wallpaper runs on under the status bar.
+    getWindow().setDecorFitsSystemWindows(false);
+    getWindow().setStatusBarColor(Color.TRANSPARENT);
     home = HomeScreen.current;
     home.attach(this);
     rebuild();
@@ -111,6 +114,16 @@ public class PhoneHome extends Activity {
       cells.addView(frame, new CellLayout.Params(w.cellX, w.cellY, w.spanX, w.spanY));
     }
     root.addView(cells, new FrameLayout.LayoutParams(-1, -1));
+    root.setOnApplyWindowInsetsListener(
+        (v, insets) -> {
+          int top = insets.getInsets(android.view.WindowInsets.Type.statusBars()).top;
+          FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) cells.getLayoutParams();
+          if (lp.topMargin != top) {
+            lp.topMargin = top;
+            cells.setLayoutParams(lp);
+          }
+          return insets;
+        });
     TextView handle = text(this, "⌃  Apps", 13, Color.WHITE);
     handle.setGravity(Gravity.CENTER);
     handle.setShadowLayer(4, 0, 1, 0x99000000);

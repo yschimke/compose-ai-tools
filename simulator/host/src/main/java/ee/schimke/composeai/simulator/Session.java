@@ -68,6 +68,9 @@ final class Session {
   private final WidgetHost widgets;
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
+
+  /** The phone's status bar and notification shade, with {@code --launcher}; null without. */
+  private final PhoneSystemUi phoneUi;
   private final Radios radios;
   private final SystemPrompts prompts;
   private final BackgroundWork background;
@@ -120,6 +123,8 @@ final class Session {
         HomeScreen.enabled() && wear == null
             ? new HomeScreen(app, navigator, protocol, widgets)
             : null;
+    this.phoneUi =
+        home != null ? PhoneSystemUi.create(app, navigator, protocol, notifications) : null;
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
@@ -155,6 +160,7 @@ final class Session {
               });
     }
     if (home != null) home.start();
+    if (phoneUi != null) phoneUi.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
     if (providers.length() > 0) {
@@ -195,6 +201,7 @@ final class Session {
     logcat.poll();
     notifications.cycle();
     if (wear != null) wear.cycle();
+    if (phoneUi != null) phoneUi.cycle();
     // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the wall clock.
     if (timeTick.due(System.currentTimeMillis())) {
       app.sendBroadcast(new Intent(Intent.ACTION_TIME_TICK));
@@ -287,6 +294,7 @@ final class Session {
         || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)
+        || PhoneSystemUi.changesUi(name)
         || Radios.changesUi(name)
         || SystemPrompts.changesUi(name)
         || BackgroundWork.changesUi(name)) {
@@ -332,6 +340,7 @@ final class Session {
     if (emulated == null) emulated = displays.command(name, c);
     if (emulated == null) emulated = screen.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null && phoneUi != null) emulated = phoneUi.command(name, c);
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated == null) emulated = radios.command(name, c);
@@ -629,6 +638,7 @@ final class Session {
     json.put("screen", screen.state());
     if (wear != null) json.put("surface", wear.surface());
     if (home != null) json.put("surface", home.surface());
+    if (phoneUi != null) json.put("surface", phoneUi.surface());
     json.put("backStack", navigator.backStack().size());
     json.put("services", navigator.describeServices().length());
     return json.object();
@@ -903,10 +913,22 @@ final class Session {
       JSONObject power = screen.key(code);
       if (power != null) return power.put("keyCode", code);
     }
+    if (phoneUi != null
+        && displayId == android.view.Display.DEFAULT_DISPLAY
+        && BackRoute.isSystemBack(code, longPress)
+        && phoneUi.back()) {
+      // The shade's: it closes before any app hears Back.
+      return new Protocol.Json()
+          .put("keyCode", code)
+          .put("via", "systemUi")
+          .put("surface", phoneUi.surface())
+          .object();
+    }
     if (code == KeyEvent.KEYCODE_HOME
         && home != null
         && displayId == android.view.Display.DEFAULT_DISPLAY) {
       // The system's, as the window manager takes HOME before any app sees it.
+      if (phoneUi != null) phoneUi.home();
       home.goHome();
       return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
     }

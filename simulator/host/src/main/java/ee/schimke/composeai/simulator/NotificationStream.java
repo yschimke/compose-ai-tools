@@ -234,14 +234,16 @@ final class NotificationStream {
   }
 
   /**
-   * The actions a watch offers for [notification]: its {@code WearableExtender} actions when it
-   * has any, which replace the phone's, else its own.
+   * The actions the device offers for [notification]: on a watch its {@code WearableExtender}
+   * actions when it has any, which replace the phone's, else (and on every other form factor) its
+   * own.
    */
   static List<Notification.Action> actions(Notification notification) {
     List<Notification.Action> actions = new ArrayList<>();
-    @SuppressWarnings("deprecation")
-    List<Notification.Action> wearable = new Notification.WearableExtender(notification).getActions();
-    if (wearable != null && !wearable.isEmpty()) {
+    if (FormFactor.current() == FormFactor.WEAR && wearableActions(notification)) {
+      @SuppressWarnings("deprecation")
+      List<Notification.Action> wearable =
+          new Notification.WearableExtender(notification).getActions();
       actions.addAll(wearable);
     } else if (notification.actions != null) {
       for (Notification.Action action : notification.actions) actions.add(action);
