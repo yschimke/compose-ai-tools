@@ -47,7 +47,15 @@ val androidJar: Provider<File> =
         )
     }
 
+// Compile-only stand-ins for the slice of Play services' Wearable API the paired data layer
+// implements (`DataLayer*`). At run time those classes come from the APK itself, the app's own
+// play-services-wearable, so the stubs are never packaged: they only give javac the signatures.
+val gmsStubs: SourceSet = sourceSets.create("gmsStubs")
+
 dependencies {
+  "gmsStubsCompileOnly"(files(androidJar))
+  compileOnly(gmsStubs.output)
+
   // Robolectric's simulator and the slices of Robolectric the plugin touches. Non-transitive: the
   // full graph pulls the 250 MB native runtime, and at run time all of it comes from the Android
   // daemon sidecar anyway.

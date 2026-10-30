@@ -166,13 +166,14 @@ final class Displays {
       Object d = c.opt("density");
       density = d instanceof Number ? ((Number) d).intValue() + "dpi" : d.toString();
     }
-    return DisplaySpec.of(
-        c.optString("name", base == null ? null : base.name),
-        c.optString("type", base == null ? null : base.kind.label()),
-        c.has("widthDp") ? c.optInt("widthDp") : null,
-        c.has("heightDp") ? c.optInt("heightDp") : null,
-        density,
-        c.optString("qualifiers", null));
+    String name = c.optString("name", null);
+    String type = c.optString("type", null);
+    Integer widthDp = c.has("widthDp") ? c.optInt("widthDp") : null;
+    Integer heightDp = c.has("heightDp") ? c.optInt("heightDp") : null;
+    String qualifiers = c.optString("qualifiers", null);
+    return base == null
+        ? DisplaySpec.of(name, type, widthDp, heightDp, density, qualifiers)
+        : base.changed(name, type, widthDp, heightDp, density, qualifiers);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -452,7 +453,8 @@ final class Displays {
 
   /**
    * The windows on display [id], top-most first, as Robolectric orders them: by window type, then
-   * the latest added. An activity window in [hidden] (stopped, under another) is left out.
+   * the latest added. A window whose token is in [hidden] (a stopped activity's, and its dialogs
+   * and popups) is left out.
    */
   private static List<Root> roots(int id, Set<Object> hidden) {
     Object global;
@@ -473,10 +475,8 @@ final class Displays {
       View view = ReflectionHelpers.callInstanceMethod(impl, "getView");
       if (view == null || displayOf(view) != id) continue;
       WindowManager.LayoutParams p = (WindowManager.LayoutParams) params.get(i);
-      if (p.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION
-          && hidden.contains(view.getApplicationWindowToken())) {
-        continue;
-      }
+      // A stopped activity's window, and its dialogs and popups, which share its token.
+      if (hidden.contains(view.getApplicationWindowToken())) continue;
       roots.add(new Root(impl, view, p, i));
     }
     roots.sort(
@@ -646,8 +646,7 @@ final class Displays {
     String title = d.getName() + " — display " + id;
     DisplayWindow window = new DisplayWindow(id);
     windows.put(id, window);
-    int index = windows.size();
-    SwingUtilities.invokeLater(() -> window.open(title, size.x, size.y, index, () -> unplug(id)));
+    SwingUtilities.invokeLater(() -> window.open(title, size.x, size.y, () -> unplug(id)));
   }
 
   /** The person closed a display's window: the display goes, as if its cable were pulled. */
@@ -674,6 +673,9 @@ final class Displays {
 
   /** A secondary display's Swing window: its picture, and mouse and keys into its windows. */
   private static final class DisplayWindow {
+    /** Pixels between windows laid out side by side. */
+    static final int GAP = 16;
+
     final int id;
     JFrame frame;
     Panel panel;
@@ -682,7 +684,7 @@ final class Displays {
       this.id = id;
     }
 
-    void open(String title, int width, int height, int index, Runnable onClose) {
+    void open(String title, int width, int height, Runnable onClose) {
       panel = new Panel(id);
       panel.setPreferredSize(new Dimension(width, height));
       frame = new JFrame(title);
@@ -711,8 +713,14 @@ final class Displays {
       JPanel main = SimulatorPanelRegistry.getActivePanel();
       Window owner = main == null ? null : SwingUtilities.getWindowAncestor(main);
       if (owner != null) {
-        frame.setLocation(
-            owner.getX() + owner.getWidth() + 24 * index, owner.getY() + 24 * (index - 1));
+        // In a row to the right of the phone, past every display window already open.
+        int x = owner.getX() + owner.getWidth() + GAP;
+        for (Window open : Window.getWindows()) {
+          if (open != frame && open != owner && open.isShowing()) {
+            x = Math.max(x, open.getX() + open.getWidth() + GAP);
+          }
+        }
+        frame.setLocation(x, owner.getY());
       }
       frame.setVisible(true);
     }

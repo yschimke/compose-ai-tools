@@ -101,6 +101,8 @@ final class Session {
     this.displays = new Displays(app, navigator, protocol);
     this.notifications = new NotificationStream(app, navigator, protocol);
     this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
+    // Only when paired: DataLayer needs the app's Play services classes to load at all.
+    if (DataLayerLink.enabled()) DataLayer.attach(protocol);
   }
 
   void start() {
@@ -271,6 +273,28 @@ final class Session {
         return new Protocol.Json().put("services", navigator.describeServices()).object();
       case "components":
         return components();
+      case "dataLayer":
+        {
+          if (DataLayerLink.enabled()) {
+            // As if the app's android_wear_capabilities declared (or dropped) one: lets an agent
+            // stand in for a capability an app forgot, and see what its peer does with it.
+            if (c.has("addCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("addCapability"), true);
+            }
+            if (c.has("removeCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("removeCapability"), false);
+            }
+            if (c.has("oauthResponse")) {
+              return DataLayer.get()
+                  .answerAuth(c.getString("oauthResponse"), c.optInt("errorCode", -1));
+            }
+          }
+          JSONObject state = DataLayerLink.enabled() ? DataLayer.describeCurrent() : null;
+          if (state == null) {
+            throw new IllegalStateException("no data layer: launch with --pair <other.apk>");
+          }
+          return state;
+        }
       case "hierarchy":
         {
           List<Hierarchy.Node> windows = snapshot(displays.target(c));

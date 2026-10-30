@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.75.0](https://github.com/yschimke/compose-ai-tools/compare/v2.74.1...v2.75.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** a `permissions` command to deny runtime permissions in the simulator ([#6265](https://github.com/yschimke/compose-ai-tools/issues/6265)) ([6151335](https://github.com/yschimke/compose-ai-tools/commit/6151335a4191e2e150ff0240b5528bb6d5dc42fa))
+* **cli:** adb equivalents for the simulator's control channel ([#6268](https://github.com/yschimke/compose-ai-tools/issues/6268)) ([dd3008f](https://github.com/yschimke/compose-ai-tools/commit/dd3008f1c665da36b5ee9b843febefeb7bb7f3cb))
+* **cli:** launch an APK in Robolectric's simulator ([#6240](https://github.com/yschimke/compose-ai-tools/issues/6240)) ([e0b0f0b](https://github.com/yschimke/compose-ai-tools/commit/e0b0f0b87a385ff767dbdf1df33e363f9c1e37cd))
+* **cli:** launch Wear OS, Glimmer and Android XR apps on their own displays ([#6271](https://github.com/yschimke/compose-ai-tools/issues/6271)) ([8859d17](https://github.com/yschimke/compose-ai-tools/commit/8859d17831950c219bd3a3eeb8b064b1b0414481))
+* **cli:** multiple displays in the simulator ([#6274](https://github.com/yschimke/compose-ai-tools/issues/6274)) ([5dfea74](https://github.com/yschimke/compose-ai-tools/commit/5dfea74cc249c9bb49c4eda2f9dbc05fa51d0ce8))
+* **cli:** pair a phone and a Wear OS APK over a simulated Data Layer ([#6269](https://github.com/yschimke/compose-ai-tools/issues/6269)) ([cdb9d7c](https://github.com/yschimke/compose-ai-tools/commit/cdb9d7c5c4aefc98da6350d04ddbeddad941390c))
+* **cli:** resize, foldable postures, rotation and device state in the simulator ([#6270](https://github.com/yschimke/compose-ai-tools/issues/6270)) ([e251f65](https://github.com/yschimke/compose-ai-tools/commit/e251f653581030dd04ca9eb7f81311c6a35c7dc4))
+
+
+### Bug Fixes
+
+* **apply:** cut preview comment noise in the diff, a11y and baseline notes ([#6246](https://github.com/yschimke/compose-ai-tools/issues/6246)) ([2e9ff95](https://github.com/yschimke/compose-ai-tools/commit/2e9ff95ca59fe71ece19fe922b69416b4b2470db))
+* **cli:** build providers through the app's factory and connect binds by component ([#6258](https://github.com/yschimke/compose-ai-tools/issues/6258)) ([443a42a](https://github.com/yschimke/compose-ai-tools/commit/443a42a12bba2fe84f5a8cca9c49e980fed91a66))
+* **cli:** deliver permission results to the requester and start with Bluetooth on ([#6263](https://github.com/yschimke/compose-ai-tools/issues/6263)) ([6c61274](https://github.com/yschimke/compose-ai-tools/commit/6c61274ca0de0b0da76caa8934044b8c41e47d11))
+* **cli:** give a long recording time to encode ([#6236](https://github.com/yschimke/compose-ai-tools/issues/6236)) ([1f99c3c](https://github.com/yschimke/compose-ai-tools/commit/1f99c3cb994b756c4b48398522de8b528c8654ef))
+* **cli:** grant permission requests and walk real views inside Compose hierarchies ([#6262](https://github.com/yschimke/compose-ai-tools/issues/6262)) ([3bd983c](https://github.com/yschimke/compose-ai-tools/commit/3bd983cc2b77854262b53c469fbb7d0261123f2e))
+* **cli:** launch alias launchers and factory-built components in the simulator ([#6254](https://github.com/yschimke/compose-ai-tools/issues/6254)) ([4a00543](https://github.com/yschimke/compose-ai-tools/commit/4a0054302f82c78cec1f2fbcc36635b3009d9aef))
+* **cli:** run real apps in the launch simulator ([#6251](https://github.com/yschimke/compose-ai-tools/issues/6251)) ([3d9268b](https://github.com/yschimke/compose-ai-tools/commit/3d9268b50d0a514d4edacaffe7b07d024d25366a))
+* **cli:** simulator activities launch on the caller's display ([#6276](https://github.com/yschimke/compose-ai-tools/issues/6276)) ([05aaa5a](https://github.com/yschimke/compose-ai-tools/commit/05aaa5aa66e9d593016c0e9486e2fbe3c3fc1f5f))
+* **deps:** update androidx ([#6241](https://github.com/yschimke/compose-ai-tools/issues/6241)) ([80e5d37](https://github.com/yschimke/compose-ai-tools/commit/80e5d37f62d46133aae245b68992ca2cfe84708a))
+* **deps:** update dependency androidx.compose.material3:material3 to v1.5.0-beta02 ([#6242](https://github.com/yschimke/compose-ai-tools/issues/6242)) ([03a3394](https://github.com/yschimke/compose-ai-tools/commit/03a33944137e08510bb21b809d26afa1297e061e))
+* **deps:** update dependency com.google.guava:guava to v33.7.2-jre ([#6247](https://github.com/yschimke/compose-ai-tools/issues/6247)) ([533b952](https://github.com/yschimke/compose-ai-tools/commit/533b952a5c5e5b8bb3f49eb7b61933c3d513a93f))
+* **deps:** update okhttp to v5.5.1 ([#6243](https://github.com/yschimke/compose-ai-tools/issues/6243)) ([0265f90](https://github.com/yschimke/compose-ai-tools/commit/0265f904448a3ce8790cabc28219963e04ae9885))
+* **deps:** update rc-players to 2.21.0 and compose-preview-daemon to 3.27.0 ([#6264](https://github.com/yschimke/compose-ai-tools/issues/6264)) ([9b08a4b](https://github.com/yschimke/compose-ai-tools/commit/9b08a4bc585ca87be632a02b5b3cee17249b09f0))
+* **deps:** update roborazzi to v1.77.0 ([#6244](https://github.com/yschimke/compose-ai-tools/issues/6244)) ([8f7af74](https://github.com/yschimke/compose-ai-tools/commit/8f7af7428e5bb3a98c8551d7c5961b6e3c04cccf))
+* **gradle-plugin:** find renderer classes from a substituted daemon build ([#6259](https://github.com/yschimke/compose-ai-tools/issues/6259)) ([043b596](https://github.com/yschimke/compose-ai-tools/commit/043b596772b41091fac1d8883f9ce8e035583b92))
+* **plugin:** stop realizing every task so AGP 9.5 builds can render previews ([#6249](https://github.com/yschimke/compose-ai-tools/issues/6249)) ([b62bc80](https://github.com/yschimke/compose-ai-tools/commit/b62bc801af20852f73b5aaefacb39bead3772f71))
+* retain callable authoring components in IR catalog bundles ([#6085](https://github.com/yschimke/compose-ai-tools/issues/6085)) ([96fc317](https://github.com/yschimke/compose-ai-tools/commit/96fc317a27f16efa3839d1611e73209f5a13cce3))
+
 ## [2.74.1](https://github.com/yschimke/compose-ai-tools/compare/v2.74.0...v2.74.1) (2026-10-26)
 
 
