@@ -175,8 +175,10 @@ simulator.
 Replies are `{"id":…,"ok":true,"result":{…}}` or `{"id":…,"ok":false,"error":"…"}`; an exception
 the app throws while handling a command becomes an error reply, and the simulator keeps running.
 Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `newIntent` /
-`destroyed`, or `empty` when the last one finishes), `service`, `providers`, `permissions`, `log`
-(while `logcat` follows), and `error` for an intent the app sent that nothing handles.
+`stopped` / `destroyed`, or `empty` when the last one finishes), `service`, `providers`,
+`permissions`, `notification` (`posted` / `updated` / `removed`), `log` (while `logcat`
+follows), and `error` for an intent the app sent that nothing handles; with `--launcher` also
+`surface`, `tile` and `widget`.
 
 Commands run in order. Those that change the UI answer after `settleMs` of simulated time (default
 250), so a `tap` followed by a `screenshot` sees the result; any command takes `settleMs`.
@@ -206,7 +208,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `bindService` / `unbindService` | `intent` | `onBind`, reports the binder's interface |
 | `services` | | running services, started/bound state, foreground notification |
 | `broadcast` | `intent` | runtime-registered and manifest receivers; reports who received it |
-| `notifications` | | what the app posted |
+| `notifications` / `notification` | see [Wear system UI](#wear-system-ui) | what the app posted, with keys and extras; tap, act on, reply to or dismiss one (any form factor) |
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `content` | `op` (`query` / `insert` / `update` / `delete`), `uri`, `values`?, as `query` | provider reads and writes; `values` is `{"col":value}` or `{"col":{"type":"long","value":1}}` |
 | `settings` | `op` (`get` / `put` / `delete`), `namespace` (`system` / `secure` / `global`), `key`, `value`? | `Settings.*`; a put the system acts on is applied (below) |
@@ -317,6 +319,71 @@ An **intent** is `{"action","data","type","package","component","categories","fl
 (`"NEW_TASK"`, `"CLEAR_TOP"`); an extra's JSON type picks its Java type, or
 `{"type":"long","value":1}` names it (`string int long float double boolean uri component null
 string[] int[]`).
+
+### Wear system UI
+
+`--launcher` (or a `--tile`) puts a Wear OS system UI under a Wear app: a demo watch face at the
+bottom of the back stack, with the launcher, notification stream, tiles and widgets carousel and
+quick settings around it. It is plain Android views in the simulator's own `WearHome` activity
+(Compose there would put a second Compose on the app's class path), so the app's lifecycle runs as
+on a watch: leaving the app stops it, coming back restarts it, and back from its root lands on the
+watch face. `info` and `activities` report the `surface`: `watchface`, `launcher`,
+`notifications`, `tiles`, `quickSettings` or `app`.
+
+| On a watch | Goes to | Command |
+| --- | --- | --- |
+| back from the app's root, Home | the watch face | `home`, `key HOME` |
+| the side button | the launcher (again: the face) | `key STEM_PRIMARY`, `launcher` |
+| swipe up on the face | the notification stream | `notifications op:open` |
+| swipe left / right on the face | the carousel | `tiles op:next / prev / show` |
+| swipe down on the face | quick settings | `quickSettings` |
+| swipe right on a list, or back | the face | `home` |
+
+The crown (`rotary`) scrolls the launcher, stream and quick settings. Every system view carries a
+`sim:id/...` resource id and its item's identity as its description, so `find` and `tap` reach
+them as they do the app's: `tap {"resourceId":"notification_card","desc":"3"}` opens a
+notification, `notification_action` / `notification_reply` (`<key>/<action>[/<choice>]`),
+`notification_open`, `notification_dismiss`, `launcher_item` and `ongoing_row` (by component or
+key), `ongoing_chip`, `tile`, `widget`, `tile_add`, `qs_airplane`, `qs_wifi`.
+
+**Notifications** are the shadow notification manager's, drawn as Wear does from their extras, not
+`RemoteViews`: title, text, big text, `MessagingStyle` messages, big picture, the actions (a
+`WearableExtender`'s replace the phone's) and the inline-reply choices. Long text expands on tap;
+a group summary collapses its children; a high-importance post peeks over the watch face for four
+seconds. Every app gets the stream as `notification` events (`posted` / `updated` / `removed`),
+launcher or not, and the `notification` command acts on one by `key` (its id, or `tag:id`).
+
+**Ongoing activities** (`androidx.wear.ongoing`) are read back from their notification with the
+app's own library and shown as the face's chip and the launcher's first rows, their `Status` timers
+on the simulator clock.
+
+**The carousel** holds what the agent adds (`tiles op:add`, `--tile`, or the carousel's own add
+page): each tile is a whole page, and the Wear Widgets share one page, a scrolling list whose items
+shrink and fade toward the round screen's edges as a `TransformingLazyColumn`'s do. Tiles are
+bound by `BIND_TILE_PROVIDER` and spoken to over their AIDL (request, resources, add / enter /
+leave / remove), and drawn by the protolayout tile renderer the CLI stages in `lib-simulator/`
+(apps do not ship it); a `LoadAction` requests the tile again with the clicked state and a
+`LaunchAction` starts its activity. Widgets are bound by Glance Wear's `BIND_WIDGET_PROVIDER`,
+asked for a document of their container's size and played with the View-based Remote Compose
+player. Both get the watch's system data: `health` sets the Wear Health Services values tiles read
+through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
+
+![Navigation: app, watch face, launcher, quick settings](design/evidence/simulator-launch/wear-navigation.png)
+![Notifications: stream, expanded card, reply choices, reply delivered, heads-up](design/evidence/simulator-launch/wear-notifications.png)
+![Ongoing activity: chip on the face and row in the launcher](design/evidence/simulator-launch/wear-ongoing.png)
+![Tiles and widgets following the simulated heart rate and steps](design/evidence/simulator-launch/wear-tiles-widgets.png)
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `home` | | the watch face |
+| `launcher` | `index`? / `component`? / `label`? | without one, opens the launcher and lists its apps and ongoing activities; with one, launches it (bringing the app's task back when it is that task's root) |
+| `notifications` | `op`? (`open` / `close` / `clear`) | without `op`, every active notification with its key, channel, category, extras, actions, `ongoingActivity`, and `shown: false` plus `hiddenBecause` for one a watch would drop (blocked channel, `POST_NOTIFICATIONS` denied) |
+| `notification` | `key`, `op` (`tap` / `action` / `reply` / `dismiss` / `snooze`), `index`?, `text`?, `ms`? | sends its content intent (auto-cancel honored), presses action `index`, fills the action's `RemoteInput` with `text` (the first reply action without `index`), sends the delete intent and cancels (not when ongoing), or snoozes for `ms`. Activities land on the back stack, broadcasts reach manifest receivers, services start; an immutable `PendingIntent` drops a reply as on a device (`fillInDropped`) |
+| `ongoing` | `op`? (`list` / `tap`), `index`? | the ongoing activities, or sends one's touch intent |
+| `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers, each tile's render state; `show` takes a page index or a component |
+| `health` | `heartRate`?, `heartRateAccuracy`? (`unknown` … `high`), `steps`?, `distanceMeters`?, `calories`?, `floors`? | sets the simulated health data, which tiles and widgets on screen redraw with |
+| `quickSettings` | `airplane`?, `wifi`? | opens quick settings (battery, airplane mode, Wi-Fi), switching either first |
+| `ambient` | `value`? | dims the watch face to its ambient outline (toggles without `value`); the app gets no ambient callbacks |
 
 ### adb equivalents
 
@@ -437,10 +504,11 @@ What does not, or not yet:
   fold is always at the middle of the window. Location reaches the platform `LocationManager`
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
   the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
-- **Wear.** No watch face, launcher or system tiles carousel; a Tile, complication or widget
-  service is reachable only through `bindService` (the plan for a Wear system UI:
-  [design/SIMULATOR_WEAR_LAUNCHER.md](design/SIMULATOR_WEAR_LAUNCHER.md)). Ambient mode is not entered (no
-  `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
+- **Wear.** The [system UI](#wear-system-ui) is a demo face: no Watch Face Format or
+  `WatchFaceService` faces and no complications. A tile's `TileUpdateRequester` is not wired to the
+  carousel (`tiles op:refresh` requests it again), widgets are drawn as their large container only,
+  and the paired phone's bridged notifications and launcher entries are not shown. Ambient mode is
+  not entered (no `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
   `SERVICE_INVALID`, as Play services' other APIs do.
 - **Home screen.** No launcher: leaving the app's root finishes it, and app widgets are not hosted
   (the plan: [design/SIMULATOR_PHONE_LAUNCHER.md](design/SIMULATOR_PHONE_LAUNCHER.md)).

@@ -1,6 +1,10 @@
 # Handover: a Wear OS system UI for the simulator
 
-**Status:** not started. This is a brief for the agent that builds it.
+**Status:** built, except as noted below; [`docs/SIMULATOR.md` → Wear system UI](../SIMULATOR.md#wear-system-ui)
+documents what exists. Still open: complications on the demo face, `TileUpdateRequester` pushes,
+widget containers other than the large one, the paired phone's bridged notifications and launcher
+entries, and verification on Home Assistant Wear and MeshCore Wear (their APKs were not in the
+sandbox; a probe app outside the repo covered every surface). The brief as written follows.
 
 **Goal:** `compose-preview launch` gets the Wear OS surfaces outside the app:
 - the notifications stream;

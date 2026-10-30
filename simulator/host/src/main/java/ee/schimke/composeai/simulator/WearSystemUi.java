@@ -93,6 +93,8 @@ final class WearSystemUi {
   private final SystemData systemData;
   /** Each tile's page, which keeps its rendered view while other pages show. */
   private final java.util.Map<String, FrameLayout> tilePages = new java.util.HashMap<>();
+  /** Each widget's frame on the widgets page, which keeps its player across rebuilds. */
+  private final java.util.Map<String, FrameLayout> widgetFrames = new java.util.HashMap<>();
   /** The page whose tile was last told it is on screen. */
   private String enteredTile;
   private Navigator.Entry home;
@@ -124,7 +126,7 @@ final class WearSystemUi {
     this.protocol = protocol;
     this.stream = stream;
     this.systemData = new SystemData(app);
-    this.tiles = new TileHost(app, navigator, systemData, this::tileRendered);
+    this.tiles = new TileHost(app, navigator, systemData, this::tileRendered, this::widgetRendered);
     stream.onChange(this::streamChanged);
   }
 
@@ -416,6 +418,7 @@ final class WearSystemUi {
       case "remove":
         {
           TileHost.Item item = tiles.remove(c.getString("component"));
+          widgetFrames.remove(item.key());
           FrameLayout page = tilePages.remove(item.key());
           if (page != null && page.getParent() != null) ((ViewGroup) page.getParent()).removeView(page);
           if (item.key().equals(enteredTile)) enteredTile = null;
@@ -646,21 +649,24 @@ final class WearSystemUi {
     notificationList.addView(clear, wide());
   }
 
-  /** Scrolls the stream so the card for [key] starts at the top, as a watch opens one. */
+  /**
+   * Scrolls the stream so the card for [key] starts near the top, as a watch opens one; once the
+   * rebuilt list has been laid out, since only then are the cards where they will be drawn.
+   */
   private void reveal(String key) {
     for (int i = 0; i < notificationList.getChildCount(); i++) {
       View child = notificationList.getChildAt(i);
       if (!key.contentEquals(String.valueOf(child.getContentDescription()))) continue;
-      notificationList.measure(
-          View.MeasureSpec.makeMeasureSpec(notifications.getWidth(), View.MeasureSpec.EXACTLY),
-          View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-      int top = notificationList.getPaddingTop();
-      for (int j = 0; j < i; j++) {
-        View above = notificationList.getChildAt(j);
-        top += above.getMeasuredHeight() + ((LinearLayout.LayoutParams) above.getLayoutParams()).topMargin;
-      }
-      int y = Math.max(0, top - dp(24));
-      notifications.post(() -> notifications.scrollTo(0, y));
+      android.view.ViewTreeObserver observer = notifications.getViewTreeObserver();
+      observer.addOnGlobalLayoutListener(
+          new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+              notifications.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+              notifications.scrollTo(0, Math.max(0, child.getTop() - dp(24)));
+            }
+          });
+      notifications.requestLayout();
       return;
     }
   }
@@ -706,7 +712,7 @@ final class WearSystemUi {
       int from = open ? 0 : Math.max(0, messages.length() - 2);
       for (int i = from; i < messages.length(); i++) {
         JSONObject m = messages.optJSONObject(i);
-        String sender = m.optString("sender", "");
+        String sender = m.isNull("sender") ? "" : m.optString("sender", "");
         TextView line =
             text((sender.isEmpty() ? "" : sender + ": ") + m.optString("text", ""), 13,
                 0xFFE8EAED, false);
@@ -898,15 +904,9 @@ final class WearSystemUi {
       card.setPadding(dp(10), dp(10), dp(10), dp(10));
       card.setBackground(rounded(0xFF202124, 26));
       tag(card, "widget", item.component.getClassName());
-      Drawable preview = tiles.preview(item);
-      if (preview != null) {
-        ImageView image = new ImageView(context);
-        image.setImageDrawable(preview);
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setAdjustViewBounds(true);
-        card.addView(
-            image, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90)));
-      }
+      card.addView(
+          widgetFrame(item),
+          new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(WIDGET_HEIGHT_DP)));
       TextView label = text(item.label, 14, Color.WHITE, true);
       label.setGravity(Gravity.CENTER);
       card.addView(label);
@@ -924,6 +924,50 @@ final class WearSystemUi {
     scroll.setVerticalScrollBarEnabled(false);
     scroll.addView(list);
     return scroll;
+  }
+
+  private static final int WIDGET_WIDTH_DP = 166;
+  private static final int WIDGET_HEIGHT_DP = 100;
+
+  /** [item]'s frame: its document once played, its preview image until then. */
+  private FrameLayout widgetFrame(TileHost.Item item) {
+    FrameLayout frame = widgetFrames.get(item.key());
+    if (frame != null) {
+      if (frame.getParent() != null) ((ViewGroup) frame.getParent()).removeView(frame);
+      return frame;
+    }
+    frame = new FrameLayout(context);
+    widgetFrames.put(item.key(), frame);
+    Drawable preview = tiles.preview(item);
+    if (preview != null) {
+      ImageView image = new ImageView(context);
+      image.setImageDrawable(preview);
+      image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+      frame.addView(image, matchParent());
+    }
+    WidgetClient client = tiles.widgetClient(item);
+    client.attach(context, frame, WIDGET_WIDTH_DP, WIDGET_HEIGHT_DP);
+    client.request();
+    return frame;
+  }
+
+  private void widgetRendered(WidgetClient client, View view, String error) {
+    if (error != null) {
+      FrameLayout frame = widgetFrames.get(client.component.flattenToString());
+      if (frame != null) {
+        TextView failed = text("Widget failed:\n" + error, 10, 0xFFF28B82, false);
+        failed.setGravity(Gravity.CENTER);
+        tag(failed, "widget_error", client.component.getClassName());
+        frame.addView(failed, matchParent());
+      }
+    }
+    protocol.event(
+        "widget",
+        new Protocol.Json()
+            .put("component", client.component.getClassName())
+            .put("state", error == null ? "rendered" : "failed")
+            .put("error", error)
+            .object());
   }
 
   private void showAddPage() {

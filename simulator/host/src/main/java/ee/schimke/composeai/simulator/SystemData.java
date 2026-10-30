@@ -18,7 +18,8 @@ import org.json.JSONObject;
  * renderer reads them from the platform's sensor gateway; here they are values the agent sets
  * with {@code health}, delivered to every renderer as a protolayout {@code PlatformDataProvider}
  * for the {@code PlatformHealthSources.Keys}, so a tile's {@code heartRateBpm()} text and a step
- * count arc update as they would.
+ * count arc update as they would, and to every Wear Widget's Remote Compose player as the named
+ * values Glance Wear's {@code HealthData} reads ({@link #widgetValues}).
  *
  * <p>The provider is a {@link Proxy} of the renderer's interface, loaded through the sandbox's
  * class loader: nothing here links against protolayout, whose version is the app's.
@@ -33,6 +34,8 @@ final class SystemData {
   private final Map<String, Number> values = new LinkedHashMap<>();
   /** Every renderer's receiver, with the executor it asked to be called on. */
   private final List<Object[]> receivers = new ArrayList<>();
+  /** Widget players, told to read {@link #widgetValues} again after a change. */
+  private final List<Runnable> listeners = new ArrayList<>();
 
   SystemData(Application app) {
     this.app = app;
@@ -68,7 +71,7 @@ final class SystemData {
         .put("distanceMeters", values.get("DAILY_DISTANCE_METERS"))
         .put("calories", values.get("DAILY_CALORIES"))
         .put("floors", values.get("DAILY_FLOORS"))
-        .put("receivers", receivers.size())
+        .put("receivers", receivers.size() + listeners.size())
         .object();
   }
 
@@ -153,6 +156,29 @@ final class SystemData {
 
   private void publish() {
     for (Object[] registration : new ArrayList<>(receivers)) send(registration);
+    for (Runnable listener : new ArrayList<>(listeners)) listener.run();
+  }
+
+  void onChange(Runnable listener) {
+    listeners.add(listener);
+  }
+
+  /**
+   * The same values under the Remote Compose names a Glance Wear widget reads them by ({@code
+   * androidx.glance.wear.health.HealthData}): floats, ints, and the {@code *_available} flags as 1.
+   */
+  Map<String, Number> widgetValues() {
+    Map<String, Number> named = new LinkedHashMap<>();
+    named.put("metrics.heart_rate", values.get("HEART_RATE_BPM").floatValue());
+    named.put("metrics.heart_rate_accuracy", values.get("HEART_RATE_ACCURACY").intValue());
+    named.put("metrics.day.steps", values.get("DAILY_STEPS").intValue());
+    named.put("metrics.day.calories", values.get("DAILY_CALORIES").floatValue());
+    named.put("metrics.day.distance", values.get("DAILY_DISTANCE_METERS").floatValue());
+    named.put("metrics.day.flights_of_stairs", values.get("DAILY_FLOORS").floatValue());
+    for (String metric : new String[] {"steps", "calories", "distance", "flights_of_stairs"}) {
+      named.put("metrics.day." + metric + "_available", 1);
+    }
+    return named;
   }
 
   /** Hands the current values to one receiver, on the executor it gave. */

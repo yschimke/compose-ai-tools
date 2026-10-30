@@ -79,17 +79,24 @@ final class TileHost {
   private final Navigator navigator;
   private final SystemData systemData;
   private final TileClient.Listener listener;
+  private final WidgetClient.Listener widgetListener;
+  private final Map<String, WidgetClient> widgetClients = new LinkedHashMap<>();
   private final Map<String, Item> added = new LinkedHashMap<>();
   private final Map<String, TileClient> clients = new LinkedHashMap<>();
   private int nextTileId = 1;
   private int index;
 
   TileHost(
-      Application app, Navigator navigator, SystemData systemData, TileClient.Listener listener) {
+      Application app,
+      Navigator navigator,
+      SystemData systemData,
+      TileClient.Listener listener,
+      WidgetClient.Listener widgetListener) {
     this.app = app;
     this.navigator = navigator;
     this.systemData = systemData;
     this.listener = listener;
+    this.widgetListener = widgetListener;
   }
 
   /** Adds the {@code --tile} components; unknown ones are reported, not fatal. */
@@ -280,6 +287,10 @@ final class TileHost {
     return clients.get(item.key());
   }
 
+  WidgetClient widgetClient(Item item) {
+    return widgetClients.get(item.key());
+  }
+
   /**
    * Adds [component] (a class name, short {@code .Name}, or {@code pkg/.Name}) and moves to its
    * page; a tile is bound and told it was added, as the watch's tile manager does.
@@ -297,6 +308,11 @@ final class TileHost {
         } catch (ReflectiveOperationException | RuntimeException e) {
           // The tile still renders; the event is best effort, as on a watch.
         }
+      } else {
+        widgetClients.put(
+            item.key(),
+            new WidgetClient(
+                app, navigator, systemData, item.component, nextTileId++, widgetListener));
       }
     }
     index = pages().indexOf(item.tile() ? item.key() : WIDGETS_PAGE);
@@ -310,6 +326,8 @@ final class TileHost {
     }
     TileClient client = clients.remove(item.key());
     if (client != null) client.release();
+    WidgetClient widget = widgetClients.remove(item.key());
+    if (widget != null) widget.release();
     index = Math.min(index, pages().size() - 1);
     return item;
   }
@@ -377,6 +395,12 @@ final class TileHost {
           .put("rendered", client.view() != null)
           .put("requests", client.requests())
           .put("error", client.error());
+    }
+    WidgetClient widget = widgetClients.get(item.key());
+    if (widget != null) {
+      json.put("instanceId", widget.instanceId)
+          .put("rendered", widget.view() != null)
+          .put("error", widget.error());
     }
     return json.object();
   }

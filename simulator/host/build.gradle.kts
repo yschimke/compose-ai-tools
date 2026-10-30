@@ -78,7 +78,8 @@ dependencies {
   testImplementation(libs.dex2jar.tools)
 }
 
-// The Wear tile renderer for `--launcher`'s tiles carousel. Apps do not ship it, so the simulator
+// The Wear tile renderer and Remote Compose View player for `--launcher`'s tiles and widgets
+// carousel. Apps do not ship them, so the simulator
 // does: each AAR's `classes.jar` goes into `lib-simulator/` beside this module's jar, where the
 // sandbox finds it after the app's own classes (an app's protolayout wins; the renderer is pinned
 // to the version the preview renderer draws tiles with). The AARs' resources are not in the APK's
@@ -102,6 +103,9 @@ dependencies {
       libs.wear.protolayout.expression.pipeline,
       libs.wear.asProvider(),
       libs.vectordrawable.seekable,
+      libs.compose.remote.player.view,
+      libs.compose.remote.player.core,
+      libs.customview,
     )) {
     addProvider<MinimalExternalModuleDependency, ExternalModuleDependency>("tileRenderer", aar) {
       artifact { type = "aar" }
