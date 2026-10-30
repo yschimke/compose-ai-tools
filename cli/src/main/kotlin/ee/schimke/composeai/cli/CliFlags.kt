@@ -228,6 +228,7 @@ internal object CliFlags {
       "--fingerprint",
       "--network",
       "--max-heap",
+      "--data-layer",
       // bundle externalize
       "--res-out",
       "--ext",
