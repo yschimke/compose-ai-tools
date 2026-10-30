@@ -184,7 +184,10 @@ public class PhoneHome extends Activity {
         });
     view.setOnLongClickListener(
         v -> {
-          if (icon.activity != null) home.showShortcuts(icon.activity);
+          // Another app's shortcuts are in its own process.
+          if (icon.activity != null && !DeviceApps.isOtherApp(icon.activity.getPackageName())) {
+            home.showShortcuts(icon.activity);
+          }
           return true;
         });
     return view;
@@ -247,19 +250,13 @@ public class PhoneHome extends Activity {
     LauncherGrid grid = home.grid();
     LinearLayout row = null;
     int i = 0;
-    for (android.content.pm.ResolveInfo info : home.launchables()) {
+    for (android.content.pm.ResolveInfo info : home.deviceLaunchables()) {
       if (i % grid.columns == 0) {
         row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_HORIZONTAL);
         list.addView(row);
       }
-      HomeScreen.Icon icon =
-          new HomeScreen.Icon(
-              "app",
-              new ComponentName(info.activityInfo.packageName, info.activityInfo.name),
-              null,
-              info.loadLabel(getPackageManager()),
-              info.loadIcon(getPackageManager()));
+      HomeScreen.Icon icon = home.iconOf(info);
       LinearLayout.LayoutParams lp =
           new LinearLayout.LayoutParams(dp(LauncherGrid.CELL_DP), dp(LauncherGrid.CELL_DP + 16));
       lp.leftMargin = dp(LauncherGrid.GAP_DP / 2f);

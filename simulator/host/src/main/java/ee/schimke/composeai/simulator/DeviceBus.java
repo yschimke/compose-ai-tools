@@ -19,8 +19,9 @@ import org.json.JSONObject;
  * addressed to its package.
  *
  * <p>A frame is a {@code request} ({@code from}, {@code to}, {@code id}, {@code op}, {@code body}),
- * a {@code reply} to one ({@code id}, {@code body}), a {@code hello} as a simulator joins, or the
- * hub's {@code bye} when one leaves, which fails the requests waiting on it. A request runs on the
+ * a {@code reply} to one ({@code id}, {@code body}), a {@code broadcast} to every app ({@code
+ * from}, {@code event}, {@code body}), a {@code hello} as a simulator joins, or the hub's {@code
+ * bye} when one leaves, which fails the requests waiting on it. A request runs on the
  * receiving app's main thread through the handler registered for its {@code op}, which replies
  * when it has an answer, now or later.
  */
@@ -41,9 +42,15 @@ final class DeviceBus {
     void send(JSONObject body);
   }
 
+  /** A broadcast's handler, on the main thread. */
+  interface Listener {
+    void heard(String from, JSONObject body) throws Exception;
+  }
+
   private static volatile DataLayerLink link;
   private static volatile String self;
   private static final Map<String, Op> ops = new ConcurrentHashMap<>();
+  private static final Map<String, Listener> listeners = new ConcurrentHashMap<>();
   private static final Map<Long, Waiting> waiting = new ConcurrentHashMap<>();
   private static final AtomicLong nextId = new AtomicLong(1);
 
@@ -80,6 +87,22 @@ final class DeviceBus {
   /** Handles requests of [op] from now on. */
   static void on(String op, Op handler) {
     ops.put(op, handler);
+  }
+
+  /** Hears the other apps' broadcasts of [event] from now on. */
+  static void onBroadcast(String event, Listener listener) {
+    listeners.put(event, listener);
+  }
+
+  /** Tells every other app on the device [event]; a no-op without a bus. */
+  static void broadcast(String event, JSONObject body) {
+    send(
+        new Protocol.Json()
+            .put("type", "broadcast")
+            .put("from", self)
+            .put("event", event)
+            .put("body", body)
+            .object());
   }
 
   /**
@@ -126,6 +149,22 @@ final class DeviceBus {
           e.getValue().future.completeExceptionally(new IllegalStateException(gone + " is gone"));
         }
       }
+      return;
+    }
+    if (type.equals("broadcast")) {
+      Listener listener = listeners.get(frame.optString("event"));
+      if (listener == null) return;
+      String from = frame.optString("from");
+      JSONObject body = frame.optJSONObject("body");
+      new Handler(Looper.getMainLooper())
+          .post(
+              () -> {
+                try {
+                  listener.heard(from, body == null ? new JSONObject() : body);
+                } catch (Exception e) {
+                  System.err.println("device bus: " + frame.optString("event") + ": " + e);
+                }
+              });
       return;
     }
     if (!self.equals(frame.optString("to"))) return;

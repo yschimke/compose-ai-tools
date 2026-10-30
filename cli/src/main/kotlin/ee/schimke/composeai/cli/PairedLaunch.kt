@@ -23,6 +23,8 @@ internal class PairedLaunch(
    * Other names a command's `device` may use: a device for its first app, a package for its app.
    */
   private val aliases: Map<String, String> = emptyMap(),
+  /** Where a command naming no device goes: the first simulator, or a name [aliases] routes. */
+  private val primary: String = devices.first().first,
 ) {
 
   fun run(): Int {
@@ -31,7 +33,6 @@ internal class PairedLaunch(
     Runtime.getRuntime().addShutdownHook(hook)
     val supervisors = devices.toMap()
     if (control) {
-      val primary = devices.first().first
       daemon("paired-in") {
         System.`in`.bufferedReader().useLines { lines ->
           for (line in lines) {

@@ -399,6 +399,7 @@ internal class LaunchCommand(private val args: List<String>) {
       device: String?,
       conversion: Conversion,
       options: Options,
+      emit: (String) -> Unit = PairedLaunch::emit,
     ): SimulatorSupervisor {
       val launch = SimulatorSupervisor.Launch(conversion.apk, listOf(conversion.entry.classesJar))
       if (verbose) {
@@ -411,7 +412,7 @@ internal class LaunchCommand(private val args: List<String>) {
           device = device,
           initial = launch,
           command = { commandFor(it, options) },
-          emit = PairedLaunch::emit,
+          emit = emit,
           log = PairedLaunch::log,
           control = control != null,
           extraCommand = { supervisor, cmd, json ->
@@ -586,7 +587,7 @@ internal class LaunchCommand(private val args: List<String>) {
           options,
           pairQualifiers = args.flagValue("--pair-qualifiers"),
           conversionOf = ::conversionOf,
-          supervise = { name, conv, own -> supervise(name, conv, own) },
+          supervise = { name, conv, own, emit -> supervise(name, conv, own, emit) },
           onNames = { first -> reloadable = first },
           onPrimary = { if (live != null && liveWatch) watch(live, it) },
         )
@@ -612,13 +613,14 @@ internal class LaunchCommand(private val args: List<String>) {
    * process of its own:
    * - the apps of one device share a device bus (`DeviceBus`, over a [DataLayerHub] relay) and know
    *   each other's manifests; the device's first app is on screen, the others start their process
-   *   without an activity, as an app does when something calls into it;
+   *   in the background without an activity, as an app does when something calls into it, and come
+   *   on screen when started (`DeviceApps`): the device's name follows the app on its screen;
    * - devices share the Wearable Data Layer, one node each, which delivers between the same package
    *   on both sides; a watch is drawn round with the rotary input (`--pair-qualifiers`), and the
    *   first device keeps the launch's display options.
    *
    * Each simulator is a `device` of the control channel ([LaunchTopology.names]); a command naming
-   * none goes to the first app.
+   * none goes to the app on the first device's screen.
    */
   private fun launchTopology(
     topology: List<LaunchTopology.App>,
@@ -626,7 +628,7 @@ internal class LaunchCommand(private val args: List<String>) {
     options: Options,
     pairQualifiers: String?,
     conversionOf: (File) -> Conversion,
-    supervise: (String, Conversion, Options) -> SimulatorSupervisor,
+    supervise: (String, Conversion, Options, (String) -> Unit) -> SimulatorSupervisor,
     onNames: (String) -> Unit,
     onPrimary: (SimulatorSupervisor) -> Unit,
   ): Int {
@@ -636,6 +638,7 @@ internal class LaunchCommand(private val args: List<String>) {
       }
         .getOrElse { fail(it.message ?: "$it") }
     onNames(names.first())
+    val screens = LaunchTopology.Screens(topology, names, aliases)
     val devices = LaunchTopology.devices(topology)
     val primaryDevice = topology.first().device
     val dataLayer = if (devices.size > 1) DataLayerHub().start() else null
@@ -682,20 +685,33 @@ internal class LaunchCommand(private val args: List<String>) {
           )
       }
       if (!LaunchTopology.isFirstOnDevice(topology, app)) {
+        // In the background, with no activity until one is started; its window, hidden until it
+        // comes on screen, and its home screen are the device's.
         own =
           own.copy(
-            headless = true,
             noLaunch = true,
-            launcher = false,
             displays = emptyList(),
             widgets = emptyList(),
             tiles = emptyList(),
+            properties = own.properties + ("composeai.simulator.device.background" to "true"),
           )
       }
-      names[i] to supervise(names[i], if (i == 0) first else conversionOf(app.apk), own)
+      val emit = { line: String ->
+        screens.follow(line)
+        PairedLaunch.emit(line)
+      }
+      names[i] to supervise(names[i], if (i == 0) first else conversionOf(app.apk), own, emit)
     }
     onPrimary(supervisors.first().second)
-    val exit = PairedLaunch(supervisors, control = options.control, aliases = aliases).run()
+    val exit =
+      PairedLaunch(
+          supervisors,
+          control = options.control,
+          aliases = screens.aliases,
+          // The first device's screen, whichever of its apps shows.
+          primary = primaryDevice.takeIf { it in screens.aliases } ?: names.first(),
+        )
+        .run()
     dataLayer?.close()
     buses.values.forEach { it.close() }
     return exit

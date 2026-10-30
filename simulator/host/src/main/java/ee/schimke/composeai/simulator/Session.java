@@ -66,6 +66,9 @@ final class Session {
   /** On, ambient or off, and the gestures between them. */
   private final ScreenPower screen;
   private final WidgetHost widgets;
+  /** Which of the device's apps is on screen. */
+  private final DeviceApps deviceApps;
+
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
 
@@ -149,12 +152,16 @@ final class Session {
     this.background = new BackgroundWork(app, protocol, navigator);
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
+    // An activity of another of the device's apps (--app): that app comes on screen and starts it.
+    this.deviceApps = new DeviceApps(app, navigator, protocol);
+    if (home != null) deviceApps.attach(home);
     new Handoffs(app, protocol, navigator);
     this.appActions = new AppActions(app, navigator);
     this.appFunctions = new AppFunctions(app, protocol);
     // On a device with other apps (--install): join it, and serve their calls into this one.
     AppFunctions.serveOnBus(app);
     DeviceBus.start(app.getPackageName());
+    deviceApps.announce();
   }
 
   void start() {
@@ -389,6 +396,8 @@ final class Session {
         return appActions.command(c);
       case "appfunctions":
         return appFunctions.command(c);
+      case "foreground":
+        return deviceApps.command(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);
@@ -489,6 +498,8 @@ final class Session {
         {
           Intent intent = intent(c);
           if (home != null && intent.hasCategory(Intent.CATEGORY_HOME)) return home.goHome();
+          JSONObject inOtherApp = deviceApps.startInOtherApp(intent);
+          if (inOtherApp != null) return inOtherApp;
           android.os.Bundle savedState = savedState(c);
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
           return navigator.startActivity(intent, -1, launchOptions(c), savedState);
@@ -662,6 +673,10 @@ final class Session {
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
     json.put("screen", screen.state());
+    if (DeviceBus.enabled()) {
+      json.put("onScreen", deviceApps.onScreen());
+      json.put("otherApps", new JSONArray(DevicePeers.packages()));
+    }
     if (wear != null) json.put("surface", wear.surface());
     if (home != null) json.put("surface", home.surface());
     if (phoneUi != null) json.put("surface", phoneUi.surface());
