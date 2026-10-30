@@ -6,7 +6,6 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
-import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
@@ -51,8 +50,8 @@ final class WindowZoom {
   static final double MIN = 0.1;
   static final double MAX = 4;
   static final double STEP = 1.25;
-  /** The share of the screen a display that does not fit starts at. */
-  static final double SCREEN_SHARE = 0.9;
+  /** The share of the screen a display that does not fit starts at, leaving room around it. */
+  static final double SCREEN_SHARE = 0.85;
 
   private static final Map<JComponent, WindowZoom> ZOOMS = new WeakHashMap<>();
   private static boolean keysInstalled;
@@ -102,6 +101,23 @@ final class WindowZoom {
           install((JFrame) window, panel, width, height);
           mainInstalled = true;
         });
+  }
+
+  /**
+   * The default display's window, zoomed now if the loop has not got to it, so a secondary display
+   * opening beside it is placed by its fitted size; null before it shows. On the event thread.
+   */
+  static WindowZoom main() {
+    JPanel panel = SimulatorPanelRegistry.getActivePanel();
+    if (panel == null) return null;
+    WindowZoom zoom = ZOOMS.get(panel);
+    if (zoom != null) return zoom;
+    Window window = SwingUtilities.getWindowAncestor(panel);
+    if (!(window instanceof JFrame) || !window.isShowing()) return null;
+    // Unzoomed, the panel is one point per device pixel.
+    zoom = install((JFrame) window, panel, panel.getWidth(), panel.getHeight());
+    mainInstalled = true;
+    return zoom;
   }
 
   /** Makes [frame], which shows [view] at one device pixel per point, zoomable. */
@@ -180,6 +196,7 @@ final class WindowZoom {
         .put("screenY", origin.y)
         .put("windowWidth", frame.getWidth())
         .put("windowHeight", frame.getHeight())
+        .put("alwaysOnTop", frame.isAlwaysOnTop())
         .object();
   }
 
@@ -201,7 +218,7 @@ final class WindowZoom {
 
   private void attach() {
     // The display letterboxed and centred in whatever size the window is dragged to.
-    JPanel holder = new JPanel(new GridBagLayout());
+    JPanel holder = new JPanel(new Letterbox());
     holder.setBackground(Color.BLACK);
     holder.add(layer);
     holder.addComponentListener(
@@ -218,6 +235,9 @@ final class WindowZoom {
     frame.getContentPane().add(holder);
     frame.setJMenuBar(menuBar());
     frame.setResizable(true);
+    // Robolectric's window floats above every other one; ours goes behind them like any window,
+    // and View → Keep on Top puts it back.
+    frame.setAlwaysOnTop(false);
     installKeys();
     Rectangle screen = usableScreen();
     apply(fit(deviceWidth, deviceHeight, screen, 1), true);
@@ -228,31 +248,71 @@ final class WindowZoom {
     Dimension size = scaledSize(deviceWidth, deviceHeight, scale);
     layer.setPreferredSize(size);
     layer.revalidate();
-    if (pack) frame.pack();
+    if (pack) {
+      frame.pack();
+      keepOnScreen();
+    }
     frame.repaint();
   }
 
+  /**
+   * The room the display itself has on the screen: the screen less its menu bar and dock, the
+   * window's own frame and View menu, and a margin ({@link #SCREEN_SHARE}).
+   */
   private Rectangle usableScreen() {
-    GraphicsConfiguration config = frame.getGraphicsConfiguration();
-    if (config == null) return new Rectangle(0, 0, Integer.MAX_VALUE, Integer.MAX_VALUE);
-    Rectangle bounds = config.getBounds();
-    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(config);
+    Rectangle area = screenArea();
+    if (area == null) return new Rectangle(0, 0, Integer.MAX_VALUE, Integer.MAX_VALUE);
     Insets frameInsets = frame.getInsets();
     int menu = frame.getJMenuBar() == null ? 0 : frame.getJMenuBar().getPreferredSize().height;
     return new Rectangle(
         0,
         0,
-        (int)
-            ((bounds.width - insets.left - insets.right - frameInsets.left - frameInsets.right)
-                * SCREEN_SHARE),
-        (int)
-            ((bounds.height
-                    - insets.top
-                    - insets.bottom
-                    - frameInsets.top
-                    - frameInsets.bottom
-                    - menu)
-                * SCREEN_SHARE));
+        (int) ((area.width - frameInsets.left - frameInsets.right) * SCREEN_SHARE),
+        (int) ((area.height - frameInsets.top - frameInsets.bottom - menu) * SCREEN_SHARE));
+  }
+
+  /** The screen the window is on, in screen coordinates, less its menu bar and dock; or null. */
+  private Rectangle screenArea() {
+    GraphicsConfiguration config = frame.getGraphicsConfiguration();
+    if (config == null) return null;
+    Rectangle bounds = config.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(config);
+    return new Rectangle(
+        bounds.x + insets.left,
+        bounds.y + insets.top,
+        bounds.width - insets.left - insets.right,
+        bounds.height - insets.top - insets.bottom);
+  }
+
+  /**
+   * Fits the window into the screen to the right of screen x [left], as a secondary display opens
+   * beside the phone; with less than a third of the screen there, it keeps its own fit and only
+   * moves onto the screen.
+   */
+  void fitBeside(int left) {
+    Rectangle area = screenArea();
+    if (area == null) return;
+    int room = area.x + area.width - left;
+    if (room >= area.width / 3) {
+      Rectangle budget = usableScreen();
+      Insets insets = frame.getInsets();
+      budget.width = (int) ((room - insets.left - insets.right) * SCREEN_SHARE);
+      double fitted = fit(deviceWidth, deviceHeight, budget, 1);
+      if (fitted < scale) apply(fitted, true);
+    }
+    frame.setLocation(left, frame.getY());
+    keepOnScreen();
+  }
+
+  /**
+   * Moves the window onto its screen: all of it when it fits, and otherwise its top-left, where
+   * the title bar and the View menu are, so the window can always be moved, closed and zoomed out.
+   */
+  void keepOnScreen() {
+    Rectangle area = screenArea();
+    if (area == null) return;
+    java.awt.Point to = onScreen(frame.getBounds(), area);
+    if (!to.equals(frame.getLocation())) frame.setLocation(to);
   }
 
   private JMenuBar menuBar() {
@@ -263,6 +323,10 @@ final class WindowZoom {
     menu.add(
         item("Actual Size", KeyStroke.getKeyStroke(KeyEvent.VK_0, shortcut), this::actualSize));
     menu.add(item("Fit to Screen", null, this::fitScreen));
+    menu.addSeparator();
+    javax.swing.JCheckBoxMenuItem onTop = new javax.swing.JCheckBoxMenuItem("Keep on Top");
+    onTop.addActionListener(e -> frame.setAlwaysOnTop(onTop.isSelected()));
+    menu.add(onTop);
     JMenuBar bar = frame.getJMenuBar() == null ? new JMenuBar() : frame.getJMenuBar();
     bar.add(menu);
     return bar;
@@ -334,6 +398,57 @@ final class WindowZoom {
       else if (this == OUT) zoom.zoomOut();
       else zoom.actualSize();
     }
+  }
+
+  /**
+   * Lays out the one display centred at its preferred size, shrunk to the window when that is
+   * smaller (the window is dragged smaller than the zoom, or the zoom rounds a pixel over).
+   * GridBagLayout would fall back to the display's minimum size, a few pixels, and the picture
+   * would vanish.
+   */
+  static final class Letterbox implements java.awt.LayoutManager {
+    @Override
+    public void addLayoutComponent(String name, java.awt.Component c) {}
+
+    @Override
+    public void removeLayoutComponent(java.awt.Component c) {}
+
+    @Override
+    public Dimension preferredLayoutSize(java.awt.Container parent) {
+      Insets in = parent.getInsets();
+      Dimension size = new Dimension(in.left + in.right, in.top + in.bottom);
+      if (parent.getComponentCount() > 0) {
+        Dimension child = parent.getComponent(0).getPreferredSize();
+        size.width += child.width;
+        size.height += child.height;
+      }
+      return size;
+    }
+
+    @Override
+    public Dimension minimumLayoutSize(java.awt.Container parent) {
+      // Small enough that the window can be dragged down to a thumbnail.
+      return new Dimension(1, 1);
+    }
+
+    @Override
+    public void layoutContainer(java.awt.Container parent) {
+      if (parent.getComponentCount() == 0) return;
+      Insets in = parent.getInsets();
+      int width = parent.getWidth() - in.left - in.right;
+      int height = parent.getHeight() - in.top - in.bottom;
+      Dimension child = parent.getComponent(0).getPreferredSize();
+      Rectangle bounds = letterbox(child.width, child.height, width, height);
+      bounds.translate(in.left, in.top);
+      parent.getComponent(0).setBounds(bounds);
+    }
+  }
+
+  /** A [width] x [height] child centred in an [areaWidth] x [areaHeight] area, never past it. */
+  static Rectangle letterbox(int width, int height, int areaWidth, int areaHeight) {
+    int w = Math.max(0, Math.min(width, areaWidth));
+    int h = Math.max(0, Math.min(height, areaHeight));
+    return new Rectangle((areaWidth - w) / 2, (areaHeight - h) / 2, w, h);
   }
 
   /** Paints the display at the zoom. */
@@ -493,6 +608,13 @@ final class WindowZoom {
               + value);
     }
     return percent || parsed > MAX ? parsed / 100 : parsed;
+  }
+
+  /** Where a [window] goes to sit on [area]: wholly if it fits, its top-left first if not. */
+  static java.awt.Point onScreen(Rectangle window, Rectangle area) {
+    int x = Math.max(area.x, Math.min(window.x, area.x + area.width - window.width));
+    int y = Math.max(area.y, Math.min(window.y, area.y + area.height - window.height));
+    return new java.awt.Point(x, y);
   }
 
   static double clamp(double scale) {

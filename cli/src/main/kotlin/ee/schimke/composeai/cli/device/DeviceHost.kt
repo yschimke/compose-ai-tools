@@ -161,7 +161,7 @@ internal class DeviceHost(
      */
     fun freeConsolePort(): Int {
       for (console in 5554..5584 step 2) {
-        if (free(console) && free(console + 1)) return console
+        if (free(console) && free(console + 1) && free(grpcPortFor(console))) return console
       }
       throw IllegalStateException("no free emulator port pair between 5554 and 5585")
     }
@@ -169,12 +169,28 @@ internal class DeviceHost(
     /** The emulator's gRPC ports start at 8554, one per console port. */
     fun grpcPortFor(consolePort: Int): Int = 8554 + (consolePort - 5554)
 
-    private fun free(port: Int): Boolean =
-      try {
+    /**
+     * Whether [port] is free where adb connects to it. Binding alone is not enough: Java sets
+     * `SO_REUSEADDR`, under which macOS lets a bind to 127.0.0.1 succeed over another process's
+     * wildcard listener — a running emulator's — and the two devices would share a serial.
+     */
+    fun free(port: Int): Boolean {
+      val answers =
+        try {
+          Socket().use {
+            it.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 200)
+          }
+          true
+        } catch (_: IOException) {
+          false
+        }
+      if (answers) return false
+      return try {
         ServerSocket(port, 1, InetAddress.getLoopbackAddress()).close()
         true
       } catch (_: IOException) {
         false
       }
+    }
   }
 }

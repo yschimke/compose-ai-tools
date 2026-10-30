@@ -746,7 +746,8 @@ final class Displays {
           });
       frame.getContentPane().add(panel);
       frame.pack();
-      WindowZoom.install(frame, panel, width, height);
+      WindowZoom zoom = WindowZoom.install(frame, panel, width, height);
+      WindowZoom.main();
       JPanel main = SimulatorPanelRegistry.getActivePanel();
       Window owner = main == null ? null : SwingUtilities.getWindowAncestor(main);
       if (owner != null) {
@@ -758,6 +759,7 @@ final class Displays {
           }
         }
         frame.setLocation(x, owner.getY());
+        zoom.fitBeside(x);
       }
       frame.setVisible(true);
     }

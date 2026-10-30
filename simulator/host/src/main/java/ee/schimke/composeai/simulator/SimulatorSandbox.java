@@ -86,6 +86,8 @@ final class SimulatorSandbox {
                 SimulatorShadowCompanionDeviceManager.class,
                 SimulatorShadowTextToSpeech.class,
                 SimulatorShadowCredentialManager.class,
+                SimulatorShadowAlarmManager.class,
+                SimulatorShadowJobScheduler.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class);
