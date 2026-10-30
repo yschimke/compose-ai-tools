@@ -127,6 +127,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       fingerprint();
       pairedDevice();
       PlayServicesPackages.sync(app);
+      // AndroidKeyStore, which encrypted preferences open at startup, and voice input's activity.
+      AndroidKeyStoreProvider.install();
+      SystemPrompts.install(app);
       Navigator.registerBindableServices(app);
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.

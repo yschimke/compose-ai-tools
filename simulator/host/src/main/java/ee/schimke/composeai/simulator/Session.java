@@ -69,6 +69,7 @@ final class Session {
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
   private final Radios radios;
+  private final SystemPrompts prompts;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -119,6 +120,8 @@ final class Session {
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
+    this.prompts = new SystemPrompts(app, protocol, navigator);
+    Credentials.protocol = protocol;
   }
 
   void start() {
@@ -158,6 +161,7 @@ final class Session {
     if (home != null) home.cycle();
     displays.cycle();
     radios.cycle();
+    prompts.cycle();
     overlay.round(FormFactor.isRound());
     logcat.poll();
     notifications.cycle();
@@ -254,7 +258,8 @@ final class Session {
         || HomeScreen.changesUi(name)
         || WearSystemUi.changesUi(name)
         || NotificationStream.changesUi(name)
-        || Radios.changesUi(name)) {
+        || Radios.changesUi(name)
+        || SystemPrompts.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -297,6 +302,7 @@ final class Session {
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated == null) emulated = radios.command(name, c);
+    if (emulated == null) emulated = prompts.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
       case "ping":
@@ -316,6 +322,8 @@ final class Session {
         return debugSurface(c);
       case "companion":
         return CompanionDevices.command(c);
+      case "credentials":
+        return Credentials.command(c);
       case "dataLayer":
         {
           if (DataLayerLink.enabled() && c.has("action")) return DataLayer.agentCurrent(c);
