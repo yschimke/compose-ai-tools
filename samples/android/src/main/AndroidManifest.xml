@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -74,6 +75,15 @@
         </receiver>
         <service android:name="com.example.sampleandroid.TaskListWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        <!-- A chat composer the simulator's on-screen keyboard is shown with (docs/SIMULATOR.md). -->
+        <activity
+            android:name="com.example.sampleandroid.ChatActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- Posts the notifications the simulator's phone shade is shown with (docs/SIMULATOR.md). -->
+        <receiver android:name="com.example.sampleandroid.NotificationDemoReceiver"
             android:exported="false" />
         <activity
             android:name="com.example.sampleandroid.PinRequestActivity"

@@ -623,19 +623,34 @@ final class Displays {
   /** [motion] to the windows on display [id], past any system gesture. */
   static boolean dispatchTouch(MotionEvent motion, int id) {
     List<Root> roots = roots(id, hidden());
+    int action = motion.getActionMasked();
+    // The rest of a gesture goes where its down went, wherever the pointer is now, as a device's
+    // input dispatcher keeps it on the window that took the down.
+    View captured = gestureTargets.get(id);
+    if (captured != null && action != MotionEvent.ACTION_DOWN && !generic(motion)) {
+      if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+        gestureTargets.remove(id);
+      }
+      for (Root root : roots) {
+        if (root.view == captured) {
+          deliver(root, motion);
+          return true;
+        }
+      }
+      // Its window went away mid-gesture: the rest goes where it falls.
+    }
     List<Root> touchable = new ArrayList<>();
     for (Root root : roots) if (root.touchable()) touchable.add(root);
     for (int i = 0; i < touchable.size(); i++) {
       Root root = touchable.get(i);
       if (i == touchable.size() - 1 || root.touchModal() || root.inside(motion)) {
-        motion.offsetLocation(-root.location.x, -root.location.y);
-        if (motion.isFromSource(InputDevice.SOURCE_MOUSE)
-            && motion.getActionMasked() == MotionEvent.ACTION_SCROLL) {
-          root.view.dispatchGenericMotionEvent(motion);
-        } else {
-          root.view.dispatchTouchEvent(motion);
+        if (action == MotionEvent.ACTION_DOWN) {
+          gestureTargets.put(id, root.view);
+          if (root.params.type < WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW) {
+            lastAppTouch = SystemClock.uptimeMillis();
+          }
         }
-        motion.offsetLocation(root.location.x, root.location.y);
+        deliver(root, motion);
         break;
       } else if (motion.getActionMasked() == MotionEvent.ACTION_DOWN
           && !root.touchModal()
@@ -648,6 +663,29 @@ final class Displays {
       }
     }
     return true;
+  }
+
+  /** When a touch last went down on one of the app's own windows, in uptime. */
+  static volatile long lastAppTouch;
+
+  /** The window each display's current gesture went to on its down. */
+  private static final Map<Integer, View> gestureTargets = new HashMap<>();
+
+  private static boolean generic(MotionEvent motion) {
+    return motion.isFromSource(InputDevice.SOURCE_MOUSE)
+        && (motion.getActionMasked() == MotionEvent.ACTION_SCROLL
+            || motion.getActionMasked() == MotionEvent.ACTION_HOVER_MOVE);
+  }
+
+  private static void deliver(Root root, MotionEvent motion) {
+    motion.offsetLocation(-root.location.x, -root.location.y);
+    if (motion.isFromSource(InputDevice.SOURCE_MOUSE)
+        && motion.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+      root.view.dispatchGenericMotionEvent(motion);
+    } else {
+      root.view.dispatchTouchEvent(motion);
+    }
+    motion.offsetLocation(root.location.x, root.location.y);
   }
 
   /**

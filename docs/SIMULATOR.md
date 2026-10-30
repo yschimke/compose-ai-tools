@@ -880,6 +880,173 @@ under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widge
 `id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
 belongs to the default display: a secondary display gets no launcher.
 
+### Status bar and notification shade
+
+On a phone, `--launcher` also brings the system UI over every app: a **status bar** along the top
+of the default display, the **notification shade** pulled down from it, and a **heads-up** card for
+a notification that interrupts. Each is a window of its own above the app's (`PhoneSystemUi`), as
+SystemUI's are, so screenshots show it and it takes touches over whatever is on screen.
+
+![App under the status bar, heads-up, shade, inline reply, replied, expanded picture, tap opened the app, home in airplane mode at 12%](design/evidence/simulator-launch/phone-shade.png)
+
+**The status bar** shows the clock, an icon per notification, Wi-Fi, mobile signal or airplane mode,
+and the battery (low and charging drawn as such), from the same state the `network`, `wifi` and
+`battery` commands set. Robolectric's own status bar inset is switched on with it, so the app is
+laid out below the bar (`WindowInsets` report it), or under it when it draws edge to edge. The bar
+takes the window's status bar colour when the app is laid out below it, light or dark icons as the
+app asked (`APPEARANCE_LIGHT_STATUS_BARS`), and hides, taking no touches, while the app hides it.
+The home screen draws its wallpaper under it.
+
+**The shade** opens with a swipe down from the bar or `notifications {"op":"open"}`: the clock,
+quick settings tiles (Internet, mobile data, airplane mode, battery) and each notification the app
+has showing, interrupting ones first and newest first. Each is inflated from its own `RemoteViews`,
+as the preview renderer in `runtimes/notification` does: `createContentView()` collapsed,
+`createBigContentView()` expanded (the top one starts expanded), measured at the heights SystemUI
+gives them, so the platform's templates (`MessagingStyle`, `BigPictureStyle`, progress, actions)
+and an app's custom views draw as on a device. The template's expand button toggles one. A group
+shows its children, not the summary.
+
+- a tap on a notification sends its content intent (auto-cancel honored); an activity it starts
+  closes the shade, as on a device;
+- its action buttons press the action; a reply action opens an inline reply field under it, with
+  the input's label and the app's suggested replies, and send fills the `RemoteInput`;
+- a sideways swipe dismisses it (an ongoing one springs back), and "Clear all" dismisses every one a
+  person could;
+- Back, HOME, a swipe up, or a tap below the list closes the shade.
+
+A **heads-up** card shows the heads-up view of a newly posted notification on a high-importance
+channel for five seconds, while the shade is closed: a tap opens it, a sideways swipe dismisses it,
+a swipe up puts it away, and a reply action opens the shade at its reply field.
+
+These are the stream the Wear system UI draws too (`NotificationStream`), so the
+[`notification`](#wear-system-ui) command acts on the same notifications: `tap`, `action`,
+`reply`, `dismiss` and `snooze` work with the shade open or not. On a phone a notification's own
+actions are offered, not its `WearableExtender` ones. Commands:
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `notifications` | `op`? (`open` / `close` / `clear`) | opens or closes the shade, or clears every dismissible notification; without `op`, the list ([Wear system UI](#wear-system-ui)) |
+| `notification` | `key`, `op`: `expand` / `collapse`, or the Wear ops | expands or collapses one in the shade |
+| `quickSettings` | `wifi`?, `data`?, `airplane`? | switches those radios, opens the shade, and returns the battery, radios and default network |
+| `statusBar` | | `surface`, and the bar: `visible`, `heightPx`, `time`, `notifications` (keys, in the bar's order), `wifi`, `cellular`, `airplane`, `battery`, `charging`, `darkIcons`, `background`; `shade`, `headsUp` |
+
+`info`'s `surface` is `notificationShade` while the shade is open, and a `surface` event follows it
+opening and closing; a `headsUp` event names the key a card shows. The views carry ids for `find`
+and `tap`: `status_bar` (its description reads out the clock, notifications, radios and battery),
+`notification_shade`, `shade_clock`, `qs_wifi`, `qs_data`, `qs_airplane`, `qs_battery`,
+`notification_card` (description: the key), `notification_expand` (the key),
+`notification_action` (`<key>/<index>`, with the button's text), `notification_reply`
+(`<key>/<index>/<choice>`), `notification_reply_text` and `notification_reply_send`
+(`<key>/<index>`), `notifications_clear_all`, `notifications_empty` and `heads_up`. The sample app
+posts a set to try it with:
+
+```
+→ {"cmd":"permissions","grant":["android.permission.POST_NOTIFICATIONS"]}
+→ {"cmd":"broadcast","intent":{"action":"com.example.sampleandroid.POST_NOTIFICATIONS","component":".NotificationDemoReceiver"}}
+← {"event":"headsUp","key":"1"}
+→ {"cmd":"swipe","x1":270,"y1":10,"x2":270,"y2":700}
+← {"event":"surface","surface":"notificationShade"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_action","desc":"1/0"}
+→ {"cmd":"tap","resourceId":"sim:id/notification_reply","desc":"1/0/Sounds good"}
+← {"event":"systemUi","result":{"key":"1","action":"Reply","reply":"Sounds good","sent":{"kind":"broadcast",…}}}
+← {"event":"notification","state":"updated","key":"1",…}
+```
+
+A touch gesture stays with the window its down went to, on any display, as a device's input
+dispatcher keeps it: a drag that starts on the status bar is the bar's however far it goes.
+
+### Navigation bar and lock screen
+
+The phone's system UI also has a **navigation bar** and a **lock screen** (`NavigationBar`,
+`LockScreen`), each a window of its own.
+
+![Home over gesture navigation, the three buttons, the lock screen, the PIN bouncer, the notification tapped on it opened](design/evidence/simulator-launch/phone-navbar-lock.png)
+
+**The navigation bar** is gesture navigation's handle by default, along the bottom. Robolectric's
+navigation bar inset is switched on with it, so apps get its `WindowInsets` (24dp for gestures,
+48dp for buttons) and are laid out above it, or under it when they draw edge to edge; a window
+that draws its own navigation bar colour (a Material theme's black, where edge to edge is not
+enforced) shows it there. A swipe up from the handle goes home; Back is the edge swipe
+([Back](#back)). `navigationBar {"mode":"buttons"}` switches to the three buttons — Back, Home,
+and Overview, sent as `KEYCODE_APP_SWITCH` since there is no recents screen — with no edge swipe,
+as on a device; `"none"` removes the bar and its inset. The bar takes light or dark icons as the
+app asks (`APPEARANCE_LIGHT_NAVIGATION_BARS`) and hides, taking no touches, while the app hides
+it. The home screen draws its wallpaper under both bars.
+
+**The lock screen** comes on when the screen goes off (`key POWER`, `sleep`, the `screen`
+timeout). When the screen wakes, the app stays stopped behind it until it is unlocked, as on a
+device; `KeyguardManager` reports `isKeyguardLocked` (and `isDeviceLocked` when secure). It shows
+the clock, the date and up to three notifications. A swipe up unlocks, as does
+`lockScreen {"op":"unlock"}`; with a PIN set (`lockScreen {"op":"pin","pin":"2580"}`, or
+`biometric {"secure":true}`, which takes `1234`) a swipe opens the PIN bouncer instead and the
+`unlock` command needs the `pin`. Unlocking resumes the app and broadcasts `ACTION_USER_PRESENT`.
+A notification tapped on the lock screen opens once unlocked. HOME and Back go nowhere while it
+shows (Back closes the bouncer); the shade still pulls down over it.
+
+What apps ask of it is answered:
+
+- `KeyguardManager.requestDismissKeyguard` dismisses an insecure lock screen at once
+  (`onDismissSucceeded`), and opens the bouncer on a secure one;
+- an activity that shows when locked (`setShowWhenLocked(true)`, `android:showWhenLocked`, or
+  `FLAG_SHOW_WHEN_LOCKED`) is drawn over the lock screen, as an alarm or a call is;
+- an activity that turns the screen on (`setTurnScreenOn(true)`, `android:turnScreenOn`, or
+  `FLAG_TURN_SCREEN_ON`) wakes a dark screen when it comes to the top.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `navigationBar` | `mode`? (`gesture` / `buttons` / `none`) | switches the mode; returns `mode`, `side`, `sizePx`, `visible`, `darkIcons`, `background`, `edgeBack` |
+| `lockScreen` | `op`? (`status` / `lock` / `unlock` / `pin`), `pin`?, `screenOff`? | `lock` locks now (`screenOff: true` sleeps the screen too); `unlock` unlocks, with `pin` when secure (`unlocked: false` for a wrong one); `pin` sets the PIN, or clears it with `null`. Returns `locked`, `showing`, `secure`, `bouncer`, `keyguardLocked`, `deviceLocked`, and the activity `held` behind it |
+
+`info`'s `surface` is `lockScreen` while it shows, and `lockScreen` events report `locked`,
+`bouncer`, `wrongPin` and `unlocked` (with `via`); `navigationBar` events name a button pressed.
+View ids: `navigation_bar`, `lock_screen`, `lock_clock`, `lock_notification` (description: the
+key), `lock_hint`, `lock_pin` and `lock_pin_enter`.
+
+```
+→ {"cmd":"lockScreen","op":"pin","pin":"2580"}
+→ {"cmd":"key","key":"POWER"}
+← {"event":"lockScreen","state":"locked","reason":"screenOff"}
+→ {"cmd":"key","key":"POWER"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_notification","desc":"3"}
+← {"event":"lockScreen","state":"bouncer"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin"}
+→ {"cmd":"text","text":"2580"}
+→ {"cmd":"tap","resourceId":"sim:id/lock_pin_enter"}
+← {"event":"lockScreen","state":"unlocked","via":"bouncer"}
+← {"event":"activity","state":"resumed","activity":"…NowPlayingActivity",…}
+```
+
+### On-screen keyboard
+
+The phone's system UI has a soft keyboard (`SoftKeyboard`), drawn to match the interactive
+previews' keyboard band (the same QWERTY layout, 240dp, palettes, light and dark), but a real
+input method window: its keys type into the app.
+
+![The chat composer, the keyboard up with the field above it, "See you!" typed with shift and symbols, sent, and the keyboard down after Back](design/evidence/simulator-launch/phone-keyboard.png)
+
+It comes up as a device's IME does: when the app asks for it (`InputMethodManager.showSoftInput`,
+`WindowInsetsController.show(ime())`), or when a tap focuses a text editor (an `EditText`, or a
+Compose text field, whose `AndroidComposeView` reports an input session). A field focused by
+default, without a tap, does not raise it. It goes when the app hides it, Back is pressed (before
+the app hears Back), the command hides it, or another activity comes to the top. While it is up the
+app's windows get the IME's `WindowInsets` (`Type.ime()`, over the keyboard), so `imePadding()`,
+`WindowInsets.ime` and `adjustResize` lay the app out above it, as on a device; `imeInsets` says
+whether that reached the app (it uses hidden platform API, API 34+).
+
+Its keys go to the focused field as key events, as the `text` command's do: letters, shift (one
+letter), `?123` (digits and symbols) and back, comma, space, period, delete and enter. `text`
+still types without it.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `keyboard` | `op`? (`status` / `show` / `hide`) | shows or hides it; returns `shown`, `heightPx`, `layout` (`letters` / `shift` / `symbols`), `imeInsets`, and whether the app `requested` it |
+
+A `keyboard` event follows each change, with its `reason` (`app`, `back`, `focus`, `command`).
+View ids: `keyboard`; `key` for each character key (its text is the character, so
+`tap {"resourceId":"sim:id/key","text":"q"}` presses it), and `key_shift`, `key_delete`,
+`key_symbols`, `key_space` and `key_enter`. `samples/android`'s `ChatActivity` (started with
+`startActivity`) is an edge-to-edge composer to try it with.
+
 ### Back
 
 Back goes where a device's `ViewRootImpl` sends it, to the focused window (a dialog or popup over
@@ -1565,12 +1732,20 @@ What does not, or not yet:
   paired phone: `checkApiAvailability` reports the `Wearable` clients `API_UNAVAILABLE`, as
   Play services' other APIs.
 - **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
-  own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
+  own widgets and shortcuts: there is one package. No wallpaper picker,
   keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).
   A pin request brings the home screen forward rather than showing its sheet over the app, and
   `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
   framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
   where this sandbox refuses the host.
+- **Status bar, shade, navigation bar and lock screen.** Phones only, with `--launcher`. No
+  recents screen, notification history, snooze or per-channel settings in the shade, conversation
+  or bubble sections, media controls, or Do Not Disturb; one keyboard layout (US QWERTY, no
+  suggestions, emoji, voice or IME switcher); no pattern or password lock, fingerprint
+  unlock, lock screen widgets or shortcuts, and an activity started while locked (but not shown
+  when locked) is resumed behind the lock screen rather than held; notification sounds and vibration are not
+  played. Quick settings tiles are the four above, not the app's `TileService`s. Robolectric posts
+  every notification of one task at the same instant, so ties are ordered by `when`, then id.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not

@@ -1020,7 +1020,7 @@ final class WidgetHost {
     return view;
   }
 
-  private static Class<?> interactionHandlerClass() {
+  static Class<?> interactionHandlerClass() {
     try {
       return Class.forName(
           "android.widget.RemoteViews$InteractionHandler",
@@ -1077,7 +1077,7 @@ final class WidgetHost {
     return Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, handler);
   }
 
-  private static Object objectMethod(Object proxy, Method method, Object[] args) {
+  static Object objectMethod(Object proxy, Method method, Object[] args) {
     switch (method.getName()) {
       case "equals":
         return proxy == args[0];

@@ -347,3 +347,36 @@ and slides with a `PredictiveBackHandler`'s progress. Over `--control stdio --he
 `touch` down at x=4 and moves to x=60, 120 and 280 (the screen follows the finger), back to x=30,
 up there (cancelled: still Now Playing), then a second swipe lifted at x=300 (committed: Home).
 Frames are `screenshot`s taken between the moves.
+
+## Status bar and notification shade
+
+`launch --launcher` on `samples/android`'s debug APK (`docs/SIMULATOR.md` → Status bar and
+notification shade), headless on JDK 21, full-size `screenshot`s. `NotificationDemoReceiver` posts
+a `MessagingStyle` conversation with a reply action on a high-importance channel, a `BigTextStyle`
+digest, a `BigPictureStyle` photo and an ongoing download.
+
+Top row: the app laid out below the status bar (taking its gray status bar colour); the broadcast
+posts the four, and the conversation shows heads-up; a swipe down from the bar opens the shade,
+newest and interrupting first, the top one expanded, all inflated from the notifications' own
+`RemoteViews`; the Reply button opens the inline reply field with the suggested replies. Bottom
+row: "Sounds good" sent — the app's receiver reads the `RemoteInput` and posts the conversation
+again with the reply; `notification {op: expand}` on the photo shows its big picture; a tap on it
+sends its content intent, which starts `NowPlayingActivity` and closes the shade; HOME, with
+`network {airplane: true}` and `battery {level: 12}`, the bar over the wallpaper.
+
+![App, heads-up, shade, reply field, replied, picture, opened, home](phone-shade.png)
+
+**Navigation bar and lock screen** — the home screen over gesture navigation (wallpaper under both
+bars; a swipe up from the handle went home); `navigationBar {mode: buttons}` over the app (its
+Back button finished the activity); `key POWER` twice with notifications posted: the lock screen,
+the app held stopped behind it; with `lockScreen {op: pin}` set, tapping a notification opens the
+PIN bouncer, and the right PIN unlocks and opens it (`NowPlayingActivity`).
+
+![Home, buttons, lock screen, bouncer, opened](phone-navbar-lock.png)
+
+**On-screen keyboard** — `samples/android`'s `ChatActivity` (edge to edge, its composer under
+`imePadding()`): at rest; a tap on the field brings the keyboard up and the composer rides above it
+on the IME insets; "See you!" typed on its keys (shift, then `?123` for the "!"); sent; Back takes
+the keyboard down and the composer drops back.
+
+![Chat, keyboard up, typed, sent, keyboard down](phone-keyboard.png)
