@@ -313,7 +313,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `network` | `mode`? (`wifi` / `cellular` / `ethernet` / `vpn` / `captive` / `offline`), `wifi`?, `data`?, `airplane`?, `metered`?, `cellular`? (`5g` / `lte` / `3g` / `2g`), `downKbps`? / `upKbps`?, `latencyMs`?, `kbps`?, `block`? (hosts), `dataSaver`? | the networks, radios and the app's real traffic ([below](#network-wi-fi-and-bluetooth)); returns the state |
 | `wifi` | `op` (`status` / `scan` / `connect` / `disconnect` / `request`), `networks`?, `ssid`?, `bssid`?, `rssi`?, `answer`?, `policy`?, `requestId`? | access points in range, the one associated with, and the app's peer-to-peer requests |
 | `bluetooth` | `op` (`status` / `enable` / `disable` / `request` / `advertise` / `found` / `remove` / `bond` / `unbond` / `notify` / `disconnect`), `address`?, `name`?, `rssi`?, `serviceUuids`?, `serviceData`?, `manufacturerData`?, `gatt`?, `characteristic`?, `value`?, `answer`?, `policy`? | the adapter, its enable dialog, peripherals in range and a GATT server behind each |
-| `logcat` | `op` (`dump` / `clear` / `follow` / `stop`), `filters`? (`{tag: level}`), `default`? (level), `regex`?, `tail`? | the app's `android.util.Log`, as `threadtime` lines; `follow` streams `log` events |
+| `logcat` | `op` (`dump` / `clear` / `follow` / `stop`), `filters`? (`{tag: level}`), `default`? (level), `regex`?, `tail`? | the app's `android.util.Log`, as `threadtime` `lines` and as `entries` (`time`, `level`, `tag`, `message`, `pid`); `follow` streams each as a `log` event |
 | `files` | `op` (`list` / `read` / `write` / `mkdir` / `delete` / `pull` / `push`), `path`, `to`? / `from`?, `text`? / `base64`?, `recursive`? | the app's storage; every answer carries `hostPath` |
 | `getprop` | `name`? | `ro.build.*`, `ro.product.*` and a few more, from `Build` |
 | `package` / `packages` | `filter`? | version, APK path, data dir, permission state / the one package |
@@ -1288,7 +1288,7 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `cmd wifi status` / `list-scan-results` / `start-scan` / `connect-network <ssid> …` | `wifi` | |
 | `svc bluetooth enable` / `disable`, `cmd bluetooth_manager enable` / `disable` | `bluetooth` | |
 | `dumpsys activity [activities\|top\|services]`, `dumpsys notification`, `dumpsys window`, `dumpsys package`, `dumpsys connectivity` / `wifi` / `bluetooth_manager` | `activities`, `services`, `notifications`, `info`, `package`, `network` / `wifi` / `bluetooth` | JSON, not dumpsys text |
-| `logcat` `-d -c -s -t -e`, `TAG:LEVEL` / `*:LEVEL` | `logcat` | without `-d` / `-c` / `-t` it follows: `log` events until `{"cmd":"logcat","op":"stop"}`; `-v -b --pid` ignored; times are wall-clock, pid/tid are Robolectric's |
+| `logcat` `-d -c -s -t -e`, `TAG:LEVEL` / `*:LEVEL` | `logcat` | without `-d` / `-c` / `-t` it follows: `log` events until `{"cmd":"logcat","op":"stop"}`; `-v -b --pid` ignored; times are wall-clock, pid and tid the simulator JVM's |
 | `screencap -p [file]` | `screenshot` | PNG only; `-d <id>` captures that display (the simulator's display id, from `displays`) |
 | `uiautomator dump [file]` | `hierarchy` `flat` | JSON nodes, not UI Automator XML |
 | `run-as <pkg> ls [-R]` / `cat` / `rm [-r]` / `mkdir`; the same on `/data/data/<pkg>` paths | `files` | `cat … > file` pulls |
@@ -1394,13 +1394,25 @@ seconds.
 **The shell.** `adb shell` (one command, a `;` / `&&` / `||` sequence, `| grep` / `| head` /
 `| tail` filters, `2>/dev/null`, `> file`) and an interactive `adb shell`. The device answers
 packages (`pm list packages`, `pm path`, `pm list features`, `pm resolve-activity --brief`),
-`getprop`, `screencap`, `echo`/`id`/`true`, `export` (ignored) and `exec`, and the files below
-itself; everything else goes to
+`getprop`, `screencap`, `echo`/`id`/`true`, `date` (and `date +%s`), `export` (ignored) and
+`exec`, `logcat`, and the files below itself; everything else goes to
 the simulator's [adb equivalents](#adb-equivalents), and its JSON answer is printed as a device
 prints it where tools read the text (`Starting: Intent { … }`, `Broadcast completed: …`,
-`Physical size: 540x960`, a setting's value, `logcat -d`'s lines), and otherwise as the JSON.
-`adb logcat -d` / `-t` / `-c` work; a following `adb logcat` prints nothing yet, so Studio's
-Logcat window stays empty. `adb push` / `pull`
+`Physical size: 540x960`, a setting's value), and otherwise as the JSON.
+
+**Logcat.** `adb logcat` prints the log and then follows it, each entry as the app logs it, until
+the client closes the stream; `-d` dumps, `-t N` dumps the last N, `-T N` follows from the last N,
+`-c` clears, `-m N` stops after N. Filterspecs (`TAG:LEVEL`, `*:LEVEL`, `-s`) and `-e REGEX`
+filter; `-v` takes `threadtime` (the default), `long`, `brief`, `time`, `tag`, `process` and
+`raw`, with the `epoch` and `year` modifiers (`color`, `uid` and the like change nothing); `-b`,
+`--pid` and `--uid` are accepted, as there is one buffer and one process. Android Studio's Logcat
+window runs `date +%s`, then follows with `logcat -v long -v epoch -T N` (protobuf `--proto` is
+for API 36 and later), and reads it as from a device. The simulator follows once, unfiltered, and
+the device hands each entry to every follower in its own filter and format, so Studio and a
+terminal can follow at once; an install's new simulator follows for them too. The pid is the
+simulator JVM's (Robolectric's `Process.myPid()` is 0). Studio shows the process as `pid-N`:
+the device reports no process names (`track-jdwp` lists none), so its `package:mine` filter
+matches nothing. `adb push` / `pull`
 and `ls`, `rm`, `mkdir`, `cat` reach `/data/local/tmp` and `/sdcard`, kept under the device's
 directory in the cache; an app's private files are `run-as`, which the simulator answers. A
 native binary pushed there (Studio's deployer) does not run: `can't execute`, exit 126.

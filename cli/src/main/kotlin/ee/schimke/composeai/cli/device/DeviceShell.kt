@@ -1,9 +1,16 @@
 package ee.schimke.composeai.cli.device
 
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Base64
+import java.util.Locale
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -149,6 +156,8 @@ internal class DeviceShell(private val device: VirtualDevice) {
           if ("-a" in args) "Linux localhost 6.1.0 #1 SMP PREEMPT aarch64 Toybox" else "Linux"
         )
       "getprop" -> getprop(args, out)
+      "logcat" -> logcat(args, stdin, out)
+      "date" -> date(args, out)
       "setprop",
       // `adb logcat` sends `export ANDROID_LOG_TAGS="''"; exec logcat …`.
       "export" -> 0
@@ -192,6 +201,81 @@ internal class DeviceShell(private val device: VirtualDevice) {
   }
 
   private val files = DeviceFiles(device)
+
+  /**
+   * `logcat`: dumps (`-d`, `-t`), clears (`-c`), or prints the log and then follows it — each new
+   * entry as it is logged, in the format asked for, until the client closes the stream. Android
+   * Studio's Logcat window follows with `-v long -v epoch`.
+   */
+  private fun logcat(args: List<String>, stdin: InputStream, out: ShellOutput): Int {
+    val options =
+      try {
+        LogcatOptions.parse(args)
+      } catch (e: IllegalArgumentException) {
+        return out.fail("logcat: ${e.message}")
+      }
+    if (options.op == LogcatOptions.Op.CLEAR) {
+      device.simulator().request("logcat", "op" to JsonPrimitive("clear"))
+      return 0
+    }
+    val incoming = LinkedBlockingQueue<LogcatEntry>()
+    // Subscribed before the dump, so nothing logged in between is missed.
+    val following =
+      if (options.op == LogcatOptions.Op.FOLLOW) device.followLog { incoming.put(it) } else null
+    try {
+      var printed = 0
+      fun print(entry: LogcatEntry): Boolean {
+        out.write(options.print(entry).toByteArray())
+        printed++
+        return options.max == null || printed < options.max
+      }
+      val dump = device.simulator().request(options.dumpRequest())
+      for (element in dump["entries"] as? JsonArray ?: JsonArray(emptyList())) {
+        if (!print(LogcatEntry.of(element as JsonObject))) return 0
+      }
+      out.stdout.flush()
+      if (following == null) return 0
+      // The client closing the stream is the end of stdin: logcat runs until then.
+      val closed = AtomicBoolean()
+      Thread(
+          {
+            runCatching { while (stdin.read() >= 0) Unit }
+            closed.set(true)
+          },
+          "logcat-stdin",
+        )
+        .apply {
+          isDaemon = true
+          start()
+        }
+      while (!closed.get() && !device.exit.isDone) {
+        val entry = incoming.poll(250, TimeUnit.MILLISECONDS) ?: continue
+        if (!options.matches(entry)) continue
+        val more = print(entry)
+        out.stdout.flush()
+        if (!more) return 0
+      }
+      return 0
+    } catch (_: IOException) {
+      // The client went away mid-write.
+      return 0
+    } finally {
+      following?.close()
+    }
+  }
+
+  /** `date`: now, or `date +%s` (what Android Studio's Logcat asks first) in epoch seconds. */
+  private fun date(args: List<String>, out: ShellOutput): Int {
+    val now = ZonedDateTime.now()
+    return when (args.firstOrNull()) {
+      null ->
+        out.line(
+          now.format(DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss zzz yyyy", Locale.ROOT))
+        )
+      "+%s" -> out.line(now.toEpochSecond().toString())
+      else -> out.fail("date: only date and date +%s are supported")
+    }
+  }
 
   private fun getprop(args: List<String>, out: ShellOutput): Int {
     val properties = device.properties()
