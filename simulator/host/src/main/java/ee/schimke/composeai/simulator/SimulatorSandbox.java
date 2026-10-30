@@ -82,10 +82,13 @@ final class SimulatorSandbox {
                 SimulatorShadowResultReceiver.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
-                SimulatorShadowRemoteViewsAdapter.class);
+                SimulatorShadowRemoteViewsAdapter.class,
+                // Play services' availability checks, as a device with Play services answers.
+                ShadowGooglePlayServicesUtilLight.class,
+                ShadowGoogleApiAvailability.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
-      shadows.addShadowClasses(ShadowWearable.class, ShadowGoogleApiAvailability.class);
+      shadows.addShadowClasses(ShadowWearable.class);
     }
     // By name: loading these classes here, outside the sandbox, would load Robolectric's shadows
     // and the framework classes they name (android.app.UiAutomation) into this class loader, and
@@ -152,10 +155,9 @@ final class SimulatorSandbox {
         .doNotInstrumentPackage("android.support.test")
         .doNotInstrumentPackage("android.R");
     builder.doNotInstrumentClass("android.app.RecoverableSecurityException");
-    if (DataLayerLink.enabled()) {
-      builder.addInstrumentedClass(ShadowWearable.WEARABLE);
-      builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
-    }
+    builder.addInstrumentedClass(ShadowGooglePlayServicesUtilLight.UTIL_LIGHT);
+    builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
+    if (DataLayerLink.enabled()) builder.addInstrumentedClass(ShadowWearable.WEARABLE);
     builder
         .addInstrumentedPackage("dalvik.")
         .addInstrumentedPackage("libcore.")
