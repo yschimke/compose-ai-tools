@@ -8,6 +8,7 @@ import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.robolectric.util.ReflectionHelpers;
 
 /**
  * Back as the system delivers it: the {@code back} command, {@code key BACK} and {@code adb shell
@@ -39,14 +40,25 @@ final class SystemBack {
     View window = Displays.focusedWindow(displayId);
     if (window == null) return null;
     Navigator.Entry top = navigator.top(displayId);
-    Activity home = top != null && top.system ? top.activity() : null;
-    boolean systemWindow =
-        home != null && home.getWindow() != null && home.getWindow().getDecorView() == window;
+    // The activity whose own window is focused (not a dialog or popup over it).
+    Activity owner =
+        top != null
+                && top.activity().getWindow() != null
+                && top.activity().getWindow().getDecorView() == window
+            ? top.activity()
+            : null;
+    boolean systemWindow = owner != null && top.system;
     Object callback = systemWindow ? null : Displays.backCallback(displayId);
-    switch (BackRoute.of(systemWindow, callback instanceof OnBackInvokedCallback)) {
+    boolean activityDefault =
+        owner != null && callback != null && callback == defaultCallback(owner);
+    boolean hasCallback = callback instanceof OnBackInvokedCallback;
+    switch (BackRoute.of(systemWindow, hasCallback, activityDefault)) {
       case SYSTEM:
-        onBackPressed(home);
+        onBackPressed(owner);
         return new Protocol.Json().put("via", "system").object();
+      case ACTIVITY:
+        onBackPressed(owner);
+        return new Protocol.Json().put("via", "Activity.onBackPressed").object();
       case CALLBACK:
         BackRoute.deliver(steps((OnBackInvokedCallback) callback), Build.VERSION.SDK_INT);
         return new Protocol.Json()
@@ -55,6 +67,20 @@ final class SystemBack {
             .object();
       default:
         return null;
+    }
+  }
+
+  /**
+   * The callback {@code Activity} registers for itself when it opts in, which asks the system
+   * server ({@code ActivityClient.onBackPressed}) to finish it or move its task back. Robolectric
+   * has no server to answer, so that one is replaced by {@code onBackPressed}, which Robolectric's
+   * {@code ShadowActivity} turns into the finish {@link Navigator} acts on.
+   */
+  private static Object defaultCallback(Activity activity) {
+    try {
+      return ReflectionHelpers.getField(activity, "mDefaultBackCallback");
+    } catch (RuntimeException e) {
+      return null;
     }
   }
 

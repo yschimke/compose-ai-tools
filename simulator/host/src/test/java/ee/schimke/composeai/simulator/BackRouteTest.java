@@ -10,18 +10,24 @@ public class BackRouteTest {
 
   @Test
   public void anOptedInWindowHearsItsCallbackAndNoKey() {
-    assertEquals(BackRoute.CALLBACK, BackRoute.of(false, true));
+    assertEquals(BackRoute.CALLBACK, BackRoute.of(false, true, false));
   }
 
   @Test
   public void aWindowThatDidNotOptInGetsTheKey() {
-    assertEquals(BackRoute.KEY, BackRoute.of(false, false));
+    assertEquals(BackRoute.KEY, BackRoute.of(false, false, false));
   }
 
   @Test
   public void theHomeActivityTakesBackItselfWhateverTheAppOptedInTo() {
-    assertEquals(BackRoute.SYSTEM, BackRoute.of(true, true));
-    assertEquals(BackRoute.SYSTEM, BackRoute.of(true, false));
+    assertEquals(BackRoute.SYSTEM, BackRoute.of(true, true, false));
+    assertEquals(BackRoute.SYSTEM, BackRoute.of(true, false, false));
+  }
+
+  @Test
+  public void nothingInTheAppWantingBackLeavesItToTheActivity() {
+    // The activity's own default callback would ask the (absent) system server to finish it.
+    assertEquals(BackRoute.ACTIVITY, BackRoute.of(false, true, true));
   }
 
   @Test

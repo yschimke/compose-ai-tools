@@ -7,6 +7,11 @@ package ee.schimke.composeai.simulator;
 enum BackRoute {
   /** The simulator's own home activity, which handles it itself. */
   SYSTEM,
+  /**
+   * The activity's own default callback, which would ask the system server to finish it: its
+   * {@code onBackPressed} instead, which finishes it as that server would.
+   */
+  ACTIVITY,
   /** The focused window's top {@code OnBackInvokedCallback}. */
   CALLBACK,
   /** {@code KEYCODE_BACK} into the focused window's view tree. */
@@ -15,11 +20,14 @@ enum BackRoute {
   /**
    * [systemWindow]: the focused window is a home activity's own, which takes Back whatever the app
    * opted in to (it runs in the app's process, so it shares the app's opt-in). [hasCallback]: the
-   * focused window opted in and has a top {@code OnBackInvokedCallback}.
+   * focused window opted in and has a top {@code OnBackInvokedCallback}; [activityDefault]: that
+   * callback is the activity's own default, as it is while nothing in the app (androidx's {@code
+   * OnBackPressedDispatcher} included) wants Back.
    */
-  static BackRoute of(boolean systemWindow, boolean hasCallback) {
+  static BackRoute of(boolean systemWindow, boolean hasCallback, boolean activityDefault) {
     if (systemWindow) return SYSTEM;
-    return hasCallback ? CALLBACK : KEY;
+    if (!hasCallback) return KEY;
+    return activityDefault ? ACTIVITY : CALLBACK;
   }
 
   /** One {@code OnBackInvokedCallback}, as {@link #deliver} drives it. */
