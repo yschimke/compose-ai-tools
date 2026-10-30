@@ -97,6 +97,15 @@ internal class LaunchCommand(private val args: List<String>) {
       return
     }
 
+    val device = args.flagValue("--device")
+    if (device != null) {
+      if (device !in DEVICES) fail("unknown --device $device (${DEVICES.joinToString(", ")})")
+      if (args.flagValue("--qualifiers") != null) {
+        fail(
+          "--device sets the display; drop --qualifiers, or send the qualifiers command after launch"
+        )
+      }
+    }
     val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
@@ -110,7 +119,9 @@ internal class LaunchCommand(private val args: List<String>) {
     if (formFactor != ApkFormFactor.PHONE) {
       System.err.println(
         "compose-preview launch: ${formFactor.id} app; display ${formFactor.qualifiers}" +
-          (if (args.flagValue("--qualifiers") != null) " (overridden by --qualifiers)" else "")
+          (if (args.flagValue("--qualifiers") != null || args.flagValue("--device") != null)
+            " (overridden by --qualifiers / --device)"
+          else "")
       )
     }
 
@@ -137,6 +148,7 @@ internal class LaunchCommand(private val args: List<String>) {
             qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
             formFactor = formFactor.id,
             launchActivity = launchActivity,
+            device = device,
             fontScale = args.flagValue("--font-scale"),
             headless = headless,
             control = control != null,
@@ -167,6 +179,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val installProviders: Boolean,
     /** Draw the control channel's taps, swipes and commands over the window. */
     val showAgent: Boolean = true,
+    /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
+    val device: String? = null,
   )
 
   private fun convert(
@@ -231,6 +245,12 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val DEFAULT_QUALIFIERS = ApkFormFactor.PHONE.qualifiers
 
+    /**
+     * The simulator's device presets (`DisplayGeometry.PRESETS` in `:simulator-host`), which the
+     * control channel's `device` command switches between at run time.
+     */
+    val DEVICES = listOf("phone", "foldable", "foldable-folded", "tablet", "desktop")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -256,6 +276,7 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       properties["composeai.simulator.formFactor"] = options.formFactor
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
+      options.device?.let { properties["composeai.simulator.device"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
@@ -315,6 +336,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               phone ${ApkFormFactor.PHONE.qualifiers}, wear ${ApkFormFactor.WEAR.qualifiers}
                               (drawn round), glimmer ${ApkFormFactor.GLIMMER.qualifiers},
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
+        --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
+                              tablet or desktop, at hdpi; in place of --qualifiers.
         --font-scale <f>      Font scale (default 1.0).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).

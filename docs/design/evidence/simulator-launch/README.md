@@ -58,6 +58,38 @@ for the permission, then scanning after `tap "Grant permission"` is granted.
 
 ![Sunflower, Muzei, MeshCore before and after the Bluetooth grant](sunflower-muzei-meshcore-ble.png)
 
+## Display, fold and device controls
+
+Now in Android's demo debug APK, headless and under Xvfb, driven over `--control stdio` with the
+display commands (`device`, `rotate`, `posture`, `resize`, `qualifiers`, `fontScale`); screenshots
+are the control channel's `screenshot` unless noted.
+
+**Fold postures** — `device foldable`, `tap "Interests"`, `rotate landscape` (841×673dp), then
+`posture`. Flat is what `main` shows at that size, since no fold reached the app before: a
+navigation rail and the list-detail pair. In `tabletop` (a horizontal half-opened fold)
+`NavigationSuiteScaffold` moves to a bottom bar, as Material's adaptive library does for
+`isTabletop`; in `book` (vertical, half-opened, so separating) the detail pane starts at the
+hinge; with `hingeDp: 40` it starts past the hinge band.
+
+![Flat, tabletop, book and a 40dp hinge on the foldable in landscape](fold-postures.png)
+
+**Device presets and rotation** — `device phone` (411×891dp: bottom bar), `device foldable` (673×841dp
+open: a rail, one pane), the phone after `rotate` (891×411dp), `device tablet` (1280×800dp) and
+`device desktop` (1920×1080dp at mdpi): list-detail with a rail.
+
+![Phone, foldable, rotated phone, tablet and desktop](device-presets.png)
+
+**Configuration at run time** — `qualifiers +night` and `fontScale 1.5`, each recreating the
+activity as a device does.
+
+![Phone, night mode, font scale 1.5](runtime-config.png)
+
+**The window follows** — the Xvfb screen (`import -window root`, scaled), after launch, after the
+foldable in landscape, and after `device desktop`: the Swing window is resized to the display each
+time.
+
+![The Swing window at three display sizes](window-follows.png)
+
 ## Wear OS, Glimmer and Android XR
 
 `launch` detects the form factor from the APK (`docs/SIMULATOR.md` → Form factors). All headless

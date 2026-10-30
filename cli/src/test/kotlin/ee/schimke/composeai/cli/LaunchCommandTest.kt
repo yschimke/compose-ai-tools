@@ -251,6 +251,32 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.skipProviders") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.fontScale") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.showAgent") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.device") })
+  }
+
+  @Test
+  fun `a device preset becomes a system property`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            device = "foldable",
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.device=foldable" in command)
+    assertTrue("foldable" in LaunchCommand.DEVICES)
   }
 
   @Test
