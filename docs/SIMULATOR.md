@@ -272,6 +272,10 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `widgets` | | the app's widget providers (sizes, spans, resize mode, configure, preview) and the widgets placed |
 | `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
 | `picker` | `action`? (`open` / `close`) | the widget picker |
+| `restart` | `keepData`? (true) | the app again in a fresh simulator JVM, its data kept; see [Restart, update and live reload](#restart-update-and-live-reload) |
+| `update` | `apk`, `keepData`? (true) | another APK (a rebuild) in a fresh simulator JVM, as `adb install -r` |
+| `reload` | `full`?, `keepData`? (true) | with `--project`: compiles the edit and restarts the app on the changed classes |
+| `snapshotData` | `to` | copies the app's data directory and external storage to `to/data` and `to/external` (what `restart` keeps) |
 | `quit` | | exits |
 
 ### Display, fold and device state
@@ -806,6 +810,71 @@ Confetti once ready — but the framework's graphics objects own native memory t
 collection frees, and an app idling on an animated screen makes too little garbage to trigger one:
 Confetti grew from 850 MB to 2.3 GB in two idle minutes before, and stays near 1 GB with it. A pair
 runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
+
+## Restart, update and live reload
+
+`launch --control stdio` keeps the simulator JVM behind a supervisor in the CLI, so the app can be
+replaced without ending the session or the client's connection:
+
+- **`restart`** starts the app again in a fresh simulator JVM — a new process, as after `am
+  force-stop` on a device, but with statics, singletons and in-memory state really gone — from
+  the same converted classes. Its data is kept: the old simulator copies its data directory and
+  external storage (`snapshotData`) and the new one restores them before the `Application` and
+  its providers are created. `"keepData":false` starts from a clean install.
+- **`update`** `{"apk":…}` does the same with another APK, usually a rebuild of the running one,
+  as `adb install -r` does. Its classes come from the conversion cache when that exact APK was
+  converted before. Keeping data needs the same package.
+- **`reload`**, with `--project <dir>` (and `--module`, default `app`; `--variant`, default
+  `debug`), delivers an edit without an APK. It runs the module's compile
+  (`:<module>:compile<Variant>JavaWithJavac`, which runs Kotlin's compile and
+  `process<Variant>Resources` before it) through the Tooling API, keeping the connection and so
+  the daemon warm, then restarts the app with every class that changed since the launch in an
+  overlay directory ahead of the converted APK. Nothing is dexed, packaged or converted. Class
+  files come from each project module's compiler output: `build/tmp/kotlin-classes/<variant>`,
+  AGP's built-in Kotlin output, `intermediates/javac/…/classes`, and JVM modules'
+  `build/classes/*/main`. Included builds and `buildSrc` are skipped.
+  - When aapt2's linked resources changed (an edited layout, string or drawable), the simulator's
+    resource APK becomes the launched APK with the new `resources.arsc`, `res/` and manifest swapped
+    in. When resource ids moved, the module's R classes are overlaid too.
+  - Assets and native libraries are only packaged into an APK, so a change there, or `"full":true`,
+    runs `assemble<Variant>` and `update`s to the result.
+  - A compile error is the command's error, with the compiler's `e:` lines, and the running app is
+    left alone.
+  - `launch --project <dir>` with no APK builds one first; `--live` reloads after every edit to a
+    module's `src/`, settled for 400 ms, and reports each one as a `reload` event.
+  - `--gradle-arg` (repeatable) passes arguments to that build, such as `--max-workers=2` or
+    `--configuration-cache`. A no-op compile through the configuration cache is the difference
+    between about one second and five.
+
+Each answers with the new simulator's `info` and where the time went: `snapshotMs`, `stopMs` and
+`startMs`, `totalMs`, and `startup` (also in every `ready` event): `jvmMs` to `main`, `sandboxMs`
+for Robolectric's sandbox, `applicationMs` to `Application.onCreate()` returning, and
+`firstActivityMs` to the first activity's first frame. `update` adds `conversion`, and `reload`
+adds `mode` (`classes`, `resources`, `apk` or `unchanged`), `build` (`ok`, `ms`, `tasks`,
+`errors`) and `classesChanged`. Every launch also sends a `conversion` event, before `ready`,
+saying whether the APK's classes came from the cache (`cached`) and what it cost (`ms`).
+
+TIMINGS_TABLE
+
+Why a new JVM rather than reloading classes in place: a changed class can only be redefined in a
+running JVM within its old shape (method bodies, with HotSpot), and a Compose edit changes shapes
+as often as not: new lambdas, new group keys, new fields. A fresh sandbox class loader in the same
+JVM costs almost what a new JVM does, since Robolectric's sandbox and the framework's classes are
+loaded per class loader (the JVM itself starts in about 0.3 s of the total). The native graphics
+runtime also binds to one class loader per process. A restart also gives the app a clean
+process, as a real reinstall does.
+
+What a reload does not keep or cover:
+
+- **UI state.** The back stack, scroll positions and anything not on disk are lost: the app starts
+  at its launcher activity, as after `adb install -r`. Compose's own hot reload (which keeps
+  state) needs the JetBrains Runtime's enhanced class redefinition and is not attempted.
+- **Desugared library APIs.** Overlaid classes are the compiler's JVM output, not D8's: an app
+  using core library desugaring passes `java.time` where the APK's classes expect `j$.time`, so
+  the classes that changed must not exchange those types with ones that did not.
+- **Release builds.** Shrunk (R8) APKs rename classes; reload against a debug variant.
+- **Modules elsewhere.** A module outside the project directory, or in an included build, is not
+  overlaid; edit those and use `full`.
 
 ## A paired phone and watch
 

@@ -112,6 +112,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
         app.getApplicationInfo().processName = app.getPackageName();
       }
       Logcat.install();
+      // A restarted or updated simulator's data, before anything opens a file.
+      int restored = AppFiles.restore(app);
+      if (restored > 0) System.setProperty(Startup.RESTORED_PROPERTY, Integer.toString(restored));
       NetworkSim.connect(app);
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
@@ -138,8 +141,10 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
           // The app has no wear-phone-interactions.
         }
       }
+      Startup.mark(Startup.PROVIDERS);
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
+      Startup.mark(Startup.APPLICATION);
     }
   }
 }

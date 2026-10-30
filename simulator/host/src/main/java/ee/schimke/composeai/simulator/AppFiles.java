@@ -159,6 +159,51 @@ final class AppFiles {
     }
   }
 
+  /** Where {@code launch} hands a restarted simulator the data its predecessor saved. */
+  static final String RESTORE_PROPERTY = "composeai.simulator.restoreData";
+
+  /**
+   * Copies the app's data directory and the simulated external storage into {@code to/data} and
+   * {@code to/external}: what a restarted or updated simulator (the CLI's {@code restart} and
+   * {@code update}) starts from, as {@code adb install -r} keeps an app's data. Taken while the
+   * app runs, so an open database is copied with its {@code -wal} and {@code -shm} files, which
+   * SQLite recovers from as after a crash.
+   */
+  JSONObject snapshot(File to) throws IOException {
+    delete(to);
+    int data = copy(dataDir(), new File(to, "data"));
+    File external = Environment.getExternalStorageDirectory();
+    int externalFiles = external != null && external.isDirectory()
+        ? copy(external, new File(to, "external"))
+        : 0;
+    return new Protocol.Json()
+        .put("hostPath", to.getPath())
+        .put("files", data + externalFiles)
+        .object();
+  }
+
+  /**
+   * Puts back what {@link #snapshot} saved, from {@value #RESTORE_PROPERTY}: before the
+   * application, its providers and anything else open a file. Returns the number of files.
+   */
+  static int restore(Context app) {
+    String from = System.getProperty(RESTORE_PROPERTY);
+    if (from == null || from.isEmpty()) return 0;
+    try {
+      int count = 0;
+      File data = new File(from, "data");
+      if (data.isDirectory()) count += copy(data, app.getDataDir());
+      File external = new File(from, "external");
+      File storage = Environment.getExternalStorageDirectory();
+      if (external.isDirectory() && storage != null) count += copy(external, storage);
+      return count;
+    } catch (IOException e) {
+      System.err.println("compose-preview: could not restore the app's data from " + from);
+      e.printStackTrace();
+      return 0;
+    }
+  }
+
   /** Deletes everything in the app's data and external storage: {@code pm clear}. */
   int clear() throws IOException {
     int deleted = 0;

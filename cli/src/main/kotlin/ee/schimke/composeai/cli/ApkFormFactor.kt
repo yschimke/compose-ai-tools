@@ -78,6 +78,16 @@ internal enum class ApkFormFactor(
     }
       .getOrDefault(Detected(PHONE, null))
 
+    /** [apk]'s application id from its binary manifest, or null when it cannot be read. */
+    fun packageOf(apk: File): String? = runCatching {
+      ZipFile(apk).use { zip ->
+        zip.getEntry("AndroidManifest.xml")?.let { entry ->
+          ManifestSignals.read(zip.getInputStream(entry).readBytes()).packageName.ifEmpty { null }
+        }
+      }
+    }
+      .getOrNull()
+
     private val DEX = Regex("""classes\d*\.dex""")
 
     internal fun classify(signals: ManifestSignals, dex: Sequence<ByteArray>): ApkFormFactor {
@@ -140,6 +150,8 @@ internal data class ManifestSignals(
   val features: Set<String> = emptySet(),
   val requiredFeatures: Set<String> = emptySet(),
   val projectedActivities: List<String> = emptyList(),
+  /** The manifest's `package`, the application id. */
+  val packageName: String = "",
 ) {
   companion object {
     private const val RES_STRING_POOL_TYPE = 0x0001
@@ -230,7 +242,7 @@ internal data class ManifestSignals(
         }
         offset += size
       }
-      return ManifestSignals(features, required, projected)
+      return ManifestSignals(features, required, projected, packageName)
     }
 
     /** An activity name as the manifest writes it (`.Glasses`, `Glasses`, or qualified). */

@@ -1,8 +1,5 @@
 package ee.schimke.composeai.cli
 
-import java.io.BufferedWriter
-import java.io.OutputStreamWriter
-import java.nio.charset.StandardCharsets
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,105 +16,58 @@ import kotlinx.serialization.json.jsonPrimitive
  * ending ends the other; closing stdin ends both.
  */
 internal class PairedLaunch(
-  private val devices: List<Pair<String, List<String>>>,
+  /** One supervisor per device, the first (the phone) taking commands that name none. */
+  private val devices: List<Pair<String, SimulatorSupervisor>>,
   private val control: Boolean,
 ) {
 
   fun run(): Int {
-    val processes = devices.map { (device, command) ->
-      val builder = ProcessBuilder(command)
-      if (!control) builder.redirectInput(ProcessBuilder.Redirect.INHERIT)
-      device to builder.start()
-    }
-    val hook = Thread { processes.forEach { (_, process) -> destroyTree(process) } }
+    devices.forEach { (_, supervisor) -> supervisor.start() }
+    val hook = Thread { devices.forEach { (_, supervisor) -> supervisor.destroy() } }
     Runtime.getRuntime().addShutdownHook(hook)
-    val pumps = mutableListOf<Thread>()
-    for ((device, process) in processes) {
-      pumps +=
-        daemon("paired-err-$device") {
-          process.errorStream.bufferedReader().useLines { lines ->
-            for (line in lines) {
-              val prefixed = prefix(line, device)
-              synchronized(System.err) { System.err.println(prefixed) }
-            }
-          }
-        }
-    }
-    if (!control) {
-      for ((device, process) in processes) {
-        pumps +=
-          daemon("paired-out-$device") {
-            process.inputStream.bufferedReader().useLines { lines ->
-              for (line in lines) {
-                val prefixed = prefix(line, device)
-                synchronized(System.out) {
-                  println(prefixed)
-                  System.out.flush()
-                }
-              }
-            }
-          }
-      }
-    }
-
+    val supervisors = devices.toMap()
     if (control) {
-      val inputs = processes.associate { (device, process) ->
-        device to BufferedWriter(OutputStreamWriter(process.outputStream, StandardCharsets.UTF_8))
-      }
       val primary = devices.first().first
-      for ((device, process) in processes) {
-        pumps +=
-          daemon("paired-out-$device") {
-            process.inputStream.bufferedReader().useLines { lines ->
-              for (line in lines) {
-                val tagged = tag(line, device)
-                synchronized(System.out) {
-                  println(tagged)
-                  System.out.flush()
-                }
-              }
-            }
-          }
-      }
       daemon("paired-in") {
         System.`in`.bufferedReader().useLines { lines ->
           for (line in lines) {
             if (line.isBlank()) continue
-            val target = inputs[deviceOf(line) ?: primary]
+            // A lone simulator takes every command, whatever device it names.
+            val target =
+              if (devices.size == 1) devices.single().second
+              else supervisors[deviceOf(line) ?: primary]
             if (target == null) {
-              synchronized(System.out) {
-                println(
-                  """{"ok":false,"error":"no device ${deviceOf(line)}; ${inputs.keys} are paired"}"""
-                )
-              }
+              emit(
+                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are paired"}"""
+              )
               continue
             }
-            runCatching {
-              target.write(line)
-              target.newLine()
-              target.flush()
-            }
+            target.submit(line)
           }
         }
-        inputs.values.forEach { runCatching { it.close() } }
+        devices.forEach { (_, supervisor) -> supervisor.close() }
       }
     }
 
     // The first simulator to end ends the pair.
     val exit =
       java.util.concurrent.CompletableFuture.anyOf(
-          *processes.map { (_, p) -> p.onExit() }.toTypedArray()
+          *devices
+            .map { (_, supervisor) ->
+              java.util.concurrent.CompletableFuture.supplyAsync { supervisor.awaitExit() }
+            }
+            .toTypedArray()
         )
-        .get() as Process
-    processes.forEach { (_, p) -> if (p !== exit) destroyTree(p) }
-    // The last lines either simulator printed, its exit's stack trace among them.
-    pumps.forEach { it.join(PUMP_DRAIN_MS) }
+        .get() as Int
+    devices.forEach { (_, supervisor) -> supervisor.destroy() }
     try {
       Runtime.getRuntime().removeShutdownHook(hook)
     } catch (_: IllegalStateException) {
       // Shutdown already began.
     }
-    return exit.exitValue()
+    // The last lines either simulator printed, its exit's stack trace among them.
+    Thread.sleep(PUMP_DRAIN_MS)
+    return exit
   }
 
   companion object {
@@ -127,7 +77,20 @@ internal class PairedLaunch(
     }
       .getOrNull()
 
-    private const val PUMP_DRAIN_MS = 2_000L
+    private const val PUMP_DRAIN_MS = 500L
+
+    /** A line for this process's stdout, whole even when both simulators print at once. */
+    fun emit(line: String) {
+      synchronized(System.out) {
+        println(line)
+        System.out.flush()
+      }
+    }
+
+    /** A line for this process's stderr. */
+    fun log(line: String) {
+      synchronized(System.err) { System.err.println(line) }
+    }
 
     /** A simulator's log line, prefixed with its device: `[watch] D/Tile: …`. */
     internal fun prefix(line: String, device: String): String = "[$device] $line"
