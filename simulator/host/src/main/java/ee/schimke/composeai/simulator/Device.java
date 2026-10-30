@@ -30,14 +30,14 @@ final class Device {
 
   private final Application app;
   private final Navigator navigator;
-  /** Applies a changed configuration to the top activity; see {@code Session#qualifiers}. */
-  private final Runnable configurationChanged;
+  /** Owns the display: every size, density or font change goes through it. */
+  private final DeviceDisplay display;
   private final String initialQualifiers;
 
-  Device(Application app, Navigator navigator, Runnable configurationChanged) {
+  Device(Application app, Navigator navigator, DeviceDisplay display) {
     this.app = app;
     this.navigator = navigator;
-    this.configurationChanged = configurationChanged;
+    this.display = display;
     this.initialQualifiers = RuntimeEnvironment.getQualifiers();
   }
 
@@ -141,7 +141,7 @@ final class Device {
         }
       case Settings.System.FONT_SCALE:
         RuntimeEnvironment.setFontScale(Float.parseFloat(value));
-        configurationChanged.run();
+        display.configurationChanged();
         return "font scale " + value + ", configuration changed";
       case Settings.System.TIME_12_24:
         // Intent.EXTRA_TIME_PREF_24_HOUR_FORMAT, @hide.
@@ -166,8 +166,7 @@ final class Device {
     boolean reset =
         "reset".equals(c.optString("size", null)) || "reset".equals(c.optString("density", null));
     if (reset) {
-      RuntimeEnvironment.setQualifiers(initialQualifiers);
-      configurationChanged.run();
+      display.reset(initialQualifiers);
     } else if (c.has("size") || c.has("density")) {
       DisplayMetrics metrics = app.getResources().getDisplayMetrics();
       int dpi = c.has("density") ? c.getInt("density") : metrics.densityDpi;
@@ -178,16 +177,7 @@ final class Device {
         width = Integer.parseInt(size[0]);
         height = Integer.parseInt(size[1]);
       }
-      String qualifiers =
-          String.format(
-              Locale.ROOT,
-              "+w%ddp-h%ddp-%s-%ddpi",
-              width * 160 / dpi,
-              height * 160 / dpi,
-              width > height ? "land" : "port",
-              dpi);
-      RuntimeEnvironment.setQualifiers(qualifiers);
-      configurationChanged.run();
+      display.overrideSize(width, height, dpi);
     }
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
     return new Protocol.Json()

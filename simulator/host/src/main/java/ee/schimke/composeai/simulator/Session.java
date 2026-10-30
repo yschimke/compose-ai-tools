@@ -60,6 +60,8 @@ final class Session {
   private final Device device;
   private final Logcat logcat;
   private final AppFiles files;
+  private final DeviceDisplay display;
+  private final DeviceState state;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
@@ -90,9 +92,11 @@ final class Session {
     this.ui = ui;
     this.protocol = protocol;
     this.navigator = new Navigator(app, protocol);
-    this.device = new Device(app, navigator, this::configurationChanged);
+    this.display = new DeviceDisplay(app, navigator);
+    this.device = new Device(app, navigator, display);
     this.logcat = new Logcat(protocol);
     this.files = new AppFiles(app);
+    this.state = new DeviceState(app, navigator);
   }
 
   void start() {
@@ -200,6 +204,7 @@ final class Session {
   }
 
   private static boolean changesUi(String name) {
+    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name)) return true;
     switch (name) {
       case "tap":
       case "longPress":
@@ -229,6 +234,9 @@ final class Session {
   }
 
   private JSONObject run(String name, JSONObject c) throws Exception {
+    JSONObject emulated = display.command(name, c);
+    if (emulated == null) emulated = state.command(name, c);
+    if (emulated != null) return emulated;
     switch (name) {
       case "ping":
         return new Protocol.Json().put("uptimeMs", SystemClock.uptimeMillis()).object();
@@ -401,6 +409,7 @@ final class Session {
     json.put("width", metrics.widthPixels);
     json.put("height", metrics.heightPixels);
     json.put("density", metrics.density);
+    json.put("display", display.describe());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
     json.put("backStack", navigator.backStack().size());
@@ -578,25 +587,8 @@ final class Session {
   }
 
   private JSONObject qualifiers(String value) {
-    RuntimeEnvironment.setQualifiers(value);
-    configurationChanged();
+    display.qualifiers(value);
     return info();
-  }
-
-  /** Applies the current configuration to the top activity, as a device does on a change. */
-  private void configurationChanged() {
-    Navigator.Entry top = navigator.top();
-    if (top != null) {
-      top.controller.configurationChange(
-          app.getResources().getConfiguration(), app.getResources().getDisplayMetrics());
-      // An activity that does not handle the change is recreated, and Robolectric's recreate stops
-      // short of attaching the new window.
-      Activity activity = top.activity();
-      if (activity.getWindow() != null
-          && !activity.getWindow().getDecorView().isAttachedToWindow()) {
-        top.controller.visible();
-      }
-    }
   }
 
   private static MotionEvent touch(long down, long time, int action, float x, float y) {
