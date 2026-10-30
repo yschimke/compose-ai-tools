@@ -51,7 +51,7 @@ final class Radios {
     this.bluetooth = new BluetoothSim(app, protocol, navigator);
     network.attach(navigator, bluetooth);
     wifi.attach(protocol);
-    navigator.systemUi = this::systemIntent;
+    navigator.addSystemUi(this::systemIntent);
     current = this;
   }
 
