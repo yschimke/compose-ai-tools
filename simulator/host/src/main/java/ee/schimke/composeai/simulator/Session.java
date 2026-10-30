@@ -127,6 +127,9 @@ final class Session {
     new Handoffs(app, protocol, navigator);
     this.appActions = new AppActions(app, navigator);
     this.appFunctions = new AppFunctions(app, protocol);
+    // On a device with other apps (--install): join it, and serve their calls into this one.
+    AppFunctions.serveOnBus(app);
+    DeviceBus.start(app.getPackageName());
   }
 
   void start() {
@@ -1024,6 +1027,10 @@ final class Session {
   private void checkPackage(JSONObject c) {
     String pkg = c.optString("package", null);
     if (pkg != null && !pkg.equals(app.getPackageName())) {
+      if (DevicePeers.isPeer(pkg)) {
+        throw new IllegalArgumentException(
+            pkg + " runs in a simulator of its own: send this command with \"device\":\"" + pkg + "\"");
+      }
       throw new IllegalArgumentException(
           pkg + " is not installed; the simulator runs only " + app.getPackageName());
     }

@@ -256,13 +256,19 @@ final class Device {
   }
 
   JSONObject packages(JSONObject c) {
-    String pkg = app.getPackageName();
+    // The app, then the others installed on the device with it (--install).
+    java.util.List<String> all = new java.util.ArrayList<>();
+    all.add(app.getPackageName());
+    all.addAll(DevicePeers.packages());
     JSONArray list = new JSONArray();
-    if (!c.has("filter") || pkg.contains(c.optString("filter"))) list.put(pkg);
-    return new Protocol.Json()
-        .put("packages", list)
-        .put("output", list.length() == 0 ? "" : "package:" + pkg)
-        .object();
+    StringBuilder output = new StringBuilder();
+    for (String pkg : all) {
+      if (c.has("filter") && !pkg.contains(c.optString("filter"))) continue;
+      list.put(pkg);
+      if (output.length() > 0) output.append('\n');
+      output.append("package:").append(pkg);
+    }
+    return new Protocol.Json().put("packages", list).put("output", output.toString()).object();
   }
 
   // ---------------------------------------------------------------------------------------------
