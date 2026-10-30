@@ -76,4 +76,14 @@ public class DisplayGeometryTest {
     assertEquals("hdpi", DisplayGeometry.densityQualifier(240));
     assertEquals("420dpi", DisplayGeometry.densityQualifier(420));
   }
+
+  @Test
+  public void screenLayoutFollowsTheQualifierBuckets() {
+    // SCREENLAYOUT_SIZE_NORMAL | SCREENLAYOUT_LONG_YES
+    assertEquals(0x22, DisplayGeometry.screenLayout(411, 891));
+    // SCREENLAYOUT_SIZE_LARGE | SCREENLAYOUT_LONG_NO
+    assertEquals(0x13, DisplayGeometry.screenLayout(673, 841));
+    // SCREENLAYOUT_SIZE_XLARGE | SCREENLAYOUT_LONG_YES: a 1080p external display at mdpi
+    assertEquals(0x24, DisplayGeometry.screenLayout(1920, 1080));
+  }
 }

@@ -215,6 +215,7 @@ internal object CliFlags {
       "--font-scale",
       // `launch`
       "--control",
+      "--display",
       "--qualifiers",
       "--form-factor",
       "--sdk",
@@ -222,6 +223,7 @@ internal object CliFlags {
       "--java",
       "--pair",
       "--pair-qualifiers",
+      "--fingerprint",
       // bundle externalize
       "--res-out",
       "--ext",

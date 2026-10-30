@@ -252,6 +252,7 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.fontScale") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.showAgent") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.device") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.displays") })
   }
 
   @Test
@@ -277,6 +278,30 @@ class LaunchCommandTest {
       )
     assertTrue("-Dcomposeai.simulator.device=foldable" in command)
     assertTrue("foldable" in LaunchCommand.DEVICES)
+  }
+
+  @Test
+  fun `each --display joins one system property`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            displays = listOf("1280x720@mdpi,name=TV", "rear"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.displays=1280x720@mdpi,name=TV;rear" in command)
   }
 
   @Test

@@ -22,6 +22,8 @@ import org.robolectric.internal.bytecode.ShadowProviders;
 import org.robolectric.pluginapi.Sdk;
 import org.robolectric.pluginapi.SdkProvider;
 import org.robolectric.simulator.SimulatorClassLoader.JarCollection;
+import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 import org.robolectric.util.inject.Injector;
 
 /**
@@ -76,6 +78,16 @@ final class SimulatorSandbox {
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class, ShadowGoogleApiAvailability.class);
     }
+    // By name: loading the class here, outside the sandbox, would load Robolectric's
+    // ShadowUiAutomation and android.app.UiAutomation with it into this class loader, and
+    // RemoteControl.connect(UiAutomation, ...) would then refuse the sandbox's SimulatorControl.
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.app.UiAutomation"),
+        ClassParameter.from(
+            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowUiAutomation"),
+        ClassParameter.from(boolean.class, false));
     ShadowMap shadowMap = shadows.build();
     androidSandbox.replaceShadowMap(shadowMap);
     ClassHandler classHandler =

@@ -419,12 +419,18 @@ final class AdbShell {
             extras.put(key, typed("int[]", ints));
             break;
           }
+        case "--display":
+          {
+            // An activity starts on that display; nothing else is placed by display.
+            int display = parseInt(a.required(option), option);
+            if (activity) command.put("display", display);
+            break;
+          }
         case "--user":
         case "--receiver-permission":
-        case "--display":
         case "--windowingMode":
         case "--activityType":
-          // Single-user, single-display, and nothing checks a receiver permission.
+          // Single-user, and nothing checks a receiver permission.
           a.required(option);
           break;
         case "-W":
@@ -662,10 +668,18 @@ final class AdbShell {
           "rotaryencoder");
 
   private static Map<String, Object> input(Args a) {
+    Integer display = null;
     if (a.hasNext() && a.peek().equals("-d")) {
       a.next();
-      a.required("-d");
+      display = parseInt(a.required("-d"), "-d");
     }
+    Map<String, Object> command = inputCommand(a);
+    // `input -d <id>` sends the event to that display's windows.
+    if (display != null) command.put("display", display);
+    return command;
+  }
+
+  private static Map<String, Object> inputCommand(Args a) {
     if (a.hasNext() && INPUT_SOURCES.contains(a.peek())) a.next();
     String sub = a.required("input command");
     switch (sub) {
@@ -980,7 +994,7 @@ final class AdbShell {
     Map<String, Object> command = cmd("screenshot");
     while (a.hasNext() && a.peek().startsWith("-")) {
       String option = a.next();
-      if (option.equals("-d")) a.required(option);
+      if (option.equals("-d")) command.put("display", parseInt(a.required(option), option));
       else if (!option.equals("-p")) {
         throw new UnsupportedException("screencap " + option + " is not supported (PNG only)");
       }

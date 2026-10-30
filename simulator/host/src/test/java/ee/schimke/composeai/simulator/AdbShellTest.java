@@ -223,6 +223,21 @@ public class AdbShellTest {
     assertThrows(AdbShell.UnsupportedException.class, () -> t("content query"));
   }
 
+  // secondary displays
+
+  @Test
+  public void aDisplayIdRoutesStartsInputAndScreenshots() {
+    Map<String, Object> start = t("am start --display 1 -n com.x/.Second");
+    assertEquals("startActivity", start.get("cmd"));
+    assertEquals(1, start.get("display"));
+    assertEquals(2, t("input -d 2 tap 10 20").get("display"));
+    assertEquals("tap", t("input -d 2 tap 10 20").get("cmd"));
+    assertFalse(t("input tap 10 20").containsKey("display"));
+    assertEquals(1, t("screencap -d 1 -p > tv.png").get("display"));
+    // A service has no display.
+    assertFalse(t("am startservice --display 1 -n com.x/.S").containsKey("display"));
+  }
+
   // display, network, dumpsys, logcat
 
   @Test

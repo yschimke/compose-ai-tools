@@ -160,6 +160,7 @@ internal class LaunchCommand(private val args: List<String>) {
         control = control != null,
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
+        displays = args.flagValuesAll("--display"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
     fun commandFor(apk: File, classes: File, options: Options) =
@@ -196,6 +197,8 @@ internal class LaunchCommand(private val args: List<String>) {
           formFactor = ApkFormFactor.WEAR.id,
           launchActivity = null,
           device = null,
+          // --display connects to the phone; the watch has its one round display.
+          displays = emptyList(),
           dataLayer = DataLayerNode(hub.port, WATCH),
         ),
       )
@@ -239,6 +242,11 @@ internal class LaunchCommand(private val args: List<String>) {
     val device: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
+    /**
+     * Secondary displays connected at launch (`--display`, repeatable), each a size in dp with
+     * options: `1280x720@xhdpi,name=TV,type=external`.
+     */
+    val displays: List<String> = emptyList(),
   )
 
   private fun convert(
@@ -349,6 +357,9 @@ internal class LaunchCommand(private val args: List<String>) {
         properties["composeai.simulator.datalayer.node"] = it.nodeId
         properties["composeai.simulator.datalayer.name"] = it.displayName
       }
+      if (options.displays.isNotEmpty()) {
+        properties["composeai.simulator.displays"] = options.displays.joinToString(";")
+      }
       properties.putAll(robolectricProperties)
       for ((key, value) in properties) add("-D$key=$value")
       add("-cp")
@@ -406,6 +417,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
+        --display <spec>      Connect a secondary display at launch (repeatable): a size in
+                              dp with an optional density, then name=, type= (external,
+                              virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
+                              own window; Presentation and launch-display activities use it.
         --font-scale <f>      Font scale (default 1.0).
         --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
                               apps check to skip real work under tests; MeshCore's watch does).

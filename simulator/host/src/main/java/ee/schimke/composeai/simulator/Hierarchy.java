@@ -24,8 +24,8 @@ import org.json.JSONObject;
  * virtual node tree, so Compose semantics (text, content descriptions, {@code testTag}s exposed as
  * resource ids, click and scroll actions) appear alongside views.
  *
- * <p>Only the windows a user could see are walked: the resumed activity's, and dialogs and popups
- * on top of it. Stopped activities further down the back stack are skipped.
+ * <p>Only the windows a user could see on one display are walked: the resumed activity's, and
+ * dialogs and popups on top of it. Stopped activities further down the back stack are skipped.
  */
 final class Hierarchy {
 
@@ -74,12 +74,13 @@ final class Hierarchy {
 
   private int count;
 
-  /** Snapshots every visible window, top-most last. */
-  List<Node> snapshot(Set<Object> hiddenWindowTokens) {
+  /** Snapshots every visible window on display [displayId], top-most last. */
+  List<Node> snapshot(Set<Object> hiddenWindowTokens, int displayId) {
     count = 0;
     List<Node> windows = new ArrayList<>();
     for (View root : WindowInspector.getGlobalWindowViews()) {
       if (!root.isShown()) continue;
+      if (Displays.displayOf(root) != displayId) continue;
       if (hiddenWindowTokens.contains(root.getApplicationWindowToken())) continue;
       Node node = view(root, 0);
       if (node != null) windows.add(node);
