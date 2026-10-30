@@ -241,7 +241,7 @@ object PreviewTargetInference {
         className = candidate.ownerFqn,
         functionName = signature.name,
         jvmName = candidate.method.name,
-        descriptor = candidate.method.typeDescriptorStr,
+        descriptor = candidate.method.typeDescriptorString,
         // Library symbols have no source file here; [PreviewTarget.origin] says so.
         sourceFile = null,
         confidence = confidence,
@@ -270,7 +270,7 @@ object PreviewTargetInference {
   ): List<TargetOverload> {
     if (candidate.overloads.size < 2) return emptyList()
     return candidate.overloads.mapNotNull { method ->
-      val descriptor = method.typeDescriptorStr ?: return@mapNotNull null
+      val descriptor = method.typeDescriptorString ?: return@mapNotNull null
       val signature =
         ComposableSignature.signatureOf(candidate.classInfo, method, scanResult)
           ?: return@mapNotNull null
@@ -372,7 +372,7 @@ object PreviewTargetInference {
             candidate.method.parameterInfo?.any { p ->
               // Cheap heuristic for "consumes the @PreviewParameter value": a non-`@Composable ()
               // -> Unit` parameter.
-              p.annotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
+              p.allAnnotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
             } == true,
           wrapperUnwrapped = candidate.ownerFqn to candidate.method.name in unwrappedTargets,
           totalSurvivors = survivors,
@@ -433,7 +433,7 @@ object PreviewTargetInference {
     previewMethod: MethodInfo,
   ): List<Invocation> {
     val resource = previewClassInfo.resource ?: return emptyList()
-    val root = MethodKey(previewMethod.name, previewMethod.typeDescriptorStr)
+    val root = MethodKey(previewMethod.name, previewMethod.typeDescriptorString)
     return extractCalls(
       resource = resource,
       ownerFqn = previewClassInfo.name,
@@ -829,7 +829,7 @@ object PreviewTargetInference {
       calledOverload(
         candidateMethods,
         call.descriptor,
-        descriptorOf = { it.typeDescriptorStr },
+        descriptorOf = { it.typeDescriptorString },
         isComposable = { it.hasAnnotation(COMPOSABLE_FQN) },
       ) ?: return null
     // Composables that are themselves previews are siblings, not targets.
@@ -942,7 +942,7 @@ object PreviewTargetInference {
       classFqn = callerOwner,
       methodName = callerSourceName,
       jvmName = callerMethod.name,
-      descriptor = callerMethod.typeDescriptorStr,
+      descriptor = callerMethod.typeDescriptorString,
       sourceFile = resolveSourceFile(callerOwner) ?: packageQualifiedSourcePath(callerClassInfo),
       score = score,
       signals = signals,

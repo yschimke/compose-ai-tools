@@ -17,6 +17,7 @@ class ComposableSignatureTest {
    */
   private fun parametersOf(simpleName: String): List<TargetParameter> {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .acceptPackages("ee.schimke.composeai.discovery")
@@ -62,6 +63,7 @@ class ComposableSignatureTest {
   /** As [parametersOf], for the opt-in markers a caller of the fixture has to apply. */
   private fun optInsOf(simpleName: String): List<String> {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       // The producer enables this too; without it no annotation is visible and every method would
@@ -115,6 +117,7 @@ class ComposableSignatureTest {
   /** As [parametersOf], for the knob view of the same fixtures. */
   private fun knobsOf(simpleName: String): List<PreviewKnob> {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .acceptPackages("ee.schimke.composeai.discovery")
@@ -159,13 +162,17 @@ class ComposableSignatureTest {
     // needed to translate. Asserted on the pairs, since no default is recoverable without the
     // Compose compiler.
     val constants =
-      ClassGraph().enableClassInfo().acceptPackages("ee.schimke.composeai.discovery").scan().use {
-        scan ->
-        PreviewKnobDefaults.enumConstantsOf(
-          scan.getClassInfo("ee.schimke.composeai.discovery.KitIconSize")
-            ?: error("enum fixture not found")
-        )
-      }
+      ClassGraph()
+        .enableClasspath()
+        .enableClassInfo()
+        .acceptPackages("ee.schimke.composeai.discovery")
+        .scan()
+        .use { scan ->
+          PreviewKnobDefaults.enumConstantsOf(
+            scan.getClassInfo("ee.schimke.composeai.discovery.KitIconSize")
+              ?: error("enum fixture not found")
+          )
+        }
 
     assertThat(constants)
       .containsExactly(
@@ -187,6 +194,7 @@ class ComposableSignatureTest {
     // Without a scan the constants can't be read, so it's "not seedable" rather than an empty
     // picker.
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .acceptPackages("ee.schimke.composeai.discovery")
@@ -323,6 +331,7 @@ class ComposableSignatureTest {
    */
   private fun constructible(simpleName: String): Boolean {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .enableAnnotationInfo()
@@ -390,6 +399,7 @@ class ComposableSignatureTest {
   /** `noArgFactoryFor` over a real scan, asked of the TYPE for the same reason as above. */
   private fun factoryFor(simpleName: String): String? {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .enableAnnotationInfo()
@@ -453,6 +463,7 @@ class ComposableSignatureTest {
   /** Resolve a fixture function's single parameter through the full `signatureOf` path. */
   private fun parameterWithScan(simpleName: String): TargetParameter {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .enableAnnotationInfo()
@@ -503,6 +514,7 @@ class ComposableSignatureTest {
     // Annotation info is on for opt-in markers; what's withheld is the scan argument
     // constructibility needs.
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .enableAnnotationInfo()
