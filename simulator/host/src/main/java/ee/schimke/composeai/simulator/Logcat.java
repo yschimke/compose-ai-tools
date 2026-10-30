@@ -53,7 +53,9 @@ final class Logcat {
       case "dump":
         return dump(filter, c.optInt("tail", MAX_DUMP));
       case "clear":
+        // ShadowLog.clear() is its reset: capture off and the time stamp gone, so both again.
         ShadowLog.clear();
+        install();
         cursor = 0;
         return new Protocol.Json().put("cleared", true).object();
       case "follow":
@@ -76,6 +78,7 @@ final class Logcat {
   private JSONObject dump(Filter filter, int tail) {
     List<ShadowLog.LogItem> logs = ShadowLog.getLogs();
     JSONArray lines = new JSONArray();
+    JSONArray entries = new JSONArray();
     int matched = 0;
     // Newest last, as logcat prints; count first so `tail` takes the last N that match.
     for (ShadowLog.LogItem item : logs) if (filter.matches(item)) matched++;
@@ -83,10 +86,14 @@ final class Logcat {
     int index = 0;
     for (ShadowLog.LogItem item : logs) {
       if (!filter.matches(item)) continue;
-      if (index++ >= skip) lines.put(format(item));
+      if (index++ >= skip) {
+        lines.put(format(item));
+        entries.put(entry(item));
+      }
     }
     return new Protocol.Json()
         .put("lines", lines)
+        .put("entries", entries)
         .put("matched", matched)
         .put("truncated", skip > 0)
         .object();
@@ -111,20 +118,31 @@ final class Logcat {
     for (int i = cursor; i < logs.size(); i++) {
       ShadowLog.LogItem item = logs.get(i);
       if (!following.matches(item)) continue;
-      protocol.event(
-          "log",
-          new Protocol.Json()
-              .put("time", item.timeString)
-              .put("level", String.valueOf(level(item.type)))
-              .put("tag", item.tag)
-              .put("message", message(item))
-              .object());
+      protocol.event("log", entry(item));
     }
     cursor = logs.size();
   }
 
+  /** One entry's fields, for a reader that formats it itself (the virtual device's logcat). */
+  private static JSONObject entry(ShadowLog.LogItem item) {
+    return new Protocol.Json()
+        .put("time", item.timeString)
+        .put("level", String.valueOf(level(item.type)))
+        .put("tag", item.tag)
+        .put("message", message(item))
+        .put("pid", PID)
+        .object();
+  }
+
+  /**
+   * The pid entries carry: Robolectric's {@code Process.myPid()} is 0, which reads as the kernel;
+   * the simulator JVM's own is the app's process here.
+   */
+  private static final int PID =
+      Process.myPid() != 0 ? Process.myPid() : (int) ProcessHandle.current().pid();
+
   static String format(ShadowLog.LogItem item) {
-    int pid = Process.myPid();
+    int pid = PID;
     return String.format(
         Locale.ROOT,
         "%s %5d %5d %c %s: %s",

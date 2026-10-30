@@ -62,6 +62,7 @@ internal class VirtualDevice(
   val storage = DeviceStorage(config.dir)
   val packages = PackageInstaller(this)
   val shell = DeviceShell(this)
+  val logcat = LogcatHub()
 
   val bootTimeMs: Long = System.currentTimeMillis()
 
@@ -151,11 +152,34 @@ internal class VirtualDevice(
     val old = link
     link = null
     old?.stop()
-    val started = SimulatorLink(simulatorCommand(apk), onLine)
+    val started =
+      SimulatorLink(simulatorCommand(apk)) { line -> if (!logcat.offer(line)) onLine(line) }
     link = started
+    // A follower outlives the simulator an install replaces: the new one follows for it too.
+    if (logcat.active) started.ready.thenRun { followLog(started) }
     started.onExit().thenAccept { process ->
       if (link === started) exit.complete(process.exitValue())
     }
+  }
+
+  /**
+   * Follows the log for an `adb logcat`, handing each new entry to [listener] until the returned
+   * subscription is closed.
+   */
+  fun followLog(listener: (LogcatEntry) -> Unit): AutoCloseable =
+    logcat.subscribe(
+      listener,
+      arm = { followLog(simulator()) },
+      disarm = {
+        link
+          ?.takeIf { it.alive }
+          ?.let { simulator -> runCatching { simulator.request(LogcatHub.STOP) } }
+      },
+    )
+
+  private fun followLog(simulator: SimulatorLink) {
+    runCatching { simulator.request(LogcatHub.FOLLOW) }
+      .onFailure { log("logcat: could not follow (${it.message})") }
   }
 
   fun stop() {
