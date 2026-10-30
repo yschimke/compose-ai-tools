@@ -192,6 +192,36 @@ The probes found five simulator bugs, all fixed:
 - **A bind reported as a failed start.** Robolectric logs a bind as a start too; the binds to the
   simulator's own Wear OS app services are now recognized as binds.
 
+## Evidence: MeshCore
+
+`meshcore-debug.apk` with `meshcore-wear-debug.apk`, `--sdk 36`. Three causes, in order, kept the
+watch from ever reaching its phone:
+
+1. **The watch skips the Data Layer under Robolectric.** `WearAppGraph` checks `Build.FINGERPRINT
+   == "robolectric"` (its preview renderer's test) and then uses `PreviewWearClient`, canned
+   data, instead of Horologist's `WearDataLayerRegistry`. That is what the earlier "Radio not
+   connected" was. `launch --fingerprint <device fingerprint>` makes it take the real client.
+2. **No `horologist_phone` capability (a MeshCore bug).** The watch's gRPC channel targets
+   `TargetNodeId.PairedPhone`, which Horologist resolves as
+   `getCapability("horologist_phone", FILTER_ALL).nodes.singleOrNull()`. The phone APK has no
+   `android_wear_capabilities` resource at all, so on a device too the watch finds no phone:
+   "Phone not reachable". MeshCore uses neither `PhoneDataLayerAppHelper` nor
+   `WearDataLayerAppHelper`; only the registry and `datalayer-grpc`. The fix belongs in the
+   phone app's `res/values/wear.xml`. In the simulator `{"cmd":"dataLayer","addCapability":
+   "horologist_phone"}` on the phone stands in for it.
+3. **A request to a `MESSAGE_RECEIVED` service (a simulator gap, fixed).** The phone's
+   `MeshcoreWearDataService` (`BaseGrpcDataService`) declares `MESSAGE_RECEIVED` for
+   `/WearGrpcService/…`, as Horologist's samples do, and Play services delivers `sendRequest`s
+   there too; the simulator only looked for `REQUEST_RECEIVED`.
+
+With all three addressed, the watch's `GetConnectionStatus` crosses as a `sendRequest`, the
+phone's service answers (6 bytes), and the watch shows the phone's real state: its radio is not
+connected, since the simulator has no BLE device in range.
+
+| No `horologist_phone` | Answered by the phone |
+| --- | --- |
+| ![MeshCore watch: phone not reachable](evidence/simulator-launch/pair-meshcore-watch-unreachable.png) | ![MeshCore watch: the phone's radio state](evidence/simulator-launch/pair-meshcore-watch-via-phone.png) |
+
 ## What is missing
 
 - **Fidelity gaps, all in `DataLayer`.** `getCapability` leaves out the local node (Play
@@ -221,14 +251,8 @@ The probes found five simulator bugs, all fixed:
 - **Driving it from the control channel.** An agent cannot yet inject a message or data item as
   if from the peer, which would let one simulator be tested against a scripted counterpart. It
   can add or drop a capability of its own node: `{"cmd":"dataLayer","addCapability":"…"}`.
-- **MeshCore** was not run: no Wear APK was available. Its watch calls the phone over
-  Horologist's gRPC (`MessageClientChannel` → `sendRequest`, answered by the phone's
-  `BaseGrpcDataService.onRequest`, both of which this prototype handles), but it targets
-  `TargetNodeId.PairedPhone`, which Horologist resolves as
-  `getCapability("horologist_phone").nodes.singleOrNull()`, and the phone APK declares no
-  `android_wear_capabilities` at all (checked in its `resources.arsc`). On a device that
-  resolves to no node too, so the simulator would surface a real MeshCore bug rather than a
-  simulator gap.
+- **MeshCore's own handshake** (above) needs `horologist_phone`, which its phone does not
+  declare; the simulator surfaces that rather than papering over it.
 
 ## Estimate
 
@@ -237,8 +261,7 @@ The prototype covers what both apps use. To make it the default for `launch --pa
 | Work | Estimate |
 | --- | --- |
 | Fidelity gaps above, with unit tests over a fake link | 1–2 days |
-| Inject-as-peer control commands (`dataLayerSend`, `dataLayerPut`) | 0.5 day |
+| Inject-as-peer control commands (`dataLayer` actions; in progress as `--data-layer agent`) | 0.5 day |
 | `ChannelClient` (pipes over the hub) | 2 days |
 | Minified APKs (mapping-file lookup of `Wearable` and the clients) | 2–3 days |
-| MeshCore end to end, once its phone declares `horologist_phone` | 0.5 day |
 | MCP server / `docs/SIMULATOR.md` integration of the paired session | 1 day |

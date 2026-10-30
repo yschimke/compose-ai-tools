@@ -170,3 +170,11 @@ Home Assistant's real phone and Wear apps, paired: the watch before, and after t
 | Watch before | Watch after the phone's demo tap |
 | --- | --- |
 | ![Home Assistant watch before](pair-ha-watch-before.png) | ![Home Assistant watch in demo mode](pair-ha-watch-demo.png) |
+
+MeshCore's Wear app paired with its phone (`--fingerprint` set, `horologist_phone` added on the
+phone with `dataLayer addCapability`): before, the watch finds no phone; after, its gRPC
+`GetConnectionStatus` request is answered by the phone, whose radio is not connected.
+
+| No `horologist_phone` | Answered by the phone |
+| --- | --- |
+| ![MeshCore watch, no phone](pair-meshcore-watch-unreachable.png) | ![MeshCore watch, via the phone](pair-meshcore-watch-via-phone.png) |
