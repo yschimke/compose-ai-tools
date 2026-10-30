@@ -476,7 +476,10 @@ final class Displays {
       if (view == null || displayOf(view) != id) continue;
       WindowManager.LayoutParams p = (WindowManager.LayoutParams) params.get(i);
       // A stopped activity's window, and its dialogs and popups, which share its token.
-      if (hidden.contains(view.getApplicationWindowToken())) continue;
+      if (hidden.contains(view.getApplicationWindowToken())
+          || (p.token != null && hidden.contains(p.token))) {
+        continue;
+      }
       roots.add(new Root(impl, view, p, i));
     }
     roots.sort(

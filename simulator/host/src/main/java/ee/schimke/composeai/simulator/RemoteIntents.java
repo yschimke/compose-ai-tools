@@ -20,7 +20,10 @@ final class RemoteIntents {
   static final String EXTRA_RESULT_RECEIVER =
       "com.google.android.wearable.intent.extra.RESULT_RECEIVER";
 
-  /** The Wear OS app: what {@code getCompanionPackageForNode} names, and the broadcast's target. */
+  /**
+   * The Wear OS app: the target of the {@code REMOTE_INTENT} broadcast, and what {@code
+   * getCompanionPackageForNode} names on the watch ({@link PhoneCompanion} on the phone).
+   */
   static final String COMPANION_PACKAGE = "com.google.android.wearable.app";
 
   /** {@code RemoteActivityHelper.RESULT_OK} / {@code RESULT_FAILED}. */

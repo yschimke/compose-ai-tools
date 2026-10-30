@@ -309,9 +309,17 @@ abstract class Command(
       findProjectRoot()
         ?: run {
           val here = File(".").absoluteFile.normalize().path
+          val lightbuild =
+            findLightbuildProjectRoot(
+              args.flagValue("--project")?.let(::File)?.absoluteFile ?: File(".").absoluteFile
+            )
           System.err.println(
-            "Cannot find Gradle project root: no settings.gradle[.kts] and no gradlew at or " +
-              "above $here"
+            if (lightbuild != null)
+              "Lightbuild project at ${lightbuild.path} has no generated Gradle build " +
+                "($LIGHTBUILD_GRADLE_DIR) yet: run `lightbuild build` there first."
+            else
+              "Cannot find Gradle project root: no settings.gradle[.kts] and no gradlew at or " +
+                "above $here"
           )
           exitProcess(1)
         }

@@ -69,10 +69,10 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `CapabilityClient` | the app's `android_wear_capabilities` resource plus `addLocalCapability`, announced in `hello`; `getCapability` lists the peers that have it |
 | `MessageClient.sendMessage` | a `message` frame; to an unknown node, `TARGET_NODE_NOT_CONNECTED` (4000) |
 | `MessageClient.sendRequest` | a `message` frame with a `requestId`; the peer's `RpcService` or `REQUEST_RECEIVED` service answers with a `response` |
-| `DataClient.putDataItem` | stored as `wear://<local>/<path>`, synced to the peers, and synced again to a node that connects later |
+| `DataClient.putDataItem` | stored as `wear://<local>/<path>`, synced to the peers, and synced again to a node that connects later; a put of the same bytes and assets changes nothing, as in Play services (reported `unchanged`); an item with no payload stays empty on the peer |
 | `getDataItems` / `getDataItem` / `deleteDataItems` | over every node's items, with `*` / node hosts and literal / prefix filters |
 | assets | `Asset.createFromBytes` bytes travel with the item; `getFdForAsset` streams them |
-| `NodeClient.getCompanionPackageForNode` | `com.google.android.wearable.app`, the Wear OS app, as on a device (not the peer app's package) |
+| `NodeClient.getCompanionPackageForNode` | on the phone `com.google.android.apps.wear.companion`, the Pixel Watch app, which the phone has installed with a launcher activity (`PhoneCompanion`); on the watch `com.google.android.wearable.app`, the Wear OS app; never the peer app's package |
 | `GoogleApiAvailability.checkApiAvailability` | available, when every API is a simulated Wearable client (`ShadowGoogleApiAvailability`); Horologist's `isAvailable()` asks it |
 | `RemoteActivityHelper.startRemoteActivity` | its `REMOTE_INTENT` broadcast to the Wear OS app is taken here and sent as an `activity` frame; the other node starts the intent (or, for `http(s)` / `market:` with no app activity, answers OK as its browser or Play Store would) and its `activityResult` answers the app's `ResultReceiver` |
 | `RemoteAuthClient.sendAuthorizationRequest` (watch) | the bind to the Wear OS app's OAuth service connects (`WearCompanion`); the request reaches the phone as an `oauth` event, and `{"cmd":"dataLayer","oauthResponse":"<redirect URL>"}` on the phone stands in for the browser's redirect, which reaches the app's callback |
@@ -83,6 +83,8 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `ChannelClient` | `openChannel` sends a `channelOpen` frame; the peer's `ChannelCallback`s and `CHANNEL_EVENT` services get `onChannelOpened`; each write to the output stream is a `channelData` frame (64 KiB at most) that the peer's input stream reads in order; closing the output is `channelEof` (the peer's `onInputClosed`, this side's `onOutputClosed`); `close` is `channelClose` (`CLOSE_REASON_LOCAL_CLOSE` here, `REMOTE_CLOSE` there); a peer that leaves closes its channels with `DISCONNECTED`. `sendFile` / `receiveFile` stream a file (`file:` or a content URI) through the same pipe ([`ChannelPipes`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/ChannelPipes.java), [`DataLayerChannels`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DataLayerChannels.java)) |
 | every client's `Task` | never complete when the app gets it: completed by a post to the main looper, as Play services' binder answer is ([`DeferredTasks`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/DeferredTasks.java)); a `sendRequest`'s answer or timeout, which arrives on the hub's reader or a timer thread, is posted to the main looper too |
 | `CompanionDeviceManager` | each peer is an association of the app (a stable locally administered MAC from its node id, its display name, `DEVICE_PROFILE_WATCH` on the phone); `associate()` is answered by the `companion` command's policy, from the peers and the Bluetooth devices in range ([`CompanionDevices`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/CompanionDevices.java)) |
+| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while paired; its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `ACTION_TIME_TICK` | sent each time the wall clock enters a new minute, so Wear Compose's `TimeText` moves (either form factor) |
 
 **Delivery** runs on the receiving app's main looper: the live listeners the app added (with
 their URI filters), then each manifest service whose intent filter matches the action
@@ -158,11 +160,11 @@ paired on `--sdk 35`. Each API in both directions where it has two:
 | Horologist `connectedNodes()`, `connectedAndInstalledNodes` | works: the peer, `Installed` |
 | Horologist `startRemoteOwnApp`, `startRemoteActivity(ActivityConfig)` | works, `APP_HELPER_RESULT_SUCCESS`; the activity starts on the other device |
 | Horologist `installOnNode` | `SUCCESS`: the Play Store link is answered as the store would |
-| Horologist `startCompanion` | `NO_COMPANION_FOUND`: there is no Wear OS app |
+| Horologist `startCompanion` | works both ways: the phone's Pixel Watch app opens (it was `NO_COMPANION_FOUND`) |
 | `MessageClient` `sendMessage` (`/request-network`), `sendRequest` / `onRequest` | works |
 | `DataClient` `putDataItem`, `getDataItems(wear://*/…, FILTER_PREFIX)`, listeners and services | works |
 | `RemoteActivityHelper.startRemoteActivity` (`VIEW` + `BROWSABLE`, data, package) | works both ways (the future never completed before: see below) |
-| `RemoteActivityHelper.availabilityStatus` | `STATUS_UNKNOWN` |
+| `RemoteActivityHelper.availabilityStatus` | `STATUS_AVAILABLE` on the watch, `STATUS_UNKNOWN` on the phone |
 | `PhoneTypeHelper.getPhoneDeviceType` | `DEVICE_TYPE_ANDROID` |
 | `RemoteAuthClient.sendAuthorizationRequest` | works, with `oauthResponse` as the redirect |
 | `BridgingManager.setConfig` | works, reported (it looped forever before: see below) |
@@ -194,6 +196,52 @@ The probes found five simulator bugs, all fixed:
   The simulator now behaves as a device.
 - **A bind reported as a failed start.** Robolectric logs a bind as a start too; the binds to the
   simulator's own Wear OS app services are now recognized as binds.
+
+## Evidence: Horologist's Data Layer sample
+
+Horologist's `datalayer/sample/phone` and `datalayer/sample/wear` debug APKs, unmodified, `--sdk
+35`: every screen on both sides and every `DataLayerAppHelper` call.
+
+| Feature | Phone | Watch |
+| --- | --- | --- |
+| `connectedNodes` (Nodes) / `connectedAndInstalledNodes` (Nodes Listener, Data Layer Nodes) | works | works |
+| `startCompanion` | works: opens the Pixel Watch app | works: the phone opens it |
+| `installOnNode` | works (`market://` answered as the Play Store would) | works (it threw `NoClassDefFoundError`) |
+| `startRemoteOwnApp` / `startRemoteActivity` | works; a running app comes forward rather than stacking | works (it threw `NoClassDefFoundError`) |
+| Install app / Re-Engage / Sign-in prompts, stock and custom | works (install app shown with the watch's capability dropped) | — |
+| Install Tile prompt, stock and custom | works: the sheet, then the companion's tile editor (it found no watch) | — |
+| `markActivityLaunchedOnce` / `markSetupComplete` (Tracking) | read from `surface_info` | works |
+| Counter (`ProtoDataStore` over gRPC `sendRequest`) | works | works |
+| Tile tracking (`/tile_tracking_enabled`, no payload) | 0 bytes (it arrived as 3) | — |
+
+Six simulator gaps, all fixed:
+
+- **An item with no payload arrived with three bytes.** A frame's absent `data` travelled as JSON
+  `null`, and `optString(key, null)` reads that as the text `"null"`, whose Base64 decoding is
+  three bytes. Frames are now read through `DataLayerFrames`, where only a string is a value.
+- **The watch's clock stood still.** Robolectric sends no `TIME_TICK`, and Wear Compose's
+  `TimeText` redraws on it; the simulator now sends one each wall-clock minute (`TimeTick`).
+- **No companion app on the phone.** `startCompanion` launches the package
+  `getCompanionPackageForNode` names, and the install-tile prompt needs the Pixel Watch app
+  (`com.google.android.apps.wear.companion`, version 2.1.0.576785526 or later). The paired phone
+  now has it (`PhoneCompanion`), with its launcher activity and its tile-editor deep link.
+- **`RemoteActivityHelper` on an API 34+ watch.** wear-remote-interactions 1.2 asks the Wear SDK
+  for `RemoteInteractionsManager`; the class did not exist, so every Horologist call that builds
+  a `RemoteActivityHelper` on the watch threw. The simulator's Wear SDK now has it.
+- **A relaunch stacked another activity.** A `NEW_TASK` start of the task's root with its
+  launcher intent brings the task forward on a device (`TaskReuse`); each remote "start own app"
+  had added a `MainActivity`.
+- **A put of the same contents synced again.** Play services syncs and delivers a data item only
+  when it changes; the simulator now reports such a put as `unchanged` and sends nothing.
+
+In a paired launch `Build.DEVICE` and `Build.MODEL` are the node's (`watch-sim`, "Simulated
+Watch") rather than `robolectric`, which the sample writes into its proto data.
+
+| | Before | After |
+| --- | --- | --- |
+| Phone, `startCompanion` | ![NO_COMPANION_FOUND](evidence/simulator-datalayer/horologist-phone-companion-before.png) | ![the Pixel Watch app](evidence/simulator-datalayer/horologist-phone-companion-after.png) |
+| Phone, Install Tile prompt | ![no watch found](evidence/simulator-datalayer/horologist-install-tile-before.png) | ![the prompt](evidence/simulator-datalayer/horologist-install-tile-after.png) |
+| Watch, launch and 8 minutes later | ![11:02](evidence/simulator-datalayer/horologist-clock-before-1.png) ![still 11:02](evidence/simulator-datalayer/horologist-clock-before-2.png) | ![12:08](evidence/simulator-datalayer/horologist-clock-after-1.png) ![12:17](evidence/simulator-datalayer/horologist-clock-after-2.png) |
 
 ## Evidence: MeshCore
 
@@ -258,16 +306,16 @@ connected, since the simulator has no BLE device in range.
 - **Fidelity gaps, all in `DataLayer`.** `getCapability` leaves out the local node (Play
   services includes it when the local app has the capability); filters on `getCapability` /
   `getAllCapabilities` (`FILTER_REACHABLE` vs `FILTER_ALL`) are ignored, since every peer is
-  reachable; `onPeerConnected` / `onConnectedNodes` are not delivered; a data item's
-  `TYPE_CHANGED` is delivered even when its bytes did not change; `getNodeId` answers null.
+  reachable; `onPeerConnected` / `onConnectedNodes` are not delivered; `getNodeId` answers
+  null.
 - **`ChannelClient`** has no flow control (a writer never blocks on a slow reader; the bytes
   queue in the reader's memory) and the deprecated `ChannelApi` / `Channel` (`GoogleApiClient`)
   and its `WearableListenerService` overloads are not simulated, as with the other `*Api`s.
-- **Wear SDK services.** `RemoteActivityHelper.availabilityStatus` reports `STATUS_UNKNOWN`:
-  the Wear SDK's `RemoteInteractionsManager` (Wear OS 6) is not simulated.
+- **Wear SDK services.** Only `RemoteInteractionsManager` is simulated; `Sdk.getWearManager`
+  answers null for any other.
 - **Things only the system does.** No browser or Play Store opens a remote `https:` / `market:`
-  intent (reported, answered OK); no companion app exists for Horologist's `startCompanion`
-  (`APP_HELPER_RESULT_NO_COMPANION_FOUND`).
+  intent (reported, answered OK); the phone's Pixel Watch app is a single screen naming the
+  paired watch, with none of the real app's setup or settings.
 - **The deprecated `GoogleApiClient` APIs** (`Wearable.DataApi`, `MessageApi`, …) are not
   shadowed.
 - **R8-minified APKs.** A minified app renames or removes `Wearable` and the abstract client

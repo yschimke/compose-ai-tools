@@ -44,6 +44,7 @@ internal const val VERSION_PIN_CATALOG_KEY = "composePreviewCli"
 internal fun findGradleProjectRoot(start: File = File(".").absoluteFile): File? {
   var dir: File? = start
   while (dir != null) {
+    if (isLightbuildProject(dir)) return lightbuildGradleRoot(dir)
     if (hasSettingsFile(dir)) return dir
     dir = dir.parentFile
   }
@@ -53,6 +54,45 @@ internal fun findGradleProjectRoot(start: File = File(".").absoluteFile): File? 
 /** True when [dir] holds a Gradle settings file in either DSL — i.e. [dir] is a build root. */
 internal fun hasSettingsFile(dir: File): Boolean =
   File(dir, "settings.gradle.kts").isFile || File(dir, "settings.gradle").isFile
+
+/** The project file at the root of an Android Lightbuild project. */
+internal const val LIGHTBUILD_PROJECT_FILE = "project.lightbuild.yaml"
+
+/** Where Lightbuild writes the Gradle build it translates its YAML into, under the project root. */
+internal const val LIGHTBUILD_GRADLE_DIR = ".lightbuild/gradle"
+
+/** True when [dir] is the root of a Lightbuild project. */
+internal fun isLightbuildProject(dir: File): Boolean = File(dir, LIGHTBUILD_PROJECT_FILE).isFile
+
+/**
+ * The Gradle build Lightbuild generated for the project rooted at [dir], or null before the first
+ * `lightbuild build` writes it.
+ *
+ * Lightbuild has no settings file at its root and doesn't apply third-party plugins, but its
+ * generated build is ordinary Gradle whose projects point back at the module directories, so the
+ * CLI drives that build and auto-injects the plugin into it. A Lightbuild root ends the walk in
+ * [findGradleProjectRoot] even when the build is missing: an enclosing Gradle build is never the
+ * one the user meant.
+ */
+internal fun lightbuildGradleRoot(dir: File): File? =
+  File(dir, LIGHTBUILD_GRADLE_DIR).takeIf { hasSettingsFile(it) }
+
+/** True when [root] is the Gradle build Lightbuild generated, which it rewrites on every build. */
+internal fun isLightbuildGradleRoot(root: File): Boolean {
+  val normalized = root.absoluteFile.normalize()
+  val project = normalized.parentFile?.parentFile ?: return false
+  return normalized == File(project, LIGHTBUILD_GRADLE_DIR) && isLightbuildProject(project)
+}
+
+/** The nearest Lightbuild project root at or above [start], built or not. */
+internal fun findLightbuildProjectRoot(start: File = File(".").absoluteFile): File? {
+  var dir: File? = start
+  while (dir != null) {
+    if (isLightbuildProject(dir)) return dir
+    dir = dir.parentFile
+  }
+  return null
+}
 
 /**
  * The nearest ancestor of [start] holding a `gradlew`: whose Gradle distribution applies, not which
