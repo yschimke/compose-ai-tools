@@ -149,7 +149,10 @@ internal class DeviceShell(private val device: VirtualDevice) {
           if ("-a" in args) "Linux localhost 6.1.0 #1 SMP PREEMPT aarch64 Toybox" else "Linux"
         )
       "getprop" -> getprop(args, out)
-      "setprop" -> 0
+      "setprop",
+      // `adb logcat` sends `export ANDROID_LOG_TAGS="''"; exec logcat …`.
+      "export" -> 0
+      "exec" -> command(args, stdin, out)
       "pm" -> packageManager(argv, args, stdin, out)
       "cmd" ->
         when (args.firstOrNull()) {
@@ -346,6 +349,9 @@ internal object AdbText {
       "settings",
       "qualifiers",
       "clearData" -> if (command.string("cmd") == "clearData") listOf("Success") else emptyList()
+      "logcat" ->
+        (result["lines"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+          ?: emptyList()
       else -> listOf(Json.encodeToString(JsonElement.serializer(), result))
     }
   }

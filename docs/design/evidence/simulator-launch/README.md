@@ -36,6 +36,11 @@ Robot stepped 50 → 63 → 78 → 63 → 100%, and none reached the app as key 
 
 ![window fit](window-fit.png)
 
+![window shrink](window-shrink.png)
+
+The 540×960 display after its window was resized to 200×700 (narrower than the display at its
+fit) and to 600×400: it refits to 37% and 39%, centred, where it had collapsed to a few pixels.
+
 `--qualifiers w411dp-h891dp-xxhdpi --display 1920x1080,name=TV` on the same 1600×1000 screen: the
 1233×2673 phone starts at 31% (85% of the screen's height), and the TV display opens fitted into
 the room to its right, with `Std` started on it.

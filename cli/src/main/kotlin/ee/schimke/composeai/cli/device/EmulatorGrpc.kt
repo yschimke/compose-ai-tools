@@ -65,7 +65,7 @@ internal class EmulatorGrpc(
 ) : AutoCloseable {
 
   private val server: Server =
-    NettyServerBuilder.forAddress(InetSocketAddress("127.0.0.1", port))
+    IdentityEncoding.install(NettyServerBuilder.forAddress(InetSocketAddress("127.0.0.1", port)))
       .maxInboundMessageSize(16 * 1024 * 1024)
       .addService(ServerInterceptors.intercept(Controller(), Auth()))
       .build()

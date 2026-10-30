@@ -426,6 +426,12 @@ internal class LaunchCommand(private val args: List<String>) {
     if (adb) {
       if (args.flagValue("--data-layer") != null)
         fail("--adb and --data-layer agent are not combined yet")
+      // The device draws nothing itself (the simulator JVM owns the window), so its AWT use — the
+      // gRPC endpoint's image scaling — stays out of the macOS Dock and app switcher. Set before
+      // the
+      // toolkit starts; `java.awt.headless` would be too late, `isHeadless()` above having cached
+      // it.
+      System.setProperty("apple.awt.UIElement", "true")
       val consolePort = DeviceHost.freeConsolePort()
       val (width, height, dpi) = displayPixels(options.qualifiers, options.device)
       val config =

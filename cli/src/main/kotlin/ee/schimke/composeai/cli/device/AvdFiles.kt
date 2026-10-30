@@ -5,7 +5,10 @@ import java.io.File
 
 /**
  * The files an emulator leaves for Android Studio to find it by: an AVD directory with a
- * `config.ini` (the display size and density, and `tag.id` saying phone or watch), and a discovery
+ * `config.ini` (the display size and density, and `tag.id` saying phone or watch), the
+ * `hardware-qemu.ini` a running emulator writes beside it, and a system image directory whose
+ * `source.properties` gives the API level — Studio's `EmulatorConfiguration.readAvdDefinition`
+ * reads all three and drops the device from Running Devices if any is missing — and a discovery
  * file, `pid_<pid>.ini`, in the registration directory every running emulator writes to, naming its
  * console, adb and gRPC ports and the gRPC token. Studio's emulator catalog reads the directory and
  * connects to the gRPC endpoint of each live process listed there.
@@ -32,17 +35,28 @@ internal object AvdFiles {
       "tag.id" to if (wear) "android-wear" else "google_apis",
       "tag.display" to if (wear) "Wear OS" else "Google APIs",
       "target" to "android-${config.sdk}",
+      "image.sysdir.1" to "$SYSTEM_IMAGE/",
     )
   }
+
+  /** Where `image.sysdir.1` points, relative to the AVD directory standing in as the SDK root. */
+  private const val SYSTEM_IMAGE = "system-image"
 
   /** Writes the AVD directory and returns it. */
   fun writeAvd(config: VirtualDevice.Config): File {
     val dir = File(config.dir, "${config.avdName}.avd")
     dir.mkdirs()
-    File(dir, "config.ini")
-      .writeText(hardware(config).joinToString("\n", postfix = "\n") { (k, v) -> "$k=$v" })
+    val hardware = hardware(config)
+    File(dir, "config.ini").writeIni(hardware)
+    File(dir, "hardware-qemu.ini").writeIni(hardware + ("android.sdk.root" to dir.absolutePath))
+    File(dir, "$SYSTEM_IMAGE/source.properties")
+      .apply { parentFile.mkdirs() }
+      .writeIni(listOf("AndroidVersion.ApiLevel" to config.sdk.toString()))
     return dir
   }
+
+  private fun File.writeIni(entries: List<Pair<String, String>>) =
+    writeText(entries.joinToString("\n", postfix = "\n") { (k, v) -> "$k=$v" })
 
   /** The emulator's registration directory on this host, as the emulator and Studio compute it. */
   fun registrationDirectory(env: Map<String, String> = System.getenv()): File {
