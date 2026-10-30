@@ -163,9 +163,7 @@ final class WindowZoom {
         fitScreen();
         return;
       default:
-        String number = value.endsWith("%") ? value.substring(0, value.length() - 1) : value;
-        double parsed = Double.parseDouble(number);
-        apply(value.endsWith("%") || parsed > MAX ? parsed / 100 : parsed, true);
+        apply(parse(value), true);
     }
   }
 
@@ -476,6 +474,26 @@ final class WindowZoom {
 
   // ---------------------------------------------------------------------------------------------
   // The arithmetic, pure for tests.
+
+  /**
+   * A zoom the control channel names: a percentage ({@code "75%"}, or a bare number above {@link
+   * #MAX}) or a scale ({@code 0.75}). Anything else, NaN and infinities included, is an error.
+   */
+  static double parse(String value) {
+    boolean percent = value.endsWith("%");
+    double parsed;
+    try {
+      parsed = Double.parseDouble(percent ? value.substring(0, value.length() - 1) : value);
+    } catch (NumberFormatException e) {
+      parsed = Double.NaN;
+    }
+    if (!Double.isFinite(parsed) || parsed <= 0) {
+      throw new IllegalArgumentException(
+          "zoom takes in, out, actual, fit, a percentage (\"75%\") or a scale (0.75), not "
+              + value);
+    }
+    return percent || parsed > MAX ? parsed / 100 : parsed;
+  }
 
   static double clamp(double scale) {
     return Math.max(MIN, Math.min(MAX, scale));

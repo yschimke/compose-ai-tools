@@ -1,6 +1,7 @@
 package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 import java.awt.Dimension;
 import org.junit.Test;
@@ -50,6 +51,20 @@ public class WindowZoomTest {
   public void theWindowSizeRoundsTheScaledDisplay() {
     assertEquals(new Dimension(540, 1200), WindowZoom.scaledSize(1080, 2400, 0.5));
     assertEquals(new Dimension(1, 1), WindowZoom.scaledSize(2, 2, 0.1));
+  }
+
+  @Test
+  public void aZoomIsAPercentageOrAScale() {
+    assertEquals(0.75, WindowZoom.parse("75%"), 1e-9);
+    assertEquals(0.75, WindowZoom.parse("0.75"), 1e-9);
+    assertEquals(1.5, WindowZoom.parse("150"), 1e-9);
+  }
+
+  @Test
+  public void aZoomThatIsNotAPositiveNumberIsRejected() {
+    for (String value : new String[] {"NaN", "Infinity", "-Infinity", "0", "-50%", "big", "%"}) {
+      assertThrows(value, IllegalArgumentException.class, () -> WindowZoom.parse(value));
+    }
   }
 
   @Test
