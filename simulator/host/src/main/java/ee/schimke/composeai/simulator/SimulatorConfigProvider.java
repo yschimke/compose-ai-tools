@@ -8,7 +8,8 @@ import org.robolectric.pluginapi.config.GlobalConfigProvider;
  * The simulator's display: Robolectric's {@code AppLoader} takes its {@link Config} from the
  * highest-priority {@link GlobalConfigProvider}, so this one turns {@code
  * composeai.simulator.qualifiers} (resource qualifiers such as {@code w360dp-h640dp-hdpi}) and
- * {@code composeai.simulator.fontScale} into the launch's config.
+ * {@code composeai.simulator.fontScale} into the launch's config; {@code
+ * composeai.simulator.device} (a {@link DisplayGeometry} preset) sizes the display instead.
  */
 @Priority(100)
 public final class SimulatorConfigProvider implements GlobalConfigProvider {
@@ -22,6 +23,10 @@ public final class SimulatorConfigProvider implements GlobalConfigProvider {
   public Config get() {
     Config.Builder builder = new Config.Builder();
     String qualifiers = System.getProperty(QUALIFIERS_PROPERTY);
+    String device = System.getProperty(DisplayGeometry.DEVICE_PROPERTY);
+    if (device != null && !device.isBlank()) {
+      qualifiers = DisplayGeometry.launchQualifiers(DisplayGeometry.preset(device), "hdpi");
+    }
     if (qualifiers != null && !qualifiers.isBlank()) builder.setQualifiers(qualifiers.trim());
     String fontScale = System.getProperty(FONT_SCALE_PROPERTY);
     if (fontScale != null && !fontScale.isBlank()) {

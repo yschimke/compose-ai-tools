@@ -146,7 +146,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `info` | | package, version, SDK, qualifiers, display size, top activity |
+| `info` | | package, version, SDK, qualifiers, display size, `display` (as below), top activity |
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
 | `screenshot` | `path`? | PNG to `path`, else base64 in `png` |
@@ -170,8 +170,44 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names) | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
-| `qualifiers` | `value` (e.g. `+land`, `+night`) | a configuration change on the top activity |
+| `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
+| `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
+| `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
+| `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
+| `posture` | `value` (`none`, `flat`, `half-opened`, `book`, `tabletop`), `orientation`? (`vertical` / `horizontal`), `hingeDp`? | the fold the app's `WindowInfoTracker` reports |
+| `fontScale` | `value` | the system font size, as a configuration change |
+| `display` | | size, density, orientation, rotation, font scale, night, locale, fold and qualifiers |
+| `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
+| `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
+| `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
 | `quit` | | exits |
+
+### Display, fold and device state
+
+The emulator's extended controls, over the same channel. Every display command is a
+configuration change made as a device makes one: Robolectric's display and resources change, then
+the top activity gets `onConfigurationChanged` if its manifest `configChanges` covers what changed
+(`screenSize|smallestScreenSize|screenLayout|orientation` for a resize), and is recreated
+otherwise. A resize derives the smallest width, the `small`…`xlarge` and `long` buckets and the
+orientation from the new size, as the framework does (Robolectric's `+` merge would keep the old
+ones); locale, night mode and density carry over. Each reply is the `display` object.
+
+The presets are Android Studio's reference devices: `phone` 411×891dp, `foldable` 673×841dp open
+with a flat vertical fold, `foldable-folded` its 411×891dp outer screen with none, `tablet`
+1280×800dp, `desktop` 1920×1080dp at mdpi. The others use the launch's density (the window
+draws one device pixel per screen pixel). `launch --device <preset>` starts on one.
+
+**Folds** reach the app through Jetpack WindowManager, the way a device's do. A device's system
+image ships the WindowManager *extensions* (`androidx.window.extensions`), which apps compile
+against and do not bundle; Robolectric has none, so an app's `WindowInfoTracker` found nothing and
+reported no display features. `:simulator-host` carries its own extensions at vendor API level 2
+(`Foldables`), which the app's `androidx.window` finds and validates by reflection as on a device.
+They report one `FoldingFeature` across the middle of the window — `FLAT` or `HALF_OPENED`,
+vertical or horizontal, a zero-width `FOLD` or, with `hingeDp`, a `HINGE` band (a dual-screen
+device) — or none. So Compose's `currentWindowAdaptiveInfo()` sees the posture (`isTabletop`) and
+the hinge list, `NavigationSuiteScaffold` moves to a bottom bar in tabletop, and Material 3's pane
+scaffolds avoid a separating hinge. Activity embedding and rear-display window areas are not
+implemented; the library finds them missing and reports them unsupported.
 
 A **selector** is any of `text` / `desc` (exact), `textContains` / `descContains` (case-insensitive),
 `resourceId` (whole, or the part after `:id/` — a Compose `testTag` once the app sets
@@ -221,8 +257,15 @@ What does not, or not yet:
   its trust store.
 - **Split APKs and App Bundles** need merging into one APK first; protected APKs are out.
 - **Fidelity.** Robolectric's native graphics, not a device's GPU: close, not pixel-identical. The
-  window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default; it does
-  not resize after a `qualifiers` change, though screenshots do.
+  window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default, and
+  resizes to the display after each display command; a tablet or desktop at hdpi may be larger
+  than the screen.
+- **Device controls.** One display: no rear display, no multi-window or freeform, no activity
+  embedding. A configuration change reaches the top activity; activities below it in the back
+  stack keep the old configuration until they are next shown, and are not recreated then. The
+  fold is always at the middle of the window. Location reaches the platform `LocationManager`
+  only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
+  the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
 - **Stack traces say `Unknown Source`** for app frames (dex2jar keeps line numbers, not the source
   file attribute).
 - **SDK level.** One of Robolectric's supported levels (`--sdk`, default 35), fetched as
