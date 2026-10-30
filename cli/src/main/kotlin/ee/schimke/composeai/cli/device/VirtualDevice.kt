@@ -68,14 +68,14 @@ internal class VirtualDevice(
   /**
    * Boots the device: on [apk] already installed when there is one, as `launch --adb app.apk` asks,
    * so it boots once rather than empty and then again for the install. An APK that cannot be
-   * installed leaves the device empty and is thrown, as [install] throws it.
+   * installed leaves the device empty, and why is returned; a simulator that cannot start throws.
    */
-  fun start(apk: File? = null) = lock.withLock {
+  fun start(apk: File? = null): Throwable? = lock.withLock {
     val staged = apk?.let { runCatching { stage(it) } }
     val installedApk = staged?.getOrNull()
     installed = installedApk
     boot(installedApk?.apk ?: config.systemApk)
-    staged?.exceptionOrNull()?.let { throw it }
+    staged?.exceptionOrNull()
   }
 
   /** An event line of the device's own, to the control client beside the simulator's. */

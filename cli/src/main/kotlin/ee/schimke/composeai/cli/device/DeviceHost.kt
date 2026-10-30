@@ -57,7 +57,8 @@ internal class DeviceHost(
     Runtime.getRuntime().addShutdownHook(hook)
 
     // Booted on the APK `launch --adb app.apk` names, installed from the start: one boot.
-    val installFailure = runCatching { device.start(initialApk) }.exceptionOrNull()
+    // A simulator that cannot start throws, as before; an APK that cannot be installed is reported.
+    val installFailure = device.start(initialApk)
     if (control) bridgeStdin()
     System.err.println(
       "compose-preview launch: device ${config.serial} (${config.avdName}): adb on ${config.adbPort}, " +
