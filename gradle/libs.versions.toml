@@ -285,7 +285,7 @@ junit = "4.13.2"
 #
 # A Renovate bump here is WELCOME and is the point: it re-points the probe at the newest skiko, and
 # the test then says whether the late binding still holds against it.
-skiko-encode-probe = "0.153.0"
+skiko-encode-probe = "0.156.0"
 truth = "1.4.5"
 maven-publish = "0.37.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
@@ -784,6 +784,14 @@ compose-ui-tooling-prerelease = { module = "androidx.compose.ui:ui-tooling", ver
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
 wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }
+# The tile renderer `compose-preview launch --launcher` draws an app's tiles with (staged into the
+# CLI's `lib-simulator/`; apps do not ship it).
+wear-protolayout-renderer = { module = "androidx.wear.protolayout:protolayout-renderer", version.ref = "wear-protolayout" }
+wear-protolayout-expression-pipeline = { module = "androidx.wear.protolayout:protolayout-expression-pipeline", version.ref = "wear-protolayout" }
+vectordrawable-seekable = { module = "androidx.vectordrawable:vectordrawable-seekable", version = "1.0.0" }
+# `customview`'s ExploreByTouchHelper, which the View-based Remote Compose player needs and a widget
+# app may lack; staged beside it for `--launcher`.
+customview = { module = "androidx.customview:customview", version = "1.2.0" }
 # protolayout-proto carries the generated `androidx.wear.protolayout.proto.*` messages that
 # `Layout.toProto()` / `Resources.toProto()` return; protolayout-external-protobuf carries the
 # shaded `androidx.wear.protolayout.protobuf.*` runtime (GeneratedMessageLite, with the inherited

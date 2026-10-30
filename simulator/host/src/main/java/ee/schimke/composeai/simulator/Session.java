@@ -1,6 +1,5 @@
 package ee.schimke.composeai.simulator;
 
-import android.app.Activity;
 import android.app.Application;
 import android.app.NotificationManager;
 import android.app.UiAutomation;
@@ -26,12 +25,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -62,6 +59,13 @@ final class Session {
   private final AppFiles files;
   private final DeviceDisplay display;
   private final DeviceState state;
+  private final Displays displays;
+  private final NotificationStream notifications;
+  /** The Wear system UI ({@code --launcher}), or null. */
+  private final WearSystemUi wear;
+  private final WidgetHost widgets;
+  /** The home screen, with {@code --launcher}; null without. */
+  private final HomeScreen home;
   private final Radios radios;
   private final AgentOverlay overlay = new AgentOverlay();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -98,10 +102,24 @@ final class Session {
     this.logcat = new Logcat(protocol);
     this.files = new AppFiles(app);
     this.state = new DeviceState(app, navigator);
+    this.displays = new Displays(app, navigator, protocol);
+    this.notifications = new NotificationStream(app, navigator, protocol);
+    this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
+    this.widgets = new WidgetHost(app, navigator, protocol);
+    // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
+    this.home =
+        HomeScreen.enabled() && wear == null
+            ? new HomeScreen(app, navigator, protocol, widgets)
+            : null;
+    // Only when paired: DataLayer needs the app's Play services classes to load at all.
+    if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
   }
 
   void start() {
+    displays.start();
+    if (wear != null) wear.start();
+    if (home != null) home.start();
     // Created before Application.onCreate(); reported now that the channel is open.
     JSONArray providers = Providers.installed();
     if (providers.length() > 0) {
@@ -131,9 +149,13 @@ final class Session {
   /** One simulator cycle, on the main thread. */
   void cycle() {
     navigator.pump();
+    if (home != null) home.cycle();
+    displays.cycle();
     radios.cycle();
     overlay.round(FormFactor.isRound());
     logcat.poll();
+    notifications.cycle();
+    if (wear != null) wear.cycle();
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
@@ -207,7 +229,13 @@ final class Session {
   }
 
   private static boolean changesUi(String name) {
-    if (DeviceDisplay.changesUi(name) || DeviceState.changesUi(name) || Radios.changesUi(name)) {
+    if (DeviceDisplay.changesUi(name)
+        || DeviceState.changesUi(name)
+        || Displays.changesUi(name)
+        || HomeScreen.changesUi(name)
+        || WearSystemUi.changesUi(name)
+        || NotificationStream.changesUi(name)
+        || Radios.changesUi(name)) {
       return true;
     }
     switch (name) {
@@ -241,6 +269,10 @@ final class Session {
   private JSONObject run(String name, JSONObject c) throws Exception {
     JSONObject emulated = display.command(name, c);
     if (emulated == null) emulated = state.command(name, c);
+    if (emulated == null) emulated = displays.command(name, c);
+    if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null) emulated = notifications.command(name, c);
+    if (emulated == null) emulated = launcherCommand(name, c);
     if (emulated == null) emulated = radios.command(name, c);
     if (emulated != null) return emulated;
     switch (name) {
@@ -255,13 +287,33 @@ final class Session {
         return new Protocol.Json().put("activities", navigator.describeStack()).object();
       case "services":
         return new Protocol.Json().put("services", navigator.describeServices()).object();
-      case "notifications":
-        return new Protocol.Json().put("notifications", Notifications.all(app)).object();
       case "components":
         return components();
+      case "dataLayer":
+        {
+          if (DataLayerLink.enabled()) {
+            // As if the app's android_wear_capabilities declared (or dropped) one: lets an agent
+            // stand in for a capability an app forgot, and see what its peer does with it.
+            if (c.has("addCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("addCapability"), true);
+            }
+            if (c.has("removeCapability")) {
+              DataLayer.get().setLocalCapability(c.getString("removeCapability"), false);
+            }
+            if (c.has("oauthResponse")) {
+              return DataLayer.get()
+                  .answerAuth(c.getString("oauthResponse"), c.optInt("errorCode", -1));
+            }
+          }
+          JSONObject state = DataLayerLink.enabled() ? DataLayer.describeCurrent() : null;
+          if (state == null) {
+            throw new IllegalStateException("no data layer: launch with --pair <other.apk>");
+          }
+          return state;
+        }
       case "hierarchy":
         {
-          List<Hierarchy.Node> windows = snapshot();
+          List<Hierarchy.Node> windows = snapshot(displays.target(c));
           if (c.optBoolean("flat", false)) {
             JSONObject flat = new Protocol.Json().put("nodes", Hierarchy.flatten(windows)).object();
             if (c.has("path")) {
@@ -279,7 +331,7 @@ final class Session {
       case "find":
         {
           JSONArray array = new JSONArray();
-          for (Hierarchy.Node node : Hierarchy.find(snapshot(), selector(c))) {
+          for (Hierarchy.Node node : Hierarchy.find(snapshot(displays.target(c)), selector(c))) {
             array.put(node.toJson(false));
           }
           return new Protocol.Json().put("nodes", array).object();
@@ -296,33 +348,37 @@ final class Session {
         {
           Object keys = c.get("key");
           boolean longPress = c.optBoolean("longPress", false);
-          if (!(keys instanceof JSONArray)) return key(keyCode(keys), longPress);
+          int target = displays.target(c);
+          if (!(keys instanceof JSONArray)) return key(keyCode(keys), longPress, target);
           JSONArray codes = new JSONArray();
           for (int i = 0; i < ((JSONArray) keys).length(); i++) {
-            codes.put(key(keyCode(((JSONArray) keys).get(i)), longPress).get("keyCode"));
+            codes.put(key(keyCode(((JSONArray) keys).get(i)), longPress, target).get("keyCode"));
           }
           return new Protocol.Json().put("keyCodes", codes).object();
         }
       case "back":
-        return key(KeyEvent.KEYCODE_BACK, false);
+        return key(KeyEvent.KEYCODE_BACK, false, displays.target(c));
       case "text":
-        return text(c.getString("text"));
+        return text(c.getString("text"), displays.target(c));
       case "finish":
-        return navigator.finishTop();
+        return navigator.finishTop(displays.target(c));
       case "screenshot":
         return screenshot(c);
       case "launch":
         {
           checkPackage(c);
+          // From the home screen's icon: a running app's task comes forward.
+          if (home != null && !c.has("display")) return home.launch();
           Intent launcher = app.getPackageManager().getLaunchIntentForPackage(app.getPackageName());
           if (launcher == null) throw new IllegalStateException("the app has no launcher activity");
-          return navigator.startActivity(launcher, -1);
+          return navigator.startActivity(launcher, -1, launchOptions(c));
         }
       case "startActivity":
         {
           Intent intent = intent(c);
+          if (home != null && intent.hasCategory(Intent.CATEGORY_HOME)) return home.goHome();
           if (c.optBoolean("forceStop", false)) navigator.forceStop();
-          return navigator.startActivity(intent, -1);
+          return navigator.startActivity(intent, -1, launchOptions(c));
         }
       case "startService":
         return navigator.startService(intent(c));
@@ -387,6 +443,16 @@ final class Session {
     }
   }
 
+  /** The home screen's and widgets' commands; refused without {@code --launcher} where needed. */
+  private JSONObject launcherCommand(String name, JSONObject c) throws JSONException {
+    if (home != null) return home.command(name, c);
+    if (name.equals("widgets")) return widgets.command(name, c);
+    if (HomeScreen.needsLauncher(name)) {
+      throw new IllegalStateException(name + " needs the home screen: launch with --launcher");
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Read
 
@@ -409,8 +475,11 @@ final class Session {
     json.put("height", metrics.heightPixels);
     json.put("density", metrics.density);
     json.put("display", display.describe());
+    json.put("displays", displays.list());
     Navigator.Entry top = navigator.top();
     json.put("activity", top == null ? null : top.activity().getClass().getName());
+    if (wear != null) json.put("surface", wear.surface());
+    if (home != null) json.put("surface", home.surface());
     json.put("backStack", navigator.backStack().size());
     json.put("services", navigator.describeServices().length());
     return json.object();
@@ -452,25 +521,39 @@ final class Session {
     return array;
   }
 
-  private List<Hierarchy.Node> snapshot() {
-    // Windows of activities below the top of the back stack are stopped, and not on screen.
-    Set<Object> hidden = new HashSet<>();
-    Navigator.Entry top = navigator.top();
-    for (Navigator.Entry entry : navigator.backStack()) {
-      if (entry == top) continue;
-      Activity activity = entry.activity();
-      if (activity.getWindow() != null) {
-        hidden.add(activity.getWindow().getDecorView().getApplicationWindowToken());
-      }
-    }
-    hidden.remove(null);
-    return new Hierarchy().snapshot(hidden);
+  /** The windows on display [displayId]; those of stopped activities are not on screen. */
+  private List<Hierarchy.Node> snapshot(int displayId) {
+    return new Hierarchy().snapshot(navigator.hiddenWindowTokens(), displayId);
   }
 
-  private JSONObject screenshot(JSONObject c) throws IOException, JSONException {
-    Bitmap bitmap = ui.takeScreenshot();
+  /**
+   * A PNG of one display ({@code display}, the default display without), or with {@code
+   * "display":"all"} one per display: {@code path} for the default display and {@code
+   * <path>-display<id>.png} beside it for each other one.
+   */
+  private JSONObject screenshot(JSONObject c) throws Exception {
+    if ("all".equals(c.optString("display"))) {
+      JSONArray shots = new JSONArray();
+      JSONArray all = displays.list();
+      for (int i = 0; i < all.length(); i++) {
+        int id = all.getJSONObject(i).getInt("id");
+        JSONObject one = new JSONObject(c.toString()).put("display", id);
+        if (c.has("path") && id != android.view.Display.DEFAULT_DISPLAY) {
+          one.put("path", c.getString("path").replaceFirst("(\\.png)?$", "-display" + id + ".png"));
+        }
+        shots.put(screenshot(one).put("display", id));
+      }
+      return new Protocol.Json().put("displays", shots).object();
+    }
+    int displayId = displays.target(c);
+    Bitmap bitmap =
+        displayId == android.view.Display.DEFAULT_DISPLAY
+            ? ui.takeScreenshot()
+            : Displays.capture(displayId);
     if (bitmap == null) throw new IllegalStateException("nothing on screen to capture");
-    if (FormFactor.isRound() && !c.optBoolean("square", false)) {
+    if (displayId == android.view.Display.DEFAULT_DISPLAY
+        && FormFactor.isRound()
+        && !c.optBoolean("square", false)) {
       bitmap = FormFactor.cropRound(bitmap);
     }
     Protocol.Json json =
@@ -495,6 +578,7 @@ final class Session {
   // Act
 
   private JSONObject tap(JSONObject c, long holdMs) throws JSONException {
+    int displayId = displays.target(c);
     float x;
     float y;
     JSONObject target = null;
@@ -502,7 +586,7 @@ final class Session {
       x = (float) c.getDouble("x");
       y = (float) c.getDouble("y");
     } else {
-      List<Hierarchy.Node> matches = Hierarchy.find(snapshot(), selector(c));
+      List<Hierarchy.Node> matches = Hierarchy.find(snapshot(displayId), selector(c));
       int index = c.optInt("index", 0);
       if (matches.size() <= index) {
         throw new IllegalArgumentException(
@@ -513,15 +597,24 @@ final class Session {
       y = node.bounds.exactCenterY();
       target = node.toJson(false);
     }
-    overlay.touch(x, y, holdMs > 0);
+    if (displayId == android.view.Display.DEFAULT_DISPLAY) overlay.touch(x, y, holdMs > 0);
     long down = SystemClock.uptimeMillis();
-    inject(touch(down, down, MotionEvent.ACTION_DOWN, x, y));
+    inject(touch(down, down, MotionEvent.ACTION_DOWN, x, y), displayId);
     float upX = x;
     float upY = y;
-    Runnable up = () -> inject(touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, upX, upY));
+    Runnable up =
+        () ->
+            inject(
+                touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, upX, upY),
+                displayId);
     if (holdMs > 0) later(holdMs, up);
     else up.run();
-    return new Protocol.Json().put("x", x).put("y", y).put("node", target).object();
+    return new Protocol.Json()
+        .put("x", x)
+        .put("y", y)
+        .put("display", displayId)
+        .put("node", target)
+        .object();
   }
 
   private JSONObject swipe(JSONObject c) throws JSONException {
@@ -533,20 +626,26 @@ final class Session {
     int steps = Math.max(2, c.optInt("steps", 12));
     // A drag holds still first, long enough to be a long press.
     long hold = Math.max(0, c.optLong("holdMs", 0));
-    overlay.swipe(x1, y1, x2, y2);
+    int displayId = displays.target(c);
+    if (displayId == android.view.Display.DEFAULT_DISPLAY) overlay.swipe(x1, y1, x2, y2);
     long down = SystemClock.uptimeMillis();
-    inject(touch(down, down, MotionEvent.ACTION_DOWN, x1, y1));
+    inject(touch(down, down, MotionEvent.ACTION_DOWN, x1, y1), displayId);
     for (int i = 1; i < steps; i++) {
       float f = i / (float) steps;
       float x = x1 + (x2 - x1) * f;
       float y = y1 + (y2 - y1) * f;
       later(
           hold + duration * i / steps,
-          () -> inject(touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y)));
+          () ->
+              inject(
+                  touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y),
+                  displayId));
     }
     later(
         hold + duration,
-        () -> inject(touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x2, y2)));
+        () ->
+            inject(
+                touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x2, y2), displayId));
     return new Protocol.Json().put("durationMs", duration).put("steps", steps).object();
   }
 
@@ -603,9 +702,16 @@ final class Session {
     return top.activity().getWindow().getDecorView().dispatchGenericMotionEvent(event);
   }
 
-  private JSONObject key(int code, boolean longPress) {
+  private JSONObject key(int code, boolean longPress, int displayId) {
+    if (code == KeyEvent.KEYCODE_HOME
+        && home != null
+        && displayId == android.view.Display.DEFAULT_DISPLAY) {
+      // The system's, as the window manager takes HOME before any app sees it.
+      home.goHome();
+      return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
+    }
     long now = SystemClock.uptimeMillis();
-    inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0));
+    inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0), displayId);
     if (longPress) {
       // As a held key repeats: a second down flagged as a long press, then the up.
       long held = ViewConfiguration.getLongPressTimeout();
@@ -622,22 +728,25 @@ final class Session {
                       0,
                       KeyCharacterMap.VIRTUAL_KEYBOARD,
                       0,
-                      KeyEvent.FLAG_LONG_PRESS)));
+                      KeyEvent.FLAG_LONG_PRESS),
+                  displayId));
       later(
           held,
           () ->
-              inject(new KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0)));
+              inject(
+                  new KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0),
+                  displayId));
       return new Protocol.Json().put("keyCode", code).put("longPress", true).object();
     }
-    inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0));
+    inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0), displayId);
     return new Protocol.Json().put("keyCode", code).object();
   }
 
-  private JSONObject text(String text) {
+  private JSONObject text(String text, int displayId) {
     KeyEvent[] events =
         KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(text.toCharArray());
     if (events == null) throw new IllegalArgumentException("cannot type " + text);
-    for (KeyEvent event : events) inject(event);
+    for (KeyEvent event : events) inject(event, displayId);
     return new Protocol.Json().put("typed", text.length()).object();
   }
 
@@ -652,8 +761,17 @@ final class Session {
     return event;
   }
 
-  private void inject(android.view.InputEvent event) {
-    ui.injectInputEvent(event, true);
+  /** Into the windows on display [displayId] alone, as a device's input dispatcher does. */
+  private void inject(android.view.InputEvent event, int displayId) {
+    Displays.inject(event, displayId);
+  }
+
+  /** {@code ActivityOptions} launching on the command's {@code display}, or none. */
+  private android.os.Bundle launchOptions(JSONObject c) {
+    if (!c.has("display")) return null;
+    return android.app.ActivityOptions.makeBasic()
+        .setLaunchDisplayId(displays.target(c))
+        .toBundle();
   }
 
   private static int keyCode(Object key) {

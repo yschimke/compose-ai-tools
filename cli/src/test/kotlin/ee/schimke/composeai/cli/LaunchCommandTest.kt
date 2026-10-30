@@ -252,6 +252,34 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.fontScale") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.showAgent") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.device") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.displays") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launcher") })
+  }
+
+  @Test
+  fun `the Wear launcher and its tiles become system properties`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            launcher = true,
+            tiles = listOf(".StatusTile", "com.example.WeatherTile"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launcher=true" in command)
+    assertTrue("-Dcomposeai.simulator.tiles=.StatusTile,com.example.WeatherTile" in command)
   }
 
   @Test
@@ -277,6 +305,111 @@ class LaunchCommandTest {
       )
     assertTrue("-Dcomposeai.simulator.device=foldable" in command)
     assertTrue("foldable" in LaunchCommand.DEVICES)
+  }
+
+  @Test
+  fun `each --display joins one system property`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            displays = listOf("1280x720@mdpi,name=TV", "rear"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.displays=1280x720@mdpi,name=TV;rear" in command)
+  }
+
+  @Test
+  fun `a build fingerprint becomes a system property, and is absent by default`() {
+    fun command(fingerprint: String?) =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            fingerprint = fingerprint,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue(
+      "-Dcomposeai.simulator.fingerprint=google/sim/sim:16/X/1:user/release-keys" in
+        command("google/sim/sim:16/X/1:user/release-keys")
+    )
+    assertTrue(command(null).none { it.startsWith("-Dcomposeai.simulator.fingerprint") })
+  }
+
+  @Test
+  fun `a launcher launch passes the home screen and the widgets to place`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            launcher = true,
+            widgets = listOf("WeatherAppWidgetReceiver", "com.example.CounterWidgetReceiver"),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launcher=true" in command)
+    assertTrue(
+      "-Dcomposeai.simulator.widgets=WeatherAppWidgetReceiver;com.example.CounterWidgetReceiver" in
+        command
+    )
+  }
+
+  @Test
+  fun `no home screen without --launcher`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launcher") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.widgets") })
   }
 
   @Test

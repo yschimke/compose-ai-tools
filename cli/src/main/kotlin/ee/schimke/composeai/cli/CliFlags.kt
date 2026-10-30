@@ -215,11 +215,18 @@ internal object CliFlags {
       "--font-scale",
       // `launch`
       "--control",
+      "--display",
+      "--widget",
       "--qualifiers",
       "--form-factor",
       "--sdk",
       "--jar",
       "--java",
+      "--pair",
+      "--pair-qualifiers",
+      "--tile",
+      "--fingerprint",
+      "--network",
       // bundle externalize
       "--res-out",
       "--ext",

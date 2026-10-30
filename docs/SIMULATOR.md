@@ -9,6 +9,9 @@ compose-preview launch app-debug.apk                               # a window
 compose-preview launch app-debug.apk --control stdio               # a window an agent drives
 compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
 compose-preview launch app-debug.apk --prepare                     # convert and cache only
+compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
+compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
+compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -176,38 +179,42 @@ simulator.
 Replies are `{"id":…,"ok":true,"result":{…}}` or `{"id":…,"ok":false,"error":"…"}`; an exception
 the app throws while handling a command becomes an error reply, and the simulator keeps running.
 Events arrive unasked: `ready` (once, with `info`), `activity` (`resumed` / `newIntent` /
-`destroyed`, or `empty` when the last one finishes), `service`, `providers`, `permissions`, `log`
-(while `logcat` follows), and `error` for an intent the app sent that nothing handles.
+`destroyed`, `stopped` when the app goes to the background, or `empty` when the last one
+finishes), `service`, `providers`, `permissions`, `notification` (`posted` / `updated` /
+`removed`), `log` (while `logcat` follows), `error` for an intent the app sent that nothing
+handles, and with `--launcher` `home`, `widget` and `shortcut` on a phone (see [Home screen and
+widgets](#home-screen-and-widgets)) or `surface`, `tile` and `widget` on a watch (see [Wear system
+UI](#wear-system-ui)).
 
 Commands run in order. Those that change the UI answer after `settleMs` of simulated time (default
 250), so a `tap` followed by a `screenshot` sees the result; any command takes `settleMs`.
 
 | Command | Arguments | Does |
 | --- | --- | --- |
-| `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity |
+| `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
-| `screenshot` | `path`?, `square`? | PNG to `path`, else base64 in `png`; a round display's is cropped to the circle unless `square` |
+| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
 | `longPress` | as `tap`, `durationMs`? | |
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
-| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up |
+| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
-| `launch` | | starts the launcher activity |
+| `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
 | `forceStop` | | destroys every activity and service and cancels notifications (see [adb](#adb-equivalents)) |
 | `clearData` | | `forceStop`, deletes the app's data and external files, resets permissions |
-| `finish` | | finishes the top activity without a key press |
-| `activities` | | the back stack |
-| `startActivity` | `intent`, `forceStop`? | deep links resolve through the manifest's real intent filters |
+| `finish` | `display`? | finishes the top activity without a key press |
+| `activities` | | the back stack, each activity with its `display` |
+| `startActivity` | `intent`, `forceStop`?, `display`? | deep links resolve through the manifest's real intent filters; `display` launches there, as `ActivityOptions.setLaunchDisplayId` does |
 | `startService` / `stopService` | `intent` | |
 | `bindService` / `unbindService` | `intent` | `onBind`, reports the binder's interface |
 | `services` | | running services, started/bound state, foreground notification |
 | `broadcast` | `intent` | runtime-registered and manifest receivers; reports who received it |
-| `notifications` | | what the app posted |
+| `notifications` / `notification` | see [Wear system UI](#wear-system-ui) | what the app posted, with keys and extras; tap, act on, reply to or dismiss one (any form factor) |
 | `query` | `uri`, `projection`?, `selection`?, `args`?, `sort`?, `limit`? | a content provider query |
 | `content` | `op` (`query` / `insert` / `update` / `delete`), `uri`, `values`?, as `query` | provider reads and writes; `values` is `{"col":value}` or `{"col":{"type":"long","value":1}}` |
 | `settings` | `op` (`get` / `put` / `delete`), `namespace` (`system` / `secure` / `global`), `key`, `value`? | `Settings.*`; a put the system acts on is applied (below) |
@@ -222,15 +229,24 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `components` | | the manifest's activities, services, receivers, providers |
 | `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
+| `dataLayer` | | with `--pair`: this node, its peers and their capabilities, every data item |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
 | `device` | `value` (`phone`, `foldable`, `foldable-folded`, `tablet`, `desktop`), `density`? | switches to a reference device's size and fold, upright |
 | `rotate` | `value`? (`0`/`90`/`180`/`270`, `portrait`, `landscape`; default a quarter turn) | turns the display; the fold turns with it |
 | `posture` | `value` (`none`, `flat`, `half-opened`, `book`, `tabletop`), `orientation`? (`vertical` / `horizontal`), `hingeDp`? | the fold the app's `WindowInfoTracker` reports |
 | `fontScale` | `value` | the system font size, as a configuration change |
 | `display` | `size`? (`"WxH"` px or `reset`), `density`? (dpi or `reset`) | without arguments: size, density, orientation, rotation, font scale, night, locale, fold and qualifiers; with them, as `wm size` / `wm density` |
+| `displays` | `action`? (`list`, `add`, `remove`, `change`), `display`, `name`?, `type`? (`external` / `virtual` / `rear`), `widthDp`?, `heightDp`?, `density`?, `qualifiers`? | the displays, and secondary ones plugged in, unplugged and resized; see [More than one display](#more-than-one-display) |
 | `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
 | `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
 | `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
+| `home` | | with `--launcher`: the app goes to the background and the home screen shows; returns the grid and what is on it |
+| `drawer` | `action`? (`open` / `close`) | the app drawer |
+| `shortcuts` | `action`? (`list` / `open`), `activity`? | the app's static, dynamic and pinned shortcuts; `open` shows a launcher icon's long-press popup |
+| `shortcut` | `shortcutId` | opens a shortcut, as tapping it in the popup does |
+| `widgets` | | the app's widget providers (sizes, spans, resize mode, configure, preview) and the widgets placed |
+| `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
+| `picker` | `action`? (`open` / `close`) | the widget picker |
 | `quit` | | exits |
 
 ### Display, fold and device state
@@ -259,6 +275,57 @@ device) — or none. So Compose's `currentWindowAdaptiveInfo()` sees the posture
 the hinge list, `NavigationSuiteScaffold` moves to a bottom bar in tabletop, and Material 3's pane
 scaffolds avoid a separating hinge. Activity embedding and rear-display window areas are not
 implemented; the library finds them missing and reports them unsupported.
+
+### More than one display
+
+An app can use more than one display, as a phone with a monitor or TV attached does. `launch
+--display <spec>` (repeatable) connects one before the app starts — a size in dp with an optional
+density, then `name=` and `type=`: `--display 1280x720@mdpi,name=TV`, `--display rear,411x891`
+— and `displays` adds, changes and removes them while it runs:
+
+```
+→ {"cmd":"displays","action":"add","name":"TV","widthDp":960,"heightDp":540,"density":"mdpi"}
+← {"event":"display","state":"added","display":{"id":1,"name":"TV","type":"external",...}}
+→ {"cmd":"tap","textContains":"tap the presentation","display":1}
+→ {"cmd":"screenshot","display":"all","path":"/tmp/shot.png"}   # shot.png, shot-display1.png
+→ {"cmd":"startActivity","intent":{"component":".SecondActivity"},"display":1}
+→ {"cmd":"displays","action":"change","display":1,"widthDp":640,"heightDp":360,"density":"xhdpi"}
+→ {"cmd":"displays","action":"remove","display":1}
+```
+
+The app hears of each one as from a device's display manager: `DisplayListener.onDisplayAdded`,
+`onDisplayChanged` and `onDisplayRemoved`. An `external` display (the default type; 960×540dp at
+mdpi unless given) and a `virtual` one are presentation displays — `getDisplays(
+DISPLAY_CATEGORY_PRESENTATION)` finds them, and an `android.app.Presentation`
+shown on one draws there; a `rear` display is a built-in one flagged as the rear screen. Each
+display draws and takes input on its own:
+
+- **Pictures.** `screenshot` takes `display`, or `"all"`. Robolectric composes every window into
+  one picture whatever its display, so a presentation would cover the phone; `:simulator-host`
+  replaces its `UiAutomation` shadow (`SimulatorShadowUiAutomation`) so the default display's
+  picture — the one its window paints — holds only that display's windows, and `Displays` draws
+  the others.
+- **Windows.** With a screen, each secondary display gets a Swing window of its own, titled with
+  its name and display id, beside the phone's. It takes the mouse and keyboard; closing it
+  unplugs the display.
+- **Input.** `tap`, `longPress`, `swipe`, `key`, `back`, `text`, `hierarchy`, `find` and `finish`
+  take `display`, and act on that display's windows alone: a touch goes to the top-most window
+  under it there, a key to that display's focused window. Without `display`, the default display.
+- **Activities.** An activity started with `ActivityOptions.setLaunchDisplayId` — by the app, or
+  by `startActivity` / `launch` with `display` — goes on that display, and one that an activity
+  there starts without naming a display stays on it, as a device launches on the caller's display.
+  It goes above that display's own top activity and leaves the others resumed, as a device keeps a
+  task stack per display. It gets that display's configuration (size, density, orientation, window
+  bounds): Now in Android started on a 1280×720dp display lays itself out with a navigation rail
+  and list-detail panes while the phone stays on its bottom bar. `activities` and `displays` say
+  which display each is on. When a display changes size, its activities get
+  `onConfigurationChanged` if their manifest `configChanges` covers the change and are otherwise
+  re-created there from their saved state; when it is removed, they finish. A `displays change`
+  keeps whatever it leaves out (name, type, width, height, density).
+
+A presentation window sits above the activities on its display, as on a device: an activity the
+app launches onto a display it is presenting on stays under the presentation until the app
+dismisses it. `Presentation` itself dismisses on a display size change, as the framework does.
 
 A **selector** is any of `text` / `desc` (exact), `textContains` / `descContains` (case-insensitive),
 `resourceId` (whole, or the part after `:id/` — a Compose `testTag` once the app sets
@@ -364,6 +431,197 @@ reads, MTU requests and subscriptions are `gatt` events — the agent plays the 
 with `bluetooth notify` (`onCharacteristicChanged`) or `disconnect`. A `connectGatt` to a device not
 in range fails with status 133, as a device's times out. Bytes are hex (`"0a1b"`), `{"text":…}`,
 `{"base64":…}` or a number array.
+### Home screen and widgets
+
+`launch --launcher` puts a home screen under the app, as a phone's launcher sits under every app,
+so the app can be left and returned to and its **app widgets** placed, sized, updated and tapped
+the way a device's launcher does it. `--widget <provider>` (repeatable; implies `--launcher`)
+starts with one placed: the app starts once, then the home screen comes forward with the widget.
+
+![The app, HOME, the icon tapped (the same task comes back), and the icon's shortcuts](design/evidence/simulator-launch/launcher-home.png)
+
+**The home screen** is an activity of the simulator's (`PhoneHome`), plain `android.view` with no
+Compose, since the app's Compose is the only one on the sandbox's class path. It sits at the
+bottom of the default display's back stack, and `Navigator` moves between it and the app as the
+system does:
+
+- `home` or `key HOME` stops the app's top activity (`onPause`, `onStop`) and shows the home
+  screen; nothing is destroyed. Back from the app's root also lands there (`empty` follows).
+- Tapping the app's icon (or `launch`) brings its task forward (`onRestart`, `onResume`) when it
+  runs that activity at its root, else starts it. Any activity started while the home screen
+  shows (a widget's click, a shortcut) goes into the app's task, over the home screen.
+- `forceStop` and `CLEAR_TASK` leave the home screen alone. `am start -c
+  android.intent.category.HOME` and `input keyevent HOME` go home too.
+
+The grid follows the display: cells of 72dp, 8dp apart (the preview runtime's launcher grid, so a
+4×2 widget is 312×152dp in a `@Preview` and here), as many as fit — 4×6 on the default 360×640dp
+phone, 5×9 on the `phone` preset, 7×3 turned to landscape — centred. The app's launchable
+activities (`<activity-alias>`es included) are icons on the bottom row and in the drawer (`drawer`,
+the Apps handle, or a swipe up). A resize, rotation or fold re-flows it (`home` `reflowed` event):
+what no longer fits moves, and a widget that has to shrink is told its new size.
+
+**Shortcuts.** A long press on an icon (or `shortcuts` `open`) shows the activity's static
+shortcuts (`android.app.shortcuts` metadata, parsed through the app's resources) and its dynamic
+ones (`ShortcutManager`), then Widgets when the app has any. Opening one starts its intents with
+`NEW_TASK | CLEAR_TASK` on the first. A shortcut the app pins with `requestPinShortcut` becomes an
+icon on the home screen (`shortcut` `pinned` event); Robolectric's `ShortcutManager` pins it
+without a confirm sheet.
+
+**Widgets.** The app's providers come from its manifest: receivers handling `APPWIDGET_UPDATE`
+with `android.appwidget.provider` metadata, the `<appwidget-provider>` XML parsed through the
+app's resources into an `AppWidgetProviderInfo` (sizes, target cells, resize limits and mode,
+category, features, configure activity, preview, description, update period). `:simulator-host`
+replaces Robolectric's `AppWidgetManager` shadow, so `getAppWidgetIds`, `getAppWidgetInfo`,
+`getAppWidgetOptions`, `updateAppWidget`, `partiallyUpdateAppWidget`,
+`notifyAppWidgetViewDataChanged`, `requestPinAppWidget` and `setWidgetPreview` answer from the
+home screen's widgets, as `AppWidgetService` does on a device. Adding one does what the system and
+a launcher do between them:
+
+1. **Bind** a new id (`widget` `bound` event), with the size options it will get.
+2. **Broadcast** `APPWIDGET_ENABLED` for a provider's first widget, then `APPWIDGET_UPDATE`,
+   through `Navigator` to the app's own receiver; Glance's `GlanceAppWidgetReceiver` takes the
+   same path.
+3. **Configure**, if the provider has a configure activity: it starts over the home screen for a
+   result with `EXTRA_APPWIDGET_ID`. `RESULT_OK` places the widget, anything else removes it
+   (`APPWIDGET_DELETED`, then `APPWIDGET_DISABLED` for the last). `WIDGET_FEATURE_CONFIGURATION_OPTIONAL`
+   skips it unless `"configure":true`; `reconfigure` (or Settings on the resize frame) re-runs it
+   for a `WIDGET_FEATURE_RECONFIGURABLE` widget.
+4. **Size** it: `APPWIDGET_OPTIONS_CHANGED` with `OPTION_APPWIDGET_MIN_WIDTH` / `MAX_WIDTH` /
+   `MIN_HEIGHT` / `MAX_HEIGHT` and `OPTION_APPWIDGET_SIZES`, the size it is drawn at, so a
+   responsive `RemoteViews(Map<SizeF, RemoteViews>)` picks its layout.
+5. **Draw** what the app passes to `updateAppWidget` in an `AppWidgetHostView` on the grid —
+   the framework's own, not Robolectric's shadow of it, so layouts are picked by size, partial
+   updates merge, and errors show the error view — and redraw on every update (`widget`
+   `updated` event with the layout, whether it was partial, the update count and a `reason`).
+
+The span is `targetCellWidth` × `targetCellHeight` when set, else from `minWidth` / `minHeight`;
+`resize` stays within `minResize*` / `maxResize*` along the axes `resizeMode` allows. `widget
+update` sends `APPWIDGET_UPDATE`, as a launcher refresh does; `updatePeriodMillis` ticks follow the
+simulated clock (at least 30 minutes, as the system clamps it). An update's `reason` is the home
+screen's last prompt to that widget within ten simulated seconds (`bind`, `update`, `options`,
+`click`, `configure`), else `app`: the app updating on its own, from a worker, a broadcast or its
+UI. It is a best guess; the system does not say.
+
+![The picker, a widget placed from it, its resize frame, and resized by its handle](design/evidence/simulator-launch/launcher-widget-resize.png)
+
+**Taps.** The home screen installs the interaction handler a launcher does, so a view's
+`setOnClickPendingIntent`, a compound button's `setOnCheckedChangeResponse` (with
+`EXTRA_CHECKED`), and a collection row's fill-in intent under the list's
+`setPendingIntentTemplate` are sent as the system sends them, through `Navigator`: an activity
+onto the app's task, a broadcast to runtime and manifest receivers, a service started (`widget`
+`clicked` event, with the intent). Glance's actions are this underneath: `actionRunCallback`
+reaches Glance's `ActionCallbackBroadcastReceiver`, the callback runs, and the `update()` it calls
+recomposes the widget in a Glance session worker (WorkManager) and arrives as an `updated` event
+with reason `click`.
+
+![A Glance widget's actionRunCallback counting taps](design/evidence/simulator-launch/launcher-glance-callback.png)
+
+**Collections.** For `setRemoteAdapter` with a `RemoteViewsService`, the service is bound through
+`Navigator` (a `service` `bound` event) and its `RemoteViewsFactory` driven in-process:
+`onDataSetChanged`, `getCount`, `getViewAt`, each row flagged as a collection child and wrapped as
+the device's adapter wraps it, so the template click finds the row's fill-in intent.
+`notifyAppWidgetViewDataChanged` reloads it (`dataChanged` event). `RemoteCollectionItems` (and
+Glance's lazy lists, which use them) need no service and just inflate.
+
+![A collection widget: configure, a row toggled, the list scrolled, the title opening the app](design/evidence/simulator-launch/launcher-collection.png)
+
+**The picker and pinning.** `picker` (or Widgets in the wallpaper's or an icon's long-press menu)
+lists the providers with label, span, description and preview: the generated preview the app set
+with `setWidgetPreview` (API 35), else its `previewLayout` inflated, else its `previewImage`, else
+the app's icon, as Launcher3 picks. A long press on a preview places the widget. The app's
+`requestPinAppWidget` brings the home screen forward with a confirm sheet (`widget`
+`pinRequested` event); `widget` `pin` with `"answer":"accept"` (or tapping Add) places the widget
+and sends the success callback with `EXTRA_APPWIDGET_ID` filled in, `"reject"` drops it.
+
+![requestPinAppWidget's sheet, the widget pinned, the drawer, and the grid re-flowed in landscape](design/evidence/simulator-launch/launcher-pin-drawer.png)
+
+`hierarchy`, `find` and `tap` see the home screen's views, each with a `sim:id/…` resource id:
+`icon`, `shortcut_icon`, `drawer_handle`, `drawer`, `drawer_icon`, `shortcuts`, `shortcut`,
+`shortcut_widgets`, `home_menu`, `home_widgets`, `widget` (its description names the widget, id
+and span), `widget_resize`, `widget_resize_handle`, `widget_remove`, `widget_reconfigure`,
+`picker`, `picker_preview`, `pin_sheet`, `pin_accept`, `pin_reject`. A widget's own views appear
+under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widget's button.
+
+```
+→ {"cmd":"home"}
+→ {"cmd":"widget","action":"add","provider":"TaskListWidgetReceiver"}
+← {"event":"widget","state":"configuring","widgetId":1,"configure":"…TaskListConfigureActivity"}
+→ {"cmd":"tap","textContains":"work"}
+← {"event":"widget","state":"configured","widgetId":1,"spanX":3,"spanY":3,…}
+→ {"cmd":"tap","textContains":"Work task 2"}
+← {"event":"widget","state":"clicked","widgetId":1,"sent":{"kind":"broadcast",…}}
+← {"event":"widget","state":"updated","widgetId":1,"partial":true,"reason":"click",…}
+→ {"cmd":"widget","action":"resize","widgetId":1,"spanX":4,"spanY":4}
+```
+
+`id` is the command's own, so a widget is `widgetId` and a shortcut `shortcutId`. The home screen
+belongs to the default display: a secondary display gets no launcher.
+
+### Wear system UI
+
+On a Wear app, `--launcher` (or a `--tile`) puts a Wear OS system UI under it instead of the phone
+home screen: a demo watch face at the
+bottom of the back stack, with the launcher, notification stream, tiles and widgets carousel and
+quick settings around it. It is plain Android views in the simulator's own `WearHome` activity
+(Compose there would put a second Compose on the app's class path), so the app's lifecycle runs as
+on a watch: leaving the app stops it, coming back restarts it, and back from its root lands on the
+watch face. `info` and `activities` report the `surface`: `watchface`, `launcher`,
+`notifications`, `tiles`, `quickSettings` or `app`.
+
+| On a watch | Goes to | Command |
+| --- | --- | --- |
+| back from the app's root, Home | the watch face | `home`, `key HOME` |
+| the side button | the launcher (again: the face) | `key STEM_PRIMARY`, `launcher` |
+| swipe up on the face | the notification stream | `notifications op:open` |
+| swipe left / right on the face | the carousel | `tiles op:next / prev / show` |
+| swipe down on the face | quick settings | `quickSettings` |
+| swipe right on a list, or back | the face | `home` |
+
+The crown (`rotary`) scrolls the launcher, stream and quick settings. Every system view carries a
+`sim:id/...` resource id and its item's identity as its description, so `find` and `tap` reach
+them as they do the app's: `tap {"resourceId":"notification_card","desc":"3"}` opens a
+notification, `notification_action` / `notification_reply` (`<key>/<action>[/<choice>]`),
+`notification_open`, `notification_dismiss`, `launcher_item` and `ongoing_row` (by component or
+key), `ongoing_chip`, `tile`, `widget`, `tile_add`, `qs_airplane`, `qs_wifi`.
+
+**Notifications** are the shadow notification manager's, drawn as Wear does from their extras, not
+`RemoteViews`: title, text, big text, `MessagingStyle` messages, big picture, the actions (a
+`WearableExtender`'s replace the phone's) and the inline-reply choices. Long text expands on tap;
+a group summary collapses its children; a high-importance post peeks over the watch face for four
+seconds. Every app gets the stream as `notification` events (`posted` / `updated` / `removed`),
+launcher or not, and the `notification` command acts on one by `key` (its id, or `tag:id`).
+
+**Ongoing activities** (`androidx.wear.ongoing`) are read back from their notification with the
+app's own library and shown as the face's chip and the launcher's first rows, their `Status` timers
+on the simulator clock.
+
+**The carousel** holds what the agent adds (`tiles op:add`, `--tile`, or the carousel's own add
+page): each tile is a whole page, and the Wear Widgets share one page, a scrolling list whose items
+shrink and fade toward the round screen's edges as a `TransformingLazyColumn`'s do. Tiles are
+bound by `BIND_TILE_PROVIDER` and spoken to over their AIDL (request, resources, add / enter /
+leave / remove), and drawn by the protolayout tile renderer the CLI stages in `lib-simulator/`
+(apps do not ship it); a `LoadAction` requests the tile again with the clicked state and a
+`LaunchAction` starts its activity. Widgets are bound by Glance Wear's `BIND_WIDGET_PROVIDER`,
+asked for a document of their container's size and played with the View-based Remote Compose
+player. Both get the watch's system data: `health` sets the Wear Health Services values tiles read
+through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
+
+![Navigation: app, watch face, launcher, quick settings](design/evidence/simulator-launch/wear-navigation.png)
+![Notifications: stream, expanded card, reply choices, reply delivered, heads-up](design/evidence/simulator-launch/wear-notifications.png)
+![Ongoing activity: chip on the face and row in the launcher](design/evidence/simulator-launch/wear-ongoing.png)
+![Tiles and widgets following the simulated heart rate and steps](design/evidence/simulator-launch/wear-tiles-widgets.png)
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `home` | | the watch face |
+| `launcher` | `index`? / `component`? / `label`? | without one, opens the launcher and lists its apps and ongoing activities; with one, launches it (bringing the app's task back when it is that task's root) |
+| `notifications` | `op`? (`open` / `close` / `clear`) | without `op`, every active notification with its key, channel, category, extras, actions, `ongoingActivity`, and `shown: false` plus `hiddenBecause` for one a watch would drop (blocked channel, `POST_NOTIFICATIONS` denied) |
+| `notification` | `key`, `op` (`tap` / `action` / `reply` / `dismiss` / `snooze`), `index`?, `text`?, `ms`? | sends its content intent (auto-cancel honored), presses action `index`, fills the action's `RemoteInput` with `text` (the first reply action without `index`), sends the delete intent and cancels (not when ongoing), or snoozes for `ms`. Activities land on the back stack, broadcasts reach manifest receivers, services start; an immutable `PendingIntent` drops a reply as on a device (`fillInDropped`) |
+| `ongoing` | `op`? (`list` / `tap`), `index`? | the ongoing activities, or sends one's touch intent |
+| `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers, each tile's render state; `show` takes a page index or a component |
+| `health` | `heartRate`?, `heartRateAccuracy`? (`unknown` … `high`), `steps`?, `distanceMeters`?, `calories`?, `floors`? | sets the simulated health data, which tiles and widgets on screen redraw with |
+| `quickSettings` | `airplane`?, `wifi`? | opens quick settings (battery, airplane mode, Wi-Fi), switching either first |
+| `ambient` | `value`? | dims the watch face to its ambient outline (toggles without `value`); the app gets no ambient callbacks |
 
 ### adb equivalents
 
@@ -384,7 +642,7 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 
 | adb | Simulator | Notes |
 | --- | --- | --- |
-| `am start` / `start-activity` | `startActivity` | `-a -d -t -c -n -p -f`, `--es --esn --ez --ei --el --ef --ed --eu --ecn --esa --eia`, `--activity-*` / `--grant-*` flags, a trailing URI (with `VIEW`), component or package; `-W` is implicit; `-S` force-stops first |
+| `am start` / `start-activity` | `startActivity` | `-a -d -t -c -n -p -f`, `--es --esn --ez --ei --el --ef --ed --eu --ecn --esa --eia`, `--activity-*` / `--grant-*` flags, a trailing URI (with `VIEW`), component or package; `-W` is implicit; `-S` force-stops first; `--display <id>` starts it on that display |
 | `am start-service` / `start-foreground-service` / `stopservice` | `startService` / `stopService` | |
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
 | `am force-stop` / `kill` | `forceStop` | partly: see below |
@@ -396,6 +654,8 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
 | `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress` |
 | `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on`, `global mobile_data`, `global bluetooth_on` (radios), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
+| `input tap` / `swipe` / `text` / `keyevent` / `draganddrop` / `press` | `tap` / `swipe` / `text` / `key` / `swipe` with `holdMs` | a source word (`touchscreen`…) is accepted; `text` turns `%s` into a space; `keyevent --longpress`; `-d <id>` acts on that display |
+| `settings get` / `put` / `delete` (`--user` ignored) | `settings` | puts applied: `global airplane_mode_on`, `global wifi_on` (network), `global animator_duration_scale` (`ValueAnimator`), `system font_scale` (configuration change), `system time_12_24` (`TIME_SET` broadcast); others are stored for the app to read |
 | `content query` / `insert` / `update` / `delete` | `content` | `--uri --projection a:b --where --sort --bind name:type:value` (`s b i l f d n`) |
 | `cmd uimode night yes` / `no` / `auto` | `qualifiers` `+night` / `+notnight` | |
 | `wm size [WxH\|reset]` / `wm density [N\|reset]` | `display` | pixels, as on a device: a density change keeps the pixel size; `reset` restores the launch qualifiers (both) |
@@ -404,7 +664,7 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `svc bluetooth enable` / `disable`, `cmd bluetooth_manager enable` / `disable` | `bluetooth` | |
 | `dumpsys activity [activities\|top\|services]`, `dumpsys notification`, `dumpsys window`, `dumpsys package`, `dumpsys connectivity` / `wifi` / `bluetooth_manager` | `activities`, `services`, `notifications`, `info`, `package`, `network` / `wifi` / `bluetooth` | JSON, not dumpsys text |
 | `logcat` `-d -c -s -t -e`, `TAG:LEVEL` / `*:LEVEL` | `logcat` | without `-d` / `-c` / `-t` it follows: `log` events until `{"cmd":"logcat","op":"stop"}`; `-v -b --pid` ignored; times are wall-clock, pid/tid are Robolectric's |
-| `screencap -p [file]` | `screenshot` | PNG only |
+| `screencap -p [file]` | `screenshot` | PNG only; `-d <id>` captures that display (the simulator's display id, from `displays`) |
 | `uiautomator dump [file]` | `hierarchy` `flat` | JSON nodes, not UI Automator XML |
 | `run-as <pkg> ls [-R]` / `cat` / `rm [-r]` / `mkdir`; the same on `/data/data/<pkg>` paths | `files` | `cat … > file` pulls |
 | `adb pull` / `adb push` | `files` `pull` / `push` | files or directories |
@@ -435,6 +695,17 @@ quit and launch again.
 | `pm disable` / `enable` components | not mapped |
 | `logcat -b crash/events/radio`, `bugreport` | there is one buffer: the app's `android.util.Log` |
 
+## A paired phone and watch
+
+`--pair <wear.apk>` runs a Wear OS APK in a second simulator (a round watch display,
+`--pair-qualifiers` to change it) and joins the two with a simulated Wearable Data Layer:
+`Wearable.getDataClient` / `MessageClient` / `NodeClient` / `CapabilityClient` answer from the
+simulator instead of Play services, so messages, requests, data items and capabilities cross
+between the apps and reach their listeners and manifest `WearableListenerService`s. With
+`--control stdio`, `"device":"watch"` sends a command to the watch, every line carries its
+`device`, and each crossing is a `datalayer` event. A prototype; the design, evidence and what is
+missing are in [`design/SIMULATOR_DATALAYER.md`](design/SIMULATOR_DATALAYER.md).
+
 ## Constraints
 
 What runs: apps whose UI is Compose or Views over the framework Robolectric shadows, with their
@@ -453,14 +724,15 @@ What does not, or not yet:
 
 - **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
 - **Google Play services, Maps, billing, DRM** — not present in Robolectric's framework; their
-  APIs report `SERVICE_INVALID`. Firebase starts, and its backends answer as they would any
+  APIs report `SERVICE_INVALID` (the Wearable Data Layer is simulated under `--pair`). Firebase starts, and its backends answer as they would any
   unregistered client.
 - **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am force-stop` and `pm clear` are partial:
-  see [adb equivalents](#adb-equivalents)); `launch` while running pushes a new launcher
-  instance rather than bringing the task forward; `HOME` does nothing.
+  see [adb equivalents](#adb-equivalents)). Without `--launcher`, `launch` while running pushes a
+  new launcher instance rather than bringing the task forward, and `HOME` does nothing; there are
+  no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
 - **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
@@ -484,16 +756,28 @@ What does not, or not yet:
   window draws one device pixel per screen pixel, hence the `w360dp-h640dp-hdpi` default, and
   resizes to the display after each display command; a tablet or desktop at hdpi may be larger
   than the screen.
-- **Device controls.** One display: no rear display, no multi-window or freeform, no activity
-  embedding. A configuration change reaches the top activity; activities below it in the back
+- **Device controls.** Secondary displays are separate screens (above); there is no multi-window
+  or freeform on one display, and no activity embedding. A `rear` display is a display only:
+  Jetpack WindowManager's `WindowAreaController` (rear display mode, dual screen) needs the
+  extensions' `WindowAreaComponent`, which `Foldables` does not provide, so it reports them
+  unsupported. Activities on a removed display finish rather than move to the default display. A configuration change reaches the top activity; activities below it in the back
   stack keep the old configuration until they are next shown, and are not recreated then. The
   fold is always at the middle of the window. Location reaches the platform `LocationManager`
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
   the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
-- **Wear.** No watch face, launcher or system tiles carousel; a Tile, complication or widget
-  service is reachable only through `bindService`. Ambient mode is not entered (no
-  `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
+- **Wear.** The [system UI](#wear-system-ui) is a demo face: no Watch Face Format or
+  `WatchFaceService` faces and no complications. A tile's `TileUpdateRequester` is not wired to the
+  carousel (`tiles op:refresh` requests it again), widgets are drawn as their large container only,
+  and the paired phone's bridged notifications and launcher entries are not shown. Ambient mode is
+  not entered (no `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
   `SERVICE_INVALID`, as Play services' other APIs do.
+- **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
+  own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
+  keyguard or search widgets, or widget drag between cells (`widget add` takes `cellX`/`cellY`).
+  A pin request brings the home screen forward rather than showing its sheet over the app, and
+  `requestPinShortcut` pins without one. Widgets render with Robolectric's graphics and the
+  framework's `RemoteViews`; a widget whose content comes from the network shows its placeholder
+  where this sandbox refuses the host.
 - **XR.** No Full Space: nothing renders a `Subspace`, `SpatialPanel` or 3D content, and a request
   to enter Full Space is not acted on. An app that calls `Session.create` itself gets no session:
   Jetpack XR's `*-testing` runtime fakes, which the preview renderer adds for XR previews, are not

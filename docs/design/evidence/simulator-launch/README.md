@@ -159,3 +159,86 @@ rendered inline, after one `tap "Click"`. The Glimmer probe sets no theme, hence
 ![Glimmer probe](glimmer-probe.png)
 
 ![XR probe in Home Space](xr-probe-home-space.png)
+
+## More than one display
+
+A probe APK (plain Views, built outside the repository) that listens for displays, shows an
+`android.app.Presentation` on each presentation display, and launches a second activity onto one
+with `ActivityOptions.setLaunchDisplayId`. Headless, with `launch --display 960x540,name=TV`,
+driven over `--control stdio`; each image is the control channel's `screenshot` with `display` (or `"all"`), unless noted.
+
+**A presentation on the TV** — the app's `DisplayListener` and `getDisplays(
+DISPLAY_CATEGORY_PRESENTATION)` find the display, and its `Presentation` draws there at the
+display's 960×540. Two `tap {"display":1}` reached the presentation's button; the phone's picture
+does not contain it (before this change, Robolectric drew every window into the one screen).
+
+![The phone, and the presentation on display 1](multi-display-presentation.png)
+
+**Activities on a display** — the app's own `setLaunchDisplayId` puts `SecondActivity` on the TV
+while `MainActivity` stays resumed on the phone; `SecondActivity` reports the TV's 960×540dp. After
+`displays change` to 640×360dp at xhdpi it is re-created there at 1280×720 pixels. (Its "Open
+another here" starts a third activity with no options, which stays on the TV.)
+
+![MainActivity on the phone, SecondActivity on the TV, and after the TV changes density](multi-display-activities.png)
+
+**The windows** — under Xvfb (`import -window root`, cropped and scaled): the phone, then a window
+per secondary display (titled `<name> — display <id>`; no window manager, hence no frames): the TV
+with `SecondActivity`, and a 480×360 virtual "Projector" added with `displays add`, showing its
+presentation.
+
+![The phone and two display windows under Xvfb](multi-display-window.png)
+
+## Home screen and widgets
+
+`launch --launcher` (`docs/SIMULATOR.md` → Home screen and widgets), on `samples/android`'s debug
+APK, headless on JDK 21; screenshots are the control channel's `screenshot`, scaled to half. The
+sample carries one widget of each kind for this: `WeatherAppWidgetReceiver` (classic
+`RemoteViews`, its whole body a click into the app), `CounterWidgetReceiver` (Glance, a `+1`
+button with an `actionRunCallback`) and `TaskListWidgetReceiver` (a `RemoteViewsService`
+collection with a configure activity and per-row fill-in intents); `MainActivity` declares a static
+shortcut and publishes a dynamic one that asks `requestPinAppWidget` for the weather widget.
+
+The brief asked for Muzei, Home Assistant and MeshCore too. None of their APKs is in this sandbox,
+and its network refuses both GitHub's release API and F-Droid, so the third-party run is still to
+do; the commands below work unchanged on any APK with widgets.
+
+**Home and navigation** — the app; `key HOME` (the app stopped, the home screen resumed); a tap on
+its icon brings the same task back (`onRestart`, no new instance); a long press shows the manifest
+shortcut, the dynamic one, and Widgets.
+
+![The app, home, the icon reopening it, its shortcuts](launcher-home.png)
+
+**Placing and resizing** — the picker from the icon's Widgets entry, scrolled; a long press on the
+weather preview places it at 4×2 (bound, `APPWIDGET_UPDATE`, then `APPWIDGET_OPTIONS_CHANGED` with
+312×152dp); a long press on it shows the resize frame; dragging the handle down a cell resizes it
+to 4×3 (`resized`, new options).
+
+![Picker, placed, resize frame, resized](launcher-widget-resize.png)
+
+**A Glance action callback** — `tap "+1"` twice: Glance's action receiver runs `IncrementAction`,
+which updates the widget's state and calls `update()`; each redraw arrives as a `widget` `updated`
+event with reason `click`.
+
+![Glance counter at 0, 1 and 2 taps](launcher-glance-callback.png)
+
+**Configure, a collection, and a tap that reaches the app** — `widget add` for the task list starts
+its configure activity over the home screen; `tap "work"` returns `RESULT_OK` and the widget is
+placed with the Work list, its rows from the `RemoteViewsFactory`; tapping a row sends the list's
+template with the row's fill-in intent to the app's receiver, which toggles it
+(`notifyAppWidgetViewDataChanged`, then a partial update of "1 of 12 done"); a swipe scrolls the
+list; tapping the title opens the app.
+
+![Configure, placed, a row toggled, scrolled, the app opened](launcher-collection.png)
+
+**Pinning, the drawer, re-flow** — the "Pin the weather widget" shortcut runs the app's
+`requestPinAppWidget`, and the home screen comes forward with the sheet; Add places it and sends
+the app's success callback (its receiver logs `pinned as widget <id>`, which `logcat` `follow`
+showed in a separate run); the app
+drawer; `rotate landscape` re-flows the 4×6 grid to 7×3.
+
+![Pin sheet, pinned, drawer, landscape](launcher-pin-drawer.png)
+
+Re-collect: `./gradlew :samples:android:assembleDebug :cli:installDist`, then drive
+`cli/build/install/compose-preview/bin/compose-preview launch android-debug.apk --launcher
+--control stdio --headless` with `home`, `widget` `add` / `resize`, `tap`, `longPress`, `swipe`,
+`picker`, `drawer`, `rotate` and `screenshot`.
