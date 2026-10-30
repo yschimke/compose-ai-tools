@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
+import java.io.RandomAccessFile
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import java.net.URLClassLoader
@@ -182,7 +183,19 @@ internal object RobolectricDepsProvision {
   /**
    * Ensure [directory] holds [artifact] under [Artifact.fileName], fetching and verifying it
    * against the strongest checksum Maven Central publishes (`.sha512`, `.sha256`, `.sha1`). A file
-   * already there is trusted, as Robolectric trusts it. Throws with the reason when it cannot.
+   * already there is trusted, as Robolectric trusts it: one only ever appears there whole, by an
+   * atomic rename. Throws with the reason when it cannot.
+   *
+   * Concurrent callers, in this JVM or another (`launch --pair` starts two, and several agents can
+   * share a host), take a lock on `.<fileName>.lock` beside it for the one artifact, so one fetches
+   * while the rest wait and then find it; a different artifact is not held up. The lock is an OS
+   * file lock, released when its holder dies, and its file is never deleted, since deleting a lock
+   * file another process is waiting on lets a third lock a new one beside it. A fetch a killed
+   * process left half done is a `.tmp` file nothing reads, and the next holder removes it.
+   *
+   * With [seed] (Robolectric's own copy in its Maven-local repository, [mavenLocalCopy]) the jar is
+   * linked or copied from there instead of fetched, once it matches a checksum: the one Robolectric
+   * stored beside it, else the one [repository] publishes.
    */
   fun ensure(
     artifact: Artifact,
@@ -192,32 +205,121 @@ internal object RobolectricDepsProvision {
     attempts: Int = 3,
     pause: (attempt: Int) -> Unit = { Thread.sleep(2_000L * it) },
     log: (String) -> Unit = { System.err.println(it) },
+    seed: File? = null,
   ): File {
     val target = File(directory, artifact.fileName)
     if (target.isFile && target.length() > 0) return target
     directory.mkdirs()
-    val url = artifact.url(repository)
-    val temporary = File(directory, ".${artifact.fileName}.${UUID.randomUUID()}.tmp")
-    try {
-      log("compose-preview: fetching ${artifact.fileName} from $url")
-      retrying(attempts, pause) { fetcher.fetchTo(url, temporary) }
-      val (algorithm, expected) =
-        checksum(url, directory, fetcher, attempts, pause)
-          ?: error("Maven Central publishes no .sha512, .sha256 or .sha1 for $url")
-      val actual = digest(temporary, algorithm)
-      check(actual.equals(expected, ignoreCase = true)) {
-        "$algorithm of ${artifact.fileName} is $actual, but $url.${extension(algorithm)} says $expected"
-      }
+    return withArtifactLock(directory, artifact) {
+      if (target.isFile && target.length() > 0) return@withArtifactLock target
+      removeAbandoned(directory, artifact)
+      val url = artifact.url(repository)
+      val temporary = File(directory, ".${artifact.fileName}.${UUID.randomUUID()}.tmp")
       try {
-        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
-      } catch (_: Exception) {
-        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        if (seed != null && seedFrom(seed, temporary, url, directory, fetcher, attempts, pause)) {
+          log("compose-preview: ${artifact.fileName} from ${seed.parentFile}")
+        } else {
+          log("compose-preview: fetching ${artifact.fileName} from $url")
+          retrying(attempts, pause) { fetcher.fetchTo(url, temporary) }
+          val (algorithm, expected) =
+            checksum(url, directory, fetcher, attempts, pause)
+              ?: error("Maven Central publishes no .sha512, .sha256 or .sha1 for $url")
+          val actual = digest(temporary, algorithm)
+          check(actual.equals(expected, ignoreCase = true)) {
+            "$algorithm of ${artifact.fileName} is $actual, but $url.${extension(algorithm)} " +
+              "says $expected"
+          }
+        }
+        try {
+          Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: Exception) {
+          Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+        target
+      } finally {
+        temporary.delete()
       }
-      return target
-    } finally {
-      temporary.delete()
     }
   }
+
+  /**
+   * Where Robolectric's `MavenDependencyResolver` keeps [artifact] when it fetched it itself:
+   * `maven.repo.local`, else `~/.m2/repository`. Null when it is not there.
+   */
+  fun mavenLocalCopy(
+    artifact: Artifact,
+    repository: File =
+      System.getProperty("maven.repo.local")?.takeIf { it.isNotBlank() }?.let(::File)
+        ?: File(System.getProperty("user.home"), ".m2/repository"),
+  ): File? =
+    File(
+        repository,
+        "${artifact.groupId.replace('.', '/')}/${artifact.artifactId}/${artifact.version}/" +
+          artifact.fileName,
+      )
+      .takeIf { it.isFile && it.length() > 0 }
+
+  /** In-JVM guard: two threads of one JVM asking for one file lock throw rather than wait. */
+  private val inProcess = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+  private fun <T> withArtifactLock(directory: File, artifact: Artifact, block: () -> T): T {
+    val lockFile = File(directory, ".${artifact.fileName}.lock")
+    synchronized(inProcess.computeIfAbsent(lockFile.absolutePath) { Any() }) {
+      RandomAccessFile(lockFile, "rw").use { file ->
+        file.channel.lock().use {
+          return block()
+        }
+      }
+    }
+  }
+
+  /** `.tmp` files of [artifact] a fetch left behind when its process died; the lock is ours. */
+  private fun removeAbandoned(directory: File, artifact: Artifact) {
+    directory
+      .listFiles { file ->
+        file.name.startsWith(".${artifact.fileName}.") && file.name.endsWith(".tmp")
+      }
+      ?.forEach { it.delete() }
+  }
+
+  /**
+   * Links (or, across file systems, copies) [seed] to [temporary] when it matches a checksum:
+   * Robolectric's own `.sha512` beside it (or a `.sha256` / `.sha1` Maven left), else [url]'s.
+   * False, with [temporary] removed, when it does not or no checksum can be had.
+   */
+  private fun seedFrom(
+    seed: File,
+    temporary: File,
+    url: String,
+    directory: File,
+    fetcher: Fetcher,
+    attempts: Int,
+    pause: (Int) -> Unit,
+  ): Boolean {
+    val local = CHECKSUMS.firstNotNullOfOrNull { algorithm ->
+      File(seed.path + "." + extension(algorithm))
+        .takeIf { it.isFile }
+        ?.let { hex(it.readText()) }
+        ?.let { algorithm to it }
+    }
+    val (algorithm, expected) =
+      local
+        ?: runCatching { checksum(url, directory, fetcher, attempts, pause) }.getOrNull()
+        ?: return false
+    if (!digest(seed, algorithm).equals(expected, ignoreCase = true)) return false
+    try {
+      Files.createLink(temporary.toPath(), seed.toPath())
+    } catch (_: Exception) {
+      Files.copy(seed.toPath(), temporary.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+    return true
+  }
+
+  /** The hex digest in a checksum file, which may be followed by the file name. */
+  private fun hex(text: String): String? =
+    text.trim().substringBefore(' ').substringBefore('\t').trim().takeIf {
+      it.isNotEmpty() && it.all(Char::isLetterOrDigit)
+    }
 
   private val CHECKSUMS = listOf("SHA-512", "SHA-256", "SHA-1")
 
@@ -240,9 +342,9 @@ internal object RobolectricDepsProvision {
             file.readText()
           }
             .getOrNull() ?: continue
-        // The file is the hex digest, sometimes followed by the file name.
-        val hex = text.trim().substringBefore(' ').substringBefore('\t').trim()
-        if (hex.isNotEmpty() && hex.all { it.isLetterOrDigit() }) return algorithm to hex
+        hex(text)?.let {
+          return algorithm to it
+        }
       } finally {
         file.delete()
       }

@@ -167,7 +167,7 @@ internal class LaunchCommand(private val args: List<String>) {
         maxHeap =
           args.flagValue("--max-heap")?.also {
             if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
-          },
+          } ?: defaultMaxHeap(physicalMemoryBytes()),
         headless = headless,
         control = control != null,
         installProviders = "--no-providers" !in args,
@@ -181,6 +181,9 @@ internal class LaunchCommand(private val args: List<String>) {
         tiles = args.flagValuesAll("--tile"),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
+    val robolectricProperties = offline.ifEmpty {
+      provisionAndroidAll(robolectricJars, options.sdk)
+    }
     fun commandFor(apk: File, classes: File, options: Options) =
       simulatorCommand(
         java = java.binary,
@@ -188,7 +191,7 @@ internal class LaunchCommand(private val args: List<String>) {
         apk = apk,
         classes = listOf(classes) + extraJars,
         options = options,
-        robolectricProperties = offline,
+        robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
     val dataLayerMode = args.flagValue("--data-layer")
@@ -315,23 +318,57 @@ internal class LaunchCommand(private val args: List<String>) {
     out: File,
     androidJar: File,
   ): String {
-    val process =
-      ProcessBuilder(
-          java.binary.path,
-          "-cp",
-          converterJars.joinToString(File.pathSeparator) { it.path },
-          CONVERTER_MAIN,
-          apk.path,
-          out.path,
-          androidJar.path,
-        )
-        .redirectError(ProcessBuilder.Redirect.INHERIT)
-        .start()
-    val summary = process.inputStream.bufferedReader().readText()
-    val exit = process.waitFor()
-    check(exit == 0) { "the APK converter exited $exit" }
-    return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
+    for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
+      val process =
+        ProcessBuilder(converterCommand(java.binary, converterJars, apk, out, androidJar, heap))
+          .redirectError(ProcessBuilder.Redirect.INHERIT)
+          .start()
+      val summary = process.inputStream.bufferedReader().readText()
+      val exit = process.waitFor()
+      if (exit == 0) return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
+      val next = CONVERTER_HEAPS.getOrNull(attempt + 1)
+      check(exit == OUT_OF_MEMORY_EXIT && next != null) { "the APK converter exited $exit" }
+      // The converter's temporary jars, which an exit on OutOfMemoryError leaves behind.
+      out.absoluteFile.parentFile
+        .listFiles { f -> f.name.startsWith("dex2jar-") && f.name.endsWith(".jar") }
+        .orEmpty()
+        .forEach { it.delete() }
+      System.err.println(
+        "compose-preview launch: the converter ran out of its $heap heap; retrying with $next"
+      )
+    }
+    error("unreachable")
   }
+
+  /**
+   * Robolectric's system properties for an online launch: SDK [sdk]'s `android-all` provisioned
+   * into [RobolectricDepsProvision.defaultDir] (from Robolectric's own Maven-local copy when it has
+   * one) and Robolectric pointed there offline.
+   *
+   * Left to itself, Robolectric's `MavenDependencyResolver` fetches under one lock for every
+   * artifact on the host, `~/.robolectric-download-lock`: held for a whole download, so a launch
+   * whose jar is already there waits behind another's 200 MB fetch, with no network timeout; and
+   * deleted on release, so with three or more JVMs (`--pair`, several agents) two end up holding it
+   * at once. Provisioning here takes a lock per artifact once, before any simulator JVM starts.
+   * When it cannot, the launch goes on online as before, and says why.
+   */
+  private fun provisionAndroidAll(robolectricJars: List<File>, sdk: Int): Map<String, String> =
+    try {
+      val artifact = RobolectricDepsProvision.artifactFor(robolectricJars, sdk).artifact
+      val directory = RobolectricDepsProvision.defaultDir()
+      RobolectricDepsProvision.ensure(
+        artifact,
+        directory,
+        seed = RobolectricDepsProvision.mavenLocalCopy(artifact),
+      )
+      robolectricOfflineProperties(directory.path)
+    } catch (e: Exception) {
+      System.err.println(
+        "compose-preview launch: could not provision android-all for SDK $sdk ($e); " +
+          "Robolectric will fetch it"
+      )
+      emptyMap()
+    }
 
   private fun sidecar(name: String): List<File> =
     locateBundleSidecarJars(name).ifEmpty {
@@ -363,6 +400,68 @@ internal class LaunchCommand(private val args: List<String>) {
   companion object {
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+
+    /**
+     * Collector settings for every simulator JVM.
+     *
+     * Android's graphics objects — bitmaps, render nodes, canvases — are small on the Java heap and
+     * own native memory that is freed only when the collector finds them unreachable. An app idling
+     * on an animated screen allocates them every frame but too little heap to trigger a collection,
+     * so native memory grows without bound: Confetti went from 850 MB to 2.3 GB in two idle minutes
+     * with 116 MB of live heap, and to 5.4 GB in longer runs whatever its `-Xmx`. A periodic
+     * collection, only when none has run for that long, keeps it flat (990 MB).
+     */
+    val SIMULATOR_JVM_ARGS = listOf("-XX:G1PeriodicGCInterval=5000")
+
+    /**
+     * The simulator's heap without `--max-heap`: an eighth of the machine, between 768 MB and 2 GB.
+     * The JVM's own default, a quarter of the machine, lets G1 grow far past an app's live set
+     * (about 120 MB for Confetti and Now in Android) before it collects, and `--pair` runs two.
+     */
+    fun defaultMaxHeap(physicalMemoryBytes: Long?): String {
+      val mb = (physicalMemoryBytes ?: 0L) / (1L shl 20) / 8
+      return "${mb.coerceIn(768L, 2048L)}m"
+    }
+
+    private fun physicalMemoryBytes(): Long? =
+      (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+          as? com.sun.management.OperatingSystemMXBean)
+        ?.totalMemorySize
+
+    /**
+     * The converter's heap, then the one it retries with if that runs out. It translates one class
+     * at a time, so its live set is the dex files and a header per class: about 260 MB for Home
+     * Assistant's 61,000 classes. Without a cap the JVM's default heap, a quarter of the machine,
+     * lets G1 grow to twice that before it collects.
+     */
+    val CONVERTER_HEAPS = listOf("1g", "3g")
+
+    /** `-XX:+ExitOnOutOfMemoryError`'s exit status. */
+    const val OUT_OF_MEMORY_EXIT = 3
+
+    /** The converter JVM's command line. Pure, for tests. */
+    fun converterCommand(
+      java: File,
+      converterJars: List<File>,
+      apk: File,
+      out: File,
+      androidJar: File,
+      heap: String,
+    ): List<String> =
+      listOf(
+        java.path,
+        "-Xmx$heap",
+        // A single-threaded batch job: the serial collector's footprint is the smallest, and it
+        // spends no threads on concurrent marking.
+        "-XX:+UseSerialGC",
+        "-XX:+ExitOnOutOfMemoryError",
+        "-cp",
+        converterJars.joinToString(File.pathSeparator) { it.path },
+        CONVERTER_MAIN,
+        apk.path,
+        out.path,
+        androidJar.path,
+      )
 
     /**
      * A phone-shaped display that fits on a laptop screen: Robolectric's window draws one device
@@ -400,6 +499,7 @@ internal class LaunchCommand(private val args: List<String>) {
       add(java.path)
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
+      addAll(SIMULATOR_JVM_ARGS)
       add("--enable-native-access=ALL-UNNAMED")
       // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
       // the app's real traffic reaches.
@@ -516,8 +616,8 @@ internal class LaunchCommand(private val args: List<String>) {
         --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
                               (repeatable; implies --launcher). With --pair, the watch's.
         --font-scale <f>      Font scale (default 1.0).
-        --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: the JVM's,
-                              a quarter of the machine's memory, for each of a pair).
+        --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
+                              of the machine's memory, 768m to 2g, for each of a pair).
         --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
                               apps check to skip real work under tests; MeshCore's watch does).
         --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
