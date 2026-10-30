@@ -51,8 +51,8 @@ final class WindowZoom {
   static final double MIN = 0.1;
   static final double MAX = 4;
   static final double STEP = 1.25;
-  /** The share of the screen a display that does not fit starts at. */
-  static final double SCREEN_SHARE = 0.9;
+  /** The share of the screen a display that does not fit starts at, leaving room around it. */
+  static final double SCREEN_SHARE = 0.85;
 
   private static final Map<JComponent, WindowZoom> ZOOMS = new WeakHashMap<>();
   private static boolean keysInstalled;
@@ -102,6 +102,23 @@ final class WindowZoom {
           install((JFrame) window, panel, width, height);
           mainInstalled = true;
         });
+  }
+
+  /**
+   * The default display's window, zoomed now if the loop has not got to it, so a secondary display
+   * opening beside it is placed by its fitted size; null before it shows. On the event thread.
+   */
+  static WindowZoom main() {
+    JPanel panel = SimulatorPanelRegistry.getActivePanel();
+    if (panel == null) return null;
+    WindowZoom zoom = ZOOMS.get(panel);
+    if (zoom != null) return zoom;
+    Window window = SwingUtilities.getWindowAncestor(panel);
+    if (!(window instanceof JFrame) || !window.isShowing()) return null;
+    // Unzoomed, the panel is one point per device pixel.
+    zoom = install((JFrame) window, panel, panel.getWidth(), panel.getHeight());
+    mainInstalled = true;
+    return zoom;
   }
 
   /** Makes [frame], which shows [view] at one device pixel per point, zoomable. */
@@ -228,31 +245,71 @@ final class WindowZoom {
     Dimension size = scaledSize(deviceWidth, deviceHeight, scale);
     layer.setPreferredSize(size);
     layer.revalidate();
-    if (pack) frame.pack();
+    if (pack) {
+      frame.pack();
+      keepOnScreen();
+    }
     frame.repaint();
   }
 
+  /**
+   * The room the display itself has on the screen: the screen less its menu bar and dock, the
+   * window's own frame and View menu, and a margin ({@link #SCREEN_SHARE}).
+   */
   private Rectangle usableScreen() {
-    GraphicsConfiguration config = frame.getGraphicsConfiguration();
-    if (config == null) return new Rectangle(0, 0, Integer.MAX_VALUE, Integer.MAX_VALUE);
-    Rectangle bounds = config.getBounds();
-    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(config);
+    Rectangle area = screenArea();
+    if (area == null) return new Rectangle(0, 0, Integer.MAX_VALUE, Integer.MAX_VALUE);
     Insets frameInsets = frame.getInsets();
     int menu = frame.getJMenuBar() == null ? 0 : frame.getJMenuBar().getPreferredSize().height;
     return new Rectangle(
         0,
         0,
-        (int)
-            ((bounds.width - insets.left - insets.right - frameInsets.left - frameInsets.right)
-                * SCREEN_SHARE),
-        (int)
-            ((bounds.height
-                    - insets.top
-                    - insets.bottom
-                    - frameInsets.top
-                    - frameInsets.bottom
-                    - menu)
-                * SCREEN_SHARE));
+        (int) ((area.width - frameInsets.left - frameInsets.right) * SCREEN_SHARE),
+        (int) ((area.height - frameInsets.top - frameInsets.bottom - menu) * SCREEN_SHARE));
+  }
+
+  /** The screen the window is on, in screen coordinates, less its menu bar and dock; or null. */
+  private Rectangle screenArea() {
+    GraphicsConfiguration config = frame.getGraphicsConfiguration();
+    if (config == null) return null;
+    Rectangle bounds = config.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(config);
+    return new Rectangle(
+        bounds.x + insets.left,
+        bounds.y + insets.top,
+        bounds.width - insets.left - insets.right,
+        bounds.height - insets.top - insets.bottom);
+  }
+
+  /**
+   * Fits the window into the screen to the right of screen x [left], as a secondary display opens
+   * beside the phone; with less than a third of the screen there, it keeps its own fit and only
+   * moves onto the screen.
+   */
+  void fitBeside(int left) {
+    Rectangle area = screenArea();
+    if (area == null) return;
+    int room = area.x + area.width - left;
+    if (room >= area.width / 3) {
+      Rectangle budget = usableScreen();
+      Insets insets = frame.getInsets();
+      budget.width = (int) ((room - insets.left - insets.right) * SCREEN_SHARE);
+      double fitted = fit(deviceWidth, deviceHeight, budget, 1);
+      if (fitted < scale) apply(fitted, true);
+    }
+    frame.setLocation(left, frame.getY());
+    keepOnScreen();
+  }
+
+  /**
+   * Moves the window onto its screen: all of it when it fits, and otherwise its top-left, where
+   * the title bar and the View menu are, so the window can always be moved, closed and zoomed out.
+   */
+  void keepOnScreen() {
+    Rectangle area = screenArea();
+    if (area == null) return;
+    java.awt.Point to = onScreen(frame.getBounds(), area);
+    if (!to.equals(frame.getLocation())) frame.setLocation(to);
   }
 
   private JMenuBar menuBar() {
@@ -493,6 +550,13 @@ final class WindowZoom {
               + value);
     }
     return percent || parsed > MAX ? parsed / 100 : parsed;
+  }
+
+  /** Where a [window] goes to sit on [area]: wholly if it fits, its top-left first if not. */
+  static java.awt.Point onScreen(Rectangle window, Rectangle area) {
+    int x = Math.max(area.x, Math.min(window.x, area.x + area.width - window.width));
+    int y = Math.max(area.y, Math.min(window.y, area.y + area.height - window.height));
+    return new java.awt.Point(x, y);
   }
 
   static double clamp(double scale) {

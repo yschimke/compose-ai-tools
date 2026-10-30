@@ -68,6 +68,31 @@ public class WindowZoomTest {
   }
 
   @Test
+  public void aWindowThatFitsMovesWhollyOntoTheScreen() {
+    java.awt.Rectangle screen = new java.awt.Rectangle(0, 25, 1440, 875);
+    // Placed below the menu bar's bottom edge and past the dock.
+    assertEquals(
+        new java.awt.Point(100, 400),
+        WindowZoom.onScreen(new java.awt.Rectangle(100, 600, 400, 500), screen));
+    // Its title bar under the macOS menu bar.
+    assertEquals(
+        new java.awt.Point(100, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(100, 0, 400, 500), screen));
+    // Off the right edge, beside the phone.
+    assertEquals(
+        new java.awt.Point(1040, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(1300, 25, 400, 500), screen));
+  }
+
+  @Test
+  public void aWindowBiggerThanTheScreenKeepsItsTitleBarOnIt() {
+    java.awt.Rectangle screen = new java.awt.Rectangle(0, 25, 1440, 875);
+    assertEquals(
+        new java.awt.Point(0, 25),
+        WindowZoom.onScreen(new java.awt.Rectangle(200, 300, 2000, 1500), screen));
+  }
+
+  @Test
   public void aClickMapsBackToTheDevicePixelUnderIt() {
     assertEquals(200, WindowZoom.toDevice(100, 0.5, 1080));
     assertEquals(40, WindowZoom.toDevice(81, 2, 1080));
