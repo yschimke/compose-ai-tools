@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.77.0](https://github.com/yschimke/compose-ai-tools/compare/v2.76.0...v2.77.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** announce the launch --adb device on the control channel ([#6313](https://github.com/yschimke/compose-ai-tools/issues/6313)) ([b448f0b](https://github.com/yschimke/compose-ai-tools/commit/b448f0b69a92614f3d179ae914ce88e120c02fb0))
+* **cli:** answer biometric, voice-input and Credential Manager prompts, and provide AndroidKeyStore in the simulator ([#6322](https://github.com/yschimke/compose-ai-tools/issues/6322)) ([0b81ad5](https://github.com/yschimke/compose-ai-tools/commit/0b81ad5614e207194f15fecfbcb038de51e277a9))
+* **cli:** answer document, photo and camera pickers and share-sheet handoffs in the simulator ([#6319](https://github.com/yschimke/compose-ai-tools/issues/6319)) ([88be85e](https://github.com/yschimke/compose-ai-tools/commit/88be85e79d8d78e8b0f8977e20065e06bc8957f0))
+* **cli:** App Actions, in-memory AppSearch, and App Functions in the simulator ([#6326](https://github.com/yschimke/compose-ai-tools/issues/6326)) ([6ff1b7e](https://github.com/yschimke/compose-ai-tools/commit/6ff1b7e97587d34c4ede3b3ca5acacd05bd1062d))
+* **cli:** describe a launch as devices and their apps (--app device:apk) ([#6332](https://github.com/yschimke/compose-ai-tools/issues/6332)) ([541dba8](https://github.com/yschimke/compose-ai-tools/commit/541dba8482e6e87128edd3957d0ef3b66dc8ce8f))
+* **cli:** fire alarms, run jobs and downloads, and check foreground-service deadlines in the simulator ([#6321](https://github.com/yschimke/compose-ai-tools/issues/6321)) ([53f574e](https://github.com/yschimke/compose-ai-tools/commit/53f574e605207701ece36a6fc1706884a7451c70))
+* **cli:** run several apps on one simulated device, with cross-app App Functions calls ([#6329](https://github.com/yschimke/compose-ai-tools/issues/6329)) ([7755999](https://github.com/yschimke/compose-ai-tools/commit/7755999b4df4422b4e1a81db8b8b729b46698a76))
+* **cli:** zoom and resize the simulator window ([#6320](https://github.com/yschimke/compose-ai-tools/issues/6320)) ([845c10a](https://github.com/yschimke/compose-ai-tools/commit/845c10a26c00e6d04eb626a93c347c226f3e3b84))
+* **simulator:** edge-swipe Back gesture with predictive back progress ([#6327](https://github.com/yschimke/compose-ai-tools/issues/6327)) ([9ba9ede](https://github.com/yschimke/compose-ai-tools/commit/9ba9edefab2ab00b4772e6808c9c505af9de15ca))
+* **simulator:** honour manifest launch modes, and test saved state through kill, recreate and savedState ([#6314](https://github.com/yschimke/compose-ai-tools/issues/6314)) ([c8dd62d](https://github.com/yschimke/compose-ai-tools/commit/c8dd62d6723b9ac9ef3448303a8fd7e8974c6b72))
+* **simulator:** media player and picture-in-picture on the phone ([#6331](https://github.com/yschimke/compose-ai-tools/issues/6331)) ([7f34623](https://github.com/yschimke/compose-ai-tools/commit/7f34623f256265d5137e2dfc9dc1128288954fe1))
+* **simulator:** phone status bar and notification shade ([#6330](https://github.com/yschimke/compose-ai-tools/issues/6330)) ([4bb4ad2](https://github.com/yschimke/compose-ai-tools/commit/4bb4ad21e80bfe2b67068750773677488d2f8e37))
+
+
+### Bug Fixes
+
+* **cli:** Android Studio's Device Settings, Rotate and volume buttons on --adb ([#6333](https://github.com/yschimke/compose-ai-tools/issues/6333)) ([9beba99](https://github.com/yschimke/compose-ai-tools/commit/9beba99fca62fc3d1625a834e8cbae0d8c862c37))
+* **cli:** fetch android-all from Google's Maven Central mirror before Central ([#6318](https://github.com/yschimke/compose-ai-tools/issues/6318)) ([eae0460](https://github.com/yschimke/compose-ai-tools/commit/eae0460da6ba1ff165b7fdff50c017a6831233fc))
+* **cli:** keep macOS's look and feel out of the simulator sandbox ([#6317](https://github.com/yschimke/compose-ai-tools/issues/6317)) ([ff1432c](https://github.com/yschimke/compose-ai-tools/commit/ff1432c3f1c520fab3badd1bd6c5c1ffa5532b92))
+* **cli:** keep the simulated storage root and tree paths safe, and keep picker requests answerable ([#6323](https://github.com/yschimke/compose-ai-tools/issues/6323)) ([1c74347](https://github.com/yschimke/compose-ai-tools/commit/1c743472bf235f52e6ca87e9a93c2dfe510adb10))
+* **cli:** keep the simulator's picture when its window shrinks, and let it go behind other windows ([#6328](https://github.com/yschimke/compose-ai-tools/issues/6328)) ([2affe0c](https://github.com/yschimke/compose-ai-tools/commit/2affe0cc6e3394dba1276d30d6d802786a97f2b8))
+* **cli:** make the launch --adb device work beside an emulator and in Android Studio ([#6325](https://github.com/yschimke/compose-ai-tools/issues/6325)) ([71c4def](https://github.com/yschimke/compose-ai-tools/commit/71c4def34b7a61351a055125b67e2c0036f91652))
+* **cli:** start the simulator window fitted with room to spare, and keep it on screen ([#6324](https://github.com/yschimke/compose-ai-tools/issues/6324)) ([52b9657](https://github.com/yschimke/compose-ai-tools/commit/52b965740bde440eef8a732b6eabc81ea418db0f))
+
 ## [2.76.0](https://github.com/yschimke/compose-ai-tools/compare/v2.75.0...v2.76.0) (2026-10-30)
 
 
