@@ -91,9 +91,24 @@ retried once on 3 GB if that runs out. dex2jar's own driver reads the whole APK 
 first: Home Assistant needed 3.8 GB, and now converts in under 1 GB.
 
 **The cache** lives under `<cache>/composeai/simulator/<apk sha256>/<converter stamp>/`. The APK is
-keyed by content and the stamp by the converter's jars and the platform jar, so a rebuilt APK or a
-newer converter converts again, and anything else is a cache hit (about 0.25 s). The eight most
-recently used APKs are kept. A launch from a warm cache reaches its first frame in about 7 seconds.
+keyed by content. The stamp covers the converter's own classes and the shared-library classes in
+the simulator host jar, dex2jar and the platform jar — not the rest of the simulator, so a change to
+`Navigator` does not reconvert every APK. A cache hit takes about 0.25 s, and a launch from a warm
+cache reaches its first frame in about 7 seconds.
+
+A rebuilt APK converts incrementally. Beside each `classes.jar` the converter writes
+`classes.jar.index`: per class, a digest of its smali (instructions, constants, annotations and
+debug info, with names resolved, so it does not shift when another class adds a string to the dex)
+and of the inner-class facts it takes from other classes, and every supertype lookup its frames
+were computed from. Converting the next build of the same APK path copies each class whose digest
+matches and whose lookups still resolve the same way, and translates the rest. Per class, not per
+`classesN.dex`, because D8 reshuffles dex files between builds. A three-class edit to Now in Android
+reconverts in 31 s instead of 115 s.
+
+Pruning never deletes an entry that a conversion holds (`<sha>.lock`) or a running simulator uses
+(`<sha>.inuse`, a shared lock each launch holds): after a conversion the earlier build of the same
+path is removed, the APK's other converter stamps go, and then the least recently used APKs beyond
+eight or 2 GB.
 
 **Navigation.** `Navigator` drains Robolectric's recorded intents every loop turn and does what the
 system would: activities go onto a back stack through `ActivityController` (the one below is paused

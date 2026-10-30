@@ -4,6 +4,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.googlecode.d2j.dex.writer.DexFileWriter;
+import com.googlecode.d2j.smali.Smali;
 import com.googlecode.dex2jar.ir.IrMethod;
 import com.googlecode.dex2jar.ir.expr.Exprs;
 import com.googlecode.dex2jar.ir.expr.Local;
@@ -14,9 +16,16 @@ import com.googlecode.dex2jar.ir.stmt.Stmts;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import org.junit.Rule;
@@ -177,9 +186,128 @@ public class ApkClassConverterTest {
     summary.failures.add("a \"quoted\"\nline\\");
     assertEquals(
         "{\"classes\":0,\"interfaceCallsFixed\":0,\"failedMethods\":0,\"unframedClasses\":0,"
-            + "\"withoutDebugInfo\":0,\"sharedLibraryClasses\":0,"
+            + "\"withoutDebugInfo\":0,\"sharedLibraryClasses\":0,\"reused\":0,"
             + "\"failures\":[\"a \\\"quoted\\\"\\nline\\\\\"]}",
         summary.toJson());
+  }
+
+  @Test
+  public void aRebuiltApkReusesTheClassesThatDidNotChange() throws Exception {
+    Path platform = emptyJar();
+    String greeter =
+        """
+        .class public Lapp/Greeter;
+        .super Ljava/lang/Object;
+        .method public static greet()Ljava/lang/String;
+          .registers 1
+          const-string v0, "hello"
+          return-object v0
+        .end method
+        """;
+    String counter =
+        """
+        .class public Lapp/Counter;
+        .super Ljava/lang/Object;
+        .method public static next(I)I
+          .registers 2
+          add-int/lit8 v0, p0, %d
+          return v0
+        .end method
+        """;
+    Path first = apk("first.apk", greeter, String.format(counter, 1));
+    Path firstJar = temp.getRoot().toPath().resolve("first.jar");
+    ApkClassConverter.Summary full = ApkClassConverter.convert(first, firstJar, platform, null);
+    assertEquals(2, full.classes);
+    assertEquals(0, full.reused);
+    assertTrue(Files.isRegularFile(ApkClassConverter.indexOf(firstJar)));
+
+    // A three-line edit: Counter adds 2 now. Greeter is copied; Counter is translated again.
+    Path second = apk("second.apk", greeter, String.format(counter, 2));
+    Path secondJar = temp.getRoot().toPath().resolve("second.jar");
+    ApkClassConverter.Summary incremental =
+        ApkClassConverter.convert(second, secondJar, platform, firstJar);
+    assertEquals(2, incremental.classes);
+    assertEquals(1, incremental.reused);
+    try (URLClassLoader loader =
+        new URLClassLoader(new URL[] {secondJar.toUri().toURL()}, null)) {
+      assertEquals(
+          "hello", loader.loadClass("app.Greeter").getMethod("greet").invoke(null));
+      assertEquals(
+          7, loader.loadClass("app.Counter").getMethod("next", int.class).invoke(null, 5));
+    }
+
+    // Unchanged again: everything is copied.
+    Path third = temp.getRoot().toPath().resolve("third.jar");
+    assertEquals(2, ApkClassConverter.convert(second, third, platform, secondJar).reused);
+  }
+
+  @Test
+  public void aReusedClassIsFramedAgainWhenASupertypeItUsedChanged() throws Exception {
+    Map<String, ApkClassConverter.ClassHierarchy.Header> app = new HashMap<>();
+    app.put("app/Base", new ApkClassConverter.ClassHierarchy.Header("java/lang/Object", false));
+    app.put("app/Child", new ApkClassConverter.ClassHierarchy.Header("app/Base", false));
+    try (ZipFile platform = new ZipFile(emptyJar().toFile())) {
+      ApkClassConverter.ClassHierarchy before = new ApkClassConverter.ClassHierarchy(app, platform);
+      Set<String> lookups = new TreeSet<>();
+      before.recordInto(lookups);
+      assertEquals("app/Base", before.commonSuperClass("app/Child", "app/Base"));
+      before.recordInto(null);
+      String described = before.describe(lookups);
+      assertTrue(before.resolvesAsBefore(described));
+
+      // Child now extends Object directly: its frames were computed against a stale hierarchy.
+      app.put("app/Child", new ApkClassConverter.ClassHierarchy.Header("java/lang/Object", false));
+      ApkClassConverter.ClassHierarchy after = new ApkClassConverter.ClassHierarchy(app, platform);
+      assertFalse(after.resolvesAsBefore(described));
+    }
+  }
+
+  @Test
+  public void anIndexRoundTrips() throws Exception {
+    Path index = temp.getRoot().toPath().resolve("classes.jar.index");
+    ApkClassConverter.Index.Entry entry =
+        new ApkClassConverter.Index.Entry("Lapp/A;", "k1", "app/A.class");
+    entry.interfaceCallsFixed = 3;
+    entry.unframed = true;
+    entry.failedMethods = 1;
+    entry.dependencies = "app/B=C:java/lang/Object java/util/List=I:java/lang/Object";
+    entry.failures.add("Lapp/A;.f()V: java.lang.RuntimeException:\tbad\nline");
+    try (ApkClassConverter.Index.Writer writer = new ApkClassConverter.Index.Writer(index)) {
+      writer.write(entry);
+    }
+    ApkClassConverter.Index.Entry read = ApkClassConverter.Index.read(index).get("Lapp/A;");
+    assertEquals("k1", read.key);
+    assertEquals("app/A.class", read.entryName);
+    assertEquals(3, read.interfaceCallsFixed);
+    assertTrue(read.unframed);
+    assertEquals(1, read.failedMethods);
+    assertEquals(entry.dependencies, read.dependencies);
+    assertEquals(List.of("Lapp/A;.f()V: java.lang.RuntimeException: bad line"), read.failures);
+  }
+
+  /** An APK holding one classes.dex assembled from [smali] sources. */
+  private Path apk(String name, String... smali) throws Exception {
+    DexFileWriter dex = new DexFileWriter();
+    for (int i = 0; i < smali.length; i++) Smali.smaliFile("c" + i + ".smali", smali[i], dex);
+    dex.visitEnd();
+    Path apk = temp.getRoot().toPath().resolve(name);
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(apk))) {
+      zip.putNextEntry(new ZipEntry("classes.dex"));
+      zip.write(dex.toByteArray());
+      zip.closeEntry();
+    }
+    return apk;
+  }
+
+  private Path emptyJar() throws Exception {
+    Path jar = temp.getRoot().toPath().resolve("android.jar");
+    if (!Files.exists(jar)) {
+      try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+        zip.putNextEntry(new ZipEntry("README"));
+        zip.closeEntry();
+      }
+    }
+    return jar;
   }
 
   // -----------------------------------------------------------------------------------------------
