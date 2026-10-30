@@ -211,9 +211,10 @@ horologist = "0.7.15"
 #    compile and the daemon-harness render; and #2823 once pinned a
 #    `wear-compose-remote` version that didn't exist yet (every artifact 404'd),
 #    making every Remote Compose module here unresolvable. Check the POMs
-#    before landing a bump: `remote-material3:1.0.0-alpha12` and
-#    `androidx.glance.wear:*:1.0.0-alpha19` both declare `remote-creation*`
-#    `1.0.0-alpha20`, which is what makes the current trio consistent.
+#    before landing a bump: `remote-material3:1.0.0-alpha14` declares `remote-creation*`
+#    `1.0.0-alpha22` and `androidx.glance.wear:*:1.0.0-alpha21` declares `1.0.0-alpha21`,
+#    whose `RemoteDocumentPreview(ByteArray, Modifier, Profile)` alpha22 keeps. rc-players
+#    2.21.0 is built on this same trio, so the embedded player and these pins agree.
 #  * To try an API that has landed on androidx-main but is not released yet, run
 #    with `-Pcomposeai.remoteCompose=snapshot`: `settings.gradle.kts` then adds
 #    the build-id-pinned androidx.dev repository and rewrites all three refs to
@@ -227,7 +228,7 @@ horologist = "0.7.15"
 #    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
-compose-remote = "1.0.0-alpha20"
+compose-remote = "1.0.0-alpha22"
 # `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
 # `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
 # `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
@@ -245,20 +246,20 @@ androidx-core = "1.19.1"
 # and `:samples:wear-widget` (and, out of tree, by the `remote-m3` catalog in
 # yschimke/wear-m3-catalog, which resolves this same coordinate from Google Maven).
 # Its POM declares the `remote-creation*`
-# version it was compiled against (alpha12 → alpha20), so bump it together with
+# version it was compiled against (alpha14 → alpha22), so bump it together with
 # `compose-remote` above and `glance-wear` below. It also pulls
 # `androidx.compose.remote.foundation:foundation`, which used to exist only on the
 # androidx-main snapshot line and now publishes to Google Maven — that is what
 # unblocked the move back to released coordinates.
-wear-compose-remote = "1.0.0-alpha12"
+wear-compose-remote = "1.0.0-alpha14"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:wear-widget` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
 # `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. Declares
-# `remote-creation*` itself (alpha19 → alpha20), so a skewed pin risks exactly
+# `remote-creation*` itself (alpha21 declares alpha21), so a skewed pin risks exactly
 # the creation/player drift the Remote Compose comment describes — bump it with
 # the two pins above.
-glance-wear = "1.0.0-alpha19"
+glance-wear = "1.0.0-alpha21"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -498,7 +499,7 @@ composeai-contracts = "3.39.0"
 # applies or warns on unconsumed `overrides.remoteCompose.namedValues` (#406, #401); renders a Wear
 # widget preview in its carousel slot (#405, #402); exposes `preview/rows` on the clients (#404);
 # and honours scripted rotary distance and swipe timing (#409).
-composeai-preview-daemon = "3.26.0"
+composeai-preview-daemon = "3.27.0"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
@@ -543,7 +544,7 @@ composeai-preview-daemon = "3.26.0"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.17.5"
+rcplayers = "2.21.0"
 
 [libraries]
 
@@ -617,11 +618,12 @@ rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace" }
 rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol" }
 rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime" }
 rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose" }
-# The browser bundle `compose-preview serve` stages into `rc-player-wasm/`. A zip, not a jar — the
-# `dist` classifier is the distribution directory packaged for Maven; see that module's build file
-# in yschimke/rc-players for why it is a module of its own rather than a second publication on the
-# wasmJs one.
-rcplayer-wasm-dist = { module = "ee.schimke.composeai:rc-player-wasm-dist" }
+# The browser bundle `compose-preview serve` stages into `rc-player-wasm/`: the `rc-player-wasm.zip`
+# asset on each yschimke/rc-players GitHub Release, resolved through the `rcPlayerWasmRelease` ivy
+# repository in `settings.gradle.kts`. Releases through 2.17.x also published it to Central as
+# `rc-player-wasm-dist`; from 2.18.0 it is a Release asset only, so the BOM no longer constrains it
+# and it carries the stack's version ref itself.
+rcplayer-wasm = { module = "ee.schimke.composeai:rc-player-wasm", version.ref = "rcplayers" }
 # The vendored, locally patched AndroidX embedded player — the Android comparison lane. NOT a
 # supported API; pinned to one AndroidX alpha and versioned with the player stack rather than with
 # upstream.

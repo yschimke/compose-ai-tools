@@ -13,11 +13,18 @@ updates:
     # Let a new version sit on the registry for a week before we pull it
     # in, so typosquat/supply-chain compromises published and then pulled
     # don't auto-land as a Dependabot PR. (zizmor: dependabot-cooldown
-    # requires at least 7 days of cooldown across the board.)
+    # requires at least 7 days of cooldown across the board.) No
+    # `semver-major-days`: Dependabot rejects the semver-* keys for the
+    # github-actions ecosystem, which invalidates the whole file.
     cooldown:
       default-days: 7
-      semver-major-days: 14
     groups:
       # Bundle routine patch/minor bumps into a single PR to reduce noise.
       actions-minor:
         update-types: [minor, patch]
+    ignore:
+      # This repository's own actions (`yschimke/compose-ai-tools/.github/actions/install@…`)
+      # are pinned to a release on purpose and paired with a `version:` input or a checkout
+      # `ref:` of the same release (see .github/scripts/test_uid_audit_workflow.py). Dependabot
+      # moves only the `uses:` SHA, splitting the pair, so leave them to the hand-made bumps.
+      - dependency-name: "yschimke/compose-ai-tools*"

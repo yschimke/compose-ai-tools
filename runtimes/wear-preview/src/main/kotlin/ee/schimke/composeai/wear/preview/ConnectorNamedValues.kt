@@ -18,7 +18,7 @@ import ee.schimke.composeai.data.remotecompose.NamedValueSeedTarget
 import ee.schimke.composeai.data.remotecompose.reseed
 import ee.schimke.composeai.rcembedded.player.RcPlayer
 import ee.schimke.composeai.rcembedded.player.RcPlayerState
-import ee.schimke.composeai.rcembedded.player.RemoteImageSupport
+import ee.schimke.composeai.rcembedded.player.resources.RemoteImageSupport
 
 // Everything in this file touches `:data-remotecompose-connector`, which is `compileOnly` here: it
 // is on a render's classpath only when the consumer or the daemon puts it there. So nothing outside

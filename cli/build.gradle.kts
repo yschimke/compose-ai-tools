@@ -338,27 +338,19 @@ val stageBtaLibs =
     }
   }
 
-// The CMP/Wasm Remote Compose player, published by yschimke/rc-players as a `dist` zip and unpacked
-// into `rc-player-wasm/`. Lazy, and in its own configuration so it never reaches the CLI classpath.
+// The CMP/Wasm Remote Compose player, the `rc-player-wasm.zip` asset on the yschimke/rc-players
+// release (the `rcPlayerWasmRelease` ivy repository), unpacked into `rc-player-wasm/`. Lazy, and in
+// its own configuration so it never reaches the CLI classpath.
 val composePreviewRcPlayerWasm =
   configurations.create("composePreviewRcPlayerWasm") {
     isCanBeResolved = true
     isCanBeConsumed = false
+    isTransitive = false
   }
 
 dependencies {
-  add("composePreviewRcPlayerWasm", platform(libs.rcplayers.bom))
-  add(
-    "composePreviewRcPlayerWasm",
-    libs.rcplayer.wasm.dist.map {
-      mapOf(
-        "group" to it.module.group,
-        "name" to it.module.name,
-        "classifier" to "dist",
-        "ext" to "zip",
-      )
-    },
-  )
+  // A bare release asset with no module metadata, so requested artifact-only (`@zip`).
+  add("composePreviewRcPlayerWasm", "${libs.rcplayer.wasm.get()}@zip")
 }
 
 val rcPlayerWasmDist = provider { zipTree(composePreviewRcPlayerWasm.singleFile) }

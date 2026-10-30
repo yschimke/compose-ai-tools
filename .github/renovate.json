@@ -52,6 +52,16 @@
       "allowedVersions": "!/(-compat|-SNAPSHOT)$/"
     },
     {
+      "description": "Hold ClassGraph below 6. 6.0.0 is compiled for Java 25 (class file 69), so on this repository's JDK 17 floor every scan fails with UnsupportedClassVersionError, and it also removes the 4.x API (`overrideClasspath`, `getAnnotationInfo`, `typeDescriptorStr`). The shared preset carries the same cap, but the gradle-wide `-compat` rule just above also sets `allowedVersions` and comes later, so it overrides the preset's ClassGraph rule (last match wins); this rule restores the cap. It names plain `x.y.z` releases, which also keeps out `-compat` and `-SNAPSHOT`; Renovate's RE2 regexes have no lookahead to exclude them otherwise. Lift it only together with a Java 25 floor and a ported discovery.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "io.github.classgraph:classgraph"
+      ],
+      "allowedVersions": "/^[0-5]\\.[0-9]+\\.[0-9]+$/"
+    },
+    {
       "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
       "matchManagers": [
         "dockerfile"
