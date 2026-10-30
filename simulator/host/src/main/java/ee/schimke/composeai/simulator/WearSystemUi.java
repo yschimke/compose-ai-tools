@@ -315,14 +315,6 @@ final class WearSystemUi {
           if (surface == Surface.TILES && onTop()) buildCarousel();
           return data;
         }
-      case "ambient":
-        {
-          ambient = c.optBoolean("value", !ambient);
-          if (faceView != null) faceView.ambient(ambient);
-          if (ambient) show(Surface.WATCHFACE);
-          if (ongoingChip != null) ongoingChip.setAlpha(ambient ? 0.5f : 1f);
-          return describe();
-        }
       default:
         return null;
     }
@@ -336,11 +328,22 @@ final class WearSystemUi {
       case "quickSettings":
       case "tiles":
       case "health":
-      case "ambient":
         return true;
       default:
         return false;
     }
+  }
+
+  /**
+   * The screen changed power state ({@link ScreenPower}): the watch face dims to its ambient
+   * outline while the screen dozes, and a system surface left open goes back to the face, as on a
+   * watch.
+   */
+  void screen(ScreenPolicy.State state) {
+    ambient = state != ScreenPolicy.State.ON;
+    if (faceView != null) faceView.ambient(ambient);
+    if (ongoingChip != null) ongoingChip.setAlpha(ambient ? 0.5f : 1f);
+    if (ambient && onTop() && surface != Surface.WATCHFACE) show(Surface.WATCHFACE);
   }
 
   JSONObject describe() {

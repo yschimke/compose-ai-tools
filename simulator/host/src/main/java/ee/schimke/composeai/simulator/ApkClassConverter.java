@@ -92,6 +92,8 @@ public final class ApkClassConverter {
     public int unframedClasses;
     /** Classes taken from the translation without debug info, because the first one failed them. */
     public int withoutDebugInfo;
+    /** The APK's copies of shared-library classes the simulator provides, which were dropped. */
+    public int sharedLibraryClasses;
     public final List<String> failures = new ArrayList<>();
 
     String toJson() {
@@ -101,6 +103,7 @@ public final class ApkClassConverter {
       json.append(",\"failedMethods\":").append(failedMethods);
       json.append(",\"unframedClasses\":").append(unframedClasses);
       json.append(",\"withoutDebugInfo\":").append(withoutDebugInfo);
+      json.append(",\"sharedLibraryClasses\":").append(sharedLibraryClasses);
       json.append(",\"failures\":[");
       for (int i = 0; i < failures.size(); i++) {
         if (i > 0) json.append(',');
@@ -286,6 +289,28 @@ public final class ApkClassConverter {
     return value.vt == Value.VT.CONSTANT && Integer.valueOf(0).equals(((Constant) value).value);
   }
 
+  /**
+   * The packages of the Android shared libraries ({@code <uses-library>}) the simulator provides:
+   * the Wear OS library ({@code com.google.android.wearable}) and the Wear SDK ({@code wear-sdk}).
+   */
+  static final String[] SHARED_LIBRARY_PACKAGES = {
+    "com/google/android/wearable/", "com/google/wear/"
+  };
+
+  /**
+   * Whether [entryName] is a class of a shared library that [host], the simulator's own class path,
+   * also defines. On a device the library's class loader is the app's parent, so its classes win
+   * over any copy the APK carries (often a compile stub missing the methods the app calls); in the
+   * sandbox the app's classes come first, so the APK's copy is dropped instead.
+   */
+  static boolean providedBySimulator(String entryName, ClassLoader host) {
+    if (!entryName.endsWith(".class")) return false;
+    for (String prefix : SHARED_LIBRARY_PACKAGES) {
+      if (entryName.startsWith(prefix)) return host != null && host.getResource(entryName) != null;
+    }
+    return false;
+  }
+
   private static void fixInterfaceCalls(
       Path in, Map<String, byte[]> replacements, Path out, Path platformJar, Summary summary)
       throws IOException {
@@ -306,6 +331,10 @@ public final class ApkClassConverter {
         for (Enumeration<? extends ZipEntry> e = jar.entries(); e.hasMoreElements(); ) {
           ZipEntry entry = e.nextElement();
           if (entry.isDirectory()) continue;
+          if (providedBySimulator(entry.getName(), ApkClassConverter.class.getClassLoader())) {
+            summary.sharedLibraryClasses++;
+            continue;
+          }
           byte[] bytes = replacements.get(entry.getName());
           if (bytes == null) {
             try (InputStream stream = jar.getInputStream(entry)) {

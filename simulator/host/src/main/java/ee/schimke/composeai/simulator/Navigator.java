@@ -468,6 +468,29 @@ final class Navigator {
     return describe(top, "resumed");
   }
 
+  /**
+   * The screen went to sleep under the app: its top activity on the default display is paused and
+   * stopped where it is, as a phone's or a watch's without a watch face does. Returns that entry, or
+   * null when nothing was resumed there.
+   */
+  Entry screenOff() {
+    Entry top = top(Display.DEFAULT_DISPLAY);
+    if (top == null || top.stopped) return null;
+    top.controller.pause();
+    top.controller.saveInstanceState(new Bundle()).stop();
+    top.stopped = true;
+    protocol.event("activity", describe(top, "stopped"));
+    return top;
+  }
+
+  /** The screen woke: [entry], stopped by {@link #screenOff} and still on top, comes back. */
+  void screenOn(Entry entry) {
+    if (entry == null || !entry.stopped || !stack.contains(entry)) return;
+    if (top(entry.displayId) != entry) return;
+    bringBack(entry);
+    protocol.event("activity", describe(entry, "resumed"));
+  }
+
   /** The home screen on [displayId], if on top, is stopped and moved under the app's task. */
   private void leaveHome(int displayId) {
     Entry top = top(displayId);

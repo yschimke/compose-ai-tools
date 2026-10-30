@@ -201,7 +201,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `longPress` | as `tap`, `durationMs`? | |
 | `swipe` | `x1`,`y1`,`x2`,`y2`, `durationMs`?, `steps`?, `holdMs`? | `holdMs` holds still first, as a drag starts |
 | `rotary` | `delta`? (-1), `count`? (1), `intervalMs`? (20) | turns a watch's crown: rotary-encoder `ACTION_SCROLL`s to the focused view; negative scrolls down. The scroll animates: `wait` a second or two before a `screenshot` |
-| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app |
+| `key` | `key` (`"BACK"`, `"ENTER"`, a code, or an array of them), `longPress`? | key down/up; with `--launcher`, `HOME` goes home, as the window manager takes it before the app; `POWER`, `SLEEP` and `WAKEUP` are the [screen's](#screen-power-and-ambient-mode) |
 | `back` | | the Back key — the app's own back handling decides |
 | `text` | `text` | types into the focused field |
 | `launch` | `display`? | starts the launcher activity; with `--launcher`, as tapping its icon: a running app's task comes forward |
@@ -240,6 +240,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `battery` | `level`?, `plugged`? (`ac` / `usb` / `wireless` / `none`) or `charging`?, `powerSave`? | `BatteryManager`, the sticky `BATTERY_CHANGED`, and the power connected / disconnected, low / okay (at 15% / 20%, as `BatteryService` does) and power-save broadcasts |
 | `location` | `lat`, `lng`, `accuracy`?, `altitude`?, `bearing`?, `speed`? | a fix from the platform's GPS, network and fused providers |
 | `timezone` | `value` (`Asia/Tokyo`) | the default time zone, and `TIMEZONE_CHANGED` |
+| `screen` / `ambient` / `tilt` / `wake` / `palm` / `sleep` | see [Screen power and ambient mode](#screen-power-and-ambient-mode) | the screen on, in ambient or off: `isInteractive`, `Display.getState()`, the screen broadcasts, the app's ambient callbacks and the wrist-tilt gesture |
 | `home` | | with `--launcher`: the app goes to the background and the home screen shows; returns the grid and what is on it |
 | `drawer` | `action`? (`open` / `close`) | the app drawer |
 | `shortcuts` | `action`? (`list` / `open`), `activity`? | the app's static, dynamic and pinned shortcuts; `open` shows a launcher icon's long-press popup |
@@ -621,7 +622,53 @@ through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
 | `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers, each tile's render state; `show` takes a page index or a component |
 | `health` | `heartRate`?, `heartRateAccuracy`? (`unknown` … `high`), `steps`?, `distanceMeters`?, `calories`?, `floors`? | sets the simulated health data, which tiles and widgets on screen redraw with |
 | `quickSettings` | `airplane`?, `wifi`? | opens quick settings (battery, airplane mode, Wi-Fi), switching either first |
-| `ambient` | `value`? | dims the watch face to its ambient outline (toggles without `value`); the app gets no ambient callbacks |
+
+The face dims to its ambient outline while the screen dozes; see [Screen power and ambient
+mode](#screen-power-and-ambient-mode) for `ambient`, `tilt` and `palm`, which work with or without
+`--launcher`.
+
+### Screen power and ambient mode
+
+The screen is `on`, `ambient` (a watch's always-on doze) or `off`, and moves between them as a
+device's does. Every change sets `PowerManager.isInteractive()` and the default display's
+`Display.getState()` (`STATE_ON`, `STATE_DOZE`, `STATE_OFF`), broadcasts `ACTION_SCREEN_OFF` /
+`ACTION_SCREEN_ON`, and is reported as a `screen` event. What happens to the app depends on
+whether it opted into ambient:
+
+- **An ambient app** stays resumed on screen and gets its callbacks: `onEnterAmbient` with the
+  burn-in-protection and low-bit details (`burnIn`, `lowBit`), `onUpdateAmbient` once a minute of
+  simulated time (or on `ambient op:update`), and `onExitAmbient` on wake. That covers androidx.wear's
+  `AmbientLifecycleObserver`, the legacy `AmbientModeSupport` / `AmbientMode`, Horologist's
+  `AmbientAware` (all through the Wear OS shared library's `WearableActivityController`) and Wear
+  Compose's `rememberAmbientModeManager()` (through the Wear SDK's `AmbientManager`).
+- **Any other app** is paused and stopped as it leaves the screen: for the watch face with
+  `--launcher` (which dims to its ambient outline), in place without. On wake it restarts and
+  resumes, as a watch returns to the last app.
+- **Off**, every app is stopped, ambient or not, and screenshots are black. So is an ambient-mode
+  screenshot with nothing that draws in ambient: no ambient app and no `--launcher` face.
+
+The two libraries are system libraries on a watch (`<uses-library
+android:name="com.google.android.wearable">`, `wear-sdk`), which apps compile against and do not
+ship. `:simulator-host` provides both classes, and drops any copy an APK carries when it converts
+it (some ship compile stubs of the Wear SDK), as a device's library class loader would come first.
+
+Sleeping (`palm`, `sleep`, `KEYCODE_SLEEP`, the timeout) goes to ambient on a watch with always-on
+on (the default) and off otherwise; waking (`tilt`, `wake`, `KEYCODE_WAKEUP`) goes back on. While
+the screen sleeps, a `tap`, `longPress`, `swipe`, `rotary` or `key` wakes it and goes no further, as
+a watch's first touch does; the reply says `consumed`. A watch also has a wrist-tilt gesture sensor
+(`Sensor.TYPE_WRIST_TILT_GESTURE`, 26), and `tilt` delivers an event to its listeners before
+waking.
+
+| Command | Arguments | Does |
+| --- | --- | --- |
+| `screen` | `state`? (`on` / `ambient` / `off`), `timeoutMs`?, `alwaysOn`?, `burnIn`?, `lowBit`? | without arguments, the state: `interactive`, `displayState`, the settings, whether the app is in ambient or was stopped by the sleep, and each registered ambient activity (`api`, `ready`, `ambient`). `timeoutMs` sleeps the screen after that long without input (0, the default, never); `alwaysOn:false` makes a sleep go off; `burnIn` / `lowBit` are the details the next `onEnterAmbient` reports |
+| `ambient` | `value`?, `op`? (`update`), `burnIn`?, `lowBit`? | Wear only: enters ambient (`true`) or wakes (`false`); toggles without `value`. `op:update` sends `onUpdateAmbient` now rather than at the next minute |
+| `tilt` / `wake` | | the wrist-tilt gesture: `tilt` reports a `TYPE_WRIST_TILT_GESTURE` event to its listeners (`wristTiltListeners` counts them), then both wake the screen |
+| `palm` / `sleep` | | a palm over the screen: ambient on an always-on watch, off otherwise |
+| `key` | `POWER`, `SLEEP`, `WAKEUP` | `POWER` toggles sleep and wake; `adb shell input keyevent KEYCODE_POWER` maps to it |
+
+![Each ambient API in a probe app, interactive and in ambient](design/evidence/simulator-launch/wear-ambient-probe.png)
+![Home Assistant Wear leaving for the ambient face and coming back on tilt](design/evidence/simulator-launch/wear-ambient-ha.png)
 
 ### adb equivalents
 
@@ -687,7 +734,7 @@ quit and launch again.
 | `install`, `uninstall`, `pm install` | the simulator runs the one APK it was launched with |
 | `am instrument`, `am profile`, `am start -P/--start-profiler`, `am dumpheap` | no instrumentation runner, profiler or ART heap |
 | `intent:` URIs, `--selector`, `--ela`/`--efa` array extras | not mapped; use `-a -d -n` and the scalar or `--esa`/`--eia` extras |
-| `svc power`, `svc nfc`, `svc usb` | no power, NFC or USB model |
+| `svc power`, `svc nfc`, `svc usb` | power is the `screen` command (`svc power stayon` is not mapped); no NFC or USB model |
 | `settings list` | Robolectric's settings store cannot be enumerated |
 | `dumpsys meminfo` / `gfxinfo` / `battery` / others | no such services: one JVM, Robolectric's graphics |
 | `input roll` / `motionevent`, `monkey` with events | not mapped; use `tap`, `swipe` and `key` |
@@ -801,8 +848,12 @@ What does not, or not yet:
 - **Wear.** The [system UI](#wear-system-ui) is a demo face: no Watch Face Format or
   `WatchFaceService` faces and no complications. A tile's `TileUpdateRequester` is not wired to the
   carousel (`tiles op:refresh` requests it again), widgets are drawn as their large container only,
-  and the paired phone's bridged notifications and launcher entries are not shown. Ambient mode is
-  not entered (no `AmbientLifecycleObserver` callbacks). The Data Layer has no paired phone: `Wearable` APIs fail with
+  and the paired phone's bridged notifications and launcher entries are not shown. Ambient mode
+  reaches the app ([above](#screen-power-and-ambient-mode)), but nothing enforces it: the system
+  does not dim, shift for burn-in or cap the frame rate of an ambient app's drawing, ambient
+  offload (`setAmbientOffloadEnabled`) and auto-resume are accepted and ignored, and the Wear SDK's
+  `AmbientTransitionListener` is not called. Only the wrist-tilt gesture sensor exists; tilt is a
+  command, not derived from an accelerometer. The Data Layer has no paired phone: `Wearable` APIs fail with
   `SERVICE_INVALID`, as Play services' other APIs do.
 - **Home screen.** Only with `--launcher` ([above](#home-screen-and-widgets)), and only the app's
   own widgets and shortcuts: there is one package. No notification shade, wallpaper picker,
