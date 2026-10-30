@@ -66,7 +66,18 @@ internal class VirtualDevice(
 
   val bootTimeMs: Long = System.currentTimeMillis()
 
-  fun start() = lock.withLock { boot(config.systemApk) }
+  /**
+   * Boots the device: on [apk] already installed when there is one, as `launch --adb app.apk` asks,
+   * so it boots once rather than empty and then again for the install. An APK that cannot be
+   * installed leaves the device empty, and why is returned; a simulator that cannot start throws.
+   */
+  fun start(apk: File? = null): Throwable? = lock.withLock {
+    val staged = apk?.let { runCatching { stage(it) } }
+    val installedApk = staged?.getOrNull()
+    installed = installedApk
+    boot(installedApk?.apk ?: config.systemApk)
+    staged?.exceptionOrNull()
+  }
 
   /** An event line of the device's own, to the control client beside the simulator's. */
   fun event(line: String) = onLine(line)
@@ -101,6 +112,21 @@ internal class VirtualDevice(
 
   /** Installs [apk] (copied into the device first), restarting the simulator on it. */
   fun install(apk: File): Installed {
+    val staged = stage(apk)
+    lock.withLock {
+      installed?.let {
+        if (it.packageName != staged.packageName) log("replacing ${it.packageName}")
+      }
+      installed = staged
+      boot(staged.apk)
+    }
+    simulator()
+    onLine("""{"event":"installed","package":"${staged.packageName}"}""")
+    return staged
+  }
+
+  /** Checks [apk]'s package and copies it to where an installed APK lives on the device. */
+  private fun stage(apk: File): Installed {
     val packageName =
       ApkFormFactor.packageOf(apk) ?: throw IllegalArgumentException("not an APK: no manifest")
     if (packageName == SYSTEM_PACKAGE) throw IllegalArgumentException("cannot replace the system")
@@ -114,14 +140,7 @@ internal class VirtualDevice(
     check(target.canonicalFile.parentFile.parentFile == apps) { "$packageName escapes data/app" }
     target.parentFile.mkdirs()
     if (apk.canonicalFile != target.canonicalFile) apk.copyTo(target, overwrite = true)
-    lock.withLock {
-      installed?.let { if (it.packageName != packageName) log("replacing ${it.packageName}") }
-      installed = Installed(packageName, target)
-      boot(target)
-    }
-    simulator()
-    onLine("""{"event":"installed","package":"$packageName"}""")
-    return installed!!
+    return Installed(packageName, target)
   }
 
   /** Uninstalls [packageName], back to the system UI alone; false when it is not installed. */

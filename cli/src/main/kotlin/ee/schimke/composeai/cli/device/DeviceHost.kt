@@ -56,7 +56,9 @@ internal class DeviceHost(
     }
     Runtime.getRuntime().addShutdownHook(hook)
 
-    device.start()
+    // Booted on the APK `launch --adb app.apk` names, installed from the start: one boot.
+    // A simulator that cannot start throws, as before; an APK that cannot be installed is reported.
+    val installFailure = device.start(initialApk)
     if (control) bridgeStdin()
     System.err.println(
       "compose-preview launch: device ${config.serial} (${config.avdName}): adb on ${config.adbPort}, " +
@@ -78,28 +80,23 @@ internal class DeviceHost(
       }
         .toString()
     )
-    initialApk?.let { apk ->
-      Thread {
-        runCatching {
-          device.simulator()
-          device.install(apk)
-        }
-          .onFailure {
-            device.event(
-              buildJsonObject {
-                put("event", "installFailed")
-                put("apk", apk.path)
-                put("error", it.message ?: it.toString())
+    if (initialApk != null) {
+      if (installFailure != null) {
+        installFailed(initialApk, installFailure)
+      } else {
+        // As `adb install` reports it: once the simulator on the app is up.
+        Thread {
+          runCatching { device.simulator() }
+            .onSuccess {
+              device.installed?.let {
+                device.event("""{"event":"installed","package":"${it.packageName}"}""")
               }
-                .toString()
-            )
-            System.err.println(
-              "compose-preview launch: installing ${apk.name} failed: ${it.message}"
-            )
-          }
+            }
+            .onFailure { installFailed(initialApk, it) }
+        }
+          .apply { isDaemon = true }
+          .start()
       }
-        .apply { isDaemon = true }
-        .start()
     }
 
     val exit = device.exit.get()
@@ -152,6 +149,18 @@ internal class DeviceHost(
       }
     }
       .onFailure { device.log("no adb server on $port to register with (${it.message})") }
+  }
+
+  private fun installFailed(apk: java.io.File, error: Throwable) {
+    device.event(
+      buildJsonObject {
+        put("event", "installFailed")
+        put("apk", apk.path)
+        put("error", error.message ?: error.toString())
+      }
+        .toString()
+    )
+    System.err.println("compose-preview launch: installing ${apk.name} failed: ${error.message}")
   }
 
   companion object {

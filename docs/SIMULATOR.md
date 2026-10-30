@@ -1378,7 +1378,9 @@ simulator is up, `ro.build.characteristics` with `watch` on a watch). `adb conne
 also works. With `--control stdio` the device announces itself on the channel too:
 `{"event":"device","serial":"emulator-5554","adbPort":5555,"consolePort":5554,"grpcPort":8554,"avd":…,"formFactor":…}`,
 then `installed` / `uninstalled` (`package`) as packages come and go, and `installFailed`
-(`apk`, `error`) when an APK given to `launch --adb` cannot be installed.
+(`apk`, `error`) when an APK given to `launch --adb` cannot be installed. An APK given to `launch
+--adb` is installed before the device boots, so the device boots once, on it; one that cannot be
+installed leaves the device empty.
 
 **Installing.** A Robolectric sandbox is built around one APK, so the device is this process and
 the simulator is what runs on it: `adb install` (streamed with `abb_exec`, `exec:cmd package`, or
