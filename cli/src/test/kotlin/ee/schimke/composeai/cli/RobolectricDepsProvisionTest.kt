@@ -115,6 +115,10 @@ class RobolectricDepsProvisionTest {
       "15-robolectric-1-i7",
     )
 
+  /** What [dir] holds besides the per-artifact lock files, which stay. */
+  private fun files(dir: File): List<String> =
+    dir.list()!!.filterNot { it.endsWith(".lock") }.sorted()
+
   @Test
   fun `a download lands under its Maven name once its checksum matches`() = fixture { dir ->
     val body = "framework bytes"
@@ -135,7 +139,7 @@ class RobolectricDepsProvisionTest {
       RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
     assertEquals(File(out, "android-all-instrumented-15-robolectric-1-i7.jar"), jar)
     assertEquals(body, jar.readText())
-    assertEquals(listOf(jar.name), out.list()!!.toList(), "no temporary files left behind")
+    assertEquals(listOf(jar.name), files(out), "no temporary files left behind")
     assertEquals(
       listOf(artifact.url(), artifact.url() + ".sha512", artifact.url() + ".sha256"),
       fetched,
@@ -160,7 +164,7 @@ class RobolectricDepsProvisionTest {
       }
     assertTrue(e.message!!.contains("SHA-1"), e.message)
     assertFalse(File(out, artifact.fileName).exists())
-    assertTrue(out.list()!!.isEmpty())
+    assertTrue(files(out).isEmpty())
   }
 
   @Test
@@ -201,5 +205,107 @@ class RobolectricDepsProvisionTest {
       )
     }
     assertEquals(1, jarAttempts)
+  }
+
+  @Test
+  fun `Robolectric's own verified copy is linked instead of fetched`() = fixture { dir ->
+    val m2 = File(dir, "m2")
+    val seed =
+      File(m2, "org/robolectric/android-all-instrumented/${artifact.version}/${artifact.fileName}")
+    seed.parentFile.mkdirs()
+    seed.writeText("framework bytes")
+    File(seed.path + ".sha512").writeText(RobolectricDepsProvision.digest(seed, "SHA-512"))
+    assertEquals(seed, RobolectricDepsProvision.mavenLocalCopy(artifact, m2))
+    val fetcher = RobolectricDepsProvision.Fetcher { url, _ -> error("fetched $url") }
+    val out = File(dir, "deps")
+    val jar =
+      RobolectricDepsProvision.ensure(
+        artifact,
+        out,
+        fetcher = fetcher,
+        pause = {},
+        log = {},
+        seed = seed,
+      )
+    assertEquals("framework bytes", jar.readText())
+    assertEquals(listOf(jar.name), files(out))
+  }
+
+  @Test
+  fun `a copy that fails its checksum is fetched again`() = fixture { dir ->
+    val body = "framework bytes"
+    val sha1 = RobolectricDepsProvision.digest(File(dir, "b").apply { writeText(body) }, "SHA-1")
+    // Cut short, as a copy across file systems is when its process is killed.
+    val seed =
+      File(dir, "seed/${artifact.fileName}").apply {
+        parentFile.mkdirs()
+        writeText("framework")
+      }
+    val fetched = mutableListOf<String>()
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      fetched += url
+      when {
+        url.endsWith(".jar") -> dest.writeText(body)
+        url.endsWith(".sha1") -> dest.writeText(sha1)
+        else -> error("HTTP 404")
+      }
+    }
+    val jar =
+      RobolectricDepsProvision.ensure(
+        artifact,
+        File(dir, "deps"),
+        fetcher = fetcher,
+        pause = {},
+        log = {},
+        seed = seed,
+      )
+    assertEquals(body, jar.readText())
+    assertTrue(artifact.url() in fetched, "$fetched")
+  }
+
+  @Test
+  fun `a fetch a killed process left behind is cleared`() = fixture { dir ->
+    val body = "bytes"
+    val sha1 = RobolectricDepsProvision.digest(File(dir, "b").apply { writeText(body) }, "SHA-1")
+    val out = File(dir, "deps").apply { mkdirs() }
+    File(out, ".${artifact.fileName}.dead.tmp").writeText("half a jar")
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      when {
+        url.endsWith(".jar") -> dest.writeText(body)
+        url.endsWith(".sha1") -> dest.writeText(sha1)
+        else -> error("HTTP 404")
+      }
+    }
+    RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
+    assertEquals(listOf(artifact.fileName), files(out))
+  }
+
+  @Test
+  fun `concurrent callers fetch an artifact once`() = fixture { dir ->
+    val body = "bytes"
+    val sha1 = RobolectricDepsProvision.digest(File(dir, "b").apply { writeText(body) }, "SHA-1")
+    val jarFetches = java.util.concurrent.atomic.AtomicInteger()
+    val fetcher = RobolectricDepsProvision.Fetcher { url, dest ->
+      when {
+        url.endsWith(".jar") -> {
+          jarFetches.incrementAndGet()
+          Thread.sleep(200)
+          dest.writeText(body)
+        }
+        url.endsWith(".sha1") -> dest.writeText(sha1)
+        else -> error("HTTP 404")
+      }
+    }
+    val out = File(dir, "deps")
+    val threads =
+      List(4) {
+        Thread {
+          RobolectricDepsProvision.ensure(artifact, out, fetcher = fetcher, pause = {}, log = {})
+        }
+      }
+    threads.forEach { it.start() }
+    threads.forEach { it.join() }
+    assertEquals(1, jarFetches.get())
+    assertEquals(body, File(out, artifact.fileName).readText())
   }
 }

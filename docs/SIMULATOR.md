@@ -85,6 +85,11 @@ Then an ASM pass makes the output acceptable to a *verifying* JVM:
 On the sample app that is 21,870 classes, 1,818 interface calls fixed, 0 failed methods, in about
 40 seconds; ASM's `BasicVerifier` passes every one of its 142,691 methods.
 
+The converter reads and translates one class at a time, keeping only the class-level facts
+(inner-class annotations, then each class's header) for the rest, and runs on a 1 GB serial heap,
+retried once on 3 GB if that runs out. dex2jar's own driver reads the whole APK into one tree
+first: Home Assistant needed 3.8 GB, and now converts in under 1 GB.
+
 **The cache** lives under `<cache>/composeai/simulator/<apk sha256>/<converter stamp>/`. The APK is
 keyed by content and the stamp by the converter's jars and the platform jar, so a rebuilt APK or a
 newer converter converts again, and anything else is a cache hit (about 0.25 s). The eight most
@@ -751,6 +756,16 @@ quit and launch again.
 | `reboot`, `root`, `sh` scripts, pipes, `&&` | no device to reboot; one command per line |
 | `pm disable` / `enable` components | not mapped |
 | `logcat -b crash/events/radio`, `bugreport` | there is one buffer: the app's `android.util.Log` |
+
+## Memory
+
+Each simulator JVM gets `-Xmx` of an eighth of the machine, between 768 MB and 2 GB
+(`--max-heap` overrides it), and a periodic collection every 5 seconds without one
+(`-XX:G1PeriodicGCInterval=5000`). Apps' live heaps are small — about 120 MB for Now in Android and
+Confetti once ready — but the framework's graphics objects own native memory that only a
+collection frees, and an app idling on an animated screen makes too little garbage to trigger one:
+Confetti grew from 850 MB to 2.3 GB in two idle minutes before, and stays near 1 GB with it. A pair
+runs two JVMs; `--max-heap 1g` suits a phone app and `768m` a watch.
 
 ## A paired phone and watch
 
