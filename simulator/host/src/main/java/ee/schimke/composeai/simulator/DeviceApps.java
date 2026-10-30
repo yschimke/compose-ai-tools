@@ -325,6 +325,17 @@ final class DeviceApps {
     }
   }
 
+  /**
+   * HOME, pressed in this app's half of a split screen: the split ends, the other app goes to the
+   * background, and this one's home screen takes the whole display.
+   */
+  void endSplitForHome() {
+    if (side == null) return;
+    leaveSplit();
+    DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", app.getPackageName()).object());
+    event();
+  }
+
   /** Where this app is on a split screen, or null. */
   JSONObject describeSplit() {
     if (side == null) return null;

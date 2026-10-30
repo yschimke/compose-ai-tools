@@ -334,6 +334,8 @@ final class Session {
       case "finish":
       case "launch":
       case "startActivity":
+      case "foreground":
+      case "split":
       case "startService":
       case "stopService":
       case "bindService":
