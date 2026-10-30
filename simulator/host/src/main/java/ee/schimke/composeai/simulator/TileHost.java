@@ -3,7 +3,6 @@ package ee.schimke.composeai.simulator;
 import android.app.Application;
 import android.content.ComponentName;
 import android.content.Intent;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
@@ -12,36 +11,43 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.xmlpull.v1.XmlPullParser;
 
 /**
- * The tiles and Wear Widgets carousel's model: what the app offers, read from its manifest, and
- * which of them the agent has added, in carousel order.
+ * The tiles and Wear Widgets carousel's model: what the app offers, read from its manifest, which
+ * of them the agent (or the person, on the carousel's add page) has added, and the pages that makes.
  *
  * <ul>
  *   <li>A tile is a service with the {@code androidx.wear.tiles.action.BIND_TILE_PROVIDER} action;
- *       its {@code androidx.wear.tiles.PREVIEW} meta-data is the picker image.
- *   <li>A Wear Widget is a service whose meta-data points at a {@code *widget_provider*} XML
- *       resource, as {@code androidx.glance.wear} generates; the XML's {@code label}, {@code
- *       description} and {@code previewImage} describe it.
+ *       its {@code androidx.wear.tiles.PREVIEW} meta-data is the picker image. Each added tile is a
+ *       whole page, drawn by {@link TileClient} with the protolayout renderer.
+ *   <li>A Wear Widget is a service with {@code androidx.glance.wear.action.BIND_WIDGET_PROVIDER}
+ *       (Glance Wear's {@code GlanceWearWidgetService}, which also answers the tile action; it
+ *       counts as a widget), or one whose meta-data points at a {@code *widget_provider*} XML. The
+ *       XML's {@code label}, {@code description} and {@code previewImage} describe it. Added widgets
+ *       share one page, a scrolling list.
  * </ul>
  *
- * <p>The carousel shows each added item as its picker card: label, kind and preview image. Drawing
- * the tile's own layout needs the protolayout renderer, which apps do not ship, and a widget's
- * Remote Compose document a View-based player; both are the next step (see {@code
- * docs/design/SIMULATOR_WEAR_LAUNCHER.md}), so a card says it is a preview.
+ * Pages, in order: the widgets (when any are added), each tile, then the add page listing what is
+ * available and not yet added.
  */
 final class TileHost {
 
   static final String TILE_ACTION = "androidx.wear.tiles.action.BIND_TILE_PROVIDER";
+  static final String WIDGET_ACTION = "androidx.glance.wear.action.BIND_WIDGET_PROVIDER";
   static final String TILE_PREVIEW = "androidx.wear.tiles.PREVIEW";
   /** Launch-time tiles and widgets ({@code --tile}), comma separated components. */
   static final String PROPERTY = "composeai.simulator.tiles";
+
+  static final String WIDGETS_PAGE = "widgets";
+  static final String ADD_PAGE = "add";
 
   /** One tile or widget the app provides. */
   static final class Item {
@@ -59,14 +65,31 @@ final class TileHost {
       this.description = description;
       this.preview = preview;
     }
+
+    boolean tile() {
+      return kind.equals("tile");
+    }
+
+    String key() {
+      return component.flattenToString();
+    }
   }
 
   private final Application app;
+  private final Navigator navigator;
+  private final SystemData systemData;
+  private final TileClient.Listener listener;
   private final Map<String, Item> added = new LinkedHashMap<>();
+  private final Map<String, TileClient> clients = new LinkedHashMap<>();
+  private int nextTileId = 1;
   private int index;
 
-  TileHost(Application app) {
+  TileHost(
+      Application app, Navigator navigator, SystemData systemData, TileClient.Listener listener) {
     this.app = app;
+    this.navigator = navigator;
+    this.systemData = systemData;
+    this.listener = listener;
   }
 
   /** Adds the {@code --tile} components; unknown ones are reported, not fatal. */
@@ -77,77 +100,107 @@ final class TileHost {
       try {
         add(component.trim());
       } catch (RuntimeException e) {
-        protocol.event("error", new Protocol.Json().put("kind", "tile").put("message", e.getMessage())
-            .object());
+        protocol.event(
+            "error",
+            new Protocol.Json().put("kind", "tile").put("message", e.getMessage()).object());
       }
     }
+    index = 0;
   }
 
-  /** Every tile and widget the app's manifest declares. */
+  // ---------------------------------------------------------------------------------------------
+  // Discovery
+
+  /** Every tile and widget the app's manifest declares, widgets first. */
   List<Item> available() {
-    List<Item> items = new ArrayList<>();
     PackageManager pm = app.getPackageManager();
-    List<ResolveInfo> tiles =
-        pm.queryIntentServices(
-            new Intent(TILE_ACTION).setPackage(app.getPackageName()), PackageManager.GET_META_DATA);
-    for (ResolveInfo info : tiles) {
+    Map<String, Item> items = new LinkedHashMap<>();
+    Set<String> widgets = new LinkedHashSet<>();
+    for (ResolveInfo info : services(WIDGET_ACTION)) {
+      widgets.add(info.serviceInfo.name);
+      Item item = widget(info.serviceInfo);
+      items.put(item.key(), item);
+    }
+    try {
+      android.content.pm.PackageInfo pkg =
+          pm.getPackageInfo(
+              app.getPackageName(), PackageManager.GET_SERVICES | PackageManager.GET_META_DATA);
+      if (pkg.services != null) {
+        for (ServiceInfo service : pkg.services) {
+          if (widgets.contains(service.name) || widgetXml(service) == 0) continue;
+          widgets.add(service.name);
+          Item item = widget(service);
+          items.put(item.key(), item);
+        }
+      }
+    } catch (PackageManager.NameNotFoundException e) {
+      // No package info: the action queries are all there is.
+    }
+    for (ResolveInfo info : services(TILE_ACTION)) {
       ServiceInfo service = info.serviceInfo;
-      if (service == null) continue;
+      if (widgets.contains(service.name)) continue;
       Bundle meta = service.metaData;
-      items.add(
+      Item item =
           new Item(
               new ComponentName(service.packageName, service.name),
               "tile",
               label(service),
               null,
-              meta == null ? 0 : meta.getInt(TILE_PREVIEW, 0)));
+              meta == null ? 0 : meta.getInt(TILE_PREVIEW, 0));
+      items.put(item.key(), item);
     }
-    PackageInfo pkg;
-    try {
-      pkg =
-          pm.getPackageInfo(
-              app.getPackageName(), PackageManager.GET_SERVICES | PackageManager.GET_META_DATA);
-    } catch (PackageManager.NameNotFoundException e) {
-      return items;
-    }
-    if (pkg.services == null) return items;
-    for (ServiceInfo service : pkg.services) {
-      if (service.metaData == null) continue;
-      for (String key : service.metaData.keySet()) {
-        Object value = service.metaData.get(key);
-        if (!(value instanceof Integer) || (Integer) value == 0) continue;
-        String entry;
-        try {
-          entry = app.getResources().getResourceEntryName((Integer) value);
-        } catch (RuntimeException e) {
-          continue;
-        }
-        if (!entry.contains("widget_provider")) continue;
-        items.add(widget(service, (Integer) value));
-        break;
-      }
-    }
-    return items;
+    return new ArrayList<>(items.values());
   }
 
-  private Item widget(ServiceInfo service, int xml) {
+  private List<ResolveInfo> services(String action) {
+    List<ResolveInfo> found =
+        app.getPackageManager()
+            .queryIntentServices(
+                new Intent(action).setPackage(app.getPackageName()),
+                PackageManager.GET_META_DATA);
+    List<ResolveInfo> services = new ArrayList<>();
+    if (found != null) for (ResolveInfo info : found) if (info.serviceInfo != null) services.add(info);
+    return services;
+  }
+
+  /** The service's {@code *widget_provider*} XML resource, or 0. */
+  private int widgetXml(ServiceInfo service) {
+    if (service.metaData == null) return 0;
+    for (String key : service.metaData.keySet()) {
+      Object value = service.metaData.get(key);
+      if (!(value instanceof Integer) || (Integer) value == 0) continue;
+      try {
+        if (app.getResources().getResourceEntryName((Integer) value).contains("widget_provider")) {
+          return (Integer) value;
+        }
+      } catch (RuntimeException e) {
+        // Not a resource.
+      }
+    }
+    return 0;
+  }
+
+  private Item widget(ServiceInfo service) {
     String label = null;
     String description = null;
     int preview = 0;
-    try (XmlResourceParser parser = app.getResources().getXml(xml)) {
-      int event;
-      while ((event = parser.next()) != XmlPullParser.END_DOCUMENT) {
-        if (event != XmlPullParser.START_TAG) continue;
-        for (int i = 0; i < parser.getAttributeCount(); i++) {
-          String name = parser.getAttributeName(i);
-          if (name.equals("label")) label = attribute(parser, i);
-          else if (name.equals("description")) description = attribute(parser, i);
-          else if (name.equals("previewImage")) preview = parser.getAttributeResourceValue(i, 0);
+    int xml = widgetXml(service);
+    if (xml != 0) {
+      try (XmlResourceParser parser = app.getResources().getXml(xml)) {
+        int event;
+        while ((event = parser.next()) != XmlPullParser.END_DOCUMENT) {
+          if (event != XmlPullParser.START_TAG) continue;
+          for (int i = 0; i < parser.getAttributeCount(); i++) {
+            String name = parser.getAttributeName(i);
+            if (name.equals("label")) label = attribute(parser, i);
+            else if (name.equals("description")) description = attribute(parser, i);
+            else if (name.equals("previewImage")) preview = parser.getAttributeResourceValue(i, 0);
+          }
+          break;
         }
-        break;
+      } catch (Exception e) {
+        // An unreadable provider XML: the service's own label.
       }
-    } catch (Exception e) {
-      // An unreadable provider XML: the service's own label.
     }
     return new Item(
         new ComponentName(service.packageName, service.name),
@@ -190,53 +243,103 @@ final class TileHost {
     return new ArrayList<>(added.values());
   }
 
+  List<Item> widgets() {
+    List<Item> widgets = new ArrayList<>();
+    for (Item item : added.values()) if (!item.tile()) widgets.add(item);
+    return widgets;
+  }
+
+  List<Item> notAdded() {
+    List<Item> items = new ArrayList<>();
+    for (Item item : available()) if (!added.containsKey(item.key())) items.add(item);
+    return items;
+  }
+
+  /** The pages: {@link #WIDGETS_PAGE}, each tile's component key, then {@link #ADD_PAGE}. */
+  List<String> pages() {
+    List<String> pages = new ArrayList<>();
+    if (!widgets().isEmpty()) pages.add(WIDGETS_PAGE);
+    for (Item item : added.values()) if (item.tile()) pages.add(item.key());
+    pages.add(ADD_PAGE);
+    return pages;
+  }
+
   int index() {
-    return added.isEmpty() ? -1 : Math.min(index, added.size() - 1);
+    return Math.max(0, Math.min(index, pages().size() - 1));
   }
 
-  Item current() {
-    int i = index();
-    return i < 0 ? null : added().get(i);
+  String page() {
+    return pages().get(index());
   }
 
-  /** Adds [component] (a class name, short {@code .Name}, or {@code pkg/.Name}) to the end. */
+  Item item(String key) {
+    return added.get(key);
+  }
+
+  TileClient client(Item item) {
+    return clients.get(item.key());
+  }
+
+  /**
+   * Adds [component] (a class name, short {@code .Name}, or {@code pkg/.Name}) and moves to its
+   * page; a tile is bound and told it was added, as the watch's tile manager does.
+   */
   Item add(String component) {
     Item item = find(component);
-    added.put(item.component.flattenToString(), item);
+    if (!added.containsKey(item.key())) {
+      added.put(item.key(), item);
+      if (item.tile()) {
+        TileClient client =
+            new TileClient(app, navigator, systemData, item.component, nextTileId++, listener);
+        clients.put(item.key(), client);
+        try {
+          client.event("TileAddEvent", "onTileAddEvent");
+        } catch (ReflectiveOperationException | RuntimeException e) {
+          // The tile still renders; the event is best effort, as on a watch.
+        }
+      }
+    }
+    index = pages().indexOf(item.tile() ? item.key() : WIDGETS_PAGE);
     return item;
   }
 
   Item remove(String component) {
     Item item = find(component);
-    if (added.remove(item.component.flattenToString()) == null) {
+    if (added.remove(item.key()) == null) {
       throw new IllegalArgumentException(component + " is not in the carousel");
     }
-    if (index >= added.size()) index = Math.max(0, added.size() - 1);
+    TileClient client = clients.remove(item.key());
+    if (client != null) client.release();
+    index = Math.min(index, pages().size() - 1);
     return item;
   }
 
+  /** Moves to page [i], or the page holding [component]. */
   void show(int i) {
-    if (added.isEmpty()) throw new IllegalStateException("no tiles or widgets added");
-    if (i < 0 || i >= added.size()) {
-      throw new IllegalArgumentException("the carousel has " + added.size() + " items, no " + i);
+    List<String> pages = pages();
+    if (i < 0 || i >= pages.size()) {
+      throw new IllegalArgumentException("the carousel has " + pages.size() + " pages, no " + i);
     }
     index = i;
   }
 
-  int indexOf(String component) {
+  void show(String component) {
     Item item = find(component);
-    return added().indexOf(added.get(item.component.flattenToString()));
+    if (!added.containsKey(item.key())) {
+      throw new IllegalArgumentException(component + " is not in the carousel: tiles op:add first");
+    }
+    index = pages().indexOf(item.tile() ? item.key() : WIDGETS_PAGE);
   }
 
   boolean next() {
-    if (index() + 1 >= added.size()) return false;
-    index++;
+    if (index() + 1 >= pages().size()) return false;
+    index = index() + 1;
     return true;
   }
 
   boolean previous() {
     if (index() <= 0) return false;
-    index--;
+    index = index() - 1;
     return true;
   }
 
@@ -249,7 +352,7 @@ final class TileHost {
     List<Item> available = available();
     for (Item item : available) {
       if (item.component.equals(wanted)
-          || item.component.getClassName().endsWith("." + component)) {
+          || item.component.getClassName().endsWith("." + component.replaceFirst("^\\.", ""))) {
         return item;
       }
     }
@@ -260,41 +363,38 @@ final class TileHost {
   }
 
   JSONObject describe(Item item) {
-    return new Protocol.Json()
-        .put("component", item.component.getClassName())
-        .put("kind", item.kind)
-        .put("label", item.label)
-        .put("description", item.description)
-        .put("preview", item.preview != 0)
-        .put("added", added.containsKey(item.component.flattenToString()))
-        .object();
+    Protocol.Json json =
+        new Protocol.Json()
+            .put("component", item.component.getClassName())
+            .put("kind", item.kind)
+            .put("label", item.label)
+            .put("description", item.description)
+            .put("preview", item.preview != 0)
+            .put("added", added.containsKey(item.key()));
+    TileClient client = clients.get(item.key());
+    if (client != null) {
+      json.put("tileId", client.tileId)
+          .put("rendered", client.view() != null)
+          .put("requests", client.requests())
+          .put("error", client.error());
+    }
+    return json.object();
   }
 
   JSONObject list() {
-    JSONArray carousel = new JSONArray();
-    for (Item item : added()) carousel.put(describe(item));
+    JSONArray pages = new JSONArray();
+    for (String page : pages()) {
+      Item item = added.get(page);
+      pages.put(item == null ? page : item.component.getClassName());
+    }
     JSONArray all = new JSONArray();
     for (Item item : available()) all.put(describe(item));
     return new Protocol.Json()
-        .put("carousel", carousel)
+        .put("pages", pages)
         .put("index", index())
+        .put("page", pages.opt(index()))
         .put("available", all)
+        .put("systemData", systemData.describe())
         .object();
-  }
-
-  /** {@code tiles} ops that change only the model; {@link WearSystemUi} shows the result. */
-  JSONObject command(String op, JSONObject c) throws JSONException {
-    switch (op) {
-      case "list":
-        return list();
-      case "add":
-        add(c.getString("component"));
-        return list();
-      case "remove":
-        remove(c.getString("component"));
-        return list();
-      default:
-        return null;
-    }
   }
 }

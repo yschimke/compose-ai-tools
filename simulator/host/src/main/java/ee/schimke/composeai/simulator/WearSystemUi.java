@@ -90,6 +90,11 @@ final class WearSystemUi {
   private final Protocol protocol;
   private final NotificationStream stream;
   private final TileHost tiles;
+  private final SystemData systemData;
+  /** Each tile's page, which keeps its rendered view while other pages show. */
+  private final java.util.Map<String, FrameLayout> tilePages = new java.util.HashMap<>();
+  /** The page whose tile was last told it is on screen. */
+  private String enteredTile;
   private Navigator.Entry home;
   private Surface surface = Surface.WATCHFACE;
   private boolean ambient;
@@ -118,7 +123,8 @@ final class WearSystemUi {
     this.navigator = navigator;
     this.protocol = protocol;
     this.stream = stream;
-    this.tiles = new TileHost(app);
+    this.systemData = new SystemData(app);
+    this.tiles = new TileHost(app, navigator, systemData, this::tileRendered);
     stream.onChange(this::streamChanged);
   }
 
@@ -177,6 +183,7 @@ final class WearSystemUi {
   /** Shows [target], bringing the system UI over the app first if the app is on screen. */
   private void show(Surface target) {
     if (!onTop()) navigator.moveToFront(home);
+    if (target != Surface.TILES) leaveTile();
     surface = target;
     if (root == null) return;
     face.setVisibility(target == Surface.WATCHFACE ? View.VISIBLE : View.GONE);
@@ -225,6 +232,7 @@ final class WearSystemUi {
       buildCarousel();
       return;
     }
+    leaveTile();
     if (surface != Surface.WATCHFACE) show(Surface.WATCHFACE);
   }
 
@@ -311,6 +319,12 @@ final class WearSystemUi {
         }
       case "tiles":
         return tilesCommand(c);
+      case "health":
+        {
+          JSONObject data = systemData.command(c);
+          if (surface == Surface.TILES && onTop()) buildCarousel();
+          return data;
+        }
       case "ambient":
         {
           ambient = c.optBoolean("value", !ambient);
@@ -331,6 +345,7 @@ final class WearSystemUi {
       case "notifications":
       case "quickSettings":
       case "tiles":
+      case "health":
       case "ambient":
         return true;
       default:
@@ -390,30 +405,53 @@ final class WearSystemUi {
 
   private JSONObject tilesCommand(JSONObject c) throws JSONException {
     String op = c.optString("op", "list");
-    JSONObject model = tiles.command(op, c);
-    if (model != null) {
-      if (surface == Surface.TILES && onTop()) buildCarousel();
-      return model;
-    }
+    boolean showing = onTop() && surface == Surface.TILES;
     switch (op) {
+      case "list":
+        return tiles.list();
+      case "add":
+        tiles.add(c.getString("component"));
+        show(Surface.TILES);
+        break;
+      case "remove":
+        {
+          TileHost.Item item = tiles.remove(c.getString("component"));
+          FrameLayout page = tilePages.remove(item.key());
+          if (page != null && page.getParent() != null) ((ViewGroup) page.getParent()).removeView(page);
+          if (item.key().equals(enteredTile)) enteredTile = null;
+          if (showing) buildCarousel();
+          break;
+        }
       case "show":
-        if (c.has("component")) tiles.show(tiles.indexOf(c.getString("component")));
+        if (c.has("component")) tiles.show(c.getString("component"));
         else tiles.show(c.optInt("index", 0));
         show(Surface.TILES);
         break;
       case "next":
-        if (onTop() && surface == Surface.TILES) tiles.next();
-        else if (tiles.added().isEmpty()) throw new IllegalStateException("no tiles or widgets added");
+        if (showing) tiles.next();
         else tiles.show(0);
         show(Surface.TILES);
         break;
       case "prev":
-        if (onTop() && surface == Surface.TILES && !tiles.previous()) show(Surface.WATCHFACE);
+        if (showing && !tiles.previous()) show(Surface.WATCHFACE);
         else show(Surface.TILES);
         break;
+      case "refresh":
+        {
+          TileHost.Item item =
+              c.has("component") ? null : tiles.item(tiles.page());
+          if (c.has("component")) {
+            tiles.show(c.getString("component"));
+            item = tiles.item(tiles.page());
+          }
+          if (item == null || !item.tile()) throw new IllegalStateException("no tile is showing");
+          tiles.client(item).request();
+          show(Surface.TILES);
+          break;
+        }
       default:
         throw new IllegalArgumentException(
-            "tiles op is list, add, remove, show, next or prev, not " + op);
+            "tiles op is list, add, remove, show, next, prev or refresh, not " + op);
     }
     JSONObject result = tiles.list();
     result.put("surface", surface());
@@ -621,7 +659,8 @@ final class WearSystemUi {
         View above = notificationList.getChildAt(j);
         top += above.getMeasuredHeight() + ((LinearLayout.LayoutParams) above.getLayoutParams()).topMargin;
       }
-      notifications.post(() -> notifications.scrollTo(0, Math.max(0, top - dp(24))));
+      int y = Math.max(0, top - dp(24));
+      notifications.post(() -> notifications.scrollTo(0, y));
       return;
     }
   }
@@ -766,63 +805,217 @@ final class WearSystemUi {
 
   // -- Tiles
 
+  /** Shows the carousel's current page: the widgets list, one tile, or the add page. */
   private void buildCarousel() {
-    carousel.removeAllViews();
-    TileHost.Item item = tiles.current();
-    LinearLayout page = column(context);
-    page.setGravity(Gravity.CENTER);
-    if (item == null) {
-      TextView empty =
-          text("No tiles or widgets added.\n" + tiles.available().size() + " available: tiles add",
-              13, 0xFFBDC1C6, false);
-      empty.setGravity(Gravity.CENTER);
-      tag(empty, "tiles_empty", null);
-      page.addView(empty, wide());
+    for (int i = carousel.getChildCount() - 1; i >= 0; i--) carousel.removeViewAt(i);
+    String page = tiles.page();
+    TileHost.Item item = tiles.item(page);
+    if (item != null && item.tile()) {
+      carousel.addView(tilePage(item), matchParent());
+      enterTile(item);
     } else {
+      leaveTile();
+      carousel.addView(page.equals(TileHost.WIDGETS_PAGE) ? widgetsPage() : addPage(), matchParent());
+    }
+    carousel.addView(pageDots(), matchParent());
+  }
+
+  /** [item]'s page: the renderer's view once it has drawn, a placeholder until then. */
+  private FrameLayout tilePage(TileHost.Item item) {
+    FrameLayout page = tilePages.get(item.key());
+    TileClient client = tiles.client(item);
+    if (page == null) {
+      page = new FrameLayout(context);
+      tag(page, "tile", item.component.getClassName());
+      tilePages.put(item.key(), page);
+      client.attach(context, page);
+      TextView loading = text("Loading " + item.label + "\u2026", 13, 0xFFBDC1C6, false);
+      loading.setGravity(Gravity.CENTER);
+      page.addView(loading, matchParent());
+      client.request();
+    }
+    return page;
+  }
+
+  /** Tells the tile on screen it is entered, and the one before it that it was left. */
+  private void enterTile(TileHost.Item item) {
+    if (item.key().equals(enteredTile)) return;
+    leaveTile();
+    enteredTile = item.key();
+    try {
+      tiles.client(item).event("TileEnterEvent", "onTileEnterEvent");
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      // Best effort, as on a watch.
+    }
+  }
+
+  private void leaveTile() {
+    if (enteredTile == null) return;
+    TileHost.Item item = tiles.item(enteredTile);
+    enteredTile = null;
+    if (item == null) return;
+    try {
+      tiles.client(item).event("TileLeaveEvent", "onTileLeaveEvent");
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      // Best effort.
+    }
+  }
+
+  /** A tile drew (or failed): its page shows the result. */
+  private void tileRendered(TileClient client, View view, String error) {
+    if (error != null) {
+      FrameLayout page = tilePages.get(client.component.flattenToString());
+      if (page != null) {
+        page.removeAllViews();
+        TextView failed = text("Tile failed:\n" + error, 11, 0xFFF28B82, false);
+        failed.setGravity(Gravity.CENTER);
+        failed.setPadding(dp(28), 0, dp(28), 0);
+        tag(failed, "tile_error", client.component.getClassName());
+        page.addView(failed, matchParent());
+      }
+    }
+    protocol.event(
+        "tile",
+        new Protocol.Json()
+            .put("component", client.component.getClassName())
+            .put("state", error == null ? "rendered" : "failed")
+            .put("error", error)
+            .object());
+  }
+
+  /**
+   * The added Wear Widgets on one page, as a scrolling list in the manner of Wear Compose's {@code
+   * TransformingLazyColumn}: items shrink and fade as they near the round screen's top and bottom
+   * edges. Each shows the widget's picker preview and label.
+   */
+  private View widgetsPage() {
+    LinearLayout list = column(context);
+    list.setPadding(dp(20), dp(50), dp(20), dp(60));
+    for (TileHost.Item item : tiles.widgets()) {
       LinearLayout card = new LinearLayout(context);
       card.setOrientation(LinearLayout.VERTICAL);
       card.setGravity(Gravity.CENTER_HORIZONTAL);
       card.setPadding(dp(10), dp(10), dp(10), dp(10));
       card.setBackground(rounded(0xFF202124, 26));
-      tag(card, item.kind.equals("tile") ? "tile" : "widget", item.component.getClassName());
-      TextView label = text(item.label, 15, Color.WHITE, true);
-      label.setGravity(Gravity.CENTER);
-      card.addView(label);
-      TextView kind =
-          text(item.kind.equals("tile") ? "Tile" : "Wear Widget", 11, 0xFFA8C7FA, false);
-      kind.setGravity(Gravity.CENTER);
-      card.addView(kind);
+      tag(card, "widget", item.component.getClassName());
       Drawable preview = tiles.preview(item);
       if (preview != null) {
         ImageView image = new ImageView(context);
         image.setImageDrawable(preview);
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(120), dp(120));
-        params.topMargin = dp(6);
-        card.addView(image, params);
-      } else if (item.description != null) {
-        TextView description = text(item.description, 12, 0xFFBDC1C6, false);
+        image.setAdjustViewBounds(true);
+        card.addView(
+            image, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90)));
+      }
+      TextView label = text(item.label, 14, Color.WHITE, true);
+      label.setGravity(Gravity.CENTER);
+      card.addView(label);
+      if (item.description != null) {
+        TextView description = text(item.description, 11, 0xFFBDC1C6, false);
         description.setGravity(Gravity.CENTER);
         card.addView(description);
       }
-      TextView note = text("picker preview", 10, 0xFF9AA0A6, false);
-      note.setGravity(Gravity.CENTER);
-      card.addView(note);
-      page.addView(card, new LinearLayout.LayoutParams(dp(170), ViewGroup.LayoutParams.WRAP_CONTENT));
-      // The page dots: one per carousel item, the current one filled.
-      LinearLayout dots = new LinearLayout(context);
-      dots.setGravity(Gravity.CENTER);
-      List<TileHost.Item> added = tiles.added();
-      for (int i = 0; i < added.size(); i++) {
-        View dot = new View(context);
-        dot.setBackground(rounded(i == tiles.index() ? Color.WHITE : 0xFF5F6368, 3));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(6), dp(6));
-        params.setMargins(dp(3), dp(8), dp(3), 0);
-        dots.addView(dot, params);
-      }
-      page.addView(dots);
+      list.addView(card, wide());
     }
-    carousel.addView(page, matchParent());
+    TextView add = chip("+ Add widget", v -> showAddPage());
+    tag(add, "tiles_add_page", null);
+    list.addView(add, wide());
+    ScrollView scroll = new TransformingScrollView(context);
+    scroll.setVerticalScrollBarEnabled(false);
+    scroll.addView(list);
+    return scroll;
+  }
+
+  private void showAddPage() {
+    tiles.show(tiles.pages().indexOf(TileHost.ADD_PAGE));
+    buildCarousel();
+  }
+
+  /** What the app offers and is not in the carousel yet; a tap adds it and shows its page. */
+  private View addPage() {
+    LinearLayout list = column(context);
+    list.addView(heading("Add tile or widget"));
+    List<TileHost.Item> available = tiles.notAdded();
+    if (available.isEmpty()) {
+      TextView none = text("Everything is added", 13, 0xFFBDC1C6, false);
+      none.setGravity(Gravity.CENTER);
+      list.addView(none, wide());
+    }
+    for (TileHost.Item item : available) {
+      View row =
+          row(
+              tiles.preview(item),
+              item.label,
+              item.tile() ? "Tile" : "Wear Widget",
+              0xFF202124,
+              v -> run(() -> {
+                tiles.add(item.component.flattenToString());
+                buildCarousel();
+                return tiles.describe(item);
+              }));
+      tag(row, "tile_add", item.component.getClassName());
+      list.addView(row);
+    }
+    ScrollView scroll = new TransformingScrollView(context);
+    scroll.setVerticalScrollBarEnabled(false);
+    scroll.addView(list);
+    return scroll;
+  }
+
+  /** The page dots along the bottom: one per page, the current one filled. */
+  private View pageDots() {
+    LinearLayout dots = new LinearLayout(context);
+    dots.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+    dots.setPadding(0, 0, 0, dp(10));
+    List<String> pages = tiles.pages();
+    for (int i = 0; i < pages.size(); i++) {
+      View dot = new View(context);
+      dot.setBackground(rounded(i == tiles.index() ? Color.WHITE : 0xFF5F6368, 3));
+      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(6), dp(6));
+      params.setMargins(dp(3), 0, dp(3), 0);
+      dots.addView(dot, params);
+    }
+    return dots;
+  }
+
+  /**
+   * A scroll view whose items scale and fade toward the top and bottom edges, as Wear Compose's
+   * {@code TransformingLazyColumn} morphs them on a round screen.
+   */
+  private static final class TransformingScrollView extends ScrollView {
+    TransformingScrollView(Context context) {
+      super(context);
+      setBackgroundColor(Color.BLACK);
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+      super.onLayout(changed, l, t, r, b);
+      transform();
+    }
+
+    @Override
+    protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+      super.onScrollChanged(l, t, oldl, oldt);
+      transform();
+    }
+
+    private void transform() {
+      if (getChildCount() == 0 || getHeight() == 0) return;
+      ViewGroup list = (ViewGroup) getChildAt(0);
+      float half = getHeight() / 2f;
+      for (int i = 0; i < list.getChildCount(); i++) {
+        View item = list.getChildAt(i);
+        float center = item.getTop() + item.getHeight() / 2f - getScrollY();
+        float distance = Math.min(1f, Math.abs(center - half) / half);
+        // Flat through the middle, then easing down to 80% and 40% opacity at the very edge.
+        float edge = Math.max(0f, (distance - 0.45f) / 0.55f);
+        float scale = 1f - 0.2f * edge * edge;
+        item.setScaleX(scale);
+        item.setScaleY(scale);
+        item.setAlpha(1f - 0.6f * edge * edge);
+      }
+    }
   }
 
   // -- Quick settings
@@ -891,7 +1084,7 @@ final class WearSystemUi {
     switch (surface) {
       case WATCHFACE:
         if (horizontal && dx < 0) {
-          if (!tiles.added().isEmpty()) tiles.show(0);
+          tiles.show(0);
           show(Surface.TILES);
         } else if (!horizontal && dy < 0) {
           show(Surface.NOTIFICATIONS);
@@ -903,8 +1096,12 @@ final class WearSystemUi {
         if (horizontal && dx < 0) {
           if (tiles.next()) buildCarousel();
         } else if (horizontal && dx > 0) {
-          if (tiles.previous()) buildCarousel();
-          else show(Surface.WATCHFACE);
+          if (tiles.previous()) {
+            buildCarousel();
+          } else {
+            leaveTile();
+            show(Surface.WATCHFACE);
+          }
         }
         break;
       case QUICK_SETTINGS:

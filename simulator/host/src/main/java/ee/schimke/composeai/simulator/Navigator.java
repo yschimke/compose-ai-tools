@@ -905,6 +905,19 @@ final class Navigator {
     return result;
   }
 
+  /**
+   * Binds [intent]'s service for the system UI, as a watch's tile host does, and returns the
+   * service's binder: created if needed, bound once more. {@link #unbindService} releases it.
+   */
+  IBinder bindForSystem(Intent intent) {
+    ComponentName component = resolveService(intent);
+    Running running = runningOrCreate(component, intent);
+    IBinder binder = running.controller.get().onBind(intent);
+    running.bindings++;
+    protocol.event("service", describe(component, running, "bound"));
+    return binder;
+  }
+
   JSONObject unbindService(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = services.get(component);
