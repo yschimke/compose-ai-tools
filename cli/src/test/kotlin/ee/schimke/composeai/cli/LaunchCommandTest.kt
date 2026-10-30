@@ -414,6 +414,60 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `the simulator heap defaults to an eighth of the machine, within bounds`() {
+    val gb = 1L shl 30
+    assertEquals("2048m", LaunchCommand.defaultMaxHeap(64 * gb))
+    assertEquals("2048m", LaunchCommand.defaultMaxHeap(16 * gb))
+    assertEquals("1024m", LaunchCommand.defaultMaxHeap(8 * gb))
+    assertEquals("768m", LaunchCommand.defaultMaxHeap(2 * gb))
+    assertEquals("768m", LaunchCommand.defaultMaxHeap(null))
+  }
+
+  @Test
+  fun `every simulator collects periodically, so idle graphics release their native memory`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue(command.indexOf("-XX:G1PeriodicGCInterval=5000") in 1 until command.indexOf("-cp"))
+  }
+
+  @Test
+  fun `the converter runs on a capped serial heap and exits on running out`() {
+    val command =
+      LaunchCommand.converterCommand(
+        java = File("java"),
+        converterJars = listOf(File("host.jar"), File("dex2jar.jar")),
+        apk = File("app.apk"),
+        out = File("classes.jar"),
+        androidJar = File("android.jar"),
+        heap = LaunchCommand.CONVERTER_HEAPS.first(),
+      )
+    assertEquals("-Xmx1g", command[1])
+    assertTrue("-XX:+UseSerialGC" in command)
+    assertTrue("-XX:+ExitOnOutOfMemoryError" in command)
+    assertEquals(
+      listOf(LaunchCommand.CONVERTER_MAIN, "app.apk", "classes.jar", "android.jar"),
+      command.takeLast(4),
+    )
+    assertTrue(LaunchCommand.CONVERTER_HEAPS.size > 1, "a retry with a larger heap")
+  }
+
+  @Test
   fun `no home screen without --launcher`() {
     val command =
       LaunchCommand.simulatorCommand(
