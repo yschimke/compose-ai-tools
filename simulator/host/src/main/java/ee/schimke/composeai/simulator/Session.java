@@ -741,6 +741,11 @@ final class Session {
       home.goHome();
       return new Protocol.Json().put("keyCode", code).put("surface", home.surface()).object();
     }
+    if (code == KeyEvent.KEYCODE_BACK && !longPress) {
+      // The system's too: an opted-in window hears it as its OnBackInvokedCallback, not a key.
+      JSONObject routed = SystemBack.dispatch(navigator, displayId);
+      if (routed != null) return routed.put("keyCode", code);
+    }
     long now = SystemClock.uptimeMillis();
     inject(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0), displayId);
     if (longPress) {
@@ -770,7 +775,9 @@ final class Session {
       return new Protocol.Json().put("keyCode", code).put("longPress", true).object();
     }
     inject(new KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0), displayId);
-    return new Protocol.Json().put("keyCode", code).object();
+    Protocol.Json reply = new Protocol.Json().put("keyCode", code);
+    if (code == KeyEvent.KEYCODE_BACK) reply.put("via", "key");
+    return reply.object();
   }
 
   private JSONObject text(String text, int displayId) {

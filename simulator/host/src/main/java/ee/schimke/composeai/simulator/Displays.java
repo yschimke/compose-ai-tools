@@ -445,6 +445,32 @@ final class Displays {
     }
   }
 
+  /** The focused window on display [id], the one a device sends keys and Back to; or null. */
+  static View focusedWindow(int id) {
+    for (Root root : roots(id, hidden())) {
+      if (root.focusable()) return root.view;
+    }
+    return null;
+  }
+
+  /**
+   * The {@code OnBackInvokedCallback} a device's {@code ViewRootImpl} would hand Back to on display
+   * [id]: the focused window's top callback, when that window opted in to the callback API (API 33+
+   * with {@code android:enableOnBackInvokedCallback}, or by default from targetSdk 36). Null when
+   * it did not, so Back reaches it as {@code KEYCODE_BACK}, or when it registered none.
+   */
+  static Object backCallback(int id) {
+    if (android.os.Build.VERSION.SDK_INT < 33) return null;
+    for (Root root : roots(id, hidden())) {
+      if (!root.focusable()) continue;
+      Object dispatcher = ReflectionHelpers.callInstanceMethod(root.impl, "getOnBackInvokedDispatcher");
+      if (dispatcher == null) return null;
+      boolean enabled = ReflectionHelpers.callInstanceMethod(dispatcher, "isOnBackInvokedCallbackEnabled");
+      return enabled ? ReflectionHelpers.callInstanceMethod(dispatcher, "getTopCallback") : null;
+    }
+    return null;
+  }
+
   /** The display a window's root view is on; a window not yet attached counts as the default. */
   static int displayOf(View root) {
     Display d = root.getDisplay();
