@@ -77,6 +77,7 @@ public final class ApkAppLoader implements Runnable {
                           "callParsePackage",
                           ReflectionHelpers.ClassParameter.from(Path.class, apk)),
                       "applicationInfo");
+              Permissions.apkTargetSdk = parsed.targetSdkVersion;
             }
             return parsed;
           }
@@ -91,6 +92,7 @@ public final class ApkAppLoader implements Runnable {
             .put(Config.class, defaultConfig())
             .build();
     sandbox.getTestEnvironment().setUpApplicationState("simulator", configuration, manifest);
+    manifest.getAppComponentFactory(); // Parses the APK, if setup did not: its target SDK.
 
     Application application = RuntimeEnvironment.getApplication();
     ActivityInfo info = firstActivity(application);

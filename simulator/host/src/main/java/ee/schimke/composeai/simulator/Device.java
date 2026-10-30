@@ -247,7 +247,7 @@ final class Device {
         .put("package", app.getPackageName())
         .put("versionName", info.versionName)
         .put("versionCode", info.getLongVersionCode())
-        .put("targetSdk", app.getApplicationInfo().targetSdkVersion)
+        .put("targetSdk", Permissions.targetSdk(app))
         .put("path", path)
         .put("dataDir", app.getDataDir().getPath())
         .put("permissions", navigator.permissions.state())

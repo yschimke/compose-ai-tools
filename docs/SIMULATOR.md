@@ -227,7 +227,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `package` / `packages` | `filter`? | version, APK path, data dir, permission state / the one package |
 | `shell` | `command` (an adb shell line) or `args` (its argv) | runs the [equivalent command](#adb-equivalents); replies `{command, result}` |
 | `components` | | the manifest's activities, services, receivers, providers |
-| `permissions` | `policy`? (`grant` / `deny`), `grant`? / `deny`? (permission names), `reset`? | how the app's runtime permission requests are answered; `grant` / `deny` also apply now (a deny revokes). Returns the policy, the per-permission answers, and the state of each requested permission |
+| `permissions` | `policy`? (`grant` / `deny` / `ask`), `grant`? / `deny`? (permission names), `answer`?, `requestId`?, `reset`? | how the app's runtime permission requests are answered ([below](#runtime-permissions)); `grant` / `deny` also apply now (a deny revokes); `answer` answers a request waiting under `ask`. Returns the policy, the per-permission answers, the waiting requests, the state of each requested permission, and which show a rationale or are denied for good |
 | `qualifiers` | `value` (e.g. `+night`, `+fr-rFR`) | a configuration change on the top activity |
 | `dataLayer` | `addCapability?`, `removeCapability?`, `oauthResponse?` | with `--pair`: this node, its peers and their capabilities, every data item; adds or drops a capability of this node as if its `android_wear_capabilities` declared it; on the phone, `oauthResponse` answers the watch's open `RemoteAuthClient` request with that redirect URL |
 | `resize` | `widthDp`, `heightDp`, `density`? (`hdpi`, `420dpi`, or a number), `posture`? | resizes the display, as dragging a resizable emulator or a desktop window does |
@@ -249,6 +249,46 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
 | `picker` | `action`? (`open` / `close`) | the widget picker |
 | `quit` | | exits |
+
+### Runtime permissions
+
+A request — `ActivityResultContracts.RequestMultiplePermissions`, `RequestPermission`,
+`Activity.requestPermissions`, `ActivityCompat.requestPermissions`, Accompanist — is answered in
+place of the system's dialog, and its result reaches the activity the way the dialog's does:
+`onRequestPermissionsResult`, and the `ActivityResultRegistry` with `EXTRA_PERMISSIONS` /
+`EXTRA_PERMISSION_GRANT_RESULTS`, in request order with duplicates kept. What the permission
+controller decides without a dialog is decided as on a device:
+
+| A requested permission that is | gets | `by` |
+| --- | --- | --- |
+| already granted | granted, even under `deny` | `alreadyGranted` |
+| not in the manifest | denied | `notInManifest` |
+| not a runtime permission | its install-time state | `installTime` |
+| denied twice in the dialog (Android 11's "don't ask again") | denied until `grant` or `reset` | `dontAskAgain` |
+| in a group with one already granted (contacts, calendar, phone, SMS, nearby devices, storage) | granted | `groupGranted` |
+| `ACCESS_FINE_LOCATION` without `ACCESS_COARSE_LOCATION` (12+); background location asked with foreground location not yet granted, or before it (11+); `BODY_SENSORS_BACKGROUND` likewise before `BODY_SENSORS` (13+) | denied, with the platform's `reason` | `ignored` |
+
+Everything else is the dialog's (`by: dialog`), answered by the permission's own `grant` / `deny`
+answer, else the policy. Under `ask` the request waits: a `permissions` event with `state:
+"waiting"`, its `requestId` and the permissions it `ask`s about, until `permissions` with `answer`:
+`grant`, `deny`, `dismiss` (backed out: denied, not counted), `approximate` (coarse location only),
+`selected` (`READ_MEDIA_VISUAL_USER_SELECTED` only, the 14+ partial photo access), or an object of
+permission → `grant` / `deny` / `dismiss` for each one. Switching the policy back to `grant` or
+`deny` answers what is waiting. A dialog deny is counted: after one,
+`shouldShowRequestPermissionRationale` is true; after two it is false again and the permission is
+denied without asking. `grant` (or `pm grant`) lifts that, as Settings does; `reset` forgets it.
+Every request ends with a `permissions` event, `state: "answered"`, listing what was `granted` and
+`denied` and, per permission, `by`, `rationale` and `dontAskAgain`:
+
+```
+→ {"id":1,"cmd":"permissions","policy":"ask"}
+← {"event":"permissions","state":"waiting","requestId":3,"requestCode":7,"ask":["android.permission.ACCESS_FINE_LOCATION","android.permission.ACCESS_COARSE_LOCATION"],"results":[]}
+→ {"id":2,"cmd":"permissions","answer":"approximate"}
+← {"event":"permissions","state":"answered","requestId":3,"granted":["android.permission.ACCESS_COARSE_LOCATION"],"denied":["android.permission.ACCESS_FINE_LOCATION"],"results":[…]}
+```
+
+An empty request throws `IllegalArgumentException` in the app, as on a device; a second request
+from an activity whose first is still waiting is cancelled (empty arrays), as the platform does.
 
 ### Display, fold and device state
 
@@ -694,8 +734,8 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
 | `am force-stop` / `kill` | `forceStop` | partly: see below |
 | `am stack list` | `activities` | |
-| `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests |
-| `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked, policy back to grant |
+| `pm grant` / `revoke` | `permissions` `grant` / `deny` | short names (`CAMERA`) take `android.permission.`; the answer also applies to later requests; a grant lifts "don't ask again" |
+| `pm reset-permissions` | `permissions` `reset` | runtime permissions revoked and never asked about, policy back to grant |
 | `pm clear` | `clearData` | partly: see below |
 | `pm list packages` / `pm path` / `pm dump` | `packages` / `package` | the one installed package |
 | `pm list permissions` | `permissions` | the app's requested permissions and their state, not the device's |
@@ -815,10 +855,10 @@ What does not, or not yet:
   no recents or task switching either way.
 - **Content providers** start before `Application.onCreate()` as on a device; `--no-providers`
   skips them.
-- **Runtime permissions** are answered when the app asks, with no dialog: granted, as a user
-  tapping "Allow" would, unless the `permissions` command says to deny them (all, or by name).
-  Each request is reported as a `permissions` event naming what was granted and denied; there is
-  no "don't ask again".
+- **Runtime permissions** have no dialog on screen: the agent answers in its place ([above](#runtime-permissions)),
+  and the requesting activity is not paused while a request waits. Groups are approximated (a
+  dialog per permission, not per group), and Android 16's health permissions that replace
+  `BODY_SENSORS` are plain runtime permissions.
 - **System UI.** An intent only the system handles (the live-wallpaper picker Muzei opens, a
   share sheet, other settings screens) reaches no activity and is reported as an `error` event;
   the radio dialogs and settings panels are answered ([above](#network-wi-fi-and-bluetooth)).

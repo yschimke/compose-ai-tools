@@ -88,6 +88,17 @@ final class Permissions {
     }
   }
 
+  /**
+   * The APK's own {@code targetSdkVersion}. Robolectric's {@code ApplicationInfo} reports 23 for an
+   * APK (it reads the SDK levels from a source manifest, which an APK launch has none of), and the
+   * platform's permission rules are keyed on the real one.
+   */
+  static volatile int apkTargetSdk;
+
+  static int targetSdk(Application app) {
+    return apkTargetSdk > 0 ? apkTargetSdk : app.getApplicationInfo().targetSdkVersion;
+  }
+
   Permissions(Application app, Protocol protocol, Delivery delivery) {
     this.app = app;
     this.shadowApp = Shadow.extract(app);
@@ -105,7 +116,7 @@ final class Permissions {
             requested,
             name -> isRuntime(pm, name),
             Build.VERSION.SDK_INT,
-            app.getApplicationInfo().targetSdkVersion);
+            targetSdk(app));
     for (String name : requested) {
       known.add(name);
       model.set(name, app.checkSelfPermission(name) == PackageManager.PERMISSION_GRANTED);
