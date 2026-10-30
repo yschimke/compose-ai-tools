@@ -2,7 +2,8 @@ package com.google.wear;
 
 /**
  * The Wear OS system library ({@code wear-sdk}, {@code <uses-library android:name="wear-sdk">}) as
- * the simulator's watch reports it: a Wear OS without the optional system services. A watch on API
+ * the simulator's watch reports it: a Wear OS whose only system service is {@code
+ * RemoteInteractionsManager}. A watch on API
  * 34+ has the library, and androidx.wear reads {@code Sdk.VERSION.WEAR_SDK_INT} there ({@code
  * WearApiVersion}) before using {@code RemoteInteractionsManager}; without the class it fails with
  * {@code NoClassDefFoundError}. Version 0 sends it down its pre-Wear-SDK paths (a broadcast to the
@@ -19,8 +20,16 @@ public final class Sdk {
     private VERSION() {}
   }
 
-  /** No Wear SDK service is simulated. */
+  /**
+   * The Wear SDK service of [type]: {@code RemoteInteractionsManager}, the one the simulator has
+   * ({@code RemoteActivityHelper} needs it on API 34+); null for any other.
+   */
   public static <T> T getWearManager(android.content.Context context, Class<T> type) {
+    if (type
+        == com.google.wear.services.remoteinteractions.RemoteInteractionsManager.class) {
+      return type.cast(
+          new com.google.wear.services.remoteinteractions.RemoteInteractionsManager(context));
+    }
     return null;
   }
 

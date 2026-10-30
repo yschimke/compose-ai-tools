@@ -67,6 +67,7 @@ final class Session {
   /** The home screen, with {@code --launcher}; null without. */
   private final HomeScreen home;
   private final AgentOverlay overlay = new AgentOverlay();
+  private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
   /** Work due at a later uptime, in order; while any is pending no further command starts. */
   private final PriorityQueue<Deferred> deferred = new PriorityQueue<>();
@@ -154,6 +155,10 @@ final class Session {
     logcat.poll();
     notifications.cycle();
     if (wear != null) wear.cycle();
+    // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the wall clock.
+    if (timeTick.due(System.currentTimeMillis())) {
+      app.sendBroadcast(new Intent(Intent.ACTION_TIME_TICK));
+    }
     if (!ready && navigator.top() != null) {
       ready = true;
       protocol.event("ready", info());
