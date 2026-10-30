@@ -16,7 +16,6 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -147,8 +146,11 @@ final class SystemPickers {
   private JSONObject answer(JSONObject c) throws JSONException, IOException {
     // `answer` names the request's id; "next", or none, the oldest one waiting.
     Object which = c.opt("answer");
-    Request request = take(which instanceof Number ? ((Number) which).intValue() : -1);
+    // Found, not yet taken: an answer that fails to validate (a missing file, too many) leaves the
+    // request waiting, for a corrected answer.
+    Request request = find(which instanceof Number ? ((Number) which).intValue() : -1);
     if (c.optBoolean("cancel", false)) {
+      pending.remove(request);
       deliver(request, Activity.RESULT_CANCELED, null);
       return put(describe(request), "answer", "RESULT_CANCELED");
     }
@@ -171,19 +173,16 @@ final class SystemPickers {
       default:
         throw new IllegalStateException(String.valueOf(request.kind));
     }
+    pending.remove(request);
     deliver(request, Activity.RESULT_OK, data);
     JSONObject reply = put(describe(request), "answer", "RESULT_OK");
     return put(reply, "uris", uris);
   }
 
-  /** The waiting request [id], or the oldest when [id] is -1. */
-  private Request take(int id) {
-    for (Iterator<Request> it = pending.iterator(); it.hasNext(); ) {
-      Request request = it.next();
-      if (id < 0 || request.id == id) {
-        it.remove();
-        return request;
-      }
+  /** The waiting request [id], or the oldest when [id] is -1; it stays waiting. */
+  private Request find(int id) {
+    for (Request request : pending) {
+      if (id < 0 || request.id == id) return request;
     }
     throw new IllegalArgumentException(
         id < 0 ? "no picker is waiting" : "no picker request " + id + " is waiting");

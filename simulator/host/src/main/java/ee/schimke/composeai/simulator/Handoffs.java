@@ -154,7 +154,9 @@ final class Handoffs {
     Protocol.Json json = new Protocol.Json().put("uri", uri.toString());
     String name = displayName(uri);
     json.put("name", name).put("type", app.getContentResolver().getType(uri));
-    File out = new File(dir, name == null || name.contains("/") ? "file" : name);
+    String base = name == null || name.contains("/") || name.startsWith(".") ? "file" : name;
+    // Two shared files of one name (photo.jpg from two folders) keep apart.
+    File out = new File(dir, DocumentIds.unique(base, n -> new File(dir, n).exists()));
     try (InputStream in = app.getContentResolver().openInputStream(uri)) {
       if (in == null) throw new java.io.FileNotFoundException("no content for " + uri);
       long size = Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
