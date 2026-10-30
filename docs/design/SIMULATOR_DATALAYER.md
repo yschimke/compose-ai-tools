@@ -80,7 +80,8 @@ run time those classes come from the APK. Constants are copied exactly, since ja
 | `PhoneTypeHelper.getPhoneDeviceType` (watch) | `DEVICE_TYPE_ANDROID`, from `Settings.Global` `paired_device_os_type` |
 | `PackageManager.hasSystemFeature("android.hardware.type.watch")` | true on a watch display, paired or not |
 | `com.google.wear.Sdk` (watch, API 34+) | the simulator's stand-in for the Wear OS system library, `WEAR_SDK_INT` 0, so androidx.wear takes its pre-Wear-SDK paths |
-| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while paired; its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `RemoteInteractionsManager` (watch, API 34+) | the Wear SDK service `RemoteActivityHelper` 1.2 builds on: `availabilityStatus` `STATUS_AVAILABLE` while a peer is connected (paired, or an agent's `connect`) and `STATUS_UNAVAILABLE` otherwise, each registered listener told again on every connect and disconnect ([`PeerPresence`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/PeerPresence.java)); its `startRemoteActivity` (API 36) sends the same `REMOTE_INTENT` |
+| `CompanionDeviceManager` | each peer is an association of the app (a stable locally administered MAC from its node id, its display name, `DEVICE_PROFILE_WATCH` on the phone); `associate()` is answered by the `companion` command's policy, from the peers and the Bluetooth devices in range ([`CompanionDevices`](../../simulator/host/src/main/java/ee/schimke/composeai/simulator/CompanionDevices.java)) |
 | `ACTION_TIME_TICK` | sent each time the wall clock enters a new minute, so Wear Compose's `TimeText` moves (either form factor) |
 
 **Delivery** runs on the receiving app's main looper: the live listeners the app added (with
@@ -239,6 +240,31 @@ Watch") rather than `robolectric`, which the sample writes into its proto data.
 | Phone, `startCompanion` | ![NO_COMPANION_FOUND](evidence/simulator-datalayer/horologist-phone-companion-before.png) | ![the Pixel Watch app](evidence/simulator-datalayer/horologist-phone-companion-after.png) |
 | Phone, Install Tile prompt | ![no watch found](evidence/simulator-datalayer/horologist-install-tile-before.png) | ![the prompt](evidence/simulator-datalayer/horologist-install-tile-after.png) |
 | Watch, launch and 8 minutes later | ![11:02](evidence/simulator-datalayer/horologist-clock-before-1.png) ![still 11:02](evidence/simulator-datalayer/horologist-clock-before-2.png) | ![12:08](evidence/simulator-datalayer/horologist-clock-after-1.png) ![12:17](evidence/simulator-datalayer/horologist-clock-after-2.png) |
+
+## Evidence: companion devices and remote-interaction status
+
+The same probe pair as for channels (wear-remote-interactions 1.2.0), `--sdk 35`:
+
+| Probe | Before | After |
+| --- | --- | --- |
+| phone `getMyAssociations()` / `getAssociations()` | empty | `#1 36:3E:D6:01:31:76 'Simulated Watch'`, `DEVICE_PROFILE_WATCH` |
+| phone `associate(DEVICE_PROFILE_WATCH)` | never answered (timed out after 15 s) | `onAssociationCreated` with the watch's association (the same one, not a second) |
+| watch `getMyAssociations()` | empty | `#1 4A:A7:45:8A:A4:EC 'Simulated Phone'`, no profile |
+| watch `RemoteActivityHelper.availabilityStatus` | `STATUS_AVAILABLE` (3) while paired, from the launch flag; nothing on a change | 3 while a peer is connected, and listeners hear each change |
+
+The watch alone with `--data-layer agent`: `availabilityStatus` went 1 (no peer) → 3 on `connect` →
+1 on `disconnect`, each heard by one collecting listener. The agent's phone became association #1.
+With `{"cmd":"companion","policy":"ask"}`, each `associate()` was a `companion` event with
+`state: chooser`. Answering `accept` with an address the chooser did not list created `#2
+C0:FF:EE:00:00:42` and answered `onAssociationCreated`; answering `reject` answered `onFailure`.
+
+| Before (phone) | After (phone) | Watch, agent mode |
+| --- | --- | --- |
+| ![before](evidence/simulator-launch/pair-companion-before-phone.png) | ![after](evidence/simulator-launch/pair-companion-after-phone.png) | ![agent](evidence/simulator-launch/agent-companion-status-watch.png) |
+
+No app in the test set calls `associate()`. MeshCore's phone reads `getMyAssociations()` to observe
+its saved BLE radio's presence, and matches by MAC, so the seeded watch association does not
+change what it does.
 
 ## Evidence: MeshCore
 

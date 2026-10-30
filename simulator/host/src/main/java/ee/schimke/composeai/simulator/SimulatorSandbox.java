@@ -83,6 +83,7 @@ final class SimulatorSandbox {
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
                 SimulatorShadowRemoteViewsAdapter.class,
+                SimulatorShadowCompanionDeviceManager.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class);
