@@ -21,18 +21,32 @@ final class DataLayerLink {
 
   /** The localhost port of the CLI's hub; set only for a paired launch. */
   static final String HUB_PROPERTY = "composeai.simulator.datalayer.hub";
+  /**
+   * Set (to {@code true}) for {@code launch --data-layer agent}: no hub and no second simulator;
+   * the control channel plays every peer ({@link DataLayer#agentCommand}).
+   */
+  static final String AGENT_PROPERTY = "composeai.simulator.datalayer.agent";
+
+  /** How long an app's {@code sendRequest} waits for an answer, in ms; 0 waits forever. */
+  static final String TIMEOUT_PROPERTY = "composeai.simulator.datalayer.requestTimeoutMs";
+
   /** This node's id, as {@code Node.getId()} reports it to both apps. */
   static final String NODE_PROPERTY = "composeai.simulator.datalayer.node";
   /** This node's display name. */
   static final String NAME_PROPERTY = "composeai.simulator.datalayer.name";
 
   /**
-   * Whether this launch is paired. Here rather than on {@link DataLayer}, which names the app's
-   * Play services classes and so cannot be loaded outside the sandbox ({@link SimulatorSandbox}
-   * asks).
+   * Whether this launch simulates the Data Layer: paired, or with the agent as the peer. Here
+   * rather than on {@link DataLayer}, which names the app's Play services classes and so cannot be
+   * loaded outside the sandbox ({@link SimulatorSandbox} asks).
    */
   static boolean enabled() {
-    return System.getProperty(HUB_PROPERTY) != null;
+    return System.getProperty(HUB_PROPERTY) != null || agent();
+  }
+
+  /** Whether the control channel, not another simulator, is the peer. */
+  static boolean agent() {
+    return Boolean.parseBoolean(System.getProperty(AGENT_PROPERTY));
   }
 
   /** The largest frame either side accepts: a data item with its assets, base64-encoded. */

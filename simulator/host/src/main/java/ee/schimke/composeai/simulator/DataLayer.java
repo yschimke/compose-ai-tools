@@ -101,6 +101,8 @@ final class DataLayer {
   static final int ASSET_UNAVAILABLE = 4005;
   /** {@code CommonStatusCodes.INTERNAL_ERROR}. */
   static final int INTERNAL_ERROR = 8;
+  /** {@code CommonStatusCodes.TIMEOUT}. */
+  static final int TIMEOUT = 15;
 
   private static volatile DataLayer instance;
   private static volatile Protocol protocol;
@@ -158,6 +160,27 @@ final class DataLayer {
   /** The control channel's events, from {@link Session} once it exists. */
   static void attach(Protocol channel) {
     protocol = channel;
+    DataLayer node = instance;
+    if (node != null) node.flushUnsent();
+  }
+
+  private void flushUnsent() {
+    List<JSONObject> frames;
+    synchronized (unsent) {
+      frames = new ArrayList<>(unsent);
+      unsent.clear();
+    }
+    for (JSONObject frame : frames) showFrame(frame);
+  }
+
+  /** The agent's {@code dataLayer} command with an {@code action}; agent mode only. */
+  static JSONObject agentCurrent(JSONObject command) throws JSONException {
+    DataLayer node = get();
+    if (!node.agent) {
+      throw new IllegalStateException(
+          "dataLayer " + command.optString("action") + " needs launch --data-layer agent");
+    }
+    return new DataLayerAgent(node).run(command);
   }
 
   /** For {@link Session}'s {@code dataLayer} command: the node's state, or null when unpaired. */
@@ -186,12 +209,18 @@ final class DataLayer {
     final String id;
     final String name;
     final String packageName;
+    final boolean nearby;
     final Set<String> capabilities = new LinkedHashSet<>();
 
-    Peer(String id, String name, String packageName) {
+    Peer(String id, String name, String packageName, boolean nearby) {
       this.id = id;
       this.name = name;
       this.packageName = packageName;
+      this.nearby = nearby;
+    }
+
+    Node node() {
+      return new DataLayerClients.SimNode(id, name, nearby);
     }
   }
 
@@ -219,6 +248,22 @@ final class DataLayer {
   final String localId;
   final String localName;
   private DataLayerLink link;
+  /**
+   * {@code launch --data-layer agent}: no hub; every frame this node sends is a control-channel
+   * event, and {@link DataLayerAgent} turns the agent's commands into the peers' frames.
+   */
+  final boolean agent = DataLayerLink.agent();
+  /** Frames sent before the control channel existed (startup), shown once it does. */
+  private final List<JSONObject> unsent = new ArrayList<>();
+  /** How long a {@code sendRequest} waits for its answer. */
+  volatile long requestTimeoutMs = Long.getLong(DataLayerLink.TIMEOUT_PROPERTY, 30_000L);
+  private final java.util.concurrent.ScheduledExecutorService timer =
+      java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+          r -> {
+            Thread t = new Thread(r, "datalayer-timeouts");
+            t.setDaemon(true);
+            return t;
+          });
 
   private final Map<String, Peer> peers = new LinkedHashMap<>();
   private final Set<String> localCapabilities = new LinkedHashSet<>();
@@ -267,12 +312,14 @@ final class DataLayer {
   }
 
   private void connect() {
-    int port = Integer.parseInt(System.getProperty(HUB_PROPERTY));
-    try {
-      link = DataLayerLink.connect(port, this::receive, this::hubClosed);
-    } catch (java.io.IOException e) {
-      System.err.println("datalayer: cannot reach the hub on port " + port + ": " + e);
-      return;
+    if (!agent) {
+      int port = Integer.parseInt(System.getProperty(HUB_PROPERTY));
+      try {
+        link = DataLayerLink.connect(port, this::receive, this::hubClosed);
+      } catch (java.io.IOException e) {
+        System.err.println("datalayer: cannot reach the hub on port " + port + ": " + e);
+        return;
+      }
     }
     send(hello(false));
     listenForRemoteIntents();
@@ -330,12 +377,12 @@ final class DataLayer {
   // Nodes and capabilities
 
   Node localNode() {
-    return new DataLayerClients.SimNode(localId, localName);
+    return new DataLayerClients.SimNode(localId, localName, true);
   }
 
   synchronized List<Node> connectedNodes() {
     List<Node> nodes = new ArrayList<>();
-    for (Peer peer : peers.values()) nodes.add(new DataLayerClients.SimNode(peer.id, peer.name));
+    for (Peer peer : peers.values()) nodes.add(peer.node());
     return nodes;
   }
 
@@ -363,7 +410,7 @@ final class DataLayer {
     Set<Node> nodes = new LinkedHashSet<>();
     for (Peer peer : peers.values()) {
       if (peer.capabilities.contains(name)) {
-        nodes.add(new DataLayerClients.SimNode(peer.id, peer.name));
+        nodes.add(peer.node());
       }
     }
     return new DataLayerClients.SimCapability(name, nodes);
@@ -412,6 +459,19 @@ final class DataLayer {
             .put("data", encode(data))
             .put("requestId", id));
     event("request", "out", nodeId, path, data, null);
+    long timeout = requestTimeoutMs;
+    if (timeout > 0) {
+      timer.schedule(
+          () -> {
+            TaskCompletionSource<byte[]> waiting = pending.remove(id);
+            if (waiting == null) return;
+            waiting.trySetException(
+                new ApiException(new Status(TIMEOUT, "no answer to " + path + " in " + timeout + " ms")));
+            event("response", "in", nodeId, path, null, null, "timeout");
+          },
+          timeout,
+          java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
     return response.getTask();
   }
 
@@ -615,7 +675,12 @@ final class DataLayer {
   private void onHello(JSONObject frame) throws JSONException {
     String id = frame.getString("from");
     boolean known;
-    Peer peer = new Peer(id, frame.optString("name", id), DataLayerFrames.text(frame.opt("package")));
+    Peer peer =
+        new Peer(
+            id,
+            frame.optString("name", id),
+            DataLayerFrames.text(frame.opt("package")),
+            frame.optBoolean("nearby", true));
     JSONArray capabilities = frame.optJSONArray("capabilities");
     if (capabilities != null) {
       for (int i = 0; i < capabilities.length(); i++) {
@@ -649,7 +714,10 @@ final class DataLayer {
     }
     log("peer " + id + " (" + peer.packageName + ") connected, capabilities " + peer.capabilities);
     reportPeer(peer, "connected");
-    if (!known) notifyCapabilities(peer.capabilities);
+    if (!known) {
+      notifyCapabilities(peer.capabilities);
+      notifyPeer(peer, true);
+    }
   }
 
   private void onBye(String id) {
@@ -661,6 +729,31 @@ final class DataLayer {
     log("peer " + id + " disconnected");
     reportPeer(peer, "disconnected");
     notifyCapabilities(peer.capabilities);
+    notifyPeer(peer, false);
+  }
+
+  static final String ACTION_BIND_LISTENER = "com.google.android.gms.wearable.BIND_LISTENER";
+
+  /**
+   * {@code WearableListenerService.onPeerConnected} / {@code onPeerDisconnected}, which Play
+   * services calls only on a service with the (deprecated) {@code BIND_LISTENER} filter; apps today
+   * watch capabilities instead, which {@link #notifyCapabilities} covers.
+   */
+  private void notifyPeer(Peer peer, boolean connected) {
+    Node node = peer.node();
+    onMain(
+        () -> {
+          List<Service> services = services(ACTION_BIND_LISTENER, null);
+          onListenerThread(
+              () -> {
+                for (Service service : services) {
+                  if (!(service instanceof WearableListenerService)) continue;
+                  WearableListenerService listener = (WearableListenerService) service;
+                  if (connected) listener.onPeerConnected(node);
+                  else listener.onPeerDisconnected(node);
+                }
+              });
+        });
   }
 
   private void hubClosed() {
@@ -1334,8 +1427,94 @@ final class DataLayer {
   }
 
   private void send(JSONObjectBuilder frame) {
+    if (agent) {
+      showFrame(frame.json.object());
+      return;
+    }
     DataLayerLink wire = link;
     if (wire != null) wire.send(frame.json.object().toString());
+  }
+
+  /**
+   * Agent mode: a frame this node sent, as a {@code datalayer} event of kind {@code send}: the
+   * frame's fields, with its payload as base64 {@code data}, a {@code text} preview and, when the
+   * bytes are a {@code DataMap}, the map as {@code dataMap} JSON; a data item's assets as {@code
+   * assets} (key → base64, as {@code dataLayer put} takes them; see {@link AgentAssets}) and their
+   * {@code assetDigests}.
+   */
+  private void showFrame(JSONObject frame) {
+    Protocol channel = protocol;
+    if (channel == null) {
+      synchronized (unsent) {
+        unsent.add(frame);
+      }
+      return;
+    }
+    Protocol.Json json = new Protocol.Json().put("kind", "send");
+    for (java.util.Iterator<String> it = frame.keys(); it.hasNext(); ) {
+      String key = it.next();
+      if (key.equals("assetBytes")) continue;
+      json.put(key, frame.opt(key));
+    }
+    JSONObject assetKeys = frame.optJSONObject("assets");
+    if (assetKeys != null && assetKeys.length() > 0) {
+      // Replayable: key → base64, as `dataLayer put` takes `assets`; the digests alongside.
+      Map<String, String> digests = new LinkedHashMap<>();
+      for (Iterator<String> it = assetKeys.keys(); it.hasNext(); ) {
+        String key = it.next();
+        digests.put(key, assetKeys.optString(key));
+      }
+      Map<String, String> bytesByDigest = new LinkedHashMap<>();
+      JSONObject assetBytes = frame.optJSONObject("assetBytes");
+      if (assetBytes != null) {
+        for (Iterator<String> it = assetBytes.keys(); it.hasNext(); ) {
+          String digest = it.next();
+          bytesByDigest.put(digest, assetBytes.optString(digest));
+        }
+      }
+      Map<String, Integer> omitted = new LinkedHashMap<>();
+      json.put(
+          "assets",
+          new JSONObject(
+              AgentAssets.replayable(
+                  digests, bytesByDigest, AgentAssets.MAX_BASE64_CHARS, omitted)));
+      json.put("assetDigests", assetKeys);
+      if (!omitted.isEmpty()) json.put("assetsOmitted", new JSONObject(omitted));
+    }
+    String data = DataLayerFrames.text(frame.opt("data"));
+    if (data != null) {
+      byte[] bytes = decode(data);
+      json.put("bytes", bytes.length);
+      json.put("text", preview(bytes));
+      JSONObject map = DataMapJson.toJson(bytes);
+      if (map != null) json.put("dataMap", map);
+    }
+    channel.event("datalayer", json.object());
+  }
+
+  /** A frame as if a peer sent it: the agent's stand-in for the hub. */
+  void inject(JSONObject frame) {
+    receive(frame.toString());
+  }
+
+  /** What the agent's {@code reply} answers for [requestId]. */
+  synchronized String pendingKind(int requestId) {
+    if (pending.containsKey(requestId)) return "request";
+    if (remoteLaunches.containsKey(requestId)) return "activity";
+    if (authCallbacks.containsKey(requestId)) return "oauth";
+    return null;
+  }
+
+  String packageName() {
+    return app.getPackageName();
+  }
+
+  boolean isWatchNode() {
+    return isWatch(app);
+  }
+
+  synchronized List<String> connectedPeerIds() {
+    return new ArrayList<>(peers.keySet());
   }
 
   private static void putUnchecked(JSONObject object, String key, Object value) {
@@ -1377,7 +1556,7 @@ final class DataLayer {
     return text == null ? null : Base64.getDecoder().decode(text);
   }
 
-  private static String digest(byte[] bytes) {
+  static String digest(byte[] bytes) {
     try {
       byte[] hash = MessageDigest.getInstance("SHA-1").digest(bytes);
       StringBuilder hex = new StringBuilder();

@@ -46,8 +46,8 @@ final class Device {
 
   /**
    * {@code settings get|put|delete} in {@code system}, {@code secure} or {@code global}. A put of
-   * a setting the system acts on does what the system does: {@code airplane_mode_on} and {@code
-   * wifi_on} switch the network, {@code animator_duration_scale} scales {@code ValueAnimator}s,
+   * a setting the system acts on does what the system does: {@code airplane_mode_on}, {@code
+   * wifi_on}, {@code mobile_data} and {@code bluetooth_on} switch the radios ({@link Radios}), {@code animator_duration_scale} scales {@code ValueAnimator}s,
    * {@code font_scale} changes the configuration, {@code time_12_24} sends {@code TIME_SET}.
    */
   JSONObject settings(JSONObject c) throws JSONException {
@@ -116,16 +116,10 @@ final class Device {
   private String applySetting(String namespace, String key, String value) {
     switch (key) {
       case Settings.Global.AIRPLANE_MODE_ON:
-        {
-          boolean on = !value.equals("0");
-          Connectivity.set(app, null, on);
-          navigator.broadcast(
-              new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).putExtra("state", on));
-          return "airplane mode " + (on ? "on" : "off") + ", AIRPLANE_MODE broadcast";
-        }
       case Settings.Global.WIFI_ON:
-        Connectivity.set(app, !value.equals("0"), null);
-        return "wifi " + (value.equals("0") ? "off" : "on");
+      case Settings.Global.BLUETOOTH_ON:
+      case "mobile_data":
+        return Radios.current().setting(key, value);
       case Settings.Global.ANIMATOR_DURATION_SCALE:
         {
           float scale = Float.parseFloat(value);

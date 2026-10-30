@@ -117,6 +117,13 @@ internal class LaunchCommand(private val args: List<String>) {
         )
       }
     }
+    val network = args.flagValue("--network")
+    if (network != null) {
+      val bad = network.split(',').map { it.trim() }.filter { it !in NETWORK_MODES }
+      if (bad.isNotEmpty()) {
+        fail("unknown --network ${bad.joinToString(",")} (${NETWORK_MODES.joinToString(", ")})")
+      }
+    }
     val detected = ApkFormFactor.inspect(apk)
     val formFactor =
       args.flagValue("--form-factor")?.let {
@@ -154,6 +161,7 @@ internal class LaunchCommand(private val args: List<String>) {
         formFactor = formFactor.id,
         launchActivity = launchActivity,
         device = device,
+        network = network,
         fontScale = args.flagValue("--font-scale"),
         fingerprint = args.flagValue("--fingerprint"),
         maxHeap =
@@ -183,6 +191,21 @@ internal class LaunchCommand(private val args: List<String>) {
         robolectricProperties = offline,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
+    val dataLayerMode = args.flagValue("--data-layer")
+    if (dataLayerMode != null) {
+      if (dataLayerMode != "agent") fail("--data-layer supports only `agent`")
+      if (pair != null) fail("--data-layer agent plays the paired device itself; drop --pair")
+      if (control == null) fail("--data-layer agent needs --control stdio: the agent is the peer")
+      val device = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
+      val command =
+        commandFor(
+          apk,
+          classes,
+          options.copy(dataLayer = DataLayerNode(hubPort = 0, device = device, agent = true)),
+        )
+      if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
+      exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+    }
     if (pair == null || pairClasses == null) {
       val command = commandFor(apk, classes, options)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
@@ -228,8 +251,11 @@ internal class LaunchCommand(private val args: List<String>) {
     exitProcess(exit)
   }
 
-  /** A paired simulator's node of the simulated Wearable Data Layer. */
-  data class DataLayerNode(val hubPort: Int, val device: String) {
+  /**
+   * A simulator's node of the simulated Wearable Data Layer: paired through the hub on [hubPort],
+   * or with the control channel as every peer ([agent]).
+   */
+  data class DataLayerNode(val hubPort: Int, val device: String, val agent: Boolean = false) {
     val nodeId: String
       get() = "$device-sim"
 
@@ -257,6 +283,8 @@ internal class LaunchCommand(private val args: List<String>) {
     val dataLayer: DataLayerNode? = null,
     /** A device preset ([DEVICES]) sizing the display in place of [qualifiers]. */
     val device: String? = null,
+    /** [NETWORK_MODES], comma-separated (`cellular,airplane`); Wi-Fi when null. */
+    val network: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
     /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
@@ -352,6 +380,13 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val DEVICES = listOf("phone", "foldable", "foldable-folded", "tablet", "desktop")
 
+    /**
+     * What `--network` takes (`NetworkModel.Mode` in `:simulator-host`, plus `airplane`), which the
+     * control channel's `network` command switches between at run time.
+     */
+    val NETWORK_MODES =
+      listOf("wifi", "cellular", "ethernet", "vpn", "captive", "offline", "airplane")
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -366,6 +401,9 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       add("--enable-native-access=ALL-UNNAMED")
+      // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
+      // the app's real traffic reaches.
+      add("--add-opens=java.base/java.net=ALL-UNNAMED")
       if (options.headless) add("-Djava.awt.headless=true")
       val properties =
         linkedMapOf(
@@ -379,6 +417,7 @@ internal class LaunchCommand(private val args: List<String>) {
       properties["composeai.simulator.formFactor"] = options.formFactor
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
+      options.network?.let { properties["composeai.simulator.network"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -389,7 +428,8 @@ internal class LaunchCommand(private val args: List<String>) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
       }
       options.dataLayer?.let {
-        properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
+        if (it.agent) properties["composeai.simulator.datalayer.agent"] = "true"
+        else properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
         properties["composeai.simulator.datalayer.node"] = it.nodeId
         properties["composeai.simulator.datalayer.name"] = it.displayName
       }
@@ -457,6 +497,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               xr ${ApkFormFactor.XR.qualifiers} (a home-space panel).
         --device <preset>     Start as phone, foldable (open, with its fold), foldable-folded,
                               tablet or desktop, at hdpi; in place of --qualifiers.
+        --network <mode>      Start on wifi (default), cellular (metered), ethernet, vpn,
+                              captive (Wi-Fi without internet) or offline; add ,airplane
+                              (or just airplane) for airplane mode. Offline, the app's
+                              real connections fail as on a device.
         --display <spec>      Connect a secondary display at launch (repeatable): a size in
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its
@@ -484,6 +528,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               data items and capabilities cross between the two apps. With
                               --control stdio, a command's "device":"watch" sends it to the
                               watch, and every output line carries its "device".
+        --data-layer agent    Simulate the Wearable Data Layer with no second simulator: the
+                              control channel plays the peer devices. What the app sends is a
+                              "datalayer" event of kind "send"; {"cmd":"dataLayer","action":...}
+                              connects, disconnects, puts, deletes, messages and replies.
         --pair-qualifiers <q> The paired watch's display (default ${ApkFormFactor.WEAR.qualifiers}).
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.

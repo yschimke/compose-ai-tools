@@ -45,14 +45,20 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
 
   /**
    * Robolectric's Bluetooth adapter starts in no state at all (0), which BLE libraries reject (Kable:
-   * "Unsupported bluetooth state: 0"). A device's radio is on, with nothing in range.
+   * "Unsupported bluetooth state: 0"). A device's radio is on, with nothing in range; off when
+   * launched in airplane mode ({@link NetworkModel#bluetoothAtStartup}).
    */
   static void bluetoothOn(Application app) {
     BluetoothManager manager = app.getSystemService(BluetoothManager.class);
     BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
     if (adapter == null) return;
     ShadowBluetoothAdapter shadow = Shadow.extract(adapter);
-    if (adapter.getState() == 0) shadow.setState(BluetoothAdapter.STATE_ON);
+    int state = NetworkModel.bluetoothAtStartup(adapter.getState(), NetworkSim.get().model.airplane);
+    shadow.setState(state);
+    android.provider.Settings.Global.putInt(
+        app.getContentResolver(),
+        android.provider.Settings.Global.BLUETOOTH_ON,
+        state == BluetoothAdapter.STATE_ON ? 1 : 0);
   }
 
   /**
@@ -106,7 +112,7 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
         app.getApplicationInfo().processName = app.getPackageName();
       }
       Logcat.install();
-      Connectivity.connect(app);
+      NetworkSim.connect(app);
       Permissions.grantInstallTime(app);
       bluetoothOn(app);
       watchFeature(app);
