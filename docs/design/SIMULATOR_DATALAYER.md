@@ -250,6 +250,20 @@ connected, since the simulator has no BLE device in range.
 | --- | --- |
 | ![MeshCore watch, error reply](evidence/simulator-launch/agent-mc-watch-error.png) | ![MeshCore watch, the phone's answer](evidence/simulator-launch/agent-mc-watch-answered.png) |
 
+## Evidence: Play services availability
+
+A probe app (phone and watch) calling every availability API, paired, before and after
+`ShadowGooglePlayServicesUtilLight` and the reworked `ShadowGoogleApiAvailability`: Play services
+reported `SERVICE_INVALID` everywhere, so an app gating its Wear code on
+`isGooglePlayServicesAvailable == SUCCESS` never reached the Data Layer, and the `HasApiKey`
+overload of `checkApiAvailability` (a Kotlin caller holding a `HasApiKey<*>`) fell through to Play
+services' own. Now Play services is installed (25.42.34) and every overload agrees. With
+`--play-services none`, `makeGooglePlayServicesAvailable` shows Play services' own dialog.
+
+| Before (paired phone) | After (paired phone) | `--play-services none` (watch) |
+| --- | --- | --- |
+| ![probe before](evidence/simulator-launch/play-services-probe-before.png) | ![probe after](evidence/simulator-launch/play-services-probe-after.png) | ![install dialog](evidence/simulator-launch/play-services-none-watch.png) |
+
 ## What is missing
 
 - **Fidelity gaps, all in `DataLayer`.** `getCapability` leaves out the local node (Play
