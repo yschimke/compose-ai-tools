@@ -1,15 +1,21 @@
 package ee.schimke.composeai.simulator;
 
+import com.googlecode.d2j.Field;
 import com.googlecode.d2j.Method;
-import com.googlecode.d2j.dex.BaseDexExceptionHandler;
 import com.googlecode.d2j.converter.IR2JConverter;
+import com.googlecode.d2j.dex.BaseDexExceptionHandler;
 import com.googlecode.d2j.dex.ClassVisitorFactory;
 import com.googlecode.d2j.dex.ExDex2Asm;
 import com.googlecode.d2j.dex.LambadaNameSafeClassAdapter;
+import com.googlecode.d2j.node.DexClassNode;
 import com.googlecode.d2j.node.DexFileNode;
 import com.googlecode.d2j.node.DexMethodNode;
+import com.googlecode.d2j.reader.BaseDexFileReader;
 import com.googlecode.d2j.reader.DexFileReader;
 import com.googlecode.d2j.reader.MultiDexFileReader;
+import com.googlecode.d2j.visitors.DexClassVisitor;
+import com.googlecode.d2j.visitors.DexFieldVisitor;
+import com.googlecode.d2j.visitors.DexMethodVisitor;
 import com.googlecode.dex2jar.ir.IrMethod;
 import com.googlecode.dex2jar.ir.expr.BinopExpr;
 import com.googlecode.dex2jar.ir.expr.Constant;
@@ -116,24 +122,43 @@ public final class ApkClassConverter {
   public static Summary convert(Path apk, Path out, Path platformJar) throws IOException {
     Summary summary = new Summary();
     Path translated = Files.createTempFile(out.toAbsolutePath().getParent(), "dex2jar-", ".jar");
-    // Line numbers and local names first, so an app crash names its source line. dex2jar's type
-    // inference sometimes trips on a method's debug local types; those classes are taken from a
-    // second translation without debug info, where they usually translate.
-    Path withoutDebug = null;
     try {
-      Map<String, List<String>> failed = translate(apk, translated, false);
+      // The APK's bytes are dropped once its dex files are extracted.
+      BaseDexFileReader reader;
+      try {
+        reader = MultiDexFileReader.open(Files.readAllBytes(apk));
+      } catch (IOException e) {
+        // As dex2jar does: an APK with no dex (a resource-only app) converts to an empty jar.
+        new BaseDexExceptionHandler().handleFileException(e);
+        reader = new MultiDexFileReader(List.of());
+      }
+      Translator.ClassInfo classInfo = Translator.classInfo(reader);
+      // Line numbers and local names first, so an app crash names its source line. dex2jar's type
+      // inference sometimes trips on a method's debug local types; those classes are translated
+      // again without debug info, where they usually translate.
+      Map<String, List<String>> failed;
+      try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(translated))) {
+        failed =
+            translate(
+                reader,
+                classInfo,
+                false,
+                null,
+                (name, bytes) -> {
+                  zip.putNextEntry(new ZipEntry(name));
+                  zip.write(bytes);
+                  zip.closeEntry();
+                });
+      }
       Map<String, byte[]> fallback = new HashMap<>();
       if (!failed.isEmpty()) {
-        withoutDebug = Files.createTempFile(out.toAbsolutePath().getParent(), "dex2jar-", ".jar");
-        Map<String, List<String>> failedAgain = translate(apk, withoutDebug, true);
-        try (ZipFile jar = new ZipFile(withoutDebug.toFile())) {
-          for (String owner : failed.keySet()) {
-            ZipEntry entry = jar.getEntry(owner + ".class");
-            if (failedAgain.containsKey(owner) || entry == null) continue;
-            try (InputStream stream = jar.getInputStream(entry)) {
-              fallback.put(entry.getName(), stream.readAllBytes());
-            }
-          }
+        Map<String, byte[]> again = new HashMap<>();
+        Map<String, List<String>> failedAgain =
+            translate(reader, classInfo, true, failed.keySet(), again::put);
+        for (String owner : failed.keySet()) {
+          byte[] bytes = again.get(owner + ".class");
+          if (failedAgain.containsKey(owner) || bytes == null) continue;
+          fallback.put(owner + ".class", bytes);
         }
       }
       for (Map.Entry<String, List<String>> e : failed.entrySet()) {
@@ -144,103 +169,180 @@ public final class ApkClassConverter {
         }
       }
       summary.withoutDebugInfo = fallback.size();
+      // The dex readers (tens of MB for a large app) are not needed by the ASM pass.
+      reader = null;
+      classInfo = null;
       fixInterfaceCalls(translated, fallback, out, platformJar, summary);
     } finally {
       Files.deleteIfExists(translated);
-      if (withoutDebug != null) Files.deleteIfExists(withoutDebug);
     }
     return summary;
   }
 
+  /** Where {@link #translate} puts each class it writes, by entry name. */
+  private interface ClassSink {
+    void put(String entryName, byte[] bytes) throws IOException;
+  }
+
   /**
-   * One dex2jar pass over every dex in [apk] into [out]. A method it cannot translate becomes a
-   * stub that throws; returns them by owner (internal name), each as {@code owner.name(desc): e}.
+   * One dex2jar pass over the APK's classes — every one, or those {@code only} names (internal
+   * names) — handing each class file to {@code sink}. A method it cannot translate becomes a stub that
+   * throws; returns them by owner (internal name), each as {@code owner.name(desc): e}.
    *
    * <p>This is {@code Dex2jar.to}, driven from dex2jar's public pieces so {@link
-   * #normalizeZeroLeftJumps} runs between its IR passes and code generation.
+   * #normalizeZeroLeftJumps} runs between its IR passes and code generation, and one class at a
+   * time: dex2jar reads the whole APK into one {@code DexFileNode} tree first, every method's
+   * instructions included, which for a 70,000-class app is gigabytes of heap. Here only the
+   * class being translated is in memory, beside the class-level facts ({@link
+   * Translator#classInfo}) that inner-class attributes need from the others.
    */
-  private static Map<String, List<String>> translate(Path apk, Path out, boolean skipDebug)
-      throws IOException {
+  private static Map<String, List<String>> translate(
+      BaseDexFileReader reader,
+      Translator.ClassInfo classInfo,
+      boolean skipDebug,
+      Set<String> only,
+      ClassSink sink) {
     Map<String, List<String>> failed = new HashMap<>();
     BaseDexExceptionHandler handler =
         new BaseDexExceptionHandler() {
           @Override
           public void handleMethodTranslateException(
               Method method, DexMethodNode node, MethodVisitor mv, Exception e) {
-            String owner = method.getOwner();
-            if (owner.startsWith("L") && owner.endsWith(";")) {
-              owner = owner.substring(1, owner.length() - 1);
-            }
+            String owner = internalName(method.getOwner());
             failed
                 .computeIfAbsent(owner, k -> new ArrayList<>())
                 .add(method.getOwner() + "." + method.getName() + method.getDesc() + ": " + e);
             super.handleMethodTranslateException(method, node, mv, e);
           }
         };
-    DexFileNode fileNode = new DexFileNode();
-    int config = DexFileReader.IGNORE_READ_EXCEPTION | (skipDebug ? DexFileReader.SKIP_DEBUG : 0);
-    try {
-      MultiDexFileReader.open(Files.readAllBytes(apk)).accept(fileNode, config);
-    } catch (Exception e) {
-      handler.handleFileException(e);
-    }
-    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(out))) {
-      ClassVisitorFactory classes =
-          name -> {
-            // Maxima only: the ASM pass computes frames, with the whole hierarchy to hand.
-            ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-            LambadaNameSafeClassAdapter names = new LambadaNameSafeClassAdapter(writer, false);
-            return new ClassVisitor(Opcodes.ASM9, names) {
-              @Override
-              public void visitEnd() {
-                super.visitEnd();
-                try {
-                  byte[] bytes = writer.toByteArray();
-                  zip.putNextEntry(new ZipEntry(names.getClassName() + ".class"));
-                  zip.write(bytes);
-                  zip.closeEntry();
-                } catch (Exception e) {
-                  handler.handleFileException(e);
-                }
+    ClassVisitorFactory classes =
+        name -> {
+          // Maxima only: the ASM pass computes frames, with the whole hierarchy to hand.
+          ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+          LambadaNameSafeClassAdapter names = new LambadaNameSafeClassAdapter(writer, false);
+          return new ClassVisitor(Opcodes.ASM9, names) {
+            @Override
+            public void visitEnd() {
+              super.visitEnd();
+              try {
+                sink.put(names.getClassName() + ".class", writer.toByteArray());
+              } catch (Exception e) {
+                handler.handleFileException(e);
               }
-            };
+            }
           };
-      new ExDex2Asm(handler) {
-        // Dex2jar's own pass order, which differs from Dex2Asm's default in its last two steps.
-        @Override
-        public void optimize(IrMethod irMethod) {
-          T_CLEAN_LABEL.transform(irMethod);
-          T_DEAD_CODE.transform(irMethod);
-          T_REMOVE_LOCAL.transform(irMethod);
-          T_REMOVE_CONST.transform(irMethod);
-          T_ZERO.transform(irMethod);
-          if (T_NPE.transformReportChanged(irMethod)) {
-            T_DEAD_CODE.transform(irMethod);
-            T_REMOVE_LOCAL.transform(irMethod);
-            T_REMOVE_CONST.transform(irMethod);
-          }
-          T_NEW.transform(irMethod);
-          T_FILL_ARRAY.transform(irMethod);
-          T_AGG.transform(irMethod);
-          T_MULTI_ARRAY.transform(irMethod);
-          T_VOID_INVOKE.transform(irMethod);
-          T_DEAD_CODE.transform(irMethod);
-          T_REMOVE_LOCAL.transform(irMethod);
-          T_REMOVE_CONST.transform(irMethod);
-          T_TYPE.transform(irMethod);
-          T_UNSSA.transform(irMethod);
-          T_IR_2_J_REG_ASSIGN.transform(irMethod);
-          T_TRIM_EX.transform(irMethod);
-        }
-
-        @Override
-        public void ir2j(IrMethod irMethod, MethodVisitor mv, ClzCtx clzCtx) {
-          normalizeZeroLeftJumps(irMethod);
-          new IR2JConverter().clzCtx(clzCtx).ir(irMethod).asm(mv).convert();
-        }
-      }.convertDex(fileNode, classes);
+        };
+    Translator translator = new Translator(handler);
+    int config = DexFileReader.IGNORE_READ_EXCEPTION | (skipDebug ? DexFileReader.SKIP_DEBUG : 0);
+    int dexVersion = reader.getDexVersion();
+    List<String> names = reader.getClassNames();
+    for (int i = 0; i < names.size(); i++) {
+      if (only != null && !only.contains(internalName(names.get(i)))) continue;
+      DexFileNode one = new DexFileNode();
+      try {
+        reader.accept(one, i, config);
+      } catch (Exception e) {
+        handler.handleFileException(e);
+        continue;
+      }
+      for (DexClassNode classNode : one.clzs) {
+        translator.convertClass(dexVersion, classNode, classes, classInfo.classes);
+      }
     }
     return failed;
+  }
+
+  /** {@code Lcom/example/Foo;} as {@code com/example/Foo}. */
+  private static String internalName(String descriptor) {
+    return descriptor.startsWith("L") && descriptor.endsWith(";")
+        ? descriptor.substring(1, descriptor.length() - 1)
+        : descriptor;
+  }
+
+  /** dex2jar's translator, with {@code Dex2jar}'s pass order and the zero-left jump fix. */
+  private static final class Translator extends ExDex2Asm {
+
+    Translator(BaseDexExceptionHandler handler) {
+      super(handler);
+    }
+
+    /**
+     * What {@code Dex2Asm.convertDex} collects from every class before translating any: access
+     * flags and the enclosing / inner / member class annotations, for each class's inner-class
+     * attributes. Read without code, fields or methods, so it is small.
+     */
+    static ClassInfo classInfo(BaseDexFileReader reader) {
+      DexFileNode headers =
+          new DexFileNode() {
+            @Override
+            public DexClassVisitor visit(
+                int access, String className, String superClass, String[] interfaceNames) {
+              DexClassNode node =
+                  new DexClassNode(access, className, superClass, interfaceNames) {
+                    @Override
+                    public DexFieldVisitor visitField(int access, Field field, Object value) {
+                      return null;
+                    }
+
+                    @Override
+                    public DexMethodVisitor visitMethod(int access, Method method) {
+                      return null;
+                    }
+                  };
+              clzs.add(node);
+              return node;
+            }
+          };
+      reader.accept(
+          headers,
+          DexFileReader.IGNORE_READ_EXCEPTION
+              | DexFileReader.SKIP_CODE
+              | DexFileReader.SKIP_DEBUG
+              | DexFileReader.SKIP_FIELD_CONSTANT);
+      return new ClassInfo(collectClzInfo(headers));
+    }
+
+    /** {@link #classInfo}'s result; dex2jar's {@code Clz} is not visible outside a subclass. */
+    static final class ClassInfo {
+      final Map<String, Clz> classes;
+
+      ClassInfo(Map<String, Clz> classes) {
+        this.classes = classes;
+      }
+    }
+
+    // Dex2jar's own pass order, which differs from Dex2Asm's default in its last two steps.
+    @Override
+    public void optimize(IrMethod irMethod) {
+      T_CLEAN_LABEL.transform(irMethod);
+      T_DEAD_CODE.transform(irMethod);
+      T_REMOVE_LOCAL.transform(irMethod);
+      T_REMOVE_CONST.transform(irMethod);
+      T_ZERO.transform(irMethod);
+      if (T_NPE.transformReportChanged(irMethod)) {
+        T_DEAD_CODE.transform(irMethod);
+        T_REMOVE_LOCAL.transform(irMethod);
+        T_REMOVE_CONST.transform(irMethod);
+      }
+      T_NEW.transform(irMethod);
+      T_FILL_ARRAY.transform(irMethod);
+      T_AGG.transform(irMethod);
+      T_MULTI_ARRAY.transform(irMethod);
+      T_VOID_INVOKE.transform(irMethod);
+      T_DEAD_CODE.transform(irMethod);
+      T_REMOVE_LOCAL.transform(irMethod);
+      T_REMOVE_CONST.transform(irMethod);
+      T_TYPE.transform(irMethod);
+      T_UNSSA.transform(irMethod);
+      T_IR_2_J_REG_ASSIGN.transform(irMethod);
+      T_TRIM_EX.transform(irMethod);
+    }
+
+    @Override
+    public void ir2j(IrMethod irMethod, MethodVisitor mv, ClzCtx clzCtx) {
+      normalizeZeroLeftJumps(irMethod);
+      new IR2JConverter().clzCtx(clzCtx).ir(irMethod).asm(mv).convert();
+    }
   }
 
   /**
