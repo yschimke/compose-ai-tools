@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.79.0](https://github.com/yschimke/compose-ai-tools/compare/v2.78.0...v2.79.0) (2026-10-31)
+
+
+### Features
+
+* **simulator:** reload {compile:false} takes classes the preview daemon already compiled ([#6356](https://github.com/yschimke/compose-ai-tools/issues/6356)) ([a9094ee](https://github.com/yschimke/compose-ai-tools/commit/a9094eede9c01a253de036a770c7519909fcd4f1))
+
+
+### Bug Fixes
+
+* **gradle-plugin:** give the daemon's in-process compile the module's own compiler plugins ([#6354](https://github.com/yschimke/compose-ai-tools/issues/6354)) ([6bdf11c](https://github.com/yschimke/compose-ai-tools/commit/6bdf11c7527d19d398fc9f20848caf9ac7e73408))
+
 ## [2.78.0](https://github.com/yschimke/compose-ai-tools/compare/v2.77.0...v2.78.0) (2026-10-31)
 
 
