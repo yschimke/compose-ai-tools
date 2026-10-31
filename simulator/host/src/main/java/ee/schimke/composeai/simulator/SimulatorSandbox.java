@@ -102,7 +102,10 @@ final class SimulatorSandbox {
                 ShadowLocalStorage.class,
                 // Cross-app App Functions calls, over the device bus of --install.
                 SimulatorShadowAppFunctionManager.class,
-                ShadowPlatformStorage.class);
+                ShadowPlatformStorage.class,
+                // Optional Wear SDK APIs are signature-only Android library classes bundled by
+                // Wear apps, not android.jar. The simulator supplies the safe haptic mapping.
+                ShadowWearHapticFeedbackConstants.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class);
@@ -183,6 +186,10 @@ final class SimulatorSandbox {
     builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
+    // `android.jar` deliberately has no Wear SDK surface. Wear Compose calls this optional API
+    // during scroll setup, so instrument the app-bundled signature classes and route the small
+    // simulator-safe subset through explicit shadows. This is inert for phone apps.
+    builder.addInstrumentedPackage("com.google.wear.");
     if (DataLayerLink.enabled()) builder.addInstrumentedClass(ShadowWearable.WEARABLE);
     builder
         .addInstrumentedPackage("dalvik.")
