@@ -80,7 +80,10 @@ internal class McpCommand(
         repair   Fix existing compose-preview-mcp entries in ~/.claude.json, Antigravity,
                  Codex and OpenCode configs: a missing or versioned launcher path
                  (…/compose-preview-<version>/bin/) becomes the stable one, and a global
-                 entry's --project is dropped. Never adds entries. `update` runs it.
+                 entry's --project is dropped. Never adds entries. When the Claude Code
+                 compose-preview plugin is installed and enabled for the user, removes the
+                 user-scope entry an earlier install wrote, since the plugin serves the same
+                 tools. `update` runs it.
         doctor   Report per-module descriptor state (no mutations).
 
       Common options (install/doctor):
@@ -118,7 +121,8 @@ internal class McpCommand(
         --claude / --no-claude
                              Run `claude mcp add --scope user` for compose-preview-mcp
                              when absent (repaired in place when broken). Detected when
-                             `claude` is on PATH or ~/.claude/ exists.
+                             `claude` is on PATH or ~/.claude/ exists. Skipped when the
+                             compose-preview plugin is installed (it provides the server).
         --codex / --no-codex
                              Merge a [mcp_servers.compose-preview-mcp] table into Codex's
                              config.toml. Detected when `codex` is on PATH or ~/.codex/
@@ -384,7 +388,7 @@ internal class McpCommand(
       exitProcess(1)
     }
     if (changes.isEmpty()) System.err.println("compose-preview-mcp host entries are up to date")
-    changes.forEach { System.err.println("==> repaired $it") }
+    changes.forEach { System.err.println(McpHostRepair.report(it)) }
   }
 
   private class Registration(
@@ -628,16 +632,38 @@ internal class McpCommand(
       antigravity.found().filter { it.hasEntry }.map { duplicateAntigravityEntry(it.file) },
     )
 
-  /** The Claude Code counterpart of [antigravityPluginResult]. */
-  private fun claudePluginResult(claude: ClaudeConfig): HostResult =
-    HostResult(
+  /**
+   * The Claude Code counterpart of [antigravityPluginResult]. When the plugin is enabled for every
+   * session, a user-scope entry an earlier `mcp install` wrote is removed rather than only named
+   * (yschimke/compose-ai-tools#6363).
+   */
+  private fun claudePluginResult(claude: ClaudeConfig): HostResult {
+    val text = claude.claudeJson.takeIf { it.isFile }?.readText()
+    val changes =
+      when {
+        !McpHostRepair.hasClaudeUserEntry(text) -> emptyList()
+        claude.pluginEnabledForUser && McpHostRepair.isCliWrittenClaudeUserEntry(text) ->
+          listOf(
+            McpHostRepair.removeDuplicateClaudeUserEntry(
+                claude.claudeJson,
+                text!!,
+                claude =
+                  if (locateOnPath("claude") == null) null
+                  else { argv, dir -> runProcess(argv, dir) },
+              )
+              .line
+          )
+        else -> listOf(duplicateClaudeEntry(claude.claudeJson))
+      }
+    return HostResult(
       "claude",
       true,
       claude.installedPlugins.absolutePath,
       null,
       "provided by the compose-preview plugin; no global entry written",
-      if (claude.hasUserEntry()) listOf(duplicateClaudeEntry(claude.claudeJson)) else emptyList(),
+      changes,
     )
+  }
 
   private fun upsertFile(
     name: String,
@@ -992,10 +1018,12 @@ internal class McpCommand(
               127
             }
           }
+      val claudeConfig = ClaudeConfig(home)
       return McpHostRepair.repairAll(
-        McpHostRepair.defaultHostFiles(home, openCode),
+        McpHostRepair.defaultHostFiles(home, openCode, claudeConfig),
         choice.path,
         claude = claude,
+        claudePluginEnabled = claudeConfig.pluginEnabledForUser,
       )
     }
 
