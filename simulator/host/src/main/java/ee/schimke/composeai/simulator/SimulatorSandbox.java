@@ -89,6 +89,8 @@ final class SimulatorSandbox {
                 SimulatorShadowCredentialManager.class,
                 SimulatorShadowAlarmManager.class,
                 SimulatorShadowJobScheduler.class,
+                // Content changes tell the device's other apps (DeviceProviders).
+                SimulatorShadowContentResolver.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class,

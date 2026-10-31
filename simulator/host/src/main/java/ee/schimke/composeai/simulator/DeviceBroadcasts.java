@@ -91,6 +91,9 @@ final class DeviceBroadcasts {
                   Protocol.string(body, "data"),
                   Parcels.decode(Protocol.string(body, "extras"), Bundle.CREATOR),
                   false);
+          if (index < targets.size() && !body.optBoolean("named")) {
+            DeviceProviders.claim(from, intent);
+          }
           Result out = index < targets.size() ? deliver(targets.get(index), intent, in, true) : in;
           event(from, intent, "ordered");
           reply.send(out.toJson());
@@ -121,6 +124,13 @@ final class DeviceBroadcasts {
     return action == null || !action.startsWith("android.");
   }
 
+  /** The URIs [intent] grants, the apps it reaches may now open ({@link DeviceProviders}). */
+  private static void grant(Intent intent) {
+    String target = target(intent);
+    if (target != null) DeviceProviders.grantFrom(intent, target);
+    else DeviceProviders.offer(intent);
+  }
+
   /**
    * The app's {@code sendBroadcast} of [intent], before its own delivery: sent on to the device's
    * other apps. True when it names another app, which then has it alone, so it is not delivered
@@ -128,6 +138,7 @@ final class DeviceBroadcasts {
    */
   static boolean send(Intent intent, String receiverPermission) {
     if (!crosses(intent)) return false;
+    grant(intent);
     DeviceBus.broadcast(
         EVENT,
         new Protocol.Json()
@@ -188,6 +199,7 @@ final class DeviceBroadcasts {
       }
     }
     if (!remote && !named) return false;
+    grant(intent);
     // Highest priority first; among equals, the order they were gathered in.
     chain.sort(Comparator.comparingInt((Step s) -> s.priority).reversed());
     new Handler(Looper.getMainLooper())
@@ -266,8 +278,11 @@ final class DeviceBroadcasts {
       event(from, intent, "sticky");
       return;
     }
+    List<Target> targets = targets(intent, to != null);
+    // The URIs an implicit broadcast grants are this app's to open when a receiver of its gets it.
+    if (to == null && !targets.isEmpty()) DeviceProviders.claim(from, intent);
     JSONArray delivered = new JSONArray();
-    for (Target target : targets(intent, to != null)) {
+    for (Target target : targets) {
       deliver(target, intent, new Result(0, null, null, false), false);
       delivered.put(target.name());
     }
