@@ -157,10 +157,22 @@ internal class McpCommand(
     // The MCP server owns stdout for JSON-RPC, so nothing may be printed there; status goes to
     // stderr. Don't infer a project from cwd (hosts may launch from "/"). `inheritIO` so this
     // process never copies or buffers the protocol. Cached copies are refreshed against the newest
-    // release daily.
+    // release daily, and at once when older than [MINIMUM_MCP_VERSION]: the daily check alone kept
+    // a
+    // cached 4.12.0, which has no simulator tools, for up to a day after 4.14.0 was out.
     val found = ServerBinaryDiscovery.choose(args, ReleasedDistribution.MCP)
     val choice =
-      found?.let(::refreshedMcp)
+      found
+        ?.let {
+          ServerBinaryDiscovery.meetsMinimum(
+            it,
+            MINIMUM_MCP_VERSION,
+            MINIMUM_MCP_FEATURE,
+            requested = ServerDistributionProvision.requestedVersion(ReleasedDistribution.MCP),
+            provision = ::provisionMcp,
+          )
+        }
+        ?.let(::refreshedMcp)
         ?: provisionMcp()
         ?: run {
           System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
@@ -913,6 +925,17 @@ internal class McpCommand(
   )
 
   internal companion object {
+    /**
+     * The oldest compose-preview-mcp this CLI's features pair with: `simulator_reload {files}`
+     * (4.14.0) is what drives `reload {compile:false}`. A cached server older than this is replaced
+     * by the newest release on launch rather than at the next daily check. Raise it when a CLI
+     * feature needs a newer server; a server someone pinned or put on `PATH` is left alone.
+     */
+    const val MINIMUM_MCP_VERSION = "4.14.0"
+
+    /** What [MINIMUM_MCP_VERSION] adds, for the launch's note. */
+    const val MINIMUM_MCP_FEATURE = "simulator_reload files"
+
     /**
      * Names this CLI's launcher to the MCP server, so it can run `compose-preview init-script
      * --path` itself where `mcp install` never ran.
