@@ -367,6 +367,7 @@ final class Session {
       case "clearData":
       case "kill":
       case "recreate":
+      case "hotswap":
       case "savedState":
       case "display":
       case "settings":
@@ -398,6 +399,8 @@ final class Session {
     switch (name) {
       case "ping":
         return new Protocol.Json().put("uptimeMs", SystemClock.uptimeMillis()).object();
+      case "hotswap":
+        return HotReload.swap(c, navigator);
       case "info":
         return info();
       case "wait":

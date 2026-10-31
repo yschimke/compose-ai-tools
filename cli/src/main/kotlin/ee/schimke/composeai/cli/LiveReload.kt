@@ -120,6 +120,8 @@ internal class LiveReload(
       val resources: Boolean,
       val resourceIds: Boolean,
       val prepareMs: Long,
+      /** Each changed class's internal name in [overlay], as the simulator loads it. */
+      val overlayNames: Map<String, String> = emptyMap(),
     ) : Plan
 
     /** A rebuilt APK, for what only packaging delivers. */
@@ -177,10 +179,14 @@ internal class LiveReload(
       }
       ?.forEach { it.deleteRecursively() }
     var overlay: File? = null
+    val bytes = LinkedHashMap<String, ByteArray>()
+    val overlayNames = LinkedHashMap<String, String>()
     if (changed.isNotEmpty() || resourceIds) {
       overlay = File(dir, "classes").apply { mkdirs() }
       for (name in changed) {
-        writeOverlayClass(now.classes.getValue(name).second.readBytes(), overlay)
+        val compiled = now.classes.getValue(name).second.readBytes()
+        bytes[name] = compiled
+        overlayNames[name] = writeOverlayClass(compiled, overlay)
       }
       if (resourceIds) {
         // Moved ids: every R class, as the module's classes now see them.
@@ -205,6 +211,7 @@ internal class LiveReload(
           }
       } else launchedApk
     pending = state
+    pendingBytes = bytes
     return Plan.Overlay(
       build,
       resourceApk,
@@ -213,6 +220,7 @@ internal class LiveReload(
       resources,
       resourceIds,
       TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start),
+      overlayNames,
     )
   }
 
@@ -220,10 +228,60 @@ internal class LiveReload(
   private var applied: Pair<Map<String, Long>, Long>? = null
   private var pending: Pair<Map<String, Long>, Long>? = null
 
-  /** The last [prepare]d overlay is now running. */
+  /**
+   * Each changed class's compiler output as the running simulator has it: what the last applied
+   * overlay held. A class edited for the first time since the launch is absent; the simulator runs
+   * it from the APK's converted classes, whose shape is the converter's, not the compiler's.
+   */
+  private val running = HashMap<String, ByteArray>()
+  private var pendingBytes: Map<String, ByteArray> = emptyMap()
+
+  /** The last [prepare]d overlay is now running, by a restart or a hot swap. */
   fun applied() {
     applied = pending
+    running.clear()
+    running.putAll(pendingBytes)
   }
+
+  /** Whether [plan] can be redefined in the running simulator, and which classes. */
+  sealed interface Swap {
+    /** Redefine these (internal names in the overlay); everything else is unchanged. */
+    data class Classes(val names: List<String>) : Swap
+
+    /** Restart instead, for [reason]. */
+    data class Restart(val reason: String) : Swap
+  }
+
+  /**
+   * Whether [plan] can reach the running simulator as a hot swap: only classes changed since what
+   * it runs, each already running as compiler output, its fields and methods unchanged, and every
+   * method whose code changed a composable one. A composable recomposes and shows the edit; other
+   * code (an `onCreate`, an initializer) has already run, and a swap would hide the edit, so it
+   * restarts. Speed only: whatever this says, a restart delivers the same classes.
+   */
+  fun hotSwap(plan: Plan.Overlay): Swap {
+    if (plan.resources || plan.resourceIds) return Swap.Restart("resources changed")
+    // Edited, then put back as it was at the launch: no longer in the overlay, still edited in the
+    // simulator; only a restart takes it back to the APK's copy.
+    (running.keys - plan.changedClasses.toSet()).firstOrNull()?.let {
+      return Swap.Restart("$it is back to the launch's version; a restart loads it")
+    }
+    val delta =
+      plan.changedClasses.filter { name -> !pendingBytes[name].contentEqualsOrNull(running[name]) }
+    if (delta.isEmpty()) return Swap.Restart("no class changed since the running simulator's")
+    for (name in delta) {
+      val before =
+        running[name]
+          ?: return Swap.Restart("$name is first edited since the launch; a restart loads it")
+      HotSwapCheck.why(before, pendingBytes.getValue(name))?.let {
+        return Swap.Restart("$name: $it")
+      }
+    }
+    return Swap.Classes(delta.map { plan.overlayNames.getValue(it) })
+  }
+
+  private fun ByteArray?.contentEqualsOrNull(other: ByteArray?): Boolean =
+    if (this == null || other == null) this === other else contentEquals(other)
 
   private fun rebuild(reason: String, compiled: Build? = null): Plan {
     log("compose-preview launch: reload: $reason; rebuilding the APK")
@@ -235,14 +293,40 @@ internal class LiveReload(
     // The rebuilt APK is the new reference.
     baseline = fingerprint()
     applied = null
+    running.clear()
+    pendingBytes = emptyMap()
     return Plan.Rebuild(combined, apk, reason)
   }
 
   /** Runs [tasks], capturing the build's output for the errors a failure reports. */
+  /**
+   * Whether builds ask for Gradle's configuration cache, which saves about half a second of each
+   * reload's compile once warm. On unless [gradleArguments] decide it; off for the rest of the
+   * session after a build that fails on it, so a project that does not support it still reloads.
+   */
+  private var configurationCache = gradleArguments.none { arg ->
+    CONFIGURATION_CACHE_ARGUMENTS.any { arg == it || arg.startsWith("$it=") }
+  }
+
   fun run(tasks: List<String>): Build {
     runner?.let {
       return it(tasks)
     }
+    if (configurationCache) {
+      val (build, output) = runOnce(tasks, gradleArguments + "--configuration-cache")
+      // Only the cache's own refusal: every build with it on prints "Configuration cache entry
+      // stored", a compile error included, and that must not turn it off.
+      if (build.ok || !refusedConfigurationCache(output)) return build
+      configurationCache = false
+      log(
+        "compose-preview launch: the build fails with the configuration cache; reloading without it"
+      )
+    }
+    return runOnce(tasks, gradleArguments).first
+  }
+
+  /** One Gradle build of [tasks], and the tail of what it printed. */
+  private fun runOnce(tasks: List<String>, arguments: List<String>): Pair<Build, String> {
     val start = System.nanoTime()
     val output = TailBuffer()
     val ok =
@@ -250,7 +334,7 @@ internal class LiveReload(
         connection
           .newBuild()
           .forTasks(*tasks.toTypedArray())
-          .withArguments(gradleArguments)
+          .withArguments(arguments)
           .setStandardOutput(output)
           .setStandardError(output)
           .run()
@@ -267,7 +351,7 @@ internal class LiveReload(
       "compose-preview launch: gradle ${tasks.joinToString(" ")}: ${if (ok) "ok" else "FAILED"} in $ms ms"
     )
     if (!ok) errors.forEach { log("compose-preview launch:   $it") }
-    return Build(ok, ms, tasks, errors)
+    return Build(ok, ms, tasks, errors) to output.text()
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -472,6 +556,25 @@ internal class LiveReload(
       return (crc.value shl 32) xor file.length()
     }
 
+    /** What Gradle prints when a build cannot run with the configuration cache. */
+    private val CONFIGURATION_CACHE_REFUSED =
+      listOf("configuration cache problem", "configuration cache state could not be cached")
+
+    /** Whether a failed build's [output] is the configuration cache's refusal, not the code's. */
+    internal fun refusedConfigurationCache(output: String): Boolean =
+      CONFIGURATION_CACHE_REFUSED.any {
+        output.contains(it, ignoreCase = true)
+      }
+
+    /** Arguments that already choose whether builds use the configuration cache. */
+    private val CONFIGURATION_CACHE_ARGUMENTS =
+      listOf(
+        "--configuration-cache",
+        "--no-configuration-cache",
+        "-Dorg.gradle.configuration-cache",
+        "-Dorg.gradle.unsafe.configuration-cache",
+      )
+
     /**
      * The converter's dex2jar replaces every `-` in class, method and field names with `_`
      * (`constructor-impl` is `constructor_impl`, `lambda-1` is `lambda_1` in the converted jar), so
@@ -565,6 +668,8 @@ internal class LiveReload(
     @Synchronized override fun write(b: Int) = buffer.write(b)
 
     @Synchronized override fun write(b: ByteArray, off: Int, len: Int) = buffer.write(b, off, len)
+
+    @Synchronized fun text(): String = buffer.toString(Charsets.UTF_8)
 
     @Synchronized
     fun errorLines(): List<String> {

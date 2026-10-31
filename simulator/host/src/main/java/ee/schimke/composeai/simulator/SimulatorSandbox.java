@@ -154,6 +154,8 @@ final class SimulatorSandbox {
         .doNotAcquirePackage("com.apple.")
         // One NetworkGate for the launcher, which installs it, and the sandbox, which drives it.
         .doNotAcquirePackage("ee.schimke.composeai.simulator.net.")
+        // One HotSwap: the agent and the sandbox class loader set it up outside, Session drives it.
+        .doNotAcquirePackage("ee.schimke.composeai.simulator.hotswap.")
         .doNotAcquirePackage("org.bouncycastle.")
         .doNotAcquirePackage("org.conscrypt.")
         .doNotAcquirePackage("org.objectweb.asm")

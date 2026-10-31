@@ -341,6 +341,8 @@ class LaunchCommandTest {
     assertEquals("/jdk/bin/java", command.first())
     assertTrue("--add-opens=java.base/java.lang=ALL-UNNAMED" in command)
     assertTrue("-Djava.awt.headless=true" in command)
+    // The host jar is the JVM's agent too, so a reload can hot-swap classes.
+    assertTrue("-javaagent:/lib-simulator/simulator-host.jar" in command, "$command")
     for (property in
       listOf(
         "-Drobolectric.deviceconfig.sdk=35",

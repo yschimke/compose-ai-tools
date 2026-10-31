@@ -1,7 +1,11 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.hotswap.HotSwap;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.MalformedURLException;
 import java.net.URL;
 import javax.annotation.Priority;
 import javax.inject.Named;
@@ -44,10 +48,20 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
       ClassInstrumentor classInstrumentor,
       JarCollection jarCollection) {
     super(config, runtimeSdk, classInstrumentor, jarCollection);
+    HotSwap.register(this, config);
   }
 
   @Override
   protected InputStream getClassBytesFromAlternateClassLoader(String classResName) {
+    // A class a hot swap delivered before the app loaded it comes from that swap, not the launch.
+    File swapped = HotSwap.overlayFile(classResName);
+    if (swapped != null) {
+      try {
+        return new FileInputStream(swapped);
+      } catch (IOException e) {
+        // Gone: fall back to the launch's copy.
+      }
+    }
     if (runtimeUrl(classResName) != null) return null;
     InputStream app = super.getClassBytesFromAlternateClassLoader(classResName);
     if (app != null) return app;
@@ -62,6 +76,14 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
   /** The sandbox also reads class bytes through here, where the simulator prefers the APK too. */
   @Override
   protected URL getResourceUrl(String name) {
+    File swapped = HotSwap.overlayFile(name);
+    if (swapped != null) {
+      try {
+        return swapped.toURI().toURL();
+      } catch (MalformedURLException e) {
+        // Not expected for a file path; fall back to the launch's copy.
+      }
+    }
     URL runtime = runtimeUrl(name);
     if (runtime != null) return runtime;
     URL url = super.getResourceUrl(name);
