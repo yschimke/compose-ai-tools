@@ -281,7 +281,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
 | `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
-| `wait` | `ms` (or `settleMs`), `until`?, `quietMs`? | lets the app run; with `"until":"still"`, until the screen has stopped changing for `quietMs` (400), sampled every 100 ms, or `ms` (3000) has passed, answering `still` and `waitedMs` |
+| `wait` | `ms` (or `settleMs`), `until`?, `quietMs`? | lets the app run; with `"until":"still"`, until the screen has stopped changing for `quietMs` (400), sampled once per quiet period (two equal frames prove it), or `ms` (3000) has passed, answering `still`, `waitedMs` (the simulator's virtual clock) and `wallMs` (real time) |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`?, `app`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square`; on a [split screen](#split-screen) both halves, unless `app` asks for this app's alone |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
@@ -1612,6 +1612,16 @@ only when all of this holds, and restarts otherwise, saying why in `hotswapSkipp
 
 The swap is all or nothing: the simulator checks before redefining, and the JVM redefines every
 class or none. `{"cmd":"reload","hotswap":false}` always restarts.
+
+A restarting `reload`, `restart` or `update` answers once the new app's screen has come to rest
+(`settle`: `still`, `waitedMs` on the simulator's clock, `wallMs` and `totalMs` of real time), so a
+`screenshot` straight after shows its first screen rather than its entry animation; `"settle":
+false` answers at `ready`. On ComposeStarter the sampling costs about 1.4 s; the rest of the wait
+is the app drawing its first frame, which a screenshot taken at `ready` caught half done:
+
+| Answered at `ready` (`settle: false`) | Answered once still |
+| --- | --- |
+| ![](design/evidence/simulator-launch/restart-settle-composestarter-before.png) | ![](design/evidence/simulator-launch/restart-settle-composestarter-after.png) |
 
 `{"cmd":"reload","compile":false}` skips the Gradle build and only compares the class directories,
 for a caller that has just compiled the edit itself. The preview daemon's in-process compiler (the

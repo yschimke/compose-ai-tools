@@ -295,7 +295,13 @@ internal class SimulatorSupervisor(
     launch = next
     val startMs = elapsed(spawnStart)
     // Before the next standby starts: its JVM's boot would slow the frames being waited on.
-    val settled = if (settle) awaitStill(child) else null
+    val settleStart = System.nanoTime()
+    val settled =
+      if (settle) {
+        val answer = awaitStill(child)
+        // The whole wait as this side saw it, beside the host's own `wallMs`.
+        JsonObject(answer + ("totalMs" to JsonPrimitive(elapsed(settleStart))))
+      } else null
     prepareSpare()
     val result = buildJsonObject {
       put("reason", reason)

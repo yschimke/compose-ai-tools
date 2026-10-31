@@ -59,4 +59,21 @@ public class StillnessTest {
     assertTrue(still.frame(100, true, true));
     assertTrue(still.still());
   }
+
+  @Test
+  public void samplesOncePerQuietPeriodSoTwoEqualFramesProveStillness() {
+    // Each sample is a full screenshot costing real time, while the virtual clock between samples
+    // is free: polling every 100 ms took nine screenshots and four real seconds per restart.
+    Stillness still = new Stillness(0, 400, 3_000);
+    assertEquals(400, still.pollMs());
+    assertFalse(still.frame(400, true, true));
+    assertTrue(still.frame(800, true, false));
+    assertTrue(still.still());
+    assertEquals(800, still.waitedMs(800));
+  }
+
+  @Test
+  public void aTinyQuietPeriodStillSamplesAtAFloor() {
+    assertEquals(Stillness.MIN_POLL_MS, new Stillness(0, 0, 3_000).pollMs());
+  }
 }

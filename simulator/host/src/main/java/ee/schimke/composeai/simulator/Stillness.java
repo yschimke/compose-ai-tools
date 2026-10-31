@@ -5,8 +5,11 @@ package ee.schimke.composeai.simulator;
  * {@code restart} or {@code reload} sends before it answers, so a {@code screenshot} right after it
  * shows the app's first screen rather than its entry animation.
  *
- * <p>{@link Session} samples the default display every {@value #POLL_MS} ms and says whether each
- * frame differs from the last. The screen is still once something is on it and nothing has changed
+ * <p>{@link Session} samples the default display once per {@link #pollMs()} (the quiet period
+ * itself) and says whether each frame differs from the last. The simulator's clock is Robolectric's
+ * virtual one, so a sample costs real time (a full screenshot) while the gap between samples does
+ * not: sampling once per quiet period proves stillness with two equal frames, where 100 ms polls
+ * took nine screenshots and four real seconds per restart. The screen is still once something is on it and nothing has changed
  * for {@code quietMs}; the wait gives up at {@code timeoutMs} whatever the screen does, so an app
  * that animates without end (a spinner, a ticking clock) costs the timeout and never hangs. Pixels,
  * not Compose's own idleness: a View animation, a window's fade and a splash screen's exit come to
@@ -14,8 +17,8 @@ package ee.schimke.composeai.simulator;
  * Java, so it is tested without the framework.
  */
 final class Stillness {
-  /** How often the screen is sampled. */
-  static final long POLL_MS = 100;
+  /** The shortest gap between samples. */
+  static final long MIN_POLL_MS = 50;
   /** How long the screen must stay unchanged to count as still. */
   static final long DEFAULT_QUIET_MS = 400;
   /** The longest a wait for stillness takes. */
@@ -50,6 +53,11 @@ final class Stillness {
       doneAtMs = nowMs;
     }
     return doneAtMs >= 0;
+  }
+
+  /** How often the screen is sampled: once per quiet period, so two equal frames prove it. */
+  long pollMs() {
+    return Math.max(MIN_POLL_MS, quietMs);
   }
 
   /** Whether the screen came to rest, rather than the wait timing out. */

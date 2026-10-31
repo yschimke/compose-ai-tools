@@ -319,7 +319,8 @@ final class Session {
                 now,
                 command.optLong("quietMs", Stillness.DEFAULT_QUIET_MS),
                 command.optLong("ms", Stillness.DEFAULT_TIMEOUT_MS)),
-            null);
+            null,
+            System.nanoTime());
         return;
       }
       JSONObject ran = run(name, command);
@@ -344,13 +345,14 @@ final class Session {
   }
 
   /**
-   * Samples the default display every {@link Stillness#POLL_MS} ms until [still] says the wait is
-   * over, then answers [id] with whether the screen came to rest ({@code still}) and {@code
-   * waitedMs}. Further commands wait behind it, as behind any settle.
+   * Samples the default display once per {@link Stillness#pollMs()} until [still] says the wait is
+   * over, then answers [id] with whether the screen came to rest ({@code still}), {@code waitedMs}
+   * on the simulator's (virtual) clock and {@code wallMs} of real time since [startNanos]. Further
+   * commands wait behind it, as behind any settle.
    */
-  private void untilStill(Object id, Stillness still, int[] previous) {
+  private void untilStill(Object id, Stillness still, int[] previous, long startNanos) {
     later(
-        Stillness.POLL_MS,
+        still.pollMs(),
         () -> {
           long now = SystemClock.uptimeMillis();
           int[] pixels;
@@ -366,9 +368,10 @@ final class Session {
                 new Protocol.Json()
                     .put("still", still.still())
                     .put("waitedMs", still.waitedMs(now))
+                    .put("wallMs", (System.nanoTime() - startNanos) / 1_000_000)
                     .object());
           } else {
-            untilStill(id, still, pixels);
+            untilStill(id, still, pixels, startNanos);
           }
         });
   }
