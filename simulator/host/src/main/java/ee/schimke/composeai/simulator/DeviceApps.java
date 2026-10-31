@@ -658,6 +658,8 @@ final class DeviceApps {
     } catch (JSONException e) {
       window = null;
     }
+    // The URIs the result grants, the app that asked for it may now open (DeviceProviders).
+    DeviceProviders.grantFrom(data, to);
     DeviceBus.request(
         to,
         RESULT,
