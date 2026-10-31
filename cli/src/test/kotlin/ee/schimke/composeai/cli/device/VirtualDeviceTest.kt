@@ -100,6 +100,24 @@ class VirtualDeviceTest {
         JsonObject(mapOf("index" to JsonPrimitive(2))),
       ),
     )
+    // Android Studio's `DEBUG_SURFACE --es operation version`, read back as `data="(\d+)"`.
+    assertEquals(
+      listOf("Broadcast completed: result=1, data=\"3\""),
+      AdbText.render(
+        listOf("am", "broadcast"),
+        obj("cmd" to "debugSurface"),
+        JsonObject(mapOf("data" to JsonPrimitive("3"))),
+      ),
+    )
+    // `am set-debug-app` prints nothing on a device.
+    assertEquals(
+      emptyList<String>(),
+      AdbText.render(
+        listOf("am", "set-debug-app"),
+        obj("cmd" to "debugApp"),
+        JsonObject(mapOf("debugApp" to JsonPrimitive("com.example"))),
+      ),
+    )
     assertEquals(
       listOf("Physical size: 454x454"),
       AdbText.render(

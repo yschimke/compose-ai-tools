@@ -1190,6 +1190,22 @@ through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
 ![Tiles and widgets following the simulated heart rate and steps](design/evidence/simulator-launch/wear-tiles-widgets.png)
 ![Widgets as their host containers: large stadium and small pill, no card](design/evidence/simulator-launch/wear-widget-containers.png)
 
+**Watch faces and complications.** `watchface op:set` replaces the demo face with one of the
+app's own androidx watch faces (`androidx.wear.watchface.WatchFaceService`, including
+`ListenableWatchFaceService`). The host binds the library's `WatchFaceControlService`, which every
+such face's merged manifest carries, creates a headless instance at the display's size, and draws
+the frame that instance renders: once a second, once a minute in ambient, and in
+`DrawMode.AMBIENT` while the screen dozes. This is the same path Wear's face editor and Studio's
+previews use, so no wallpaper surface is involved. `watchface op:complication` binds one of the
+app's `ComplicationDataSourceService`s over its AIDL (`onComplicationActivated`, then `onUpdate`)
+and hands the `ComplicationData` it sends to a slot. With the app's face set, the face draws that
+data itself, with its own `ComplicationDrawable`. With no app face (or a face from another package,
+such as the test face Android Studio installs) the demo face shows the data's text in a pill. A
+face's complications are released along with it. Watch Face Format (declarative) faces are not
+hosted: they need Wear's watch face runtime.
+
+![The app's androidx face; its slot fed by the app's complication source; ambient; a complication on the demo face](design/evidence/simulator-launch/wear-watchface-host.png)
+
 | Command | Arguments | Does |
 | --- | --- | --- |
 | `home` | | the watch face |
@@ -1198,6 +1214,7 @@ through `PlatformHealthSources` and widgets through Glance Wear's `HealthData`.
 | `notification` | `key`, `op` (`tap` / `action` / `reply` / `dismiss` / `snooze`), `index`?, `text`?, `ms`? | sends its content intent (auto-cancel honored), presses action `index`, fills the action's `RemoteInput` with `text` (the first reply action without `index`), sends the delete intent and cancels (not when ongoing), or snoozes for `ms`. Activities land on the back stack, broadcasts reach manifest receivers, services start; an immutable `PendingIntent` drops a reply as on a device (`fillInDropped`) |
 | `ongoing` | `op`? (`list` / `tap`), `index`? | the ongoing activities, or sends one's touch intent |
 | `tiles` | `op` (`list` / `add` / `remove` / `show` / `next` / `prev` / `refresh`), `component`?, `index`? | the carousel: its pages, what the app offers (a widget with its `container`), each tile's and widget's render state; `show` takes a page index or a component |
+| `watchface` | `op` (`status` / `set` / `unset` / `complication` / `uncomplication`), `component`?, `watchface`?, `slot`?, `type`? | the watch face and its complications: `set` hosts the app's androidx face `component`; `unset` returns to the demo face; `complication` binds data source `component` to `slot` of `watchface` (the app's, set if needed; otherwise the demo face), `type` being the wire `ComplicationType` (`3` short text, `4` long text, `5` ranged value, …); `status` lists the face's slots and supported types, the bound sources with their latest text, and the app's watch faces and data sources |
 | `health` | `heartRate`?, `heartRateAccuracy`? (`unknown` … `high`), `steps`?, `distanceMeters`?, `calories`?, `floors`? | sets the simulated health data, which tiles and widgets on screen redraw with |
 | `quickSettings` | `airplane`?, `wifi`? | opens quick settings (battery, airplane mode, Wi-Fi), switching either first |
 
@@ -1270,7 +1287,9 @@ absolute path given to `screencap` is a host path. Other packages' paths are ref
 | `am start` / `start-activity` | `startActivity` | `-a -d -t -c -n -p -f`, `--es --esn --ez --ei --el --ef --ed --eu --ecn --esa --eia`, `--activity-*` / `--grant-*` flags, a trailing URI (with `VIEW`), component or package; `-W` is implicit; `-S` force-stops first; `--display <id>` starts it on that display |
 | `am start-service` / `start-foreground-service` / `stopservice` | `startService` / `stopService` | |
 | `am broadcast` | `broadcast` | runtime and manifest receivers; `--receiver-*` flags; `--user` and `--receiver-permission` ignored |
-| `am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation …` | `debugSurface` → `tiles` / `widget` | Android Studio's Wear run configurations: `add-tile` / `add-widget` (`--ecn component`) add to the carousel and show it, replying with its page `index`; `show-tile` (`--ei index`) and `remove-tile` / `remove-widget`. On a phone with the home screen, `add-widget` places an app widget. `set-watchface` and the complication operations are refused: there is no watch face or complication host |
+| `am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE` / `DEBUG_SYSUI --es operation …` | `debugSurface` → `tiles` / `watchface` / `widget` | Android Studio's Wear run configurations ([below](#android-studios-wear-run-configurations)): `version` (`3`), `add-tile` / `add-widget` (`--ecn component`) add to the carousel and show it, replying with its page `index`; `show-tile` (`--ei index`), `remove-tile` / `remove-widget`; `set-watchface` (`--ecn component`), `set-complication` (`--ecn component --ecn watchface --ei slot --ei type`), `unset-watchface`, `unset-complication`, `show-watchface`; `set-debug-app` / `clear-debug-app`. On a phone with the home screen, `add-widget` places an app widget. `set-watchface --es watchFaceId` (a Watch Face Format face) is refused |
+| `am set-debug-app [-w] <pkg>` / `am clear-debug-app` | `debugApp` | recorded; nothing waits for a debugger, since none attaches |
+| `dumpsys package com.google.android.wearable.protolayout.renderer` | | on a watch, `versionName=1.6.1`: Studio's Wear Widget launch requires that renderer, and the simulator hosts widgets itself |
 | `am force-stop` | `forceStop` | partly: see below |
 | `am kill` | `kill` | the task comes back from its saved state on the next start; partly: see below |
 | `am stack list` | `activities` | |
@@ -1468,9 +1487,27 @@ clicks and drags; a drag in from an edge is [the Back gesture](#back). Studio's 
 and harmless). The host process stays out of the macOS Dock and app switcher
 (`apple.awt.UIElement`); only the simulator's window is an app there.
 
+### Android Studio's Wear run configurations
+
+Studio launches a Wear surface with `am broadcast`s to the watch's system UI (its
+`AndroidTile`, `AndroidWearWidget`, `AndroidComplication` and `AndroidWatchFaceConfigurationExecutor`).
+Every launch first asks `DEBUG_SURFACE version` and refuses a device that answers below 2. A
+**Debug** launch wraps the same commands in `am set-debug-app -w` / `DEBUG_SURFACE set-debug-app`
+and their `clear-debug-app` counterparts. Each sequence below was replayed over `adb shell` against
+`launch --adb --form-factor wear`, with a test APK carrying a tile, a stub Wear Widget service, a
+complication data source and an androidx watch face:
+
+| Run configuration | Studio sends | Simulator |
+| --- | --- | --- |
+| Wear OS Tile | `version`; `add-tile --ecn component` (reads `Index=[n]`); `DEBUG_SYSUI show-tile --ei index n`; on stop `remove-tile` | tile added to the carousel and shown |
+| Wear OS Widget | `dumpsys package …protolayout.renderer` (needs ≥ 1.6.1); `version`; `add-tile --ecn component`; `DEBUG_SYSUI show-tile`; on stop `remove-tile` | widget added to the carousel's widgets page and shown |
+| Wear OS Complication | `version` (≥ 2); `set-complication --ecn component --ecn watchface --ei slot --ei type` per slot; `DEBUG_SYSUI show-watchface`; on stop `unset-complication`, `unset-watchface` | the source bound to the slot of the app's face, or shown on the demo face when the named face is Studio's own test face (another package: the simulator runs one) |
+| Wear OS Watch Face | `version` (≥ 2); `set-watchface --ecn component`; `DEBUG_SYSUI show-watchface`; on stop `unset-watchface` | the app's androidx face hosted |
+| Watch Face Format face | `version` (≥ 4); `set-watchface --es watchFaceId` | refused: the version answered is 3, and Watch Face Format faces need Wear's runtime |
+
 **Not yet:** a second display or `--pair` with `--adb`; debugging (`jdwp:`, `track-jdwp` lists
 nothing), `adb reverse` / `forward` to the device, `adb root` (it reports already root);
-watch faces and complications (`DEBUG_SURFACE set-watchface` / `set-complication` are refused);
+Watch Face Format watch faces (`DEBUG_SURFACE set-watchface --es watchFaceId` is refused);
 `adb emu` prints nothing, though the console answers (`telnet localhost 5554`).
 
 ## Memory
@@ -1991,8 +2028,12 @@ What does not, or not yet:
   fold is always at the middle of the window. Location reaches the platform `LocationManager`
   only: Play services' fused provider is absent. Time zone changes reach `java.util.TimeZone` and
   the broadcast; the wall clock itself follows Robolectric's simulated clock and cannot be set.
-- **Wear.** The [system UI](#wear-system-ui) is a demo face: no Watch Face Format or
-  `WatchFaceService` faces and no complications. A tile's `TileUpdateRequester` is not wired to the
+- **Wear.** The [system UI](#wear-system-ui) hosts the app's androidx watch faces headless (no
+  wallpaper surface, so a face's tap handling is not exercised; only `CanvasRenderer` faces have
+  been tried, and a `GlesRenderer` needs EGL, which Robolectric lacks) and its own complication
+  data sources;
+  Watch Face Format faces, system data sources (time, battery, steps), complication tap actions and
+  the face editor are not simulated. A tile's `TileUpdateRequester` is not wired to the
   carousel (`tiles op:refresh` requests it again), widgets are drawn as their large container only,
   and the paired phone's bridged notifications and launcher entries are not shown. Ambient mode
   reaches the app ([above](#screen-power-and-ambient-mode)), but nothing enforces it: the system

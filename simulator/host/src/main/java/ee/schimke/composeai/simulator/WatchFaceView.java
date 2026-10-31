@@ -1,10 +1,12 @@
 package ee.schimke.composeai.simulator;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
+import android.graphics.Rect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.view.View;
@@ -12,10 +14,10 @@ import java.util.Calendar;
 import java.util.Locale;
 
 /**
- * The demo watch face: a digital time and date on the simulator's clock (so {@code wait} moves
- * it), a dot while there are notifications, and ambient mode's dimmed outline. A backdrop for the
- * system surfaces, not a watch-face renderer: the app's own Watch Face Format or {@code
- * WatchFaceService} faces are not drawn.
+ * The watch face. By default the built-in demo face: a digital time and date on the simulator's
+ * clock (so {@code wait} moves it), a dot while there are notifications, ambient mode's dimmed
+ * outline, and a complication's text when a data source is bound to it. When one of the app's
+ * androidx watch faces is set ({@link WatchFaceHost}), its rendered frame instead.
  */
 final class WatchFaceView extends View {
 
@@ -27,6 +29,12 @@ final class WatchFaceView extends View {
   private boolean ambient;
   private int notifications;
   private String shown = "";
+  private final Paint complication = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint complicationBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint frame = new Paint(Paint.FILTER_BITMAP_FLAG);
+  private final Rect frameBounds = new Rect();
+  private Bitmap appFrame;
+  private String complicationText;
 
   WatchFaceView(Context context) {
     super(context);
@@ -39,7 +47,24 @@ final class WatchFaceView extends View {
     dot.setColor(Color.WHITE);
     ticks.setStrokeWidth(2 * density);
     ticks.setStrokeCap(Paint.Cap.ROUND);
+    complication.setTextAlign(Paint.Align.CENTER);
+    complication.setTextSize(14 * density);
+    complicationBackground.setColor(0xFF2D3F66);
     setContentDescription("watch face");
+  }
+
+  /** The app's watch face frame, or null for the built-in face. */
+  void appFrame(Bitmap bitmap) {
+    appFrame = bitmap;
+    setContentDescription(bitmap == null ? "watch face" : "app watch face");
+    invalidate();
+  }
+
+  /** A complication's text for the built-in face, or null. */
+  void complication(String text) {
+    if (java.util.Objects.equals(complicationText, text)) return;
+    complicationText = text;
+    invalidate();
   }
 
   void ambient(boolean value) {
@@ -72,6 +97,12 @@ final class WatchFaceView extends View {
     float cx = w / 2f;
     float cy = h / 2f;
     float density = getResources().getDisplayMetrics().density;
+    if (appFrame != null) {
+      frameBounds.set(0, 0, (int) w, (int) h);
+      canvas.drawColor(Color.BLACK);
+      canvas.drawBitmap(appFrame, null, frameBounds, frame);
+      return;
+    }
     if (ambient) {
       canvas.drawColor(Color.BLACK);
     } else {
@@ -114,6 +145,18 @@ final class WatchFaceView extends View {
     }
     canvas.drawText(day.toUpperCase(Locale.ROOT), cx, cy - 40 * density, date);
     canvas.drawText(shown, cx, cy + 20 * density, time);
+    if (complicationText != null) {
+      complication.setColor(ambient ? 0xFFB0B0B0 : Color.WHITE);
+      float textWidth = complication.measureText(complicationText);
+      float half = Math.min(w * 0.4f, textWidth / 2f + 12 * density);
+      float top = cy + 44 * density;
+      if (!ambient) {
+        canvas.drawRoundRect(
+            cx - half, top, cx + half, top + 28 * density, 14 * density, 14 * density,
+            complicationBackground);
+      }
+      canvas.drawText(complicationText, cx, top + 19 * density, complication);
+    }
     if (notifications > 0) {
       dot.setColor(ambient ? 0xFF808080 : Color.WHITE);
       canvas.drawCircle(cx, 24 * density, 4 * density, dot);

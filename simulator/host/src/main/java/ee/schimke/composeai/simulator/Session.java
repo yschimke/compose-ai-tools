@@ -472,6 +472,8 @@ final class Session {
         return components();
       case "debugSurface":
         return debugSurface(c);
+      case "debugApp":
+        return debugApp(c);
       case "companion":
         return CompanionDevices.command(c);
       case "credentials":
@@ -633,6 +635,9 @@ final class Session {
             .put("output", "Result: Parcel(00000000    '....')")
             .object();
       case "package":
+        if (wear != null && PROTOLAYOUT_RENDERER.equals(c.optString("package", null))) {
+          return protolayoutRenderer();
+        }
         checkPackage(c);
         return device.packageInfo();
       case "packages":
@@ -679,14 +684,72 @@ final class Session {
   }
 
   /**
-   * Android Studio's Wear surface launches ({@code am broadcast -a …DEBUG_SURFACE}, translated by
-   * {@link AdbShell#debugSurface}): a tile or Wear Widget goes into the watch's carousel and shows,
-   * as the Wear OS system UI does; on a phone with the home screen, {@code add-widget} places an app
-   * widget. The reply's {@code index} is the carousel page, which {@code show-tile} takes back.
+   * The version the simulated system UI answers to {@code DEBUG_SURFACE --es operation version},
+   * which Android Studio asks before every Wear launch and refuses below 2. 3 is the version its
+   * tile, Wear Widget and complication launches recommend; 4, which only declarative (Watch Face
+   * Format) watch faces need, is not claimed: only androidx watch faces are hosted.
+   */
+  static final int DEBUG_SURFACE_VERSION = 3;
+
+  /**
+   * The Wear system app that draws Wear Widgets on a watch. Android Studio's Wear Widget launch
+   * reads its {@code versionName} from {@code dumpsys package} and refuses one below 1.6.1; the
+   * simulator hosts Wear Widgets itself, so on a watch it answers as a renderer that can.
+   */
+  static final String PROTOLAYOUT_RENDERER = "com.google.android.wearable.protolayout.renderer";
+
+  static final String PROTOLAYOUT_RENDERER_VERSION = "1.6.1";
+
+  private static JSONObject protolayoutRenderer() {
+    return new Protocol.Json()
+        .put(
+            "output",
+            "Packages:\n"
+                + "  Package ["
+                + PROTOLAYOUT_RENDERER
+                + "] (simulated: the simulator hosts Wear Widgets itself):\n"
+                + "    versionName="
+                + PROTOLAYOUT_RENDERER_VERSION
+                + "\n")
+        .object();
+  }
+
+  /** The package {@code am set-debug-app} named, or null. */
+  private String debugApp;
+
+  /**
+   * {@code am set-debug-app} / {@code clear-debug-app}, and the {@code DEBUG_SURFACE} operations of
+   * the same names, which Android Studio sends around a Debug launch of a Wear surface. Recorded and
+   * acknowledged; the app does not wait for a debugger ({@code -w}), since none attaches to the
+   * simulator's process.
+   */
+  private JSONObject debugApp(JSONObject c) {
+    String pkg = c.optString("package", null);
+    if (pkg != null) checkPackage(c);
+    debugApp = pkg;
+    return new Protocol.Json().put("debugApp", pkg == null ? JSONObject.NULL : pkg).put("waitsForDebugger", false).object();
+  }
+
+  /**
+   * Android Studio's Wear surface launches ({@code am broadcast -a …DEBUG_SURFACE} and {@code
+   * …DEBUG_SYSUI}, translated by {@link AdbShell#debugSurface}): a tile or Wear Widget goes into the
+   * watch's carousel and shows, as the Wear OS system UI does; a watch face or complication goes to
+   * {@link WatchFaceHost}; on a phone with the home screen, {@code add-widget} places an app widget. The reply's {@code index} is the carousel page, which
+   * {@code show-tile} takes back; a reply's {@code data} is the broadcast's result data.
    */
   private JSONObject debugSurface(JSONObject c) throws Exception {
     String operation = c.getString("operation");
     switch (operation) {
+      case "version":
+        return new Protocol.Json().put("data", String.valueOf(DEBUG_SURFACE_VERSION)).object();
+      case "set-debug-app":
+        {
+          debugApp(c);
+          return new Protocol.Json().put("data", "Set debug app to " + debugApp).object();
+        }
+      case "clear-debug-app":
+        debugApp(new JSONObject());
+        return new JSONObject();
       case "add-tile":
       case "add-widget":
         if (wear != null) {
@@ -714,12 +777,48 @@ final class Session {
         return run(
             "tiles",
             new Protocol.Json().put("op", "remove").put("component", c.getString("component")).object());
+      case "show-watchface":
+        if (wear == null) throw new IllegalStateException("show-watchface needs the Wear system UI");
+        return run("home", new JSONObject());
+      case "set-watchface":
+        if (wear == null) throw new IllegalStateException("set-watchface needs the Wear system UI");
+        if (!c.has("component")) {
+          // `--es watchFaceId <package>`: a Watch Face Format face, which needs Wear's runtime.
+          throw new IllegalArgumentException(
+              "DEBUG_SURFACE set-watchface --es watchFaceId is a declarative (Watch Face Format)"
+                  + " watch face, which is not simulated: only androidx.wear.watchface faces are"
+                  + " hosted");
+        }
+        return run(
+            "watchface",
+            new Protocol.Json().put("op", "set").put("component", c.getString("component")).object());
+      case "set-complication":
+        if (wear == null) {
+          throw new IllegalStateException("set-complication needs the Wear system UI");
+        }
+        {
+          Protocol.Json command =
+              new Protocol.Json()
+                  .put("op", "complication")
+                  .put("component", c.getString("component"))
+                  .put("slot", c.optInt("slot", 0))
+                  .put("type", c.getInt("type"));
+          if (c.has("watchface")) command.put("watchface", c.getString("watchface"));
+          return run("watchface", command.object());
+        }
+      case "unset-complication":
+        if (wear == null) return new JSONObject();
+        {
+          Protocol.Json command = new Protocol.Json().put("op", "uncomplication");
+          if (c.has("component")) command.put("component", c.getString("component"));
+          return run("watchface", command.object());
+        }
+      case "unset-watchface":
+        if (wear == null) return new JSONObject();
+        return run("watchface", new Protocol.Json().put("op", "unset").object());
       default:
         throw new IllegalArgumentException(
-            "DEBUG_SURFACE "
-                + operation
-                + " is not simulated: the system UI has tiles and widgets, but no watch face or"
-                + " complication host");
+            "DEBUG_SURFACE " + operation + " is not a Wear system UI operation the simulator knows");
     }
   }
 
