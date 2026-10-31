@@ -96,6 +96,57 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   }
 
   /**
+   * An ordered broadcast that a receiver in another of the device's apps also gets runs across them
+   * all ({@link DeviceBroadcasts#sendOrdered}); otherwise Robolectric delivers it.
+   */
+  @Implementation
+  @Override
+  protected void sendOrderedBroadcast(Intent intent, String receiverPermission) {
+    if (DeviceBroadcasts.sendOrdered(intent, receiverPermission, null, null, 0, null, null)) {
+      return;
+    }
+    super.sendOrderedBroadcast(intent, receiverPermission);
+  }
+
+  @Implementation
+  @Override
+  protected void sendOrderedBroadcast(
+      Intent intent,
+      String receiverPermission,
+      android.content.BroadcastReceiver resultReceiver,
+      android.os.Handler scheduler,
+      int initialCode,
+      String initialData,
+      android.os.Bundle initialExtras) {
+    if (DeviceBroadcasts.sendOrdered(
+        intent,
+        receiverPermission,
+        resultReceiver,
+        scheduler,
+        initialCode,
+        initialData,
+        initialExtras)) {
+      return;
+    }
+    super.sendOrderedBroadcast(
+        intent,
+        receiverPermission,
+        resultReceiver,
+        scheduler,
+        initialCode,
+        initialData,
+        initialExtras);
+  }
+
+  /** A sticky broadcast is kept by the device's other apps too ({@link DeviceBroadcasts}). */
+  @Implementation
+  @Override
+  protected void sendStickyBroadcast(Intent intent) {
+    DeviceBroadcasts.sendSticky(intent);
+    super.sendStickyBroadcast(intent);
+  }
+
+  /**
    * The system services Robolectric has no fetcher for, which a device always has: {@code
    * AppFunctionManager} (API 36), whose calls {@link SimulatorShadowAppFunctionManager} answers.
    */
