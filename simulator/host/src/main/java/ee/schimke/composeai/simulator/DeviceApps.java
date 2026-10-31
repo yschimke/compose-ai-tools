@@ -50,9 +50,11 @@ import org.robolectric.simulator.SimulatorPanelRegistry;
  * first's. The split ends when either app goes to the background or another comes on screen, and
  * the app left on screen gets the whole display back, its preset and fold included.
  *
- * <p>An activity of another app started for a result gets {@code RESULT_CANCELED} at once: the
- * result would come back from another process. The intent reaches the other app marshalled ({@link
- * Parcels}), its extras typed.
+ * <p>An activity of another app started for a result runs in that app as part of the caller's
+ * task: when it finishes, or is torn down, its result ({@code RESULT_CANCELED} without one) and
+ * data come back to the caller's {@code onActivityResult}, and the caller comes back on screen, as
+ * the task does on a device (each report is an {@code activityResult} event). The intent reaches
+ * the other app marshalled ({@link Parcels}), its extras typed.
  * Runs on the main thread.
  */
 final class DeviceApps {
@@ -68,6 +70,12 @@ final class DeviceApps {
    * own, which only its process reads, so each tells the others its own ({@code label}).
    */
   private static final String LABEL = "label";
+
+  /**
+   * The bus request that carries an activity's result back to the app that started it: {@code id},
+   * {@code resultCode}, {@code data}, and whether the finishing app was on screen.
+   */
+  private static final String RESULT = "activityResult";
 
   private static volatile DeviceApps current;
 
@@ -101,6 +109,24 @@ final class DeviceApps {
   /** Whether the app's activities are in multi-window mode, new ones included. */
   private static volatile boolean multiWindow;
   private volatile boolean onScreen = !Boolean.getBoolean(BACKGROUND_PROPERTY);
+
+  /** An activity this app started in another app for a result, waiting for that result. */
+  private static final class Pending {
+    final Activity requester;
+    /** The requester's entry's intent, which finds it again once re-created. */
+    final Intent request;
+    final int requestCode;
+
+    Pending(Activity requester, Intent request, int requestCode) {
+      this.requester = requester;
+      this.request = request;
+      this.requestCode = requestCode;
+    }
+  }
+
+  private final Map<Long, Pending> pending = new ConcurrentHashMap<>();
+  private final java.util.concurrent.atomic.AtomicLong nextResult =
+      new java.util.concurrent.atomic.AtomicLong(1);
 
   /** The windows hidden while in the background, shown again on coming forward. */
   private final Set<Window> hidden = new LinkedHashSet<>();
@@ -148,6 +174,12 @@ final class DeviceApps {
     navigator.addSystemUi(this::handle);
     DeviceBus.onBroadcast(EVENT, this::heard);
     DeviceBus.onBroadcast(LABEL, this::heardLabel);
+    DeviceBus.on(
+        RESULT,
+        (from, body, reply) -> {
+          activityResult(from, body);
+          reply.send(new JSONObject());
+        });
     if (!GraphicsEnvironment.isHeadless()) {
       // An app in the background keeps its windows hidden: those open as it starts, and any it
       // opens later (a secondary display's), whether or not it started on screen.
@@ -282,9 +314,14 @@ final class DeviceApps {
    * starts [intent] (null: resumes its task, or starts its launcher activity).
    */
   JSONObject show(String packageName, Intent intent) throws JSONException {
+    return show(packageName, intent, 0);
+  }
+
+  /** As {@link #show(String, Intent)}; a [resultId] other than 0 asks for [intent]'s result. */
+  private JSONObject show(String packageName, Intent intent, long resultId) throws JSONException {
     if (packageName.equals(app.getPackageName())) {
       leaveSplit();
-      JSONObject shown = comeForward(intent, null);
+      JSONObject shown = comeForward(intent, null, null, 0);
       DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", packageName).object());
       return shown;
     }
@@ -298,6 +335,7 @@ final class DeviceApps {
         new Protocol.Json()
             .put("to", packageName)
             .put("intent", intent == null ? null : Parcels.encode(intent))
+            .put("result", resultId == 0 ? null : resultId)
             .put("window", window)
             .object());
     return new Protocol.Json().put("package", packageName).put("onScreen", true).object();
@@ -407,7 +445,7 @@ final class DeviceApps {
       } else {
         leaveSplit();
       }
-      comeForward(sent, body.optJSONObject("window"));
+      comeForward(sent, body.optJSONObject("window"), from, body.optLong("result"));
     } else if (split != null && app.getPackageName().equals(split.optString("partner"))) {
       // The first half: it stays as it is.
     } else if (onScreen) {
@@ -561,16 +599,75 @@ final class DeviceApps {
 
   /** The system-UI step for an activity of another of the device's apps: that app starts it. */
   private boolean handle(Intent intent, int requestCode, Activity requester) {
-    if (Intent.ACTION_CHOOSER.equals(intent.getAction())) return false;
+    if (Intent.ACTION_CHOOSER.equals(intent.getAction()) || !DeviceBus.enabled()) return false;
+    String target = otherAppFor(intent);
+    if (target == null) return false;
+    long resultId = 0;
+    if (requester != null && requestCode >= 0) {
+      // Its result comes back when the other app's activity finishes (activityResult).
+      resultId = nextResult.getAndIncrement();
+      pending.put(
+          resultId, new Pending(requester, navigator.requestOf(requester), requestCode));
+    }
     try {
-      if (startInOtherApp(intent) == null) return false;
+      show(target, intent, resultId);
     } catch (JSONException e) {
       throw new IllegalStateException(e);
     }
-    if (requester != null && requestCode >= 0 && navigator.isRunning(requester)) {
-      navigator.deliverResult(requester, requestCode, Activity.RESULT_CANCELED, null);
-    }
     return true;
+  }
+
+  /**
+   * An activity this app started in another for a result has finished: the result goes to the
+   * requester, which comes back on screen, as the caller's task does when the activity started into
+   * it finishes, unless the two apps share a split screen.
+   */
+  private void activityResult(String from, JSONObject body) throws JSONException {
+    Pending request = pending.remove(body.optLong("id"));
+    if (request == null) return;
+    int resultCode = body.optInt("resultCode", Activity.RESULT_CANCELED);
+    Intent data = Parcels.decode(Protocol.string(body, "data"), Intent.CREATOR);
+    // The requester, or the instance that replaced it when it was re-created meanwhile.
+    Activity requester =
+        navigator.isRunning(request.requester)
+            ? request.requester
+            : navigator.runningFor(request.request);
+    boolean running = requester != null;
+    if (running) navigator.deliverResult(requester, request.requestCode, resultCode, data);
+    protocol.event(
+        "activityResult",
+        new Protocol.Json()
+            .put("from", from)
+            .put("requestCode", request.requestCode)
+            .put("resultCode", resultCode)
+            .put("data", data == null ? null : Intents.toJson(data))
+            .put("delivered", running)
+            .object());
+    boolean splitWith = side != null && from.equals(partner);
+    if (body.optBoolean("onScreen") && !onScreen && !splitWith) {
+      comeForward(null, body.optJSONObject("window"), null, 0);
+      DeviceBus.broadcast(EVENT, new Protocol.Json().put("to", app.getPackageName()).object());
+    }
+  }
+
+  /** Sends [resultCode] and [data] to [to]'s request [id], once this app's activity finishes. */
+  private void sendResult(String to, long id, int resultCode, Intent data) {
+    JSONObject window;
+    try {
+      window = windowBounds();
+    } catch (JSONException e) {
+      window = null;
+    }
+    DeviceBus.request(
+        to,
+        RESULT,
+        new Protocol.Json()
+            .put("id", id)
+            .put("resultCode", resultCode)
+            .put("data", data == null ? null : Parcels.encode(data))
+            .put("onScreen", onScreen)
+            .put("window", window)
+            .object());
   }
 
   /**
@@ -603,14 +700,31 @@ final class DeviceApps {
     return other;
   }
 
-  private JSONObject comeForward(Intent intent, JSONObject window) throws JSONException {
+  /**
+   * This app comes on screen, starting [intent] if there is one; a [resultId] other than 0 sends
+   * that activity's result back to [resultFrom] when it finishes.
+   */
+  private JSONObject comeForward(Intent intent, JSONObject window, String resultFrom, long resultId)
+      throws JSONException {
     onScreen = true;
     showWindows(window);
     JSONObject result;
     if (intent != null) {
-      Intent start = new Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      Intent start = new Intent(intent);
+      // A start for a result goes into the caller's task, as on a device; otherwise a new task.
+      if (resultId == 0) start.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       if (start.getComponent() == null) start.setPackage(app.getPackageName());
-      result = navigator.startActivity(start, -1);
+      try {
+        result = navigator.startActivity(start, -1);
+      } catch (RuntimeException e) {
+        // It never started, so the caller waiting for its result gets RESULT_CANCELED.
+        if (resultId != 0) sendResult(resultFrom, resultId, Activity.RESULT_CANCELED, null);
+        throw e;
+      }
+      Navigator.Entry started = navigator.top(Display.DEFAULT_DISPLAY);
+      if (resultId != 0 && started != null && !started.system) {
+        started.resultTo = (code, data) -> sendResult(resultFrom, resultId, code, data);
+      }
     } else if (home != null) {
       result = home.launch();
     } else {

@@ -61,6 +61,11 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
 final class Navigator {
 
   /** One activity on the back stack. */
+  /** Where an activity started for another app sends its result (see {@link Entry#resultTo}). */
+  interface ResultTo {
+    void result(int resultCode, Intent data);
+  }
+
   static final class Entry {
     final ActivityController<? extends Activity> controller;
     /** The intent as the caller started it, before resolution. */
@@ -80,6 +85,12 @@ final class Navigator {
      * of the default display, and force-stops and {@code CLEAR_TASK} leave it alone.
      */
     boolean system;
+
+    /**
+     * Started for another app of the device's, for a result ({@link DeviceApps}): told of the
+     * result when it finishes or is torn down; null otherwise.
+     */
+    ResultTo resultTo;
 
     Entry(
         ActivityController<? extends Activity> controller,
@@ -277,6 +288,7 @@ final class Navigator {
     Entry fresh =
         new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
     fresh.noHistory = entry.noHistory;
+    fresh.resultTo = entry.resultTo;
     List<Entry> entries = new ArrayList<>(stack);
     entries.set(entries.indexOf(entry), fresh);
     stack.clear();
@@ -749,7 +761,7 @@ final class Navigator {
    */
   JSONObject forceStop() {
     // Force-stopping clears the tasks too: nothing comes back from a kill.
-    dead.clear();
+    forgetDead();
     JSONArray activities = new JSONArray();
     for (Entry entry : new ArrayList<>(stack)) {
       if (entry.system) continue;
@@ -791,6 +803,9 @@ final class Navigator {
 
     final byte[] state;
 
+    /** Where its result goes, kept with it so the re-created activity still sends it there. */
+    final ResultTo resultTo;
+
     Killed(Entry entry, int caller, byte[] state) {
       this.className = entry.activity().getClass().getName();
       this.intent = entry.activity().getIntent();
@@ -800,7 +815,19 @@ final class Navigator {
       this.noHistory = entry.noHistory;
       this.caller = caller;
       this.state = state;
+      this.resultTo = entry.resultTo;
     }
+  }
+
+  /**
+   * Forgets the killed activities, which will not come back: one started for another app's result
+   * reports {@code RESULT_CANCELED} to it.
+   */
+  private void forgetDead() {
+    for (Killed record : dead) {
+      if (record.resultTo != null) record.resultTo.result(Activity.RESULT_CANCELED, null);
+    }
+    dead.clear();
   }
 
   /** The killed app's activities, bottom first, which the next start of the app re-creates. */
@@ -843,6 +870,8 @@ final class Navigator {
         if (error == null) error = entry.activity().getClass().getName() + ": " + e;
       }
       records.add(new Killed(entry, entry.caller == null ? -1 : app.indexOf(entry.caller), bytes));
+      // A process death is not a finish: the result link goes with the record, not to destroy().
+      entry.resultTo = null;
       activities.put(
           new Protocol.Json()
               .put("activity", entry.activity().getClass().getName())
@@ -862,8 +891,15 @@ final class Navigator {
       services.put(e.getKey().getClassName());
       protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
     }
-    dead.clear();
-    if (error == null) dead.addAll(records);
+    forgetDead();
+    if (error == null) {
+      dead.addAll(records);
+    } else {
+      // Not restorable, so they finish here: their results are cancelled.
+      for (Killed record : records) {
+        if (record.resultTo != null) record.resultTo.result(Activity.RESULT_CANCELED, null);
+      }
+    }
     Entry home = home();
     if (home != null && home.stopped) {
       bringBack(home);
@@ -915,6 +951,7 @@ final class Navigator {
       Entry entry =
           new Entry(controller, record.request, caller, record.requestCode, record.displayId);
       entry.noHistory = record.noHistory;
+      entry.resultTo = record.resultTo;
       if (top) {
         controller.setup(state);
       } else {
@@ -1101,6 +1138,13 @@ final class Navigator {
   }
 
   private void destroy(Entry entry) {
+    if (entry.resultTo != null) {
+      // Its result, or RESULT_CANCELED without one, goes back to the app that asked for it.
+      ShadowActivity shadow = Shadow.extract(entry.activity());
+      ResultTo to = entry.resultTo;
+      entry.resultTo = null;
+      to.result(shadow.getResultCode(), shadow.getResultIntent());
+    }
     if (entry == pip) {
       // Torn down in picture-in-picture (kill, force-stop): it is no longer there.
       pip = null;
@@ -1219,6 +1263,22 @@ final class Navigator {
   boolean isRunning(Activity activity) {
     for (Entry entry : stack) if (entry.activity() == activity) return true;
     return false;
+  }
+
+  /**
+   * The intent that started [activity]'s entry, which a re-creation (a configuration change, a
+   * restore after a kill) keeps: a stable name for the activity; null when it is not running.
+   */
+  Intent requestOf(Activity activity) {
+    for (Entry entry : stack) if (entry.activity() == activity) return entry.request;
+    return null;
+  }
+
+  /** The activity now running for [request] ({@link #requestOf}), or null. */
+  Activity runningFor(Intent request) {
+    if (request == null) return null;
+    for (Entry entry : stack) if (entry.request == request) return entry.activity();
+    return null;
   }
 
   /**

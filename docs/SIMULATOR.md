@@ -1653,8 +1653,8 @@ What the apps share:
   caller closes it, before the close returns. A provider's `SecurityException`,
   `IllegalArgumentException` and `FileNotFoundException` are thrown in the caller as such.
   - Access is the owning app's to grant. A provider that is not exported answers another app only
-    for a URI granted to it: by an intent the owner sent it (a cross-app `startActivity` or
-    broadcast) with `FLAG_GRANT_READ_URI_PERMISSION` / `FLAG_GRANT_WRITE_URI_PERMISSION` on its
+    for a URI granted to it: by an intent the owner sent it (a cross-app `startActivity`, a
+    broadcast, or an activity result's `setResult` data) with `FLAG_GRANT_READ_URI_PERMISSION` / `FLAG_GRANT_WRITE_URI_PERMISSION` on its
     data, clip or `EXTRA_STREAM` (`FLAG_GRANT_PREFIX_URI_PERMISSION` covers the URIs under it), or
     by `grantUriPermission`, until `revokeUriPermission`. An exported provider's read or write
     permission is checked against the caller, which a grant also satisfies.
@@ -1689,8 +1689,10 @@ The device has one screen, and one of its apps is on it. Another comes on screen
   each app's home screen showing them all. Tapping another app's icon brings that app forward.
 - **When an app starts another's activity**: an explicit intent naming it, or an implicit one that
   only the other app handles (one the app itself also handles stays in the app). The other app
-  starts it, in a task of its own, its extras typed. A caller waiting for a result gets
-  `RESULT_CANCELED` at once, since the result would come from another process.
+  starts it, in a task of its own, its extras typed. Started for a result, it joins the caller's
+  task: when it finishes, or is torn down, its result and data (`RESULT_CANCELED` without one) come
+  back to the caller's `onActivityResult`, an `activityResult` event, and the caller comes back on
+  screen unless the two apps share a split screen.
 - **With the `foreground` command**: `{"cmd":"foreground","device":"phone/com.example.other"}`
   brings that app forward, as does `{"cmd":"foreground","package":"com.example.other"}` sent to
   the app on screen. `startActivity` with another app's component starts it there too.
@@ -1878,8 +1880,7 @@ What does not, or not yet:
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
   providers, with their URI grants and change notifications, `/sdcard` and its services are
-  shared, but a result from its activity does not come back, and the apps share no clipboard or
-  settings.
+  shared and its activities' results come back, but the apps share no clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global

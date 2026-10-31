@@ -26,6 +26,47 @@ class LaunchCommandTest {
     }
 
   // -----------------------------------------------------------------------------------------------
+  // The Android SDK
+
+  private fun File.sdk(level: Int): File = also { child("platforms/android-$level/android.jar") }
+
+  @Test
+  fun `the project's sdk dir wins over the working directory's`() = fixture { root ->
+    val projectSdk = File(root, "project-sdk").sdk(36)
+    val project = File(root, "app").apply { child("local.properties", "sdk.dir=$projectSdk") }
+    val elsewhere = File(root, "elsewhere").apply { mkdirs() }
+    val jar = LaunchCommand.androidJar(listOf(project), cwd = elsewhere, env = { null })
+    assertEquals(File(projectSdk, "platforms/android-36/android.jar"), jar)
+  }
+
+  @Test
+  fun `an apk finds the local properties of the build above it`() = fixture { root ->
+    val sdk = File(root, "sdk").sdk(35)
+    root.child("app/local.properties", "sdk.dir=$sdk")
+    val apk = root.child("app/app/build/outputs/apk/debug/app-debug.apk")
+    val jar = LaunchCommand.androidJar(listOf(apk), cwd = File(root, "nowhere"), env = { null })
+    assertEquals(File(sdk, "platforms/android-35/android.jar"), jar)
+  }
+
+  @Test
+  fun `a sdk dir with no platform falls back to ANDROID_HOME`() = fixture { root ->
+    val home = File(root, "android-home").sdk(37)
+    val project = File(root, "app").apply { child("local.properties", "sdk.dir=$root/missing") }
+    val jar =
+      LaunchCommand.androidJar(
+        listOf(project),
+        cwd = project,
+        env = { if (it == "ANDROID_HOME") home.path else null },
+      )
+    assertEquals(File(home, "platforms/android-37/android.jar"), jar)
+  }
+
+  @Test
+  fun `no sdk anywhere is null`() = fixture { root ->
+    assertNull(LaunchCommand.androidJar(listOf(root), cwd = root, env = { null }))
+  }
+
+  // -----------------------------------------------------------------------------------------------
   // ApkConversionCache
 
   @Test
