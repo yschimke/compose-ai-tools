@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.79.2](https://github.com/yschimke/compose-ai-tools/compare/v2.79.1...v2.79.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **cli:** add the init script's repositories after other init scripts, once per host ([#6369](https://github.com/yschimke/compose-ai-tools/issues/6369)) ([8f60f2f](https://github.com/yschimke/compose-ai-tools/commit/8f60f2f04dd23862d11485acef96285ce17c4a4e))
+* **cli:** drop the duplicate Claude user entry when the compose-preview plugin serves it ([#6366](https://github.com/yschimke/compose-ai-tools/issues/6366)) ([bf1ef47](https://github.com/yschimke/compose-ai-tools/commit/bf1ef472914e56a2ad513254a2bb7ab8b0bc38b6))
+* **cli:** end orphaned serve servers and build hosts when their parent exits ([#6370](https://github.com/yschimke/compose-ai-tools/issues/6370)) ([858f4d2](https://github.com/yschimke/compose-ai-tools/commit/858f4d214935a795f46bf6d689c281f1a62076cc))
+* **cli:** only blame the publication window for a version that is actually new ([#6367](https://github.com/yschimke/compose-ai-tools/issues/6367)) ([2c93e3d](https://github.com/yschimke/compose-ai-tools/commit/2c93e3de9045c835dd022a615918bd670a109b1b))
+* **simulator:** answer a restarting reload or restart once the screen is still ([#6371](https://github.com/yschimke/compose-ai-tools/issues/6371)) ([a8835b4](https://github.com/yschimke/compose-ai-tools/commit/a8835b415890f35a293b4e34bb787ba5ab18107d))
+
 ## [2.79.1](https://github.com/yschimke/compose-ai-tools/compare/v2.79.0...v2.79.1) (2026-10-31)
 
 
