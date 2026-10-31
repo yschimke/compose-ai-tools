@@ -600,10 +600,35 @@ val generateCliVersionResource =
         ?: cliVersion
     // The compose-preview-daemon release `DaemonSidecarProvision` fetches; a catalog pin, as above.
     val previewDaemonVersion = libs.versions.composeai.preview.daemon.get()
+    // The HEAD commit's time (epoch seconds) — the release commit — which dates the Maven line so
+    // `PluginResolutionDiagnosis` can tell the publication window from a network problem. Only for
+    // release builds (the planner sets MAVEN_LINE_VERSION): elsewhere a per-commit value would
+    // change the jar, and every test task's classpath, on every commit. Empty — read by the CLI as
+    // "age unknown" — for other builds and when git is unavailable.
+    val isReleaseBuild =
+      !project.providers.environmentVariable("MAVEN_LINE_VERSION").orNull.isNullOrBlank()
+    val releaseEpochSeconds =
+      if (!isReleaseBuild) ""
+      else
+        runCatching {
+          project.providers
+            .exec {
+              commandLine("git", "log", "-1", "--format=%ct", "HEAD")
+              isIgnoreExitValue = true
+            }
+            .standardOutput
+            .asText
+            .get()
+            .trim()
+            .takeIf { it.toLongOrNull() != null }
+        }
+          .getOrNull()
+          .orEmpty()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
     inputs.property("mavenLineVersion", mavenLineVersion)
     inputs.property("previewDaemonVersion", previewDaemonVersion)
+    inputs.property("releaseEpochSeconds", releaseEpochSeconds)
     outputs.dir(outputDir)
     doLast {
       val file = outputDir.get().file("ee/schimke/composeai/cli/cli-version.properties").asFile
@@ -612,7 +637,8 @@ val generateCliVersionResource =
         "version=$cliVersion\n" +
           "xrCompositeVersion=$xrCompositeVersion\n" +
           "mavenLineVersion=$mavenLineVersion\n" +
-          "previewDaemonVersion=$previewDaemonVersion\n"
+          "previewDaemonVersion=$previewDaemonVersion\n" +
+          "releaseEpochSeconds=$releaseEpochSeconds\n"
       )
     }
   }

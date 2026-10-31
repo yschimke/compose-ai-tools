@@ -959,7 +959,7 @@ abstract class Command(
 
   /**
    * Advice hook for every [GradleConnection]: recognises the plugin marker failing to resolve and
-   * explains the publication window rather than blaming the user's build.
+   * explains it (publication window, or network / mirror) rather than blaming the user's build.
    */
   protected fun buildFailureAdvice(failureText: String): String? =
     pluginResolutionGuidance(failureText, injectedPluginVersion, injectedPluginVersionSource)
@@ -1012,6 +1012,7 @@ internal fun printDiscoveryFailures(
   pluginVersion: String? = null,
   pluginVersionSource: String? = null,
   timeoutSeconds: Long? = null,
+  timing: ReleaseTiming = ReleaseTiming.current(),
 ) {
   if (failures.isEmpty()) return
   // Cancellation leads: cancelled projects were never configured, so nothing about them was
@@ -1024,7 +1025,7 @@ internal fun printDiscoveryFailures(
   // An unresolved plugin marker leads, and replaces the rest only when it accounts for at least
   // half the failures.
   val markerGuidance = failures.firstNotNullOfOrNull {
-    pluginResolutionGuidance(it.message, pluginVersion, pluginVersionSource)
+    pluginResolutionGuidance(it.message, pluginVersion, pluginVersionSource, timing)
   }
   if (markerGuidance != null) {
     err(markerGuidance)
