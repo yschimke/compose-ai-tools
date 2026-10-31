@@ -2,7 +2,13 @@ package ee.schimke.composeai.cli
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * Where Claude Code keeps its config, and whether the `compose-preview` plugin already provides the
@@ -31,16 +37,66 @@ internal class ClaudeConfig(
 
   val installedPlugins: File = File(configDir, "plugins/installed_plugins.json")
 
+  /** User settings, where `claude plugin install --scope user` records `enabledPlugins`. */
+  val userSettings: File = File(configDir, "settings.json")
+
   /** True when `installed_plugins.json` lists a `compose-preview@<marketplace>` plugin. */
   val pluginInstalled: Boolean
+    get() = installedPluginRecords().isNotEmpty()
+
+  /**
+   * True only when the plugin certainly serves every session: `installed_plugins.json` holds a
+   * user-scope install of `compose-preview@<marketplace>` and the user settings enable that same
+   * id. This gates *removing* a user-scope entry, so anything less certain (a project- or
+   * local-scope install, no `enabledPlugins` record, `false`, an unreadable file) is false and the
+   * entry stays.
+   */
+  val pluginEnabledForUser: Boolean
     get() {
-      val text =
-        installedPlugins.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
-      val root =
-        text?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() } as? JsonObject
-      val plugins = root?.get("plugins") as? JsonObject ?: return false
-      return plugins.keys.any { it.startsWith("$PLUGIN_NAME@") }
+      val enabled = enabledPlugins() ?: return false
+      return installedPluginRecords().any { (id, records) ->
+        records.any(::isUserScope) && isEnabled(enabled[id])
+      }
     }
+
+  /**
+   * `plugins` maps `name@marketplace` to install records: an array of `{scope, installPath, ...}`
+   * in the current (v2) format, a single user-scope object in v1.
+   */
+  private fun installedPluginRecords(): Map<String, List<JsonObject>> {
+    val plugins = readObject(installedPlugins)?.get("plugins") as? JsonObject ?: return emptyMap()
+    return plugins
+      .filterKeys { it.startsWith("$PLUGIN_NAME@") }
+      .mapValues { (_, value) ->
+        when (value) {
+          is JsonArray -> value.filterIsInstance<JsonObject>()
+          is JsonObject -> listOf(value)
+          else -> emptyList()
+        }
+      }
+  }
+
+  private fun enabledPlugins(): JsonObject? =
+    readObject(userSettings)?.get("enabledPlugins") as? JsonObject
+
+  private fun isUserScope(record: JsonObject): Boolean {
+    val scope = record["scope"] ?: return true // v1 records carry no scope and were user-wide
+    return (scope as? JsonPrimitive)?.contentOrNull == "user"
+  }
+
+  /** `true`, or the extended (version-constraint) form; never `false` or a missing id. */
+  private fun isEnabled(value: JsonElement?): Boolean =
+    when (value) {
+      null,
+      JsonNull -> false
+      is JsonPrimitive -> value.booleanOrNull ?: value.isString
+      else -> true
+    }
+
+  private fun readObject(file: File): JsonObject? {
+    val text = file.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
+    return text?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() } as? JsonObject
+  }
 
   /** True when [claudeJson] holds a user-scope `compose-preview-mcp` entry. */
   fun hasUserEntry(): Boolean =

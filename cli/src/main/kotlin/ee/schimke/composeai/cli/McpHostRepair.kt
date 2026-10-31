@@ -259,6 +259,44 @@ internal object McpHostRepair {
   fun hasClaudeUserEntry(text: String?): Boolean =
     text != null && ((parse(text)?.get("mcpServers") as? JsonObject)?.get(SERVER) != null)
 
+  /**
+   * True when the user-scope entry in [text] has exactly the shape `mcp install` writes through
+   * `claude mcp add --scope user compose-preview-mcp -- <launcher> mcp serve`: a stdio server whose
+   * launcher is named `compose-preview` and whose arguments are `mcp serve` (an older release also
+   * pinned `--project`), with no environment. Anything else — another command, extra arguments or
+   * keys, an env block — was written by someone else and is never removed.
+   */
+  fun isCliWrittenClaudeUserEntry(text: String?): Boolean {
+    val server =
+      ((text?.let(::parse)?.get("mcpServers") as? JsonObject)?.get(SERVER) as? JsonObject)
+        ?: return false
+    if (!server.keys.all { it in setOf("type", "command", "args", "env") }) return false
+    val type = server["type"]?.let { (it as? JsonPrimitive)?.contentOrNull ?: return false }
+    if (type != null && type != "stdio") return false
+    val env = server["env"]
+    if (env != null && (env as? JsonObject)?.isEmpty() != true) return false
+    val command = (server["command"] as? JsonPrimitive)?.contentOrNull ?: return false
+    val launcherName = command.replace('\\', '/').substringAfterLast('/')
+    if (launcherName !in LAUNCHER_NAMES) return false
+    val args = strings(server["args"])
+    if (args.size != (server["args"] as? JsonArray)?.size) return false
+    return args.take(2) == listOf("mcp", "serve") && stripProject(args.drop(2)).isEmpty()
+  }
+
+  private val LAUNCHER_NAMES =
+    setOf("compose-preview", "compose-preview.bat", "compose-preview.cmd", "compose-preview.exe")
+
+  /** [text] without the user-scope entry, for when `claude` is not on PATH. */
+  fun removeClaudeUserEntry(text: String): String? {
+    val root = parse(text) ?: return null
+    val servers = root["mcpServers"] as? JsonObject ?: return null
+    if (SERVER !in servers) return null
+    return encode(JsonObject(root + ("mcpServers" to JsonObject(servers - SERVER))))
+  }
+
+  /** Argv that removes the user-scope entry through the Claude CLI. */
+  fun claudeUserRemoveCommand(): List<String> = AgentMcpConfig.claudeMcpRemoveCommand()
+
   /** Apply [claudeRepairs] straight to the JSON, for when `claude` is not on PATH. */
   fun repairClaudeJson(text: String, launcher: String, exists: (String) -> Boolean): McpRepair? {
     val repairs = claudeRepairs(text, launcher, exists)
@@ -342,6 +380,58 @@ internal object McpHostRepair {
     )
   }
 
+  /** One [repairAll] line as `mcp repair` and `update` print it. */
+  fun report(line: String): String =
+    if (listOf("removed ", "kept ", "failed", "skipped ").any(line::startsWith)) "==> $line"
+    else "==> repaired $line"
+
+  /** What [removeDuplicateClaudeUserEntry] did, and the `.claude.json` text left to repair. */
+  data class DuplicateRemoval(val removed: Boolean, val line: String, val remaining: String?)
+
+  /**
+   * The `compose-preview` Claude Code plugin registers the same server, so a user-scope entry runs
+   * a second server (and a second set of daemons) in every session
+   * (yschimke/compose-ai-tools#6363). Remove it when this CLI wrote it; otherwise only say so.
+   * Local-scope (per-project) entries are left alone.
+   */
+  fun removeDuplicateClaudeUserEntry(
+    claudeJson: File,
+    text: String,
+    claude: ((argv: List<String>, dir: File?) -> Int)?,
+  ): DuplicateRemoval {
+    val where = "claude (user) $SERVER (${claudeJson.path})"
+    if (!isCliWrittenClaudeUserEntry(text)) {
+      return DuplicateRemoval(
+        false,
+        "kept $where: it duplicates the compose-preview plugin's server but was not written by " +
+          "compose-preview; remove it yourself with " +
+          "`claude mcp remove $SERVER --scope user` if it is not needed",
+        text,
+      )
+    }
+    val because = "it duplicates the compose-preview plugin's server"
+    if (claude != null) {
+      val exit = claude(claudeUserRemoveCommand(), null)
+      return if (exit == 0) {
+        DuplicateRemoval(
+          true,
+          "removed $where: $because  (claude mcp remove --scope user)",
+          claudeJson.takeIf { it.isFile }?.readText(),
+        )
+      } else {
+        DuplicateRemoval(
+          false,
+          "failed: claude mcp remove $SERVER --scope user exited with $exit; $because",
+          text,
+        )
+      }
+    }
+    val updated =
+      removeClaudeUserEntry(text) ?: return DuplicateRemoval(false, "kept $where: unreadable", text)
+    claudeJson.writeText(updated)
+    return DuplicateRemoval(true, "removed $where: $because", updated)
+  }
+
   /** The global host config files `compose-preview mcp repair` scans. */
   data class HostFiles(
     val claudeJson: File,
@@ -361,12 +451,15 @@ internal object McpHostRepair {
   /**
    * Repair every existing `compose-preview-mcp` entry in [files]; never adds one. Claude entries go
    * through [claude] (`claude mcp remove` + `add-json`, run in the given directory) when it is
-   * non-null, otherwise `~/.claude.json` is edited directly. Returns one line per change.
+   * non-null, otherwise `~/.claude.json` is edited directly. When [claudePluginEnabled], the
+   * user-scope Claude entry is removed instead (see [removeDuplicateClaudeUserEntry]). Returns one
+   * line per change.
    */
   fun repairAll(
     files: HostFiles,
     launcher: String,
     exists: (String) -> Boolean = { File(it).exists() },
+    claudePluginEnabled: Boolean = false,
     claude: ((argv: List<String>, dir: File?) -> Int)? = null,
   ): List<String> {
     val out = mutableListOf<String>()
@@ -376,7 +469,12 @@ internal object McpHostRepair {
       file.writeText(fixed.updated)
       out += fixed.changes.map { "$it  (${file.path})" }
     }
-    val claudeText = files.claudeJson.takeIf { it.isFile }?.readText()
+    var claudeText = files.claudeJson.takeIf { it.isFile }?.readText()
+    if (claudeText != null && claudePluginEnabled && hasClaudeUserEntry(claudeText)) {
+      val result = removeDuplicateClaudeUserEntry(files.claudeJson, claudeText, claude)
+      out += result.line
+      claudeText = result.remaining
+    }
     if (claudeText != null) {
       if (claude == null) {
         rewrite(files.claudeJson) { repairClaudeJson(it, launcher, exists) }

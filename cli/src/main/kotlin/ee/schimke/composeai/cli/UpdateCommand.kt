@@ -41,9 +41,7 @@ class UpdateCommand(private val args: List<String>) {
     // Host configs written by older releases can name a versioned launcher the installer just
     // deleted, or pin a global entry to one project. Point them at the stable launcher.
     runCatching { McpCommand.repairInstalledHostConfigs() }
-      .onSuccess { changes ->
-        changes?.forEach { System.err.println("==> repaired MCP entry $it") }
-      }
+      .onSuccess { changes -> changes?.forEach { System.err.println(McpHostRepair.report(it)) } }
       .onFailure { System.err.println("warning: could not check MCP host configs: ${it.message}") }
   }
 
