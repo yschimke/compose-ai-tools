@@ -1606,6 +1606,13 @@ only when all of this holds, and restarts otherwise, saying why in `hotswapSkipp
 The swap is all or nothing: the simulator checks before redefining, and the JVM redefines every
 class or none. `{"cmd":"reload","hotswap":false}` always restarts.
 
+`{"cmd":"reload","compile":false}` skips the Gradle build and only compares the class directories,
+for a caller that has just compiled the edit itself. The preview daemon's in-process compiler (the
+MCP server's `notify_file_changed`) writes its output where Gradle's Kotlin compile does, with the
+module's own compiler plugins, so a reload after it costs only the comparison and the hot swap:
+about 0.8 s on ComposeStarter, against 1.0–1.2 s more for a warm Gradle compile. Nothing links
+resources then, so a resource edit needs a compiling reload.
+
 ComposeStarter (Wear OS), a string in a composable, 15 edits in a row, one session:
 
 | Edit | Mode | Edit to pixels | Where the time went |

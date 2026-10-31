@@ -139,10 +139,16 @@ internal class LiveReload(
    * the session started from; its converted classes stay underneath every overlay). A build that
    * changed nothing the running simulator does not already have is [Plan.Unchanged].
    */
-  fun prepare(launchedApk: File, full: Boolean): Plan {
+  fun prepare(launchedApk: File, full: Boolean, compile: Boolean = true): Plan {
     val base = baseline ?: fingerprint().also { baseline = it }
     if (full) return rebuild("a full reload was asked for")
-    val build = run(compileTasks)
+    // compile = false: the caller has compiled the edit into the module's class directories itself
+    // (the preview daemon's in-process compiler writes where Gradle's Kotlin compile does, with the
+    // module's own compiler plugins), so only the diff runs. Nothing links resources: a resource
+    // edit needs a compiling reload.
+    val build =
+      if (compile) run(compileTasks)
+      else Build(ok = true, ms = 0, tasks = emptyList(), errors = emptyList())
     if (!build.ok) return Plan.Failed(build)
     val start = System.nanoTime()
     val now = fingerprint()
