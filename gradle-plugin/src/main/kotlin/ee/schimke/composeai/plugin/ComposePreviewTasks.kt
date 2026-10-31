@@ -1019,6 +1019,7 @@ internal object ComposePreviewTasks {
           it.asFile.absolutePath
         },
       ineligibilityReason = detectStageTwoIneligibility(project),
+      kotlinPluginConfigurationName = "kotlinCompilerPluginClasspathMain",
     )
   }
 
@@ -1038,18 +1039,32 @@ internal object ComposePreviewTasks {
     outputDirProvider: org.gradle.api.provider.Provider<String>,
     icWorkingDirProvider: org.gradle.api.provider.Provider<String>,
     ineligibilityReason: String?,
+    kotlinPluginConfigurationName: String? = null,
   ) {
     val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
     val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
     // Lazy artifact views for config-cache serializability (#1796); `userCompileClasspath` is
     // already clean from both callers.
     task.btaImplClasspath.from(btaImplConfig.incoming.artifactView {}.files)
-    task.btaCompilerPluginClasspath.from(btaPluginConfig.incoming.artifactView {}.files)
+    // The module's own compiler plugins, as its Kotlin compile loads them (Compose, and
+    // kotlinx-serialization or parcelize when applied): compiled without one, a class differs from
+    // what Gradle builds, and the daemon writes it into Gradle's output directory. Compose's alone
+    // when KGP has no such configuration for this compilation.
+    val modulePlugins = kotlinPluginConfigurationName?.let { project.configurations.findByName(it) }
+    task.btaCompilerPluginClasspath.from(
+      (modulePlugins ?: btaPluginConfig).incoming.artifactView {}.files
+    )
     task.btaCompileClasspath.from(userCompileClasspath)
     task.btaModuleName.set(moduleName)
     task.btaOutputDir.set(outputDirProvider)
     task.btaIcWorkingDir.set(icWorkingDirProvider)
-    ineligibilityReason?.let { task.btaIneligibilityReason.set(it) }
+    // A plugin the daemon cannot configure (one that takes options, or one it does not know) keeps
+    // the module on the Gradle compile, which applies it.
+    task.btaIneligibilityReason.set(
+      task.btaCompilerPluginClasspath.elements.map { elements ->
+        ineligibilityReason ?: unsupportedCompilerPlugins(elements.map { it.asFile.name })
+      }
+    )
 
     val pathSep = java.io.File.pathSeparator
     task.systemProperties.put(
@@ -1060,7 +1075,7 @@ internal object ComposePreviewTasks {
     )
     task.systemProperties.put(
       "composeai.daemon.bta.compilerPlugins",
-      btaPluginConfig.elements.map { elements ->
+      task.btaCompilerPluginClasspath.elements.map { elements ->
         elements.joinToString(pathSep) { it.asFile.absolutePath }
       },
     )
@@ -1077,6 +1092,29 @@ internal object ComposePreviewTasks {
       "composeai.daemon.bta.ineligibilityReason",
       task.btaIneligibilityReason.orElse(""),
     )
+  }
+
+  /**
+   * Compiler plugins the daemon's in-process compile applies with no options of its own: Compose
+   * (whose `sourceInformation` it sets), kotlinx-serialization and parcelize. Matched by artifact
+   * file name, the embeddable jars KGP resolves.
+   */
+  private val DAEMON_COMPILER_PLUGINS =
+    listOf(
+      "kotlin-compose-compiler-plugin",
+      "kotlin-serialization-compiler-plugin",
+      "kotlin-parcelize-compiler",
+    )
+
+  /**
+   * Why a module whose Kotlin compile loads [pluginJars] (file names) cannot compile in the daemon,
+   * or null when the daemon can apply every one of them.
+   */
+  internal fun unsupportedCompilerPlugins(pluginJars: List<String>): String? {
+    val unknown = pluginJars.filter { jar -> DAEMON_COMPILER_PLUGINS.none { jar.startsWith(it) } }
+    if (unknown.isEmpty()) return null
+    return "Kotlin compiler plugin ${unknown.joinToString(", ")} applied (stage 2 applies only " +
+      "Compose, kotlinx-serialization and parcelize, which take no options it cannot pass)"
   }
 
   /** Shared with `AndroidPreviewSupport`; see [detectStageTwoIneligibility]. */

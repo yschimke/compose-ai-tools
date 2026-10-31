@@ -2695,6 +2695,8 @@ internal object AndroidPreviewSupport {
             it.asFile.absolutePath
           },
         ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
+        kotlinPluginConfigurationName =
+          "kotlinCompilerPluginClasspath${variantName.replaceFirstChar { it.uppercase() }}",
       )
       // What the variant is built from, for the descriptor's `sourceWatch`.
       variant.sources.java?.all?.let { dirs ->
