@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import org.json.JSONException;
@@ -82,6 +85,15 @@ final class DeviceApps {
 
   /** The app on the split screen's other side. */
   private String partner;
+
+  /** Whether the split screen's halves are side by side, rather than one above the other. */
+  private boolean sideBySide;
+
+  /** This app's screen as it is drawn now, for the other half of a split screen's screenshot. */
+  private java.util.function.Supplier<android.graphics.Bitmap> screen;
+
+  /** The bus request for the other half of a split screen's screenshot: its PNG. */
+  private static final String SCREENSHOT = "screenshot";
 
   /** The whole display, given back when the split ends. */
   private DeviceDisplay.Saved whole;
@@ -266,7 +278,7 @@ final class DeviceApps {
         DisplayGeometry.splitHalves(
             config.screenWidthDp, config.screenHeightDp, display.foldVertical());
     boolean sideBySide = halves[1] == config.screenHeightDp;
-    enterSplit("first", other, halves[0], halves[1]);
+    enterSplit("first", other, halves[0], halves[1], sideBySide);
     if (home != null) {
       Navigator.Entry top = navigator.top(Display.DEFAULT_DISPLAY);
       // From the home screen's icon: this app's own task takes the first half.
@@ -275,6 +287,7 @@ final class DeviceApps {
     JSONObject split =
         new Protocol.Json()
             .put("side", "second")
+            .put("sideBySide", sideBySide)
             .put("partner", app.getPackageName())
             .put("widthDp", halves[2])
             .put("heightDp", halves[3])
@@ -314,7 +327,8 @@ final class DeviceApps {
             split.getString("side"),
             split.getString("partner"),
             split.getInt("widthDp"),
-            split.getInt("heightDp"));
+            split.getInt("heightDp"),
+            split.optBoolean("sideBySide", true));
       } else {
         leaveSplit();
       }
@@ -337,16 +351,82 @@ final class DeviceApps {
     event();
   }
 
+  /**
+   * Answers the other half's screenshot requests with [screen], this app's screen as it is drawn.
+   */
+  void screenSource(java.util.function.Supplier<android.graphics.Bitmap> screen) {
+    this.screen = screen;
+    if (!DeviceBus.enabled()) return;
+    DeviceBus.on(
+        SCREENSHOT,
+        (from, body, reply) -> {
+          android.graphics.Bitmap bitmap = screen.get();
+          if (bitmap == null) {
+            reply.send(DeviceBus.error("nothing on screen to capture"));
+            return;
+          }
+          java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+          bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+          reply.send(
+              new Protocol.Json()
+                  .put("png", java.util.Base64.getEncoder().encodeToString(out.toByteArray()))
+                  .object());
+        });
+  }
+
+  /**
+   * The whole screen, for a screenshot: [own] alone, or, on a split screen, [own] and the other
+   * app's half, which it draws, in their places, side by side or one above the other.
+   */
+  android.graphics.Bitmap wholeScreen(android.graphics.Bitmap own) {
+    if (side == null || partner == null) return own;
+    JSONObject answer;
+    try {
+      answer = DeviceBus.request(partner, SCREENSHOT, new JSONObject()).get(10, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    } catch (ExecutionException | TimeoutException e) {
+      throw new IllegalStateException(partner + " did not draw its half of the screen", e);
+    }
+    String png = Protocol.string(answer, "png");
+    if (png == null) {
+      throw new IllegalStateException(
+          partner + " did not draw its half of the screen: " + answer.optString("busError"));
+    }
+    byte[] bytes = java.util.Base64.getDecoder().decode(png);
+    android.graphics.Bitmap other =
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+    android.graphics.Bitmap first = "first".equals(side) ? own : other;
+    android.graphics.Bitmap second = "first".equals(side) ? other : own;
+    int width =
+        sideBySide ? first.getWidth() + second.getWidth() : Math.max(first.getWidth(), second.getWidth());
+    int height =
+        sideBySide
+            ? Math.max(first.getHeight(), second.getHeight())
+            : first.getHeight() + second.getHeight();
+    android.graphics.Bitmap whole =
+        android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+    android.graphics.Canvas canvas = new android.graphics.Canvas(whole);
+    canvas.drawColor(android.graphics.Color.BLACK);
+    canvas.drawBitmap(first, 0, 0, null);
+    canvas.drawBitmap(
+        second, sideBySide ? first.getWidth() : 0, sideBySide ? 0 : first.getHeight(), null);
+    return whole;
+  }
+
   /** Where this app is on a split screen, or null. */
   JSONObject describeSplit() {
     if (side == null) return null;
     return new Protocol.Json().put("side", side).put("with", partner).object();
   }
 
-  private void enterSplit(String side, String partner, int widthDp, int heightDp) {
+  private void enterSplit(
+      String side, String partner, int widthDp, int heightDp, boolean sideBySide) {
     if (this.side == null) whole = display.save();
     this.side = side;
     this.partner = partner;
+    this.sideBySide = sideBySide;
     boolean was = multiWindow;
     multiWindow = true;
     markMultiWindow();

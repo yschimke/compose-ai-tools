@@ -155,6 +155,7 @@ final class Session {
     // An activity of another of the device's apps (--app): that app comes on screen and starts it.
     this.deviceApps = new DeviceApps(app, navigator, protocol, display);
     if (home != null) deviceApps.attach(home);
+    deviceApps.screenSource(ui::takeScreenshot);
     new Handoffs(app, protocol, navigator);
     this.appActions = new AppActions(app, navigator);
     this.appFunctions = new AppFunctions(app, protocol);
@@ -765,6 +766,12 @@ final class Session {
           Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
       black.eraseColor(android.graphics.Color.BLACK);
       bitmap = black;
+    }
+    if (displayId == android.view.Display.DEFAULT_DISPLAY
+        && !screen.dark()
+        && !c.optBoolean("app", false)) {
+      // A split screen's whole screen, both apps' halves, unless this app's alone is asked for.
+      bitmap = deviceApps.wholeScreen(bitmap);
     }
     if (displayId == android.view.Display.DEFAULT_DISPLAY
         && FormFactor.isRound()

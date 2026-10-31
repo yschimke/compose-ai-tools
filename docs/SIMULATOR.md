@@ -282,7 +282,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `ping` | | uptime |
 | `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
-| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
+| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`?, `app`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square`; on a [split screen](#split-screen) both halves, unless `app` asks for this app's alone |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
@@ -1708,9 +1708,10 @@ In a window, the second app's window opens beside the first's. Each app's `info`
 `split` (`side`, `with`), and its `foreground` event carries its `side`.
 
 The split ends when either app goes to the background or another app comes on screen. The app left
-on screen gets the whole display back, its preset and fold included. Each app's display is its own
-half, so a `screenshot` is that app's half and each app draws its own status bar, with no divider
-between the halves.
+on screen gets the whole display back, its preset and fold included. A `screenshot` is the whole
+screen, both halves in their places, whichever app takes it (the other app draws its own half);
+`"app": true` takes the app's own half alone. Each app draws its own status bar, and there is no
+divider between the halves.
 
 On a watch the `foreground` command switches apps, but the watch's launcher lists only its
 own app. `--install` combines with `--pair` (and both with `--app`), but
