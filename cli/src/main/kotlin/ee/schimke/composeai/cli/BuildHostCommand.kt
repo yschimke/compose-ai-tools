@@ -14,6 +14,10 @@ import java.io.File
 import java.io.OutputStream
 import java.io.PrintStream
 import java.io.Writer
+import java.util.Optional
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 
 /**
  * `compose-preview build-host --stdio`: serves the Gradle operations a preview server needs over a
@@ -52,18 +56,60 @@ class BuildHostCommand(args: List<String>) : Command(args) {
     }
     // Captured before anything can replace it. `serve` writes protocol here and nowhere else.
     val protocol = System.out
-    serve(System.`in`.bufferedReader(), PrintStream(protocol, true, Charsets.UTF_8).writer())
+    // A server that dies outright (SIGKILL, a crash) cannot close our stdin in an orderly way and
+    // may leave it open through an intermediate process, so the parent is watched as well
+    // (yschimke/compose-ai-tools#6364).
+    ParentWatch.start {
+      System.err.println("compose-preview build-host: the process that started it exited; exiting")
+      exitProcess(0)
+    }
+    serve(
+      System.`in`.bufferedReader(),
+      PrintStream(protocol, true, Charsets.UTF_8).writer(),
+      onClosedWhileBuilding = {
+        System.err.println("compose-preview build-host: stdin closed during a build; exiting")
+        exitProcess(0)
+      },
+    )
+    // stdin reached EOF: the server is done with us. Exit even if Tooling API threads linger, so
+    // the
+    // host never outlives its pipe.
+    exitProcess(0)
   }
 
   /**
    * The request loop, with injected channels for tests. Requests are answered strictly in order:
-   * the operations mutate a Gradle build. Cancellation is closing stdin (the host exits); a cancel
-   * message that couldn't actually stop the build would be worse than none.
+   * the operations mutate a Gradle build. Cancellation is closing stdin: the loop returns at EOF,
+   * and an EOF that arrives while a build is running calls [onClosedWhileBuilding] at once (the
+   * host exits) instead of letting the build run on for a reader that has gone. A cancel message
+   * that couldn't actually stop the build would be worse than none.
    */
-  internal fun serve(requests: BufferedReader, responses: Writer) {
+  internal fun serve(
+    requests: BufferedReader,
+    responses: Writer,
+    onClosedWhileBuilding: () -> Unit = {},
+  ) {
+    val lines = LinkedBlockingQueue<Optional<String>>()
+    val building = AtomicBoolean(false)
+    val reader = Thread {
+      try {
+        while (true) {
+          val line = requests.readLine() ?: break
+          lines.put(Optional.of(line))
+        }
+      } catch (_: Exception) {
+        // A broken pipe is end of input too.
+      }
+      lines.put(Optional.empty())
+      if (building.get()) onClosedWhileBuilding()
+    }
+    reader.name = "compose-preview-build-host-stdin"
+    reader.isDaemon = true
+    reader.start()
+
     var handshaken = false
     while (true) {
-      val line = requests.readLine() ?: return
+      val line = lines.take().orElse(null) ?: return
       if (line.isBlank()) continue
 
       val envelope =
@@ -109,17 +155,32 @@ class BuildHostCommand(args: List<String>) : Command(args) {
 
       val response =
         try {
-          handle(request, envelope.id, responses).also {
+          building.set(request.isBuild())
+          handleRequest(request, envelope.id, responses).also {
             if (request is BuildHostRequest.Handshake && it !is BuildHostResponse.Failure) {
               handshaken = true
             }
           }
         } catch (t: Throwable) {
           failure(t)
+        } finally {
+          building.set(false)
         }
       write(responses, BuildHostEnvelope(envelope.id, response = response))
     }
   }
+
+  /**
+   * The requests that run a build and can take minutes. Only these are cut short by EOF; the rest
+   * answer at once, so `printf '<handshake>' | compose-preview build-host --stdio` still replies.
+   */
+  internal fun BuildHostRequest.isBuild(): Boolean =
+    this is BuildHostRequest.RunGradleTasks ||
+      this is BuildHostRequest.DiscoverAndBuild ||
+      this == BuildHostRequest.GradleProjects
+
+  /** Answers one request; a seam so tests can stand in for a long build. */
+  internal var handleRequest: (BuildHostRequest, Long, Writer) -> BuildHostResponse = ::handle
 
   private fun handle(request: BuildHostRequest, id: Long, responses: Writer): BuildHostResponse =
     when (request) {
@@ -255,6 +316,8 @@ class BuildHostCommand(args: List<String>) : Command(args) {
 
       Not run by hand: the server spawns it. Protocol version ${BuildHostProtocol.VERSION},
       newline-delimited JSON. Build output is forwarded as log events, never written to stdout.
+      Exits when stdin closes (at once if a build is running) or when the process that started
+      it exits.
 
       Options:
         --stdio           Speak the protocol on stdin/stdout. Currently required.
