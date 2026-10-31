@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.80.0](https://github.com/yschimke/compose-ai-tools/compare/v2.79.2...v2.80.0) (2026-10-31)
+
+
+### Features
+
+* answer Android Studio's Wear run configurations and host androidx watch faces ([#6373](https://github.com/yschimke/compose-ai-tools/issues/6373)) ([02da6b0](https://github.com/yschimke/compose-ai-tools/commit/02da6b02a6c668fc6f1d9740e5b04423249c0fbf))
+
 ## [2.79.2](https://github.com/yschimke/compose-ai-tools/compare/v2.79.1...v2.79.2) (2026-10-31)
 
 
