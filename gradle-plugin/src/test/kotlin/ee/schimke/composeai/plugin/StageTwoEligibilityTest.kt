@@ -56,4 +56,31 @@ class StageTwoEligibilityTest {
 
     assertThat(ComposePreviewTasks.detectStageTwoIneligibilityFor(project)).isNotNull()
   }
+
+  @Test
+  fun `compose, kotlinx-serialization and parcelize compile in the daemon`() {
+    assertThat(
+        ComposePreviewTasks.unsupportedCompilerPlugins(
+          listOf(
+            "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar",
+            "kotlin-serialization-compiler-plugin-embeddable-2.3.20.jar",
+            "kotlin-parcelize-compiler-2.3.20.jar",
+          )
+        )
+      )
+      .isNull()
+  }
+
+  @Test
+  fun `any other compiler plugin falls back to stage 1, naming the jar`() {
+    val reason =
+      ComposePreviewTasks.unsupportedCompilerPlugins(
+        listOf(
+          "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar",
+          "kotlin-allopen-compiler-plugin-embeddable-2.3.20.jar",
+        )
+      )
+    assertThat(reason).isNotNull()
+    assertThat(reason).contains("kotlin-allopen-compiler-plugin-embeddable-2.3.20.jar")
+  }
 }
