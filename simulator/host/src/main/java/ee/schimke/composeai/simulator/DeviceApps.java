@@ -101,10 +101,13 @@ final class DeviceApps {
   /** An activity this app started in another app for a result, waiting for that result. */
   private static final class Pending {
     final Activity requester;
+    /** The requester's entry's intent, which finds it again once re-created. */
+    final Intent request;
     final int requestCode;
 
-    Pending(Activity requester, int requestCode) {
+    Pending(Activity requester, Intent request, int requestCode) {
       this.requester = requester;
+      this.request = request;
       this.requestCode = requestCode;
     }
   }
@@ -448,7 +451,8 @@ final class DeviceApps {
     if (requester != null && requestCode >= 0) {
       // Its result comes back when the other app's activity finishes (activityResult).
       resultId = nextResult.getAndIncrement();
-      pending.put(resultId, new Pending(requester, requestCode));
+      pending.put(
+          resultId, new Pending(requester, navigator.requestOf(requester), requestCode));
     }
     try {
       show(target, intent, resultId);
@@ -468,10 +472,13 @@ final class DeviceApps {
     if (request == null) return;
     int resultCode = body.optInt("resultCode", Activity.RESULT_CANCELED);
     Intent data = Parcels.decode(Protocol.string(body, "data"), Intent.CREATOR);
-    boolean running = navigator.isRunning(request.requester);
-    if (running) {
-      navigator.deliverResult(request.requester, request.requestCode, resultCode, data);
-    }
+    // The requester, or the instance that replaced it when it was re-created meanwhile.
+    Activity requester =
+        navigator.isRunning(request.requester)
+            ? request.requester
+            : navigator.runningFor(request.request);
+    boolean running = requester != null;
+    if (running) navigator.deliverResult(requester, request.requestCode, resultCode, data);
     protocol.event(
         "activityResult",
         new Protocol.Json()

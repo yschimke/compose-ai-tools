@@ -1261,6 +1261,22 @@ final class Navigator {
   }
 
   /**
+   * The intent that started [activity]'s entry, which a re-creation (a configuration change, a
+   * restore after a kill) keeps: a stable name for the activity; null when it is not running.
+   */
+  Intent requestOf(Activity activity) {
+    for (Entry entry : stack) if (entry.activity() == activity) return entry.request;
+    return null;
+  }
+
+  /** The activity now running for [request] ({@link #requestOf}), or null. */
+  Activity runningFor(Intent request) {
+    if (request == null) return null;
+    for (Entry entry : stack) if (entry.request == request) return entry.activity();
+    return null;
+  }
+
+  /**
    * The activity that asked for [names] with [requestCode]: Robolectric keeps each activity's last
    * request. Not simply the top one, which may be an activity the requester started in the same
    * cycle; the top one only when no activity's last request matches.
