@@ -159,8 +159,9 @@ final class HomeScreen {
 
   /**
    * [info]'s icon on the grid or in the drawer. Another app's resources are in its own process,
-   * not this one: its icon is the default activity icon, and its label the manifest's literal one,
-   * else the one the app told ({@link DeviceApps#labelOf}), else the last part of its package.
+   * not this one: its icon and label are the ones it told ({@link DeviceApps#iconOf}, {@link
+   * DeviceApps#labelOf}), drawn there. Until it has, its icon is the default activity icon, and its
+   * label the manifest's literal one, else the last part of its package.
    */
   Icon iconOf(ResolveInfo info) {
     ComponentName activity =
@@ -179,10 +180,12 @@ final class HomeScreen {
       String pkg = activity.getPackageName();
       label = pkg.substring(pkg.lastIndexOf('.') + 1);
     }
-    return new Icon("app", activity, null, label, pm.getDefaultActivityIcon());
+    Drawable drawn = DeviceApps.iconOf(app.getResources(), activity);
+    return new Icon(
+        "app", activity, null, label, drawn != null ? drawn : pm.getDefaultActivityIcon());
   }
 
-  /** Another of the device's apps told its label: its icons on the grid take it. */
+  /** Another of the device's apps told its label and icons: its icons on the grid take them. */
   void relabel(String packageName) {
     PackageManager pm = app.getPackageManager();
     for (int i = 0; i < icons.size(); i++) {
