@@ -1695,6 +1695,8 @@ final class Navigator {
     for (ResolveInfo info : manifest) {
       ActivityInfo receiver = info.activityInfo;
       if (receiver == null || dynamic.contains(receiver.name)) continue;
+      // Another app of the device's: its receiver runs in its own simulator (DeviceBroadcasts).
+      if (!app.getPackageName().equals(receiver.packageName)) continue;
       BroadcastReceiver instance =
           instantiate(
               () -> factory().instantiateReceiver(app.getClassLoader(), receiver.name, intent));
@@ -1749,9 +1751,11 @@ final class Navigator {
     Navigator navigator = current;
     if (navigator == null || delivering) return false;
     if (intent.getComponent() == null && intent.getPackage() == null) return false;
-    if (navigator.app.getPackageManager().queryBroadcastReceivers(intent, 0).isEmpty()) {
-      return false;
+    boolean own = false;
+    for (ResolveInfo info : navigator.app.getPackageManager().queryBroadcastReceivers(intent, 0)) {
+      if (navigator.app.getPackageName().equals(info.activityInfo.packageName)) own = true;
     }
+    if (!own) return false;
     Intent copy = new Intent(intent);
     new android.os.Handler(android.os.Looper.getMainLooper())
         .post(

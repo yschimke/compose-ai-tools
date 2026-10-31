@@ -112,6 +112,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
         app.getApplicationInfo().processName = app.getPackageName();
       }
       Logcat.install();
+      // The device's /sdcard, shared with its other apps (--app), before anything opens a file.
+      DevicePeers.shareStorage();
       // A restarted or updated simulator's data, before anything opens a file.
       int restored = AppFiles.restore(app);
       if (restored > 0) System.setProperty(Startup.RESTORED_PROPERTY, Integer.toString(restored));
@@ -133,6 +135,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Alarms.grantExact(app);
       // The other apps of the device (--install): their manifests, here; their code, elsewhere.
       DevicePeers.install(app);
+      // ...and their content providers, each call forwarded to the app that owns it.
+      DeviceProviders.install(app);
       // The documents and photo pickers, camera, share sheet and browser an intent can reach.
       SystemApps.install(app);
       DocumentsStore.install(app);

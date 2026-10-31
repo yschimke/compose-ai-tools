@@ -48,7 +48,8 @@ import org.robolectric.simulator.SimulatorPanelRegistry;
  * the app left on screen gets the whole display back, its preset and fold included.
  *
  * <p>An activity of another app started for a result gets {@code RESULT_CANCELED} at once: the
- * result would come back from another process. The intent's extras reach the other app as strings.
+ * result would come back from another process. The intent reaches the other app marshalled ({@link
+ * Parcels}), its extras typed.
  * Runs on the main thread.
  */
 final class DeviceApps {
@@ -209,7 +210,7 @@ final class DeviceApps {
         EVENT,
         new Protocol.Json()
             .put("to", packageName)
-            .put("intent", intent == null ? null : Intents.toJson(intent))
+            .put("intent", intent == null ? null : Parcels.encode(intent))
             .put("window", window)
             .object());
     return new Protocol.Json().put("package", packageName).put("onScreen", true).object();
@@ -307,7 +308,7 @@ final class DeviceApps {
     String to = body.optString("to");
     JSONObject split = body.optJSONObject("split");
     if (to.equals(app.getPackageName())) {
-      JSONObject spec = body.optJSONObject("intent");
+      Intent sent = Parcels.decode(Protocol.string(body, "intent"), Intent.CREATOR);
       if (split != null) {
         enterSplit(
             split.getString("side"),
@@ -317,7 +318,7 @@ final class DeviceApps {
       } else {
         leaveSplit();
       }
-      comeForward(spec == null ? null : Intents.fromJson(spec, app), body.optJSONObject("window"));
+      comeForward(sent, body.optJSONObject("window"));
     } else if (split != null && app.getPackageName().equals(split.optString("partner"))) {
       // The first half: it stays as it is.
     } else if (onScreen) {

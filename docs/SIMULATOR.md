@@ -1630,6 +1630,25 @@ What the apps share:
   document; without the permission the call is `ERROR_DENIED`, and an app that is not installed is
   `ERROR_FUNCTION_NOT_FOUND`. An app calling its own functions needs no permission. API 36
   (`--sdk 36`).
+- **Broadcasts.** What an app sends with `sendBroadcast` reaches the other apps too, its extras
+  typed (the intent is marshalled as the binder marshals it). An implicit broadcast reaches every
+  app's receivers registered at run time, and, as since API 26, none declared in a manifest. One
+  naming another app, by package or component, goes to that app alone, its manifest receivers
+  included. A receiver permission is checked against the receiving app's permissions. Each app that
+  gets one reports a `broadcast` event naming the sender (`from`). The system's own implicit
+  broadcasts (`TIME_TICK`, `CONNECTIVITY_CHANGE`) are each app's simulator's, and ordered and
+  sticky broadcasts do not cross.
+- **Content providers.** Each app reaches the others' providers by authority, every call run by
+  the owning app's provider in its own simulator with the caller as its `getCallingPackage()`:
+  `query` (typed rows: integers, floats, strings, blobs, nulls), `insert`, `update`, `delete`,
+  `getType` and `call`, and `openFile` / `openInputStream` for reading, which hands the caller a
+  copy. A provider's `SecurityException`, `IllegalArgumentException` and `FileNotFoundException`
+  are thrown in the caller as such. A provider neither exported nor granting URI permissions
+  refuses other apps; one that grants them answers, as if the grant had been made. Writing to
+  another app's file and change notifications (`notifyChange`) do not cross.
+- **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
+  writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
+  under it. It is a temporary directory, deleted when the launch ends.
 
 ```
 compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
@@ -1648,8 +1667,8 @@ The device has one screen, and one of its apps is on it. Another comes on screen
   each app's home screen showing them all. Tapping another app's icon brings that app forward.
 - **When an app starts another's activity**: an explicit intent naming it, or an implicit one that
   only the other app handles (one the app itself also handles stays in the app). The other app
-  starts it, in a task of its own. Its extras arrive as strings, and a caller waiting for a result
-  gets `RESULT_CANCELED` at once, since the result would come from another process.
+  starts it, in a task of its own, its extras typed. A caller waiting for a result gets
+  `RESULT_CANCELED` at once, since the result would come from another process.
 - **With the `foreground` command**: `{"cmd":"foreground","device":"phone/com.example.other"}`
   brings that app forward, as does `{"cmd":"foreground","package":"com.example.other"}` sent to
   the app on screen. `startActivity` with another app's component starts it there too.
@@ -1693,8 +1712,7 @@ on screen gets the whole display back, its preset and fold included. Each app's 
 half, so a `screenshot` is that app's half and each app draws its own status bar, with no divider
 between the halves.
 
-Broadcasts and content providers do not cross between apps yet, and each app's `/sdcard` is its
-own. On a watch the `foreground` command switches apps, but the watch's launcher lists only its
+On a watch the `foreground` command switches apps, but the watch's launcher lists only its
 own app. `--install` combines with `--pair` (and both with `--app`), but
 not with `--adb`.
 
@@ -1835,9 +1853,9 @@ What does not, or not yet:
   declaration or permissions.
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
-  simulator, which comes on screen ([switching](#switching-between-them)); its services,
-  broadcasts, content providers and URI grants are not reached yet, a result from its activity does
-  not come back, and the apps share no storage, clipboard or settings.
+  simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
+  providers and `/sdcard` are shared, but its services are not reached, URI grants are not checked,
+  a result from its activity does not come back, and the apps share no clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
