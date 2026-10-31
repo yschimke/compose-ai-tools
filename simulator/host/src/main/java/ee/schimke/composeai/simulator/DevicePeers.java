@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.robolectric.shadow.api.Shadow;
+import org.robolectric.shadows.ShadowEnvironment;
 import org.robolectric.shadows.ShadowPackageManager;
 import org.robolectric.shadows.ShadowPackageParser;
 import org.robolectric.util.ReflectionHelpers;
@@ -22,6 +23,31 @@ final class DevicePeers {
 
   /** The packages installed, in launch order. */
   private static final List<String> packages = new ArrayList<>();
+
+  /**
+   * The host directory that is the device's shared storage ({@code /sdcard}), the same for each of
+   * its apps; unset for an app alone on its device.
+   */
+  static final String SDCARD_PROPERTY = "composeai.simulator.device.sdcard";
+
+  /**
+   * Before anything opens a file: the device's apps share its {@code /sdcard}, as they do on a
+   * device. Each app's own external directories ({@code Android/data/<package>}) are under it.
+   */
+  static void shareStorage() {
+    String sdcard = System.getProperty(SDCARD_PROPERTY);
+    if (sdcard == null || sdcard.isEmpty()) return;
+    Path root = Path.of(sdcard);
+    try {
+      java.nio.file.Files.createDirectories(root);
+    } catch (java.io.IOException e) {
+      System.err.println("device: cannot create " + root + ": " + e);
+      return;
+    }
+    ShadowEnvironment.setExternalStorageDirectory(root);
+    // getExternalStoragePublicDirectory (Download/, Pictures/, ...) reads its own root.
+    ShadowEnvironment.setExternalStoragePublicDirectory(root);
+  }
 
   /** Before {@code Application.onCreate()}. */
   static void install(Application app) {

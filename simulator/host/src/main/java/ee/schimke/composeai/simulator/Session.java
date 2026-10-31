@@ -160,6 +160,9 @@ final class Session {
     this.appFunctions = new AppFunctions(app, protocol);
     // On a device with other apps (--install): join it, and serve their calls into this one.
     AppFunctions.serveOnBus(app);
+    // Broadcasts to and from the device's other apps, and calls into this app's providers.
+    DeviceBroadcasts.attach(app, navigator, protocol);
+    DeviceProviders.serve(app);
     DeviceBus.start(app.getPackageName());
     deviceApps.announce();
   }

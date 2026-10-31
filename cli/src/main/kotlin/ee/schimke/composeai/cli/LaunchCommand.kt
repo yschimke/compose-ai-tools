@@ -646,6 +646,11 @@ internal class LaunchCommand(private val args: List<String>) {
       devices
         .filter { device -> topology.count { it.device == device } > 1 }
         .associateWith { DataLayerHub().start() }
+    // Each device of several apps has one /sdcard, which all of them see.
+    val sdcards =
+      buses.keys.associateWith {
+        java.nio.file.Files.createTempDirectory("compose-preview-$it-sdcard").toFile()
+      }
     val hasWatch = devices.any(LaunchTopology::isWatch)
     val supervisors = topology.mapIndexed { i, app ->
       var own = options
@@ -681,6 +686,7 @@ internal class LaunchCommand(private val args: List<String>) {
                     LaunchTopology.deviceMates(topology, app).joinToString(File.pathSeparator) {
                       it.apk.path
                     },
+                  "composeai.simulator.device.sdcard" to sdcards.getValue(app.device).path,
                 )
           )
       }
@@ -714,6 +720,7 @@ internal class LaunchCommand(private val args: List<String>) {
         .run()
     dataLayer?.close()
     buses.values.forEach { it.close() }
+    sdcards.values.forEach { it.deleteRecursively() }
     return exit
   }
 

@@ -64,6 +64,14 @@ final class Protocol {
     if (out != null) out.println(line);
   }
 
+  /**
+   * [key]'s string in [o], or null when it is missing or JSON null: {@link Json#put} stores a null
+   * as {@code JSONObject.NULL}, which {@code optString} would read back as {@code "null"}.
+   */
+  static String string(JSONObject o, String key) {
+    return o.isNull(key) ? null : o.optString(key);
+  }
+
   /** {@link JSONObject} with unchecked puts, since every key here is a non-null literal. */
   static final class Json {
     private final JSONObject object = new JSONObject();
