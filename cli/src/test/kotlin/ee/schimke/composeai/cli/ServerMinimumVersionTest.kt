@@ -62,6 +62,34 @@ class ServerMinimumVersionTest {
   }
 
   @Test
+  fun `mcp serve replaces a cached MCP server older than the one this CLI pairs with`() {
+    // A local test kept launching a cached 4.12.0, which has no simulator tools, after 4.14.0
+    // was out: the daily newest-release check had already run that day.
+    val old =
+      ServerBinaryDiscovery.Choice(
+        "/cache/preview-mcp/4.12.0/bin/compose-preview-mcp",
+        ServerBinaryDiscovery.CACHE,
+      )
+    val newest =
+      ServerBinaryDiscovery.Choice(
+        "/cache/preview-mcp/4.14.0/bin/compose-preview-mcp",
+        ServerBinaryDiscovery.CACHE,
+      )
+    val log = mutableListOf<String>()
+    val chosen =
+      ServerBinaryDiscovery.meetsMinimum(
+        old,
+        McpCommand.MINIMUM_MCP_VERSION,
+        McpCommand.MINIMUM_MCP_FEATURE,
+        requested = null,
+        provision = { newest },
+        log = log::add,
+      )
+    assertSame(newest, chosen)
+    assertTrue(log.single().contains("4.12.0 predates `simulator_reload files`"), log.toString())
+  }
+
+  @Test
   fun `a launcher with no minimum changes nothing`() {
     val old = cached("3.10.0")
     assertSame(old, check(old, minimum = null, provision = { error("must not fetch") }))
