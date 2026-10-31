@@ -26,8 +26,22 @@ internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompos
  */
 internal val MAVEN_LINE_VERSION: String by lazy { cliVersionProperty("mavenLineVersion") }
 
+/**
+ * When the commit this CLI was built from was made (epoch seconds), or null when the build could
+ * not read it. For a release that is the release commit, minutes before its artifacts publish, so
+ * its age is a lower bound on how long [MAVEN_LINE_VERSION] has been out; [ReleaseTiming] uses it
+ * to tell the publication window from a network problem.
+ */
+internal val CLI_RELEASE_EPOCH_SECONDS: Long? by lazy {
+  cliVersionProperties().getProperty("releaseEpochSeconds")?.trim()?.toLongOrNull()
+}
+
 /** Read one key from the build-time-generated `cli-version.properties`. */
-private fun cliVersionProperty(key: String): String {
+private fun cliVersionProperty(key: String): String =
+  cliVersionProperties().getProperty(key)
+    ?: error("$key property missing from cli-version.properties")
+
+private fun cliVersionProperties(): Properties {
   val props = Properties()
   val stream =
     object {}
@@ -36,7 +50,7 @@ private fun cliVersionProperty(key: String): String {
       .getResourceAsStream("ee/schimke/composeai/cli/cli-version.properties")
       ?: error("cli-version.properties missing from compose-preview jar")
   stream.use { props.load(it) }
-  return props.getProperty(key) ?: error("$key property missing from cli-version.properties")
+  return props
 }
 
 /** GitHub repo slug used to resolve CLI releases (tarballs, action tags, issue links). */

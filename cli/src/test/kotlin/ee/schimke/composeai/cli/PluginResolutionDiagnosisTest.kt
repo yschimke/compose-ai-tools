@@ -18,6 +18,20 @@ import kotlin.test.assertTrue
  */
 class PluginResolutionDiagnosisTest {
 
+  private val now = 1_790_000_000L
+
+  /** A CLI released an hour ago on the 1.66.1 line: 1.66.1 may still be propagating. */
+  private val recent =
+    ReleaseTiming("1.66.1", releasedAtEpochSeconds = now - 3_600, nowEpochSeconds = now)
+
+  /** A CLI 2.79.0 released three weeks ago: nothing at or below its line is propagating. */
+  private val weeksOld =
+    ReleaseTiming("2.79.0", releasedAtEpochSeconds = now - 21 * 86_400, nowEpochSeconds = now)
+
+  /** A development build: no baked release time. */
+  private val undated =
+    ReleaseTiming("2.79.0", releasedAtEpochSeconds = null, nowEpochSeconds = now)
+
   private val raceFailure =
     """
     A problem occurred configuring root project 'thunderbird-android'.
@@ -92,7 +106,10 @@ class PluginResolutionDiagnosisTest {
 
   @Test
   fun `guidance names the version, the race and the way out`() {
-    val guidance = assertNotNull(pluginResolutionGuidance(raceFailure, injectedVersion = "1.66.1"))
+    val guidance =
+      assertNotNull(
+        pluginResolutionGuidance(raceFailure, injectedVersion = "1.66.1", timing = recent)
+      )
     assertTrue(guidance.contains("1.66.1"), guidance)
     assertTrue(guidance.contains("not with your project"), guidance)
     assertTrue(guidance.contains("publication window"), guidance)
@@ -163,6 +180,7 @@ class PluginResolutionDiagnosisTest {
       ),
       err = { lines += it },
       pluginVersion = "1.66.1",
+      timing = recent,
     )
     assertEquals(1, lines.size, "expected one explanation, got $lines")
     assertTrue(lines.single().contains("publication window"), lines.single())
@@ -182,6 +200,7 @@ class PluginResolutionDiagnosisTest {
       ),
       err = { lines += it },
       pluginVersion = "1.66.1",
+      timing = recent,
     )
     assertTrue(lines.first().contains("publication window"), lines.first())
     assertTrue(lines.any { it.contains("3 project(s) failed to configure") }, "got $lines")
@@ -198,5 +217,127 @@ class PluginResolutionDiagnosisTest {
       pluginVersion = "1.66.1",
     )
     assertTrue(lines.first().contains("1 project(s) failed to configure"), "got $lines")
+  }
+
+  // --- Dating the version (issue #6360) ----------------------------------
+
+  /**
+   * Captured from `compose-preview mcp install` with 2.77.0 pinned, on a machine Maven Central's
+   * edge was refusing (404 with `retry-after`) and whose repositories bypassed its mirror. Gradle
+   * reports the plugin's dependency, not the marker, as missing.
+   */
+  private val edgeRefusedFailure =
+    """
+    A problem occurred configuring root project 'app'.
+    > Could not resolve all files for configuration ':classpath'.
+       > Could not find ee.schimke.composeai:compose-preview-config:2.77.0.
+         Searched in the following locations:
+           - https://dl.google.com/dl/android/maven2/ee/schimke/composeai/compose-preview-config/2.77.0/compose-preview-config-2.77.0.pom
+           - https://plugins.gradle.org/m2/ee/schimke/composeai/compose-preview-config/2.77.0/compose-preview-config-2.77.0.pom
+           - https://repo.maven.apache.org/maven2/ee/schimke/composeai/compose-preview-config/2.77.0/compose-preview-config-2.77.0.pom
+         Required by:
+             root project : > ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:2.77.0 > ee.schimke.composeai:gradle-plugin:2.77.0
+    """
+      .trimIndent()
+
+  @Test
+  fun `a weeks-old version is not blamed on the publication window`() {
+    val guidance =
+      assertNotNull(
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld)
+      )
+    assertFalse(guidance.contains("The usual cause is the publication window"), guidance)
+    assertFalse(guidance.contains("wait for the publication"), guidance)
+    assertTrue(guidance.contains("not the publication window"), guidance)
+    assertTrue(guidance.contains("network, mirror or proxy"), guidance)
+  }
+
+  @Test
+  fun `the network guidance lists every location Gradle searched`() {
+    val guidance =
+      assertNotNull(
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld)
+      )
+    for (host in listOf("dl.google.com", "plugins.gradle.org/m2", "repo.maven.apache.org")) {
+      assertTrue(guidance.contains("  - https://$host"), "missing $host in:\n$guidance")
+    }
+    // The dependency that actually failed is named, not just the marker that pulled it in.
+    assertTrue(guidance.contains("ee.schimke.composeai:compose-preview-config:2.77.0"), guidance)
+    // A probe of a URL Gradle tried, and of an artifact Central always serves.
+    assertTrue(guidance.contains("curl -sSI 'https://dl.google.com/"), guidance)
+    assertTrue(guidance.contains(MAVEN_CENTRAL_PROBE), guidance)
+  }
+
+  @Test
+  fun `the version this CLI ships is established once the CLI is a day old`() {
+    // The 2.79.0 case from the issue: the CLI's own line, three weeks after its release.
+    assertEquals(VersionAge.ESTABLISHED, weeksOld.ageOf("2.79.0"))
+    assertEquals(VersionAge.ESTABLISHED, weeksOld.ageOf("2.75.0"))
+  }
+
+  @Test
+  fun `only the line a fresh release published is recent`() {
+    assertEquals(VersionAge.RECENT, recent.ageOf("1.66.1"))
+    // An older pin inside the same day may or may not be recent.
+    assertEquals(VersionAge.UNKNOWN, recent.ageOf("1.65.0"))
+    // A CLI-only release keeps an older line, published by an earlier release.
+    val cliOnly = recent.copy(cliVersion = "1.66.2")
+    assertEquals(VersionAge.UNKNOWN, cliOnly.ageOf("1.66.1"))
+  }
+
+  @Test
+  fun `a version newer than this CLI, or an undated CLI, has an unknown age`() {
+    assertEquals(VersionAge.UNKNOWN, weeksOld.ageOf("2.80.0"))
+    assertEquals(VersionAge.UNKNOWN, weeksOld.ageOf("dev-SNAPSHOT"))
+    assertEquals(VersionAge.UNKNOWN, undated.ageOf("2.79.0"))
+  }
+
+  @Test
+  fun `an unknown age does not assert propagation as the cause`() {
+    val guidance =
+      assertNotNull(
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = undated)
+      )
+    assertFalse(guidance.contains("The usual cause is the publication window"), guidance)
+    assertFalse(guidance.contains("wait for the publication"), guidance)
+    assertTrue(guidance.contains("network, mirror or proxy"), guidance)
+    assertTrue(guidance.contains("  - https://repo.maven.apache.org/maven2/"), guidance)
+  }
+
+  @Test
+  fun `discovery reporting uses the network guidance for an old version`() {
+    val lines = mutableListOf<String>()
+    printDiscoveryFailures(
+      listOf(ProjectDiscoveryFailure(":", edgeRefusedFailure)),
+      err = { lines += it },
+      pluginVersion = "2.77.0",
+      timing = weeksOld,
+    )
+    assertEquals(1, lines.size, "expected one explanation, got $lines")
+    assertTrue(lines.single().contains("network, mirror or proxy"), lines.single())
+  }
+
+  @Test
+  fun `reads the searched locations and failed requests out of Gradle output`() {
+    val output =
+      """
+      > Could not find ee.schimke.composeai:compose-preview-config:2.77.0.
+        Searched in the following locations:
+          - https://mirror.example/maven/ee/schimke/composeai/compose-preview-config/2.77.0/compose-preview-config-2.77.0.pom
+        Required by:
+            root project :
+      > Could not GET 'https://repo.maven.apache.org/maven2/a/b/1/b-1.pom'. Received status code 404
+      """
+        .trimIndent()
+    assertEquals(
+      listOf(
+        "https://mirror.example/maven/ee/schimke/composeai/compose-preview-config/2.77.0/" +
+          "compose-preview-config-2.77.0.pom",
+        "https://repo.maven.apache.org/maven2/a/b/1/b-1.pom",
+      ),
+      searchedLocations(output),
+    )
+    assertEquals("ee.schimke.composeai:compose-preview-config:2.77.0", missingCoordinate(output))
+    assertTrue(searchedLocations("no locations here").isEmpty())
   }
 }
