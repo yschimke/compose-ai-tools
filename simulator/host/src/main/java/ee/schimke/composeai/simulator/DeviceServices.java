@@ -92,8 +92,41 @@ final class DeviceServices {
     return pkg != null && !pkg.equals(app.getPackageName()) && DevicePeers.isPeer(pkg) ? pkg : null;
   }
 
+  /**
+   * Refuses, as the system does with a {@code SecurityException}, a call into another app's service
+   * that is not exported, or whose {@code android:permission} this app does not hold.
+   */
+  private static void checkAccess(Intent service, String action) {
+    android.content.pm.PackageManager pm = app.getPackageManager();
+    android.content.pm.ServiceInfo info = null;
+    try {
+      if (service.getComponent() != null) {
+        info = pm.getServiceInfo(service.getComponent(), 0);
+      } else {
+        android.content.pm.ResolveInfo resolved = pm.resolveService(service, 0);
+        info = resolved == null ? null : resolved.serviceInfo;
+      }
+    } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+      // Not in its manifest: the owning app answers that.
+    }
+    if (info == null) return;
+    String name = info.packageName + "/" + info.name;
+    if (!info.exported) {
+      throw new SecurityException(
+          "Not allowed to " + action + " service " + service + ": " + name + " is not exported");
+    }
+    if (info.permission != null
+        && app.checkSelfPermission(info.permission)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      throw new SecurityException(
+          "Not allowed to " + action + " service " + service + " without permission "
+              + info.permission);
+    }
+  }
+
   /** {@code startService} / {@code startForegroundService} of another app's service. */
   static ComponentName start(Intent service, boolean foreground) {
+    checkAccess(service, "start");
     JSONObject answer =
         ask(
             ownerOf(service),
@@ -108,6 +141,7 @@ final class DeviceServices {
 
   /** {@code stopService} of another app's service. */
   static boolean stop(Intent service) {
+    checkAccess(service, "stop");
     JSONObject answer =
         ask(ownerOf(service), STOP, new Protocol.Json().put("intent", Parcels.encode(service)).object());
     return answer != null && answer.optBoolean("stopped");
@@ -120,6 +154,7 @@ final class DeviceServices {
    */
   static boolean bind(
       Intent service, ServiceConnection connection, int flags, Executor executor) {
+    checkAccess(service, "bind to");
     String owner = ownerOf(service);
     long id = nextBinding.getAndIncrement();
     outgoing.put(connection, new Binding(owner, id));
@@ -259,11 +294,18 @@ final class DeviceServices {
               new ServiceConnection() {
                 @Override
                 public void onServiceConnected(ComponentName name, IBinder binder) {
+                  // The service's own binder: created and onBind run now, as a device does
+                  // before connecting, and a null one is a null binding.
+                  IBinder real = Navigator.materialize(binder);
                   Served binding = served.get(key);
-                  if (binding != null) binding.binder = binder;
+                  if (binding != null) binding.binder = real;
                   if (answered[0]) return;
                   answered[0] = true;
-                  reply.send(new Protocol.Json().put("component", name.flattenToString()).object());
+                  reply.send(
+                      new Protocol.Json()
+                          .put("component", name.flattenToString())
+                          .put("nullBinding", real == null)
+                          .object());
                 }
 
                 @Override
@@ -316,7 +358,18 @@ final class DeviceServices {
           try {
             data.unmarshall(raw, 0, raw.length);
             data.setDataPosition(0);
-            boolean handled = binder.transact(body.getInt("code"), data, out, body.optInt("flags"));
+            boolean handled;
+            // The caller's identity, as the binder gives it: Binder.getCallingUid() is its uid.
+            Object before =
+                org.robolectric.util.ReflectionHelpers.getStaticField(
+                    org.robolectric.shadows.ShadowBinder.class, "callingUid");
+            org.robolectric.shadows.ShadowBinder.setCallingUid(uidOf(app, from));
+            try {
+              handled = binder.transact(body.getInt("code"), data, out, body.optInt("flags"));
+            } finally {
+              org.robolectric.util.ReflectionHelpers.setStaticField(
+                  org.robolectric.shadows.ShadowBinder.class, "callingUid", before);
+            }
             reply.send(
                 new Protocol.Json()
                     .put("handled", handled)
@@ -327,6 +380,15 @@ final class DeviceServices {
             out.recycle();
           }
         });
+  }
+
+  /** [pkg]'s uid, as this app's package manager knows the device's other apps. */
+  private static int uidOf(Application app, String pkg) {
+    try {
+      return app.getPackageManager().getPackageUid(pkg, 0);
+    } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+      return android.os.Process.myUid();
+    }
   }
 
   private DeviceServices() {}

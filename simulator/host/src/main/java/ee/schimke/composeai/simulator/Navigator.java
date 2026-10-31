@@ -1416,6 +1416,14 @@ final class Navigator {
    * The binder the app's {@code onServiceConnected} receives: the real service's, created on first
    * use, which a device would have created before connecting.
    */
+  /**
+   * [binder] as the service's own: a {@link LazyBinder} binds the service now, running its
+   * creation and {@code onBind}, and returns what that gave, null included.
+   */
+  static IBinder materialize(IBinder binder) {
+    return binder instanceof LazyBinder ? ((LazyBinder) binder).real() : binder;
+  }
+
   private static final class LazyBinder implements IBinder {
     private final ComponentName component;
     /** The intent the app bound with, which {@code onBind} sees; null for the manifest's entry. */
