@@ -88,6 +88,13 @@ dependencies {
   compileOnly(libs.dex2jar.tools)
 
   testImplementation(libs.junit)
+  // SimulatorSandbox's configuration is normally provided at runtime by the Android daemon sidecar.
+  // Keep its optional Wear SDK instrumentation test on the matching Robolectric slices.
+  testImplementation(libs.robolectric) { isTransitive = false }
+  testImplementation(libs.robolectricSandbox) { isTransitive = false }
+  testImplementation(libs.robolectricAnnotations) { isTransitive = false }
+  testImplementation(libs.robolectricShadowapi) { isTransitive = false }
+  testImplementation(libs.guava.android)
   // The real `org.json` (android.jar has only stubs), for the tests of classes that read JSON.
   testImplementation(libs.json.org)
   testImplementation(libs.dex2jar.tools)
