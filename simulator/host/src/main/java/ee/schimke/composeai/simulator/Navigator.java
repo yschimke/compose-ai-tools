@@ -60,6 +60,11 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
 final class Navigator {
 
   /** One activity on the back stack. */
+  /** Where an activity started for another app sends its result (see {@link Entry#resultTo}). */
+  interface ResultTo {
+    void result(int resultCode, Intent data);
+  }
+
   static final class Entry {
     final ActivityController<? extends Activity> controller;
     /** The intent as the caller started it, before resolution. */
@@ -79,6 +84,12 @@ final class Navigator {
      * of the default display, and force-stops and {@code CLEAR_TASK} leave it alone.
      */
     boolean system;
+
+    /**
+     * Started for another app of the device's, for a result ({@link DeviceApps}): told of the
+     * result when it finishes or is torn down; null otherwise.
+     */
+    ResultTo resultTo;
 
     Entry(
         ActivityController<? extends Activity> controller,
@@ -272,6 +283,7 @@ final class Navigator {
     Entry fresh =
         new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
     fresh.noHistory = entry.noHistory;
+    fresh.resultTo = entry.resultTo;
     List<Entry> entries = new ArrayList<>(stack);
     entries.set(entries.indexOf(entry), fresh);
     stack.clear();
@@ -1096,6 +1108,13 @@ final class Navigator {
   }
 
   private void destroy(Entry entry) {
+    if (entry.resultTo != null) {
+      // Its result, or RESULT_CANCELED without one, goes back to the app that asked for it.
+      ShadowActivity shadow = Shadow.extract(entry.activity());
+      ResultTo to = entry.resultTo;
+      entry.resultTo = null;
+      to.result(shadow.getResultCode(), shadow.getResultIntent());
+    }
     if (entry == pip) {
       // Torn down in picture-in-picture (kill, force-stop): it is no longer there.
       pip = null;
