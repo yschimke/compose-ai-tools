@@ -89,6 +89,10 @@ final class SimulatorSandbox {
                 SimulatorShadowCredentialManager.class,
                 SimulatorShadowAlarmManager.class,
                 SimulatorShadowJobScheduler.class,
+                // The device's settings, shared by its apps (DeviceSettings).
+                SimulatorShadowSettings.SimulatorShadowSystem.class,
+                SimulatorShadowSettings.SimulatorShadowSecure.class,
+                SimulatorShadowSettings.SimulatorShadowGlobal.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class,

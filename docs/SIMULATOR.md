@@ -1646,6 +1646,13 @@ What the apps share:
   are thrown in the caller as such. A provider neither exported nor granting URI permissions
   refuses other apps; one that grants them answers, as if the grant had been made. Writing to
   another app's file and change notifications (`notifyChange`) do not cross.
+- **Clipboard and settings.** The device has one clipboard: a primary clip one app sets, or a
+  command to it sets, every app reads, marshalled with its URIs and intents, and their
+  `OnPrimaryClipChangedListener`s hear of it; clearing it clears it everywhere. Likewise
+  `Settings.System`, `Settings.Secure` and `Settings.Global`: a value one app writes, or the
+  `settings` command writes through it, every app reads, and their observers of that setting's URI
+  hear of it. What the system does on a setting (`font_scale`, the radios'
+  `airplane_mode_on` / `wifi_on`) happens in the app the command went to.
 - **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
   writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
   under it. It is a temporary directory, deleted when the launch ends.
@@ -1856,7 +1863,7 @@ What does not, or not yet:
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
   providers and `/sdcard` are shared, but its services are not reached, URI grants are not checked,
-  a result from its activity does not come back, and the apps share no clipboard or settings.
+  a result from its activity does not come back; the clipboard and settings are the device's.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global

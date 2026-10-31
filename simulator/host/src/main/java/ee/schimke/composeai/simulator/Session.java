@@ -164,6 +164,9 @@ final class Session {
     // Broadcasts to and from the device's other apps, and calls into this app's providers.
     DeviceBroadcasts.attach(app, navigator, protocol);
     DeviceProviders.serve(app);
+    // The device's one clipboard and settings, shared with its other apps.
+    DeviceClipboard.attach(app);
+    DeviceSettings.attach(app);
     DeviceBus.start(app.getPackageName());
     deviceApps.announce();
   }
