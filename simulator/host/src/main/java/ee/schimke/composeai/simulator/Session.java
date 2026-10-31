@@ -168,6 +168,9 @@ final class Session {
     DeviceClipboard.attach(app);
     DeviceSettings.attach(app);
     DeviceBus.start(app.getPackageName());
+    // What this app set while starting goes out now, and the apps already there answer.
+    DeviceClipboard.joined();
+    DeviceSettings.joined();
     deviceApps.announce();
   }
 
