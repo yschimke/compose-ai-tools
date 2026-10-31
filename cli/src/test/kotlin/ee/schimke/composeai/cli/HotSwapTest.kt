@@ -33,10 +33,15 @@ class HotSwapTest {
     name: String,
     methods: List<M>,
     fields: List<String> = emptyList(),
+    constant: Int? = null,
   ): ByteArray {
     val writer = ClassWriter(ClassWriter.COMPUTE_MAXS)
     writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null)
     for (field in fields) writer.visitField(Opcodes.ACC_PUBLIC, field, "I", null, null).visitEnd()
+    if (constant != null) {
+      val access = Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL
+      writer.visitField(access, "LIMIT", "I", null, constant).visitEnd()
+    }
     for (m in methods) {
       val mv =
         writer.visitMethod(
@@ -110,6 +115,18 @@ class HotSwapTest {
       ),
       "an added field",
     )
+  }
+
+  @Test
+  fun `a changed constant restarts, since redefinition keeps the field's old value`() {
+    val before = classBytes("com/example/UiKt", listOf(greeting), constant = 3)
+    assertNull(
+      HotSwapCheck.why(before, classBytes("com/example/UiKt", listOf(greeting), constant = 3))
+    )
+    val why =
+      HotSwapCheck.why(before, classBytes("com/example/UiKt", listOf(greeting), constant = 4))
+    assertNotNull(why)
+    assertTrue("constants" in why, why)
   }
 
   private fun fixture(body: (File) -> Unit) {

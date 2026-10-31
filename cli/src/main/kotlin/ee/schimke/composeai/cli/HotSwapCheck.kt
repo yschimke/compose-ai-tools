@@ -21,7 +21,7 @@ internal object HotSwapCheck {
     val old = shape(before)
     val new = shape(after)
     if (old.header != new.header) return "its declaration changed (${old.header} -> ${new.header})"
-    if (old.fields != new.fields) return "fields added, removed or changed"
+    if (old.fields != new.fields) return "fields or constants added, removed or changed"
     if (old.methods.keys != new.methods.keys) {
       val added = (new.methods.keys - old.methods.keys).firstOrNull()
       val removed = (old.methods.keys - new.methods.keys).firstOrNull()
@@ -68,7 +68,10 @@ internal object HotSwapCheck {
             signature: String?,
             value: Any?,
           ): FieldVisitor? {
-            fields += "$access $name $descriptor"
+            // The constant too: redefinition keeps a static field's value and never runs the class
+            // initializer again, so a changed constant would not reach code that reads the field.
+            fields +=
+              "$access $name $descriptor = ${value?.let { "${it.javaClass.simpleName} $it" }}"
             return null
           }
 
