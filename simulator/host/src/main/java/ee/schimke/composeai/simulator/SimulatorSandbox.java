@@ -89,6 +89,8 @@ final class SimulatorSandbox {
                 SimulatorShadowCredentialManager.class,
                 SimulatorShadowAlarmManager.class,
                 SimulatorShadowJobScheduler.class,
+                // Content changes tell the device's other apps (DeviceProviders).
+                SimulatorShadowContentResolver.class,
                 // The device's settings, shared by its apps (DeviceSettings).
                 SimulatorShadowSettings.SimulatorShadowSystem.class,
                 SimulatorShadowSettings.SimulatorShadowSecure.class,

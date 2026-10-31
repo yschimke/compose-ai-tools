@@ -1648,11 +1648,18 @@ What the apps share:
 - **Content providers.** Each app reaches the others' providers by authority, every call run by
   the owning app's provider in its own simulator with the caller as its `getCallingPackage()`:
   `query` (typed rows: integers, floats, strings, blobs, nulls), `insert`, `update`, `delete`,
-  `getType` and `call`, and `openFile` / `openInputStream` for reading, which hands the caller a
-  copy. A provider's `SecurityException`, `IllegalArgumentException` and `FileNotFoundException`
-  are thrown in the caller as such. A provider neither exported nor granting URI permissions
-  refuses other apps; one that grants them answers, as if the grant had been made. Writing to
-  another app's file and change notifications (`notifyChange`) do not cross.
+  `getType` and `call`, and `openFile` / `openInputStream` / `openOutputStream`. Reading hands the
+  caller a copy; writing hands it a copy that the owning app writes through its provider when the
+  caller closes it, before the close returns. A provider's `SecurityException`,
+  `IllegalArgumentException` and `FileNotFoundException` are thrown in the caller as such.
+  - Access is the owning app's to grant. A provider that is not exported answers another app only
+    for a URI granted to it: by an intent the owner sent it (a cross-app `startActivity`, a
+    broadcast, or an activity result's `setResult` data) with `FLAG_GRANT_READ_URI_PERMISSION` / `FLAG_GRANT_WRITE_URI_PERMISSION` on its
+    data, clip or `EXTRA_STREAM` (`FLAG_GRANT_PREFIX_URI_PERMISSION` covers the URIs under it), or
+    by `grantUriPermission`, until `revokeUriPermission`. An exported provider's read or write
+    permission is checked against the caller, which a grant also satisfies.
+  - A change an app's provider reports with `notifyChange` on its own authority reaches the other
+    apps' `ContentObserver`s.
 - **Services.** `startService`, `startForegroundService`, `stopService`, `bindService` and
   `unbindService` naming another app's service run it in that app's simulator: started there, it
   gets `onStartCommand` and is destroyed on `stopService`. Bound, the caller's connection gets a
@@ -1879,8 +1886,8 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers, `/sdcard` and its services are shared and its activities' results come back, but
-  URI grants are not checked; the clipboard and settings are the device's.
+  providers, with their URI grants and change notifications, `/sdcard` and its services are
+  shared and its activities' results come back; the clipboard and settings are the device's.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global

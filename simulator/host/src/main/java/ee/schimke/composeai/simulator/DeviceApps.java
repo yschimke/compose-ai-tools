@@ -326,6 +326,8 @@ final class DeviceApps {
       return shown;
     }
     checkShowable(packageName, intent);
+    // The URIs the intent grants, the other app may now open (DeviceProviders).
+    DeviceProviders.grantFrom(intent, packageName);
     JSONObject window = windowBounds();
     goBackground();
     DeviceBus.broadcast(
@@ -656,6 +658,8 @@ final class DeviceApps {
     } catch (JSONException e) {
       window = null;
     }
+    // The URIs the result grants, the app that asked for it may now open (DeviceProviders).
+    DeviceProviders.grantFrom(data, to);
     DeviceBus.request(
         to,
         RESULT,
