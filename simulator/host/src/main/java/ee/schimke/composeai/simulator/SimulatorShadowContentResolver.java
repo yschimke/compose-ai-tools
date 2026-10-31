@@ -18,17 +18,20 @@ import org.robolectric.shadows.ShadowContentResolver;
 @Implements(ContentResolver.class)
 public class SimulatorShadowContentResolver extends ShadowContentResolver {
 
-  /** Set inside a notifyChange, whose overloads call one another: each change goes out once. */
-  private static boolean notifying;
+  /**
+   * Set on a thread inside a notifyChange, whose overloads call one another: each change goes out
+   * once, and another thread's change is its own.
+   */
+  private static final ThreadLocal<Boolean> notifying = ThreadLocal.withInitial(() -> false);
 
   private void notifyAround(Collection<Uri> uris, int flags, Runnable delivery) {
-    boolean outer = !notifying;
+    boolean outer = !notifying.get();
     if (outer) DeviceProviders.notified(uris, flags);
-    notifying = true;
+    notifying.set(true);
     try {
       delivery.run();
     } finally {
-      if (outer) notifying = false;
+      if (outer) notifying.set(false);
     }
   }
 

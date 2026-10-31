@@ -19,6 +19,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -85,50 +87,126 @@ final class DeviceProviders {
 
   /** Whether [uri] is one of this app's own providers'. */
   private static boolean own(Uri uri) {
+    return ownProvider(uri) != null;
+  }
+
+  /** This app's provider of [uri], or null when it is not one of this app's. */
+  private static ProviderInfo ownProvider(Uri uri) {
     Application app = self;
-    if (app == null || uri == null || !"content".equals(uri.getScheme())) return false;
+    if (app == null || uri == null || !"content".equals(uri.getScheme())) return null;
     ProviderInfo provider = app.getPackageManager().resolveContentProvider(uri.getAuthority(), 0);
-    return provider != null && app.getPackageName().equals(provider.packageName);
+    return provider != null && app.getPackageName().equals(provider.packageName) ? provider : null;
+  }
+
+  /**
+   * Whether [uri]'s provider lets this app grant it: {@code grantUriPermissions}, or a {@code
+   * <grant-uri-permission>} path that matches it.
+   */
+  private static boolean grantable(ProviderInfo provider, Uri uri) {
+    if (provider.grantUriPermissions) return true;
+    if (provider.uriPermissionPatterns == null) return false;
+    String path = uri.getPath() == null ? "" : uri.getPath();
+    for (android.os.PatternMatcher pattern : provider.uriPermissionPatterns) {
+      if (pattern.match(path)) return true;
+    }
+    return false;
   }
 
   /** {@code grantUriPermission}: [pkg] may open [uri], one of this app's, as [flags] allow. */
   static void grant(String pkg, Uri uri, int flags) {
-    if ((flags & GRANT_FLAGS) == 0 || !own(uri)) return;
+    if ((flags & GRANT_FLAGS) == 0) return;
+    ProviderInfo provider = ownProvider(uri);
+    if (provider == null || !grantable(provider, uri)) return;
     grants.add(new Grant(pkg, uri, flags & GRANT_FLAGS));
   }
 
-  /** {@code revokeUriPermission}: no app may open [uri] any longer. */
-  static void revoke(Uri uri, int flags) {
-    for (Grant grant : grants) {
-      if (grant.uri.equals(uri) || under(grant.uri, uri)) grants.remove(grant);
-    }
-  }
-
   /**
-   * [intent], which this app sends to [pkg]: the URIs it carries, data, clip and {@code
-   * EXTRA_STREAM}, are granted to it as the intent's {@code FLAG_GRANT_*} flags say.
+   * {@code revokeUriPermission}: the modes [flags] names are taken back from every app, for [uri]
+   * and the URIs under it; a grant of a URI above it keeps them.
    */
-  @SuppressWarnings("deprecation")
-  static void grantFrom(Intent intent, String pkg) {
-    if (intent == null || (intent.getFlags() & GRANT_FLAGS) == 0) return;
-    int flags = intent.getFlags();
-    grant(pkg, intent.getData(), flags);
-    android.content.ClipData clip = intent.getClipData();
-    if (clip != null) {
-      for (int i = 0; i < clip.getItemCount(); i++) grant(pkg, clip.getItemAt(i).getUri(), flags);
-    }
-    Object stream = intent.getExtras() == null ? null : intent.getExtras().get(Intent.EXTRA_STREAM);
-    if (stream instanceof Uri) grant(pkg, (Uri) stream, flags);
-    if (stream instanceof java.util.List) {
-      for (Object each : (java.util.List<?>) stream) {
-        if (each instanceof Uri) grant(pkg, (Uri) each, flags);
+  static void revoke(Uri uri, int flags) {
+    int modes =
+        flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+    for (Grant grant : grants) {
+      if (!grant.uri.equals(uri) && !under(uri, grant.uri)) continue;
+      grants.remove(grant);
+      int left = grant.flags & ~modes;
+      if ((left
+              & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+          != 0) {
+        grants.add(new Grant(grant.pkg, grant.uri, left));
       }
     }
   }
 
-  /** As {@link #grantFrom(Intent, String)}, to each of the device's other apps. */
-  static void grantFromToAll(Intent intent) {
-    for (String peer : DevicePeers.packages()) grantFrom(intent, peer);
+  /** The URIs [intent] carries: its data, clip and {@code EXTRA_STREAM}. */
+  @SuppressWarnings("deprecation")
+  private static List<Uri> urisOf(Intent intent) {
+    List<Uri> uris = new java.util.ArrayList<>();
+    if (intent.getData() != null) uris.add(intent.getData());
+    android.content.ClipData clip = intent.getClipData();
+    if (clip != null) {
+      for (int i = 0; i < clip.getItemCount(); i++) {
+        if (clip.getItemAt(i).getUri() != null) uris.add(clip.getItemAt(i).getUri());
+      }
+    }
+    Object stream = intent.getExtras() == null ? null : intent.getExtras().get(Intent.EXTRA_STREAM);
+    if (stream instanceof Uri) uris.add((Uri) stream);
+    if (stream instanceof java.util.List) {
+      for (Object each : (java.util.List<?>) stream) if (each instanceof Uri) uris.add((Uri) each);
+    }
+    return uris;
+  }
+
+  /**
+   * [intent], which this app sends to [pkg]: the URIs it carries are granted to it as the intent's
+   * {@code FLAG_GRANT_*} flags say.
+   */
+  static void grantFrom(Intent intent, String pkg) {
+    if (intent == null || (intent.getFlags() & GRANT_FLAGS) == 0) return;
+    for (Uri uri : urisOf(intent)) grant(pkg, uri, intent.getFlags());
+  }
+
+  /** URIs an implicit broadcast of this app's offered, granted to the apps that received it. */
+  private static final Map<Uri, Integer> offered = new ConcurrentHashMap<>();
+
+  private static final String CLAIM = "grantClaim";
+
+  /**
+   * [intent], an implicit broadcast of this app's: the URIs it grants are offered, and granted to
+   * each app that receives it, which claims them ({@link #claim}).
+   */
+  static void offer(Intent intent) {
+    if (intent == null || (intent.getFlags() & GRANT_FLAGS) == 0) return;
+    for (Uri uri : urisOf(intent)) {
+      if (own(uri)) offered.merge(uri, intent.getFlags() & GRANT_FLAGS, (a, b) -> a | b);
+    }
+  }
+
+  /**
+   * [intent], a broadcast from [sender] that a receiver of this app's got: the URIs it grants are
+   * now this app's to open, as the sender offered them.
+   */
+  static void claim(String sender, Intent intent) {
+    if (intent == null || (intent.getFlags() & GRANT_FLAGS) == 0) return;
+    JSONArray uris = new JSONArray();
+    for (Uri uri : urisOf(intent)) uris.put(uri.toString());
+    if (uris.length() == 0) return;
+    DeviceBus.request(
+        sender,
+        CLAIM,
+        new Protocol.Json().put("uris", uris).put("flags", intent.getFlags()).object());
+  }
+
+  private static void answerClaim(String from, JSONObject body) throws JSONException {
+    JSONArray uris = body.optJSONArray("uris");
+    if (uris == null) return;
+    for (int i = 0; i < uris.length(); i++) {
+      Uri uri = Uri.parse(uris.getString(i));
+      Integer flags = offered.get(uri);
+      // Only what this app's broadcast offered: a claim cannot ask for more.
+      if (flags != null) grant(from, uri, flags & body.optInt("flags"));
+    }
   }
 
   private static boolean under(Uri prefix, Uri uri) {
@@ -260,6 +338,12 @@ final class DeviceProviders {
    */
   static void serve(Application app) {
     self = app;
+    DeviceBus.on(
+        CLAIM,
+        (from, body, reply) -> {
+          answerClaim(from, body);
+          reply.send(new JSONObject());
+        });
     DeviceBus.onBroadcast(
         NOTIFY,
         (from, body) -> {
@@ -639,10 +723,15 @@ final class DeviceProviders {
       try {
         File copy = File.createTempFile("provider", ".bin", getContext().getCacheDir());
         copy.deleteOnExit();
+        int[] prefilled = {0};
         if (mode.contains("a") || mode.equals("rw")) {
           try {
             String text = Protocol.string(forward("openFile", uri, new Protocol.Json()), "bytes");
-            if (text != null) Files.write(copy.toPath(), Base64.getDecoder().decode(text));
+            if (text != null) {
+              byte[] existing = Base64.getDecoder().decode(text);
+              Files.write(copy.toPath(), existing);
+              prefilled[0] = existing.length;
+            }
           } catch (RuntimeException e) {
             // Nothing there yet: written from the start.
           }
@@ -657,7 +746,10 @@ final class DeviceProviders {
                 return true;
               }
             };
-        String written = mode.contains("t") ? "wt" : mode.contains("a") ? "wa" : "w";
+        // Appending sends what was appended; reading and writing sends the whole file, which
+        // replaces the owner's; writing sends what was written, as the mode says.
+        boolean append = mode.contains("a");
+        String written = append ? "wa" : mode.contains("t") || mode.startsWith("rw") ? "wt" : "w";
         return ParcelFileDescriptor.open(
             copy,
             ParcelFileDescriptor.parseMode(mode),
@@ -672,7 +764,8 @@ final class DeviceProviders {
                         .put("mode", written)
                         .put(
                             "bytes",
-                            Base64.getEncoder().encodeToString(Files.readAllBytes(copy.toPath()))));
+                            Base64.getEncoder()
+                                .encodeToString(tail(copy, append, prefilled[0]))));
               } catch (IOException | RuntimeException e) {
                 System.err.println("provider: cannot write " + uri + " back to " + owner + ": " + e);
               }
@@ -680,6 +773,13 @@ final class DeviceProviders {
       } catch (IOException e) {
         throw new FileNotFoundException(e.toString());
       }
+    }
+
+    /** What to send back of [copy]: all of it, or what follows [prefilled] bytes when appending. */
+    private static byte[] tail(File copy, boolean append, int prefilled) throws IOException {
+      byte[] all = Files.readAllBytes(copy.toPath());
+      if (!append || prefilled <= 0 || prefilled > all.length) return all;
+      return java.util.Arrays.copyOfRange(all, prefilled, all.length);
     }
   }
 

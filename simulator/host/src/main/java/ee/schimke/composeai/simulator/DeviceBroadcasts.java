@@ -62,7 +62,7 @@ final class DeviceBroadcasts {
     if (target == null && action != null && action.startsWith("android.")) return false;
     // The URIs it grants, the apps it reaches may now open (DeviceProviders).
     if (target != null) DeviceProviders.grantFrom(intent, target);
-    else DeviceProviders.grantFromToAll(intent);
+    else DeviceProviders.offer(intent);
     DeviceBus.broadcast(
         EVENT,
         new Protocol.Json()
@@ -91,6 +91,8 @@ final class DeviceBroadcasts {
         // Named this app: its manifest receivers too.
         delivered = navigator.broadcast(intent);
       } else {
+        // The URIs it grants are this app's to open when a receiver of its gets it.
+        if (anyReceiver(intent)) DeviceProviders.claim(from, intent);
         self.sendBroadcast(intent);
         delivered = null;
       }
@@ -104,6 +106,19 @@ final class DeviceBroadcasts {
             .put("intent", Intents.toJson(intent))
             .put("delivered", delivered == null ? null : delivered.opt("delivered"))
             .object());
+  }
+
+  /** Whether a receiver this app registered at run time gets [intent]. */
+  private static boolean anyReceiver(Intent intent) {
+    org.robolectric.shadows.ShadowApplication shadow =
+        org.robolectric.shadow.api.Shadow.extract(app);
+    for (org.robolectric.shadows.ShadowApplication.Wrapper wrapper :
+        shadow.getRegisteredReceivers()) {
+      if (wrapper.intentFilter.match(app.getContentResolver(), intent, false, "simulator") >= 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private DeviceBroadcasts() {}
