@@ -540,7 +540,8 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                    repositories {"
+        "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                    beforeEvaluate {\n" +
+          "                        buildscript.repositories.composeAiPreviewAddDefaultRepositories()"
       ),
       "expected the buildscript repositories add to be guarded — must keep the dependency add " +
         "and the apply hooks reachable when exclusiveContent is present",

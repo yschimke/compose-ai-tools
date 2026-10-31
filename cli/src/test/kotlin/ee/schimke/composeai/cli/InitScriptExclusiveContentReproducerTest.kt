@@ -150,7 +150,7 @@ class InitScriptExclusiveContentReproducerTest {
     // plugins go to a local repo: `ee.schimke.composeai.preview` (prints a marker) and a fake
     // `com.android.application` (the withPlugin host that triggers auto-inject).
     val repo = tempDir("compose-preview-repro-repo-")
-    publishStubPlugins(repo)
+    publishStubPlugins(repo, tempDir("compose-preview-repro-stubs-"))
 
     val root = tempDir()
     // exclusiveContent shared into pluginManagement and dependencyResolutionManagement, with the
@@ -212,80 +212,79 @@ class InitScriptExclusiveContentReproducerTest {
         "detached-config files() path; full output:\n${result.output}",
     )
   }
+}
 
-  /**
-   * Publish two stub plugins to [repo] via a nested TestKit build: the compose-preview plugin
-   * (prints a marker on apply) and a fake `com.android.application`. Separate subprojects so
-   * resolving one marker doesn't pull in the other.
-   */
-  private fun publishStubPlugins(repo: File) {
-    val build = tempDir("compose-preview-repro-stubs-")
-    File(build, "settings.gradle.kts")
-      .writeText("rootProject.name = \"stubs\"\ninclude(\":preview\", \":agp\")\n")
-    File(build, "build.gradle.kts").writeText("")
+/**
+ * Publish two stub plugins to [repo] via a nested TestKit build: the compose-preview plugin (prints
+ * a marker on apply) and a fake `com.android.application`. Separate subprojects so resolving one
+ * marker doesn't pull in the other. [build] is an empty scratch directory.
+ */
+internal fun publishStubPlugins(repo: File, build: File) {
+  File(build, "settings.gradle.kts")
+    .writeText("rootProject.name = \"stubs\"\ninclude(\":preview\", \":agp\")\n")
+  File(build, "build.gradle.kts").writeText("")
 
-    fun stub(
-      module: String,
-      group: String,
-      pluginId: String,
-      pkg: String,
-      cls: String,
-      msg: String,
-    ) {
-      val dir = File(build, module).apply { mkdirs() }
-      File(dir, "build.gradle.kts")
-        .writeText(
-          """
-          plugins {
-              `java-gradle-plugin`
-              `maven-publish`
-          }
-          group = "$group"
-          version = "1.0"
-          gradlePlugin {
-              plugins {
-                  create("$module") {
-                      id = "$pluginId"
-                      implementationClass = "$pkg.$cls"
-                  }
-              }
-          }
-          publishing { repositories { maven { url = uri("${repo.toURI()}") } } }
-          """
-            .trimIndent()
-        )
-      val src = File(dir, "src/main/java/$pkg").apply { mkdirs() }
-      File(src, "$cls.java")
-        .writeText(
-          """
-          package $pkg;
-          import org.gradle.api.Plugin;
-          import org.gradle.api.Project;
-          public class $cls implements Plugin<Project> {
-              public void apply(Project p) { System.out.println("$msg to " + p.getPath()); }
-          }
-          """
-            .trimIndent()
-        )
-    }
-
-    stub(
-      module = "preview",
-      group = "ee.schimke.composeai.preview",
-      pluginId = "ee.schimke.composeai.preview",
-      pkg = "cp",
-      cls = "PreviewPlugin",
-      msg = "COMPOSE-PREVIEW-APPLIED",
-    )
-    stub(
-      module = "agp",
-      group = "com.android.tools.build",
-      pluginId = "com.android.application",
-      pkg = "agp",
-      cls = "FakeAgpPlugin",
-      msg = "FAKE-AGP-APPLIED",
-    )
-
-    GradleRunner.create().withProjectDir(build).withArguments("publish", "--stacktrace").build()
+  fun stub(
+    module: String,
+    group: String,
+    pluginId: String,
+    pkg: String,
+    cls: String,
+    msg: String,
+  ) {
+    val dir = File(build, module).apply { mkdirs() }
+    File(dir, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            `java-gradle-plugin`
+            `maven-publish`
+        }
+        group = "$group"
+        version = "1.0"
+        gradlePlugin {
+            plugins {
+                create("$module") {
+                    id = "$pluginId"
+                    implementationClass = "$pkg.$cls"
+                }
+            }
+        }
+        publishing { repositories { maven { url = uri("${repo.toURI()}") } } }
+        """
+          .trimIndent()
+      )
+    val src = File(dir, "src/main/java/$pkg").apply { mkdirs() }
+    File(src, "$cls.java")
+      .writeText(
+        """
+        package $pkg;
+        import org.gradle.api.Plugin;
+        import org.gradle.api.Project;
+        public class $cls implements Plugin<Project> {
+            public void apply(Project p) { System.out.println("$msg to " + p.getPath()); }
+        }
+        """
+          .trimIndent()
+      )
   }
+
+  stub(
+    module = "preview",
+    group = "ee.schimke.composeai.preview",
+    pluginId = "ee.schimke.composeai.preview",
+    pkg = "cp",
+    cls = "PreviewPlugin",
+    msg = "COMPOSE-PREVIEW-APPLIED",
+  )
+  stub(
+    module = "agp",
+    group = "com.android.tools.build",
+    pluginId = "com.android.application",
+    pkg = "agp",
+    cls = "FakeAgpPlugin",
+    msg = "FAKE-AGP-APPLIED",
+  )
+
+  GradleRunner.create().withProjectDir(build).withArguments("publish", "--stacktrace").build()
 }
