@@ -56,7 +56,7 @@ class ComposableSignatureDeprecationTest {
 
       val deprecated =
         ClassGraph()
-          .overrideClasspath(classes.toFile())
+          .enableClasspathEntries(classes.toFile())
           .enableClassInfo()
           .enableMethodInfo()
           .enableAnnotationInfo()

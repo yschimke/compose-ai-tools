@@ -6,6 +6,8 @@ import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
+import io.github.classgraph.ClassMemberInfo
+import io.github.classgraph.FieldInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
@@ -17,6 +19,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.floatOrNull
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
 
 /**
  * Pure-JVM library that scans compiled Kotlin classes for `@Preview` functions and produces a
@@ -302,6 +309,70 @@ object PreviewDiscovery {
 
   // On a `Color` property's backing field (BINARY, `@Target(FIELD)`), so unlike Showkase's
   // SOURCE-retained `@ShowkaseColor` it survives into bytecode.
+  /**
+   * This class's catalog-annotated fields in source order, which is the order a catalog sheet lists
+   * its tokens in ([inDeclarationOrder]).
+   */
+  internal fun catalogFieldsInDeclarationOrder(classInfo: ClassInfo): List<FieldInfo> =
+    inDeclarationOrder(
+      classInfo,
+      classInfo.fieldInfo.filter { field ->
+        CATALOG_FIELD_FQNS.any { field.getAllAnnotationInfo(it) != null }
+      },
+    )
+
+  /**
+   * [members] of [classInfo] in source order. ClassGraph 5 sorts a class's fields and methods by
+   * name, which reordered catalog sheets and the previews a class declares; the order is read back
+   * from the class file, whose members javac and kotlinc both emit in declaration order. The class
+   * is read only when there is more than one member to order. Members are matched by name and
+   * descriptor, so overloads keep their own places; one the class file doesn't list sorts last.
+   */
+  internal fun <T : ClassMemberInfo> inDeclarationOrder(
+    classInfo: ClassInfo,
+    members: List<T>,
+  ): List<T> {
+    if (members.size < 2) return members
+    val order = HashMap<String, Int>()
+    runCatching {
+      classInfo.resource?.open()?.use { stream ->
+        ClassReader(stream)
+          .accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+              override fun visitField(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                value: Any?,
+              ): FieldVisitor? {
+                order.putIfAbsent("$name:$descriptor", order.size)
+                return null
+              }
+
+              override fun visitMethod(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                exceptions: Array<out String>?,
+              ): MethodVisitor? {
+                order.putIfAbsent("$name$descriptor", order.size)
+                return null
+              }
+            },
+            ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES or ClassReader.SKIP_DEBUG,
+          )
+      }
+    }
+    return members.sortedBy { member ->
+      val key =
+        if (member is FieldInfo) "${member.name}:${member.typeDescriptorString}"
+        else "${member.name}${member.typeDescriptorString}"
+      order[key] ?: Int.MAX_VALUE
+    }
+  }
+
   internal const val COLOR_CATALOG_FQN = "ee.schimke.composeai.preview.ColorCatalog"
 
   // Type-scale sibling of `@ColorCatalog`, on a `TextStyle` backing field.
@@ -309,6 +380,8 @@ object PreviewDiscovery {
 
   // Shape sibling, on a `Shape` or `Shapes` backing field.
   internal const val SHAPE_CATALOG_FQN = "ee.schimke.composeai.preview.ShapeCatalog"
+  private val CATALOG_FIELD_FQNS =
+    listOf(COLOR_CATALOG_FQN, TYPOGRAPHY_CATALOG_FQN, SHAPE_CATALOG_FQN)
 
   // On a `PreviewWrapperProvider` class (`@Target(CLASS)`) rather than a field.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
@@ -484,6 +557,7 @@ object PreviewDiscovery {
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
+        .enableClassInfo()
         .enableMethodInfo()
         // Field info for catalog annotations on backing fields; `ignoreFieldVisibility()` because a
         // top-level `val`'s backing field is private static.
@@ -491,8 +565,7 @@ object PreviewDiscovery {
         .ignoreFieldVisibility()
         .enableAnnotationInfo()
         .ignoreMethodVisibility()
-        .overrideClasspath(classpath.map { it.absolutePath })
-        .ignoreParentClassLoaders()
+        .enableClasspathEntries(classpath.map { it.absolutePath })
         .scan()
         .use { scanResult ->
           reachablePreviewFqns = PREVIEW_FQNS.filter { scanResult.getClassInfo(it) != null }
@@ -516,7 +589,7 @@ object PreviewDiscovery {
           val catalogGroupsByFile = HashMap<String, CatalogGroupDefault>()
           for (classInfo in scanResult.allClasses) {
             if (classInfo.name !in projectClassFqns) continue
-            val groupAnn = classInfo.getAnnotationInfo(CATALOG_GROUP_FQN) ?: continue
+            val groupAnn = classInfo.getAllAnnotationInfo(CATALOG_GROUP_FQN) ?: continue
             val file = sourceFilePath(classInfo, input) ?: continue
             catalogGroupsByFile.putIfAbsent(
               file,
@@ -531,8 +604,14 @@ object PreviewDiscovery {
             // @Preview" warnings (#1039).
             if (classInfo.name !in projectClassFqns) continue
             scanClassCount++
-            for (method in classInfo.methodInfo) {
-              val annotations = method.annotationInfo ?: continue
+            // Source order, so a class's previews keep the order they are written in; reading the
+            // class file is only worth it when there's more than one annotated method to order.
+            val methods =
+              if (classInfo.methodInfo.count { it.allAnnotationInfo.isNotEmpty() } > 1)
+                inDeclarationOrder(classInfo, classInfo.methodInfo)
+              else classInfo.methodInfo
+            for (method in methods) {
+              val annotations = method.allAnnotationInfo ?: continue
               if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
@@ -558,8 +637,8 @@ object PreviewDiscovery {
             // Catalog design tokens on backing fields: collect coordinates and display metadata;
             // values are reflected at render time. Kind is dispatched by declared type
             // ([catalogTokenKindFor]).
-            for (field in classInfo.fieldInfo) {
-              field.getAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
+            for (field in catalogFieldsInDeclarationOrder(classInfo)) {
+              field.getAllAnnotationInfo(COLOR_CATALOG_FQN)?.let { ann ->
                 rawColorCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -568,7 +647,7 @@ object PreviewDiscovery {
                     catalogTokenKindFor(field, single = CatalogTokenKind.COLOR),
                   )
               }
-              field.getAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
+              field.getAllAnnotationInfo(TYPOGRAPHY_CATALOG_FQN)?.let { ann ->
                 rawTypographyCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -577,7 +656,7 @@ object PreviewDiscovery {
                     catalogTokenKindFor(field, single = CatalogTokenKind.TEXT_STYLE),
                   )
               }
-              field.getAnnotationInfo(SHAPE_CATALOG_FQN)?.let { ann ->
+              field.getAllAnnotationInfo(SHAPE_CATALOG_FQN)?.let { ann ->
                 rawShapeCatalogTokens +=
                   rawCatalogToken(
                     classInfo,
@@ -592,7 +671,7 @@ object PreviewDiscovery {
             // platform.
             for ((fqn, wear) in
               listOf(THEME_CATALOG_FQN to false, WEAR_THEME_CATALOG_FQN to true)) {
-              classInfo.getAnnotationInfo(fqn)?.let { ann ->
+              classInfo.getAllAnnotationInfo(fqn)?.let { ann ->
                 rawThemeCatalogs +=
                   RawThemeCatalog(
                     className = classInfo.name,
@@ -2283,7 +2362,7 @@ object PreviewDiscovery {
     if (ann.name in HOISTABLE_LEAF_FQNS) return
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
-    for (metaAnn in annClassInfo.annotationInfo.toList()) {
+    for (metaAnn in annClassInfo.allAnnotationInfo.toList()) {
       collect(metaAnn)
       walkMetaAnnotations(metaAnn, scanResult, visited, collect)
     }
@@ -2710,7 +2789,7 @@ object PreviewDiscovery {
   private fun extractPreviewParameter(method: MethodInfo): Pair<String, Int>? {
     val params = method.parameterInfo ?: return null
     for (param in params) {
-      val anns = param.annotationInfo ?: continue
+      val anns = param.allAnnotationInfo ?: continue
       val ann = anns.firstOrNull { it.name in PREVIEW_PARAMETER_FQNS } ?: continue
       val provider =
         when (val value = ann.parameterValues.getValue("provider")) {
@@ -3169,12 +3248,12 @@ object PreviewDiscovery {
 
   /**
    * Resolves the `PreviewWrapperProvider` FQN for [method]. Uses `directOnly()` because
-   * `method.annotationInfo` flattens meta-annotations, which would make direct-vs-hoisted
+   * `method.allAnnotationInfo` flattens meta-annotations, which would make direct-vs-hoisted
    * precedence depend on list order. A direct wrapper wins; otherwise one hoisted on a
    * multi-preview annotation.
    */
   private fun extractWrapperFqn(method: MethodInfo, scanResult: ScanResult): String? {
-    val directAnnotations = method.annotationInfo?.directOnly()?.toList() ?: emptyList()
+    val directAnnotations = method.directAnnotationInfo.toList()
     directWrapperFqn(directAnnotations)?.let {
       return it
     }
@@ -3225,7 +3304,7 @@ object PreviewDiscovery {
     if (isDirectPreview(ann) || isPreviewContainer(ann)) return null
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return null
-    val metaAnns = annClassInfo.annotationInfo.toList()
+    val metaAnns = annClassInfo.allAnnotationInfo.toList()
     directWrapperFqn(metaAnns)?.let {
       return it
     }
@@ -4021,11 +4100,11 @@ object PreviewDiscovery {
     visited.add(ann.name)
 
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return emptyList()
-    val directPreviews = collectDirectPreviews(annClassInfo.annotationInfo.toList())
+    val directPreviews = collectDirectPreviews(annClassInfo.allAnnotationInfo.toList())
     if (directPreviews.isNotEmpty()) return directPreviews
 
     val result = mutableListOf<AnnotationInfo>()
-    for (metaAnn in annClassInfo.annotationInfo) {
+    for (metaAnn in annClassInfo.allAnnotationInfo) {
       result.addAll(resolveMultiPreview(metaAnn, scanResult, visited))
     }
     return result
@@ -4146,9 +4225,9 @@ object PreviewDiscovery {
       dataProducts = outputPlan.dataProducts,
       targets = targets,
       // Read off the method, so every expansion (including built-in ones) shares it.
-      fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
+      fixedTheme = method.allAnnotationInfo.any { it.name == FIXED_THEME_FQN },
       includeInA11y =
-        method.annotationInfo
+        method.allAnnotationInfo
           .firstOrNull { it.name == PREVIEW_HELPER_FQN }
           ?.let { annBoolean(it, "includeInA11y", default = true) } ?: true,
       // Knobs from defaulted value parameters, read off the method so every expansion shares them.

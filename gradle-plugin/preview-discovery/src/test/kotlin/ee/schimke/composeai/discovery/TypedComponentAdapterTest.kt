@@ -62,6 +62,7 @@ class TypedComponentAdapterTest {
   @Test
   fun `additional validation reads the actual compiled component metadata`() {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .ignoreMethodVisibility()
@@ -674,6 +675,7 @@ class TypedComponentAdapterTest {
   @Test
   fun `compiled list and object parameters are discovered as the erased classifier`() {
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .ignoreMethodVisibility()
