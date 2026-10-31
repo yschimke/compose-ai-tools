@@ -166,7 +166,7 @@ final class DeviceBroadcasts {
     String encoded = Parcels.encode(intent);
     List<Step> chain = new ArrayList<>();
     if (!named) {
-      List<Target> local = targets(intent, false);
+      List<Target> local = targets(intent, false, true);
       for (int i = 0; i < local.size(); i++) chain.add(new Step(null, i, local.get(i).priority));
     }
     boolean remote = false;
@@ -194,7 +194,7 @@ final class DeviceBroadcasts {
         .post(
             () -> {
               Result result = new Result(initialCode, initialData, initialExtras, false);
-              List<Target> local = named ? List.of() : targets(intent, false);
+              List<Target> local = named ? List.of() : targets(intent, false, true);
               for (Step step : chain) {
                 if (step.app == null && step.index >= local.size()) continue;
                 result =
@@ -317,13 +317,24 @@ final class DeviceBroadcasts {
 
   /**
    * This app's receivers of [intent] from another app, highest priority first: those registered at
-   * run time and exported, and, when it [named] this app, its exported manifest receivers.
+   * run time and exported, and, when it [named] this app, its exported manifest receivers. One
+   * naming a component reaches that receiver alone, which is a manifest one.
    */
   private static List<Target> targets(Intent intent, boolean named) {
+    return targets(intent, named, false);
+  }
+
+  /**
+   * As {@link #targets(Intent, boolean)}; [own] is this app's own broadcast, which its receivers
+   * registered {@code RECEIVER_NOT_EXPORTED} get too.
+   */
+  private static List<Target> targets(Intent intent, boolean named, boolean own) {
     List<Target> out = new ArrayList<>();
+    ComponentName component = intent.getComponent();
     ShadowApplication shadow = Shadow.extract(app);
     for (ShadowApplication.Wrapper wrapper : shadow.getRegisteredReceivers()) {
-      if ((wrapper.flags & Context.RECEIVER_NOT_EXPORTED) != 0) continue;
+      if (component != null) break;
+      if (!own && (wrapper.flags & Context.RECEIVER_NOT_EXPORTED) != 0) continue;
       if (wrapper.intentFilter.match(app.getContentResolver(), intent, false, "simulator") < 0) {
         continue;
       }
@@ -338,7 +349,8 @@ final class DeviceBroadcasts {
       for (ResolveInfo info : app.getPackageManager().queryBroadcastReceivers(intent, 0)) {
         if (info.activityInfo == null
             || !app.getPackageName().equals(info.activityInfo.packageName)
-            || !info.activityInfo.exported) {
+            || !info.activityInfo.exported
+            || (component != null && !component.getClassName().equals(info.activityInfo.name))) {
           continue;
         }
         out.add(new Target(info.priority, null, app, info.activityInfo.name));
@@ -416,12 +428,8 @@ final class DeviceBroadcasts {
     // Robolectric's receiver keeps abortBroadcast() in a flag of its own, which this hands it.
     java.util.concurrent.atomic.AtomicBoolean abort = new java.util.concurrent.atomic.AtomicBoolean();
     ShadowBroadcastReceiver shadow = Shadow.extract(receiver);
-    receiving = true;
-    try {
-      shadow.onReceive(target.context, new Intent(intent), abort);
-    } finally {
-      receiving = false;
-    }
+    // The receiver's own sends from onReceive are its app's, and go on to the other apps as such.
+    shadow.onReceive(target.context, new Intent(intent), abort);
     Result out =
         ordered
             ? new Result(
