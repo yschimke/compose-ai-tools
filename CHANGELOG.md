@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.79.1](https://github.com/yschimke/compose-ai-tools/compare/v2.79.0...v2.79.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **cli:** mcp serve replaces a cached MCP server older than the one this CLI pairs with ([#6359](https://github.com/yschimke/compose-ai-tools/issues/6359)) ([cf1180e](https://github.com/yschimke/compose-ai-tools/commit/cf1180e6fa19a9b464e8665bdfcc69a0bf30d7a5))
+* **simulator:** shadow Wear SDK haptics ([#6357](https://github.com/yschimke/compose-ai-tools/issues/6357)) ([2e70ee1](https://github.com/yschimke/compose-ai-tools/commit/2e70ee15a4d9a80053ab34e14aee278c371186c3))
+
 ## [2.79.0](https://github.com/yschimke/compose-ai-tools/compare/v2.78.0...v2.79.0) (2026-10-31)
 
 
