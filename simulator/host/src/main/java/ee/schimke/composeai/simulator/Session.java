@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -309,6 +310,18 @@ final class Session {
         System.exit(0);
         return;
       }
+      if (name.equals("wait") && "still".equals(command.optString("until"))) {
+        // Answers once the screen has come to rest (or at the timeout), not after a fixed delay.
+        long now = SystemClock.uptimeMillis();
+        untilStill(
+            id,
+            new Stillness(
+                now,
+                command.optLong("quietMs", Stillness.DEFAULT_QUIET_MS),
+                command.optLong("ms", Stillness.DEFAULT_TIMEOUT_MS)),
+            null);
+        return;
+      }
       JSONObject ran = run(name, command);
       JSONObject result =
           shell == null
@@ -328,6 +341,48 @@ final class Session {
     } catch (Throwable t) {
       protocol.error(id, describe(t));
     }
+  }
+
+  /**
+   * Samples the default display every {@link Stillness#POLL_MS} ms until [still] says the wait is
+   * over, then answers [id] with whether the screen came to rest ({@code still}) and {@code
+   * waitedMs}. Further commands wait behind it, as behind any settle.
+   */
+  private void untilStill(Object id, Stillness still, int[] previous) {
+    later(
+        Stillness.POLL_MS,
+        () -> {
+          long now = SystemClock.uptimeMillis();
+          int[] pixels;
+          try {
+            pixels = pixels(ui.takeScreenshot());
+          } catch (RuntimeException e) {
+            pixels = null;
+          }
+          boolean changed = previous == null || !Arrays.equals(previous, pixels);
+          if (still.frame(now, pixels != null, changed)) {
+            protocol.ok(
+                id,
+                new Protocol.Json()
+                    .put("still", still.still())
+                    .put("waitedMs", still.waitedMs(now))
+                    .object());
+          } else {
+            untilStill(id, still, pixels);
+          }
+        });
+  }
+
+  /** The bitmap's pixels with its size in front, or null when nothing was on screen. */
+  private static int[] pixels(Bitmap bitmap) {
+    if (bitmap == null) return null;
+    int width = bitmap.getWidth();
+    int height = bitmap.getHeight();
+    int[] pixels = new int[2 + width * height];
+    pixels[0] = width;
+    pixels[1] = height;
+    bitmap.getPixels(pixels, 2, width, 0, 0, width, height);
+    return pixels;
   }
 
   private static boolean changesUi(String name) {

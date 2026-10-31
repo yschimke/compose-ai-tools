@@ -5,6 +5,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -13,7 +14,8 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * [SimulatorSupervisor] over a stand-in simulator: a shell script that sends `ready` (naming its
- * APK and the data it was asked to restore), answers `snapshotData`, and echoes other commands.
+ * APK and the data it was asked to restore), answers `snapshotData` and the wait for a still
+ * screen, and echoes other commands.
  */
 class SimulatorSupervisorTest {
 
@@ -35,6 +37,7 @@ class SimulatorSupervisorTest {
       id=$(printf '%s' "${'$'}line" | sed -n 's/.*"id":\("[^"]*"\|[0-9]*\).*/\1/p')
       case "${'$'}line" in
         *snapshotData*) echo "{\"id\":${'$'}id,\"ok\":true,\"result\":{\"files\":3}}" ;;
+        *'"until":"still"'*) echo "{\"id\":${'$'}id,\"ok\":true,\"result\":{\"still\":true,\"waitedMs\":420}}" ;;
         *hang*) ;;
         *) echo "{\"id\":${'$'}id,\"ok\":true,\"result\":{\"apk\":\"$1\"}}" ;;
       esac
@@ -189,6 +192,23 @@ class SimulatorSupervisorTest {
       retried["info"]!!.jsonObject["restore"]!!.jsonPrimitive.content,
       "the next restart restores the kept snapshot, not the empty app's",
     )
+    supervisor.close()
+  }
+
+  @Test
+  fun `a restart answers once the new app's screen is still, unless told not to wait`() {
+    val supervisor = supervisor()
+    supervisor.start()
+    nextWith("event", "ready")
+
+    supervisor.submit("""{"id":1,"cmd":"restart"}""")
+    val settled = nextWith("id", "1")["result"]!!.jsonObject["settle"]!!.jsonObject
+    assertEquals("true", settled["still"]!!.jsonPrimitive.content)
+    assertEquals("420", settled["waitedMs"]!!.jsonPrimitive.content)
+
+    supervisor.submit("""{"id":2,"cmd":"restart","settle":false}""")
+    val unsettled = nextWith("id", "2")["result"]!!.jsonObject
+    assertNull(unsettled["settle"], "settle: false answers at ready")
     supervisor.close()
   }
 }

@@ -378,6 +378,7 @@ internal class LaunchCommand(private val args: List<String>) {
               ),
               keepData,
               reason = "reload",
+              settle = command.boolean("settle") != false,
             )
           live.applied()
           JsonObject(restarted - "totalMs")
@@ -403,6 +404,7 @@ internal class LaunchCommand(private val args: List<String>) {
               SimulatorSupervisor.Launch(plan.apk, listOf(converted.entry.classesJar)),
               keepData,
               reason = "reload",
+              settle = command.boolean("settle") != false,
             )
           JsonObject(restarted - "totalMs")
             .with(
@@ -436,6 +438,7 @@ internal class LaunchCommand(private val args: List<String>) {
           SimulatorSupervisor.Launch(next, listOf(converted.entry.classesJar)),
           keepData,
           reason = "update",
+          settle = command.boolean("settle") != false,
         )
       return JsonObject(restarted + ("conversion" to converted.toJson()))
     }

@@ -281,7 +281,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `info` | | package, version, SDK, form factor, qualifiers, `round`, display size, `display` (as below), top activity; with `--launcher`, `surface` (`app`, `home`, `drawer`, `picker`) |
 | `ping` | | uptime |
 | `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
-| `wait` | `ms` (or `settleMs`) | lets the app run |
+| `wait` | `ms` (or `settleMs`), `until`?, `quietMs`? | lets the app run; with `"until":"still"`, until the screen has stopped changing for `quietMs` (400), sampled every 100 ms, or `ms` (3000) has passed, answering `still` and `waitedMs` |
 | `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`?, `app`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square`; on a [split screen](#split-screen) both halves, unless `app` asks for this app's alone |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
@@ -354,9 +354,9 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `widgets` | | the app's widget providers (sizes, spans, resize mode, configure, preview) and the widgets placed |
 | `widget` | `action` (`add` / `remove` / `resize` / `update` / `reconfigure` / `pin`), `provider`, `widgetId`, `cellX`? `cellY`? `spanX`? `spanY`?, `configure`?, `answer`? | places, removes, resizes and updates the app's widgets on the home screen; `pin` answers a `requestPinAppWidget` (`"answer":"accept"` / `"reject"`) |
 | `picker` | `action`? (`open` / `close`) | the widget picker |
-| `restart` | `keepData`? (true) | the app again in a fresh simulator JVM, its data kept; see [Restart and update](#restart-and-update) |
-| `update` | `apk`, `keepData`? (true) | another APK (a rebuild) in a fresh simulator JVM, as `adb install -r` |
-| `reload` | `full`?, `keepData`? (true) | with `--project`: compiles the edit and restarts the app on the changed classes; see [Live reload](#live-reload) |
+| `restart` | `keepData`? (true), `settle`? (true) | the app again in a fresh simulator JVM, its data kept; see [Restart and update](#restart-and-update) |
+| `update` | `apk`, `keepData`? (true), `settle`? (true) | another APK (a rebuild) in a fresh simulator JVM, as `adb install -r` |
+| `reload` | `full`?, `keepData`? (true), `settle`? (true) | with `--project`: compiles the edit and restarts the app on the changed classes; see [Live reload](#live-reload) |
 | `snapshotData` | `to` | copies the app's data directory and external storage to `to/data` and `to/external` (what `restart` keeps) |
 | `quit` | | exits |
 
@@ -1501,8 +1501,15 @@ replaced without ending the session or the client's connection:
 With `"device":"watch"` in a `--pair` session, each replaces the watch's simulator instead of the
 phone's.
 
+Each answers only once the new app's screen has come to rest, so a `screenshot` straight after it
+shows the app's first screen rather than its entry animation: after `ready` it waits (`wait`
+`"until":"still"`) until nothing on screen has changed for 400 ms, for at most 3 s, and reports
+that as `settle` (`still`, `waitedMs`; `still: false` when the app was still animating at the
+timeout). `"settle":false` answers at `ready` instead. `reload` does the same when it restarts; a
+hot swap already answers after its re-creation has settled.
+
 Each answers with the new simulator's `info` and where the time went: `snapshotMs`, `stopMs` and
-`startMs`, `totalMs`, and `startup`, which every `ready` event also carries. `startup` has `jvmMs`
+`startMs`, `settle`, `totalMs`, and `startup`, which every `ready` event also carries. `startup` has `jvmMs`
 to `main`, `sandboxMs` for Robolectric's sandbox, `applicationMs` to `Application.onCreate()`
 returning, and `firstActivityMs` to the first activity's first frame. `update` adds `conversion`.
 Every launch also sends a `conversion` event before `ready`, saying whether the APK's classes came

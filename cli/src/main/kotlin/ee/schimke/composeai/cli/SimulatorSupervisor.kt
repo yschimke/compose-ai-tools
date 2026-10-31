@@ -169,6 +169,7 @@ internal class SimulatorSupervisor(
               launch,
               keepData = json.boolean("keepData") ?: (json.boolean("clearData") != true),
               reason = "restart",
+              settle = json.boolean("settle") != false,
             )
           else -> extraCommand?.invoke(this, cmd, json)
         }
@@ -202,9 +203,12 @@ internal class SimulatorSupervisor(
   /**
    * Replaces the running simulator with one running [next]: snapshots the app's data first when
    * [keepData] (and the old simulator is still there to ask), stops the old JVM, starts the new
-   * one, and waits for its `ready`. Returns the timings and the new simulator's `ready` info.
+   * one, and waits for its `ready`. Unless [settle] is false it then waits, up to
+   * [SETTLE_TIMEOUT_MS], for the new app's screen to come to rest (`wait` `until: still`), so a
+   * `screenshot` right after the answer shows its first screen and not its entry animation. Returns
+   * the timings, the settle and the new simulator's `ready` info.
    */
-  fun restart(next: Launch, keepData: Boolean, reason: String): JsonObject {
+  fun restart(next: Launch, keepData: Boolean, reason: String, settle: Boolean = true): JsonObject {
     val start = System.nanoTime()
     val old = current
     var snapshot: File? = null
@@ -290,6 +294,8 @@ internal class SimulatorSupervisor(
     }
     launch = next
     val startMs = elapsed(spawnStart)
+    // Before the next standby starts: its JVM's boot would slow the frames being waited on.
+    val settled = if (settle) awaitStill(child) else null
     prepareSpare()
     val result = buildJsonObject {
       put("reason", reason)
@@ -302,6 +308,7 @@ internal class SimulatorSupervisor(
       put("snapshotMs", snapshotMs)
       put("stopMs", stopMs)
       put("startMs", startMs)
+      settled?.let { put("settle", it) }
       put("totalMs", elapsed(start))
       ready["startup"]?.let { put("startup", it) }
       put("info", JsonObject(ready.filterKeys { it != "startup" }))
@@ -314,6 +321,30 @@ internal class SimulatorSupervisor(
       }
     )
     return result
+  }
+
+  /**
+   * Waits for [child]'s screen to stop changing: its `still` and `waitedMs`, or `still: false` and
+   * the `error` when it could not say. Bounded on both sides, so a restart never hangs on it.
+   */
+  private fun awaitStill(child: Child): JsonObject {
+    val reply =
+      child.request(
+        buildJsonObject {
+          put("cmd", "wait")
+          put("until", "still")
+          put("ms", SETTLE_TIMEOUT_MS)
+        },
+        SETTLE_TIMEOUT_MS + SETTLE_GRACE_MS,
+      )
+    return when (reply) {
+      is Reply.Ok -> reply.result
+      is Reply.Failed ->
+        buildJsonObject {
+          put("still", false)
+          put("error", reply.message)
+        }
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -578,6 +609,10 @@ internal class SimulatorSupervisor(
     /** `:simulator-host`'s `Standby.PROPERTY`. */
     const val STANDBY_PROPERTY = "composeai.simulator.standby"
 
+    /** The longest a restart waits for the new app's screen to come to rest. */
+    const val SETTLE_TIMEOUT_MS = 3_000L
+    /** Beyond [SETTLE_TIMEOUT_MS], for a simulator that does not answer the settle at all. */
+    private const val SETTLE_GRACE_MS = 2_000L
     private const val SNAPSHOT_TIMEOUT_MS = 60_000L
     private const val READY_TIMEOUT_MS = 300_000L
     private const val STOP_GRACE_MS = 5_000L
