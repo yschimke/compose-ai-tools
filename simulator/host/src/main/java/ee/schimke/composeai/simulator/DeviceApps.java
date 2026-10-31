@@ -552,7 +552,13 @@ final class DeviceApps {
       // A start for a result goes into the caller's task, as on a device; otherwise a new task.
       if (resultId == 0) start.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       if (start.getComponent() == null) start.setPackage(app.getPackageName());
-      result = navigator.startActivity(start, -1);
+      try {
+        result = navigator.startActivity(start, -1);
+      } catch (RuntimeException e) {
+        // It never started, so the caller waiting for its result gets RESULT_CANCELED.
+        if (resultId != 0) sendResult(resultFrom, resultId, Activity.RESULT_CANCELED, null);
+        throw e;
+      }
       Navigator.Entry started = navigator.top(Display.DEFAULT_DISPLAY);
       if (resultId != 0 && started != null && !started.system) {
         started.resultTo = (code, data) -> sendResult(resultFrom, resultId, code, data);

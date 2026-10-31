@@ -756,7 +756,7 @@ final class Navigator {
    */
   JSONObject forceStop() {
     // Force-stopping clears the tasks too: nothing comes back from a kill.
-    dead.clear();
+    forgetDead();
     JSONArray activities = new JSONArray();
     for (Entry entry : new ArrayList<>(stack)) {
       if (entry.system) continue;
@@ -798,6 +798,9 @@ final class Navigator {
 
     final byte[] state;
 
+    /** Where its result goes, kept with it so the re-created activity still sends it there. */
+    final ResultTo resultTo;
+
     Killed(Entry entry, int caller, byte[] state) {
       this.className = entry.activity().getClass().getName();
       this.intent = entry.activity().getIntent();
@@ -807,7 +810,19 @@ final class Navigator {
       this.noHistory = entry.noHistory;
       this.caller = caller;
       this.state = state;
+      this.resultTo = entry.resultTo;
     }
+  }
+
+  /**
+   * Forgets the killed activities, which will not come back: one started for another app's result
+   * reports {@code RESULT_CANCELED} to it.
+   */
+  private void forgetDead() {
+    for (Killed record : dead) {
+      if (record.resultTo != null) record.resultTo.result(Activity.RESULT_CANCELED, null);
+    }
+    dead.clear();
   }
 
   /** The killed app's activities, bottom first, which the next start of the app re-creates. */
@@ -850,6 +865,8 @@ final class Navigator {
         if (error == null) error = entry.activity().getClass().getName() + ": " + e;
       }
       records.add(new Killed(entry, entry.caller == null ? -1 : app.indexOf(entry.caller), bytes));
+      // A process death is not a finish: the result link goes with the record, not to destroy().
+      entry.resultTo = null;
       activities.put(
           new Protocol.Json()
               .put("activity", entry.activity().getClass().getName())
@@ -869,8 +886,15 @@ final class Navigator {
       services.put(e.getKey().getClassName());
       protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
     }
-    dead.clear();
-    if (error == null) dead.addAll(records);
+    forgetDead();
+    if (error == null) {
+      dead.addAll(records);
+    } else {
+      // Not restorable, so they finish here: their results are cancelled.
+      for (Killed record : records) {
+        if (record.resultTo != null) record.resultTo.result(Activity.RESULT_CANCELED, null);
+      }
+    }
     Entry home = home();
     if (home != null && home.stopped) {
       bringBack(home);
@@ -922,6 +946,7 @@ final class Navigator {
       Entry entry =
           new Entry(controller, record.request, caller, record.requestCode, record.displayId);
       entry.noHistory = record.noHistory;
+      entry.resultTo = record.resultTo;
       if (top) {
         controller.setup(state);
       } else {
