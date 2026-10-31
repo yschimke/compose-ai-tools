@@ -164,6 +164,7 @@ final class Session {
     // Broadcasts to and from the device's other apps, and calls into this app's providers.
     DeviceBroadcasts.attach(app, navigator, protocol);
     DeviceProviders.serve(app);
+    DeviceServices.serve(app);
     DeviceBus.start(app.getPackageName());
     deviceApps.announce();
   }
