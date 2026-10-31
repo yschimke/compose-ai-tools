@@ -1630,14 +1630,21 @@ What the apps share:
   document; without the permission the call is `ERROR_DENIED`, and an app that is not installed is
   `ERROR_FUNCTION_NOT_FOUND`. An app calling its own functions needs no permission. API 36
   (`--sdk 36`).
-- **Broadcasts.** What an app sends with `sendBroadcast` reaches the other apps too, its extras
-  typed (the intent is marshalled as the binder marshals it). An implicit broadcast reaches every
-  app's receivers registered at run time, and, as since API 26, none declared in a manifest. One
-  naming another app, by package or component, goes to that app alone, its manifest receivers
-  included. A receiver permission is checked against the receiving app's permissions. Each app that
-  gets one reports a `broadcast` event naming the sender (`from`). The system's own implicit
-  broadcasts (`TIME_TICK`, `CONNECTIVITY_CHANGE`) are each app's simulator's, and ordered and
-  sticky broadcasts do not cross.
+- **Broadcasts.** What an app sends with `sendBroadcast`, `sendOrderedBroadcast` or
+  `sendStickyBroadcast` reaches the other apps too, its extras typed (the intent is marshalled as
+  the binder marshals it).
+  - An implicit broadcast reaches every app's receivers registered at run time, except those
+    registered `RECEIVER_NOT_EXPORTED`, and, as since API 26, none declared in a manifest. One
+    naming another app, by package or component, goes to that app alone, its exported manifest
+    receivers included.
+  - An ordered broadcast goes to every app's receivers one at a time, highest priority first, each
+    seeing the result code, data and extras the last left, until one calls `abortBroadcast`; the
+    sender's result receiver then gets the final result. One no other app receives keeps
+    Robolectric's own delivery.
+  - A sticky broadcast is kept by every app, so a receiver another app registers later gets it.
+  - A receiver permission is checked against the receiving app's permissions. Each app that gets
+    one reports a `broadcast` event naming the sender (`from`). The system's own implicit
+    broadcasts (`TIME_TICK`, `CONNECTIVITY_CHANGE`) are each app's simulator's.
 - **Content providers.** Each app reaches the others' providers by authority, every call run by
   the owning app's provider in its own simulator with the caller as its `getCallingPackage()`:
   `query` (typed rows: integers, floats, strings, blobs, nulls), `insert`, `update`, `delete`,
