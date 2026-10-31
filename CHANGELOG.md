@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.78.0](https://github.com/yschimke/compose-ai-tools/compare/v2.77.0...v2.78.0) (2026-10-31)
+
+
+### Features
+
+* **simulator:** hot-swap composable edits into the running app on reload ([#6353](https://github.com/yschimke/compose-ai-tools/issues/6353)) ([ebc67c5](https://github.com/yschimke/compose-ai-tools/commit/ebc67c5d12999ecd04f307b24b51db40ad0adfc7))
+* **simulator:** one clipboard and one set of settings for a device's apps ([#6350](https://github.com/yschimke/compose-ai-tools/issues/6350)) ([743b8c6](https://github.com/yschimke/compose-ai-tools/commit/743b8c6341fedf5ba94bb1857ce914d61c212d99))
+* **simulator:** ordered and sticky broadcasts across a device's apps, and RECEIVER_NOT_EXPORTED ([#6347](https://github.com/yschimke/compose-ai-tools/issues/6347)) ([3f9bed2](https://github.com/yschimke/compose-ai-tools/commit/3f9bed2d80eb04a93db3f9327d5df3b2324fee31))
+* **simulator:** return an activity's result to the device's app that started it ([#6345](https://github.com/yschimke/compose-ai-tools/issues/6345)) ([3319f38](https://github.com/yschimke/compose-ai-tools/commit/3319f38f23c58a914a2dcfa1bddcb2fcd488ea40))
+* **simulator:** screenshot a split screen whole, both apps' halves in their places ([#6346](https://github.com/yschimke/compose-ai-tools/issues/6346)) ([280ef4a](https://github.com/yschimke/compose-ai-tools/commit/280ef4a260d26db6dd144c158aa2cff1b64f5137))
+* **simulator:** share broadcasts, content providers and /sdcard between a device's apps ([#6343](https://github.com/yschimke/compose-ai-tools/issues/6343)) ([ddb6665](https://github.com/yschimke/compose-ai-tools/commit/ddb6665b25477e56516d76c40e4b0a0290b81839))
+* **simulator:** show the device's other apps with their own launcher icons ([#6344](https://github.com/yschimke/compose-ai-tools/issues/6344)) ([6c880d2](https://github.com/yschimke/compose-ai-tools/commit/6c880d2c4d7e02a7a2c12ce69fd82e2ff0a7d00f))
+* **simulator:** split screen between two of a device's apps, along a foldable's fold ([#6340](https://github.com/yschimke/compose-ai-tools/issues/6340)) ([37889aa](https://github.com/yschimke/compose-ai-tools/commit/37889aaa05443fc14c573bf4d28cad8c5294815b))
+* **simulator:** start, stop and bind another of the device's apps' services ([#6349](https://github.com/yschimke/compose-ai-tools/issues/6349)) ([7c003e8](https://github.com/yschimke/compose-ai-tools/commit/7c003e803a3c9e2e369b8637f5114910b6dc4c5a))
+* **simulator:** switch the device's screen between its apps (home screen, startActivity, foreground) ([#6338](https://github.com/yschimke/compose-ai-tools/issues/6338)) ([71dfadf](https://github.com/yschimke/compose-ai-tools/commit/71dfadf0541715ee1dd90a92c2d9cdfc410505ed))
+* **simulator:** write to another app's provider files, its change notifications and URI grants ([#6348](https://github.com/yschimke/compose-ai-tools/issues/6348)) ([fe129c7](https://github.com/yschimke/compose-ai-tools/commit/fe129c7e74d5c05d993e1b5957b72ae1975e71fc))
+
+
+### Bug Fixes
+
+* **cli:** boot launch --adb app.apk once, on the app ([#6335](https://github.com/yschimke/compose-ai-tools/issues/6335)) ([7c40705](https://github.com/yschimke/compose-ai-tools/commit/7c40705db5248682c006ab8129b4cd794baaa0b0))
+* **cli:** follow the log for adb logcat and Android Studio's Logcat window ([#6334](https://github.com/yschimke/compose-ai-tools/issues/6334)) ([ba239f0](https://github.com/yschimke/compose-ai-tools/commit/ba239f0bc5f480188b7650a3bba8013113a68a1f))
+* **cli:** launch finds the Android SDK from --project or the APK, not only the working directory ([#6352](https://github.com/yschimke/compose-ai-tools/issues/6352)) ([b26f62f](https://github.com/yschimke/compose-ai-tools/commit/b26f62f3d1588830d965da676c88a85851dc6b7f))
+* **simulator:** a split screen's screenshot shows the other app's half black while its screen is off ([#6351](https://github.com/yschimke/compose-ai-tools/issues/6351)) ([ebbb21f](https://github.com/yschimke/compose-ai-tools/commit/ebbb21fff2a9df15d0467cd571bfb8a9c4b723a3))
+
 ## [2.77.0](https://github.com/yschimke/compose-ai-tools/compare/v2.76.0...v2.77.0) (2026-10-30)
 
 
