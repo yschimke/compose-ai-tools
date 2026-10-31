@@ -50,6 +50,58 @@ class ChildProcessTest {
     assertTrue(process.waitFor(5, TimeUnit.SECONDS))
   }
 
+  /**
+   * A SIGKILLed launcher runs no shutdown hook. The kernel closes the watchdog's stdin when the
+   * launcher dies however it dies; closing it here is that same event.
+   */
+  @Test
+  fun `the watchdog takes the child tree down once the launcher's end of its pipe closes`() {
+    assumeTrue(isPosix())
+    val child = ProcessBuilder("sh", "-c", "sleep 300 & wait").start()
+    awaitChildren(child)
+    val tree = child.toHandle().descendants().toList() + child.toHandle()
+    val watchdog = startOrphanWatchdog(child)
+    assertTrue(watchdog != null, "watchdog did not start")
+
+    watchdog.outputStream.close()
+
+    assertTrue(child.waitFor(10, TimeUnit.SECONDS), "child survived its launcher")
+    val stillRunning = tree.filter { running(it.pid()) }
+    assertTrue(stillRunning.isEmpty(), "still running: $stillRunning")
+    assertTrue(watchdog.waitFor(10, TimeUnit.SECONDS))
+  }
+
+  /** A launcher that outlives its child stops the watchdog; it must not signal anything. */
+  @Test
+  fun `a destroyed watchdog leaves the child alone`() {
+    assumeTrue(isPosix())
+    val child = ProcessBuilder("sh", "-c", "sleep 300").start()
+    val watchdog = startOrphanWatchdog(child)!!
+    watchdog.destroy()
+    assertTrue(watchdog.waitFor(5, TimeUnit.SECONDS))
+    Thread.sleep(300)
+    assertTrue(child.isAlive, "the watchdog signalled a child it was told to leave")
+    destroyTree(child)
+  }
+
+  @Test
+  fun `the watchdog exits quietly when the child already ended`() {
+    assumeTrue(isPosix())
+    val child = ProcessBuilder("sh", "-c", "exit 0").start()
+    assertTrue(child.waitFor(5, TimeUnit.SECONDS))
+    val watchdog = startOrphanWatchdog(child)!!
+    watchdog.outputStream.close()
+    assertTrue(watchdog.waitFor(5, TimeUnit.SECONDS))
+    assertEquals(0, watchdog.exitValue())
+  }
+
+  private fun awaitChildren(process: Process) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (process.toHandle().children().count() == 0L && System.nanoTime() < deadline) {
+      Thread.sleep(20)
+    }
+  }
+
   private fun isPosix() = !System.getProperty("os.name").startsWith("Windows")
 
   /**

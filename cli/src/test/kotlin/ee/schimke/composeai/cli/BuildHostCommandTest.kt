@@ -5,10 +5,16 @@ import ee.schimke.composeai.buildhost.BuildHostEnvelope
 import ee.schimke.composeai.buildhost.BuildHostProtocol
 import ee.schimke.composeai.buildhost.BuildHostRequest
 import ee.schimke.composeai.buildhost.BuildHostResponse
+import java.io.PipedReader
+import java.io.PipedWriter
 import java.io.StringWriter
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -174,6 +180,75 @@ class BuildHostCommandTest {
     val path = assertIs<BuildHostResponse.Path>(replies[1].response).path
     if (path != null) {
       assertTrue(java.io.File(path).isAbsolute, "project root crossed the wire relative: $path")
+    }
+  }
+
+  /**
+   * The orphan in yschimke/compose-ai-tools#6364: a server that went away mid-build left the host
+   * building for nobody. EOF while a build runs now ends the host at once.
+   */
+  @Test
+  fun `stdin closing during a build calls the cancellation at once`() {
+    val host = BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG))
+    val building = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    host.handleRequest = { request, _, _ ->
+      if (request is BuildHostRequest.Handshake) {
+        BuildHostResponse.Handshake(BuildHostProtocol.VERSION, "test")
+      } else {
+        building.countDown()
+        release.await(10, TimeUnit.SECONDS)
+        BuildHostResponse.BuildResult(true)
+      }
+    }
+    val pipe = PipedWriter()
+    val input = PipedReader(pipe)
+    val cancelled = CountDownLatch(1)
+    val loop = thread {
+      host.serve(
+        input.buffered(),
+        StringWriter(),
+        onClosedWhileBuilding = { cancelled.countDown() },
+      )
+    }
+    pipe.write(BuildHostCodec.encode(handshake()) + "\n")
+    pipe.write(
+      BuildHostCodec.encode(
+        BuildHostEnvelope(2, request = BuildHostRequest.RunGradleTasks(listOf("help")))
+      ) + "\n"
+    )
+    pipe.flush()
+    assertTrue(building.await(10, TimeUnit.SECONDS), "the build never started")
+
+    pipe.close()
+
+    assertTrue(cancelled.await(10, TimeUnit.SECONDS), "EOF during a build was not acted on")
+    release.countDown()
+    loop.join(10_000)
+    assertFalse(loop.isAlive, "serve did not return after EOF")
+  }
+
+  @Test
+  fun `stdin closing between requests is not a cancellation`() {
+    var cancelled = false
+    val out = StringWriter()
+    BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG))
+      .serve(
+        (BuildHostCodec.encode(handshake()) + "\n").reader().buffered(),
+        out,
+        onClosedWhileBuilding = { cancelled = true },
+      )
+    assertFalse(cancelled)
+    assertEquals(1, out.toString().lines().count { it.isNotBlank() })
+  }
+
+  @Test
+  fun `only the build requests count as building`() {
+    with(BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG))) {
+      assertTrue(BuildHostRequest.RunGradleTasks(listOf("help")).isBuild())
+      assertTrue(BuildHostRequest.GradleProjects.isBuild())
+      assertFalse(BuildHostRequest.Handshake().isBuild())
+      assertFalse(BuildHostRequest.GradleVariantArgs.isBuild())
     }
   }
 }
