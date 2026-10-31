@@ -94,10 +94,10 @@ internal class LaunchCommand(private val args: List<String>) {
           )
       }
     val androidJar =
-      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = findLocalProperties())
+      androidJar(listOfNotNull(args.flagValue("--project")?.let(::File), apk))
         ?: fail(
           "needs an Android SDK platform's android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
-            "or run from a project whose local.properties has sdk.dir."
+            "or pass --project, or an APK, in a build whose local.properties has sdk.dir."
         )
     val simulatorJars = sidecar("lib-simulator")
     val dex2jarJars = sidecar("lib-dex2jar")
@@ -876,20 +876,6 @@ internal class LaunchCommand(private val args: List<String>) {
       )
     }
 
-  private fun findLocalProperties(): File? {
-    var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
-    repeat(8) {
-      val d = dir ?: return null
-      File(d, "local.properties")
-        .takeIf { it.isFile }
-        ?.let {
-          return it
-        }
-      dir = d.parentFile
-    }
-    return null
-  }
-
   /** `--project`: the app's Gradle build, for `reload` and `--live`. */
   private fun liveReload(): LiveReload? {
     val project = args.flagValue("--project")?.let { File(it).absoluteFile } ?: return null
@@ -921,6 +907,37 @@ internal class LaunchCommand(private val args: List<String>) {
   }
 
   companion object {
+    /**
+     * The android.jar from the first `local.properties` whose `sdk.dir` has a platform, looked for
+     * in and above each of [near] (the `--project`, the APK) and then [cwd], else from
+     * `ANDROID_HOME` / `ANDROID_SDK_ROOT`. The app's build comes first: a caller such as the MCP
+     * server may run this from outside it. A `sdk.dir` with no platform hides neither.
+     */
+    internal fun androidJar(
+      near: List<File>,
+      cwd: File = File(System.getProperty("user.dir") ?: "."),
+      env: (String) -> String? = { System.getenv(it) },
+    ): File? =
+      (near + cwd)
+        .mapNotNull { localPropertiesAbove(it) }
+        .distinctBy { it.absoluteFile }
+        .firstNotNullOfOrNull { AndroidBundleLaunch.resolveAndroidJar(it, env = { null }) }
+        ?: AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null, env = env)
+
+    private fun localPropertiesAbove(from: File): File? {
+      var dir: File? = from.absoluteFile.let { if (it.isFile) it.parentFile else it }
+      repeat(8) {
+        val d = dir ?: return null
+        File(d, "local.properties")
+          .takeIf { it.isFile }
+          ?.let {
+            return it
+          }
+        dir = d.parentFile
+      }
+      return null
+    }
+
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
 
