@@ -1682,8 +1682,10 @@ The device has one screen, and one of its apps is on it. Another comes on screen
   each app's home screen showing them all. Tapping another app's icon brings that app forward.
 - **When an app starts another's activity**: an explicit intent naming it, or an implicit one that
   only the other app handles (one the app itself also handles stays in the app). The other app
-  starts it, in a task of its own, its extras typed. A caller waiting for a result gets
-  `RESULT_CANCELED` at once, since the result would come from another process.
+  starts it, in a task of its own, its extras typed. Started for a result, it joins the caller's
+  task: when it finishes, or is torn down, its result and data (`RESULT_CANCELED` without one) come
+  back to the caller's `onActivityResult`, an `activityResult` event, and the caller comes back on
+  screen unless the two apps share a split screen.
 - **With the `foreground` command**: `{"cmd":"foreground","device":"phone/com.example.other"}`
   brings that app forward, as does `{"cmd":"foreground","package":"com.example.other"}` sent to
   the app on screen. `startActivity` with another app's component starts it there too.
@@ -1870,8 +1872,8 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers, `/sdcard` and its services are shared, but URI grants are not checked, a result from
-  its activity does not come back, and the apps share no clipboard or settings.
+  providers, `/sdcard` and its services are shared and its activities' results come back, but
+  URI grants are not checked, and the apps share no clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
