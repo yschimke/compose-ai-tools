@@ -305,7 +305,11 @@ internal class LaunchCommand(private val args: List<String>) {
       val keepData = command.boolean("keepData") ?: (command.boolean("clearData") != true)
       val plan =
         synchronized(live) {
-          live.prepare(bases.getValue(supervisor).apk, full = command.boolean("full") == true)
+          live.prepare(
+            bases.getValue(supervisor).apk,
+            full = command.boolean("full") == true,
+            compile = command.boolean("compile") != false,
+          )
         }
       fun JsonObject.with(vararg extra: Pair<String, kotlinx.serialization.json.JsonElement>) =
         JsonObject(

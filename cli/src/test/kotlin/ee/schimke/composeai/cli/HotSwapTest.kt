@@ -225,6 +225,47 @@ class HotSwapTest {
   }
 
   @Test
+  fun `a reload without compiling runs no build and diffs what another compiler wrote`() =
+    fixture { root ->
+      val (project, apk, _) = setup(root)
+      val builds = mutableListOf<List<String>>()
+      val live =
+        LiveReload(
+          projectDir = project,
+          module = ":app",
+          variant = "debug",
+          gradleArguments = emptyList(),
+          workDir = File(root, "work"),
+          log = {},
+          runner = { tasks ->
+            builds += tasks
+            LiveReload.Build(ok = true, ms = 1, tasks = tasks, errors = emptyList())
+          },
+        )
+      project.compile("com/example/UiKt", listOf(greeting, onCreate))
+      live.recordBaseline()
+      project.compile("com/example/UiKt", listOf(greeting.copy(text = "1"), onCreate))
+      live.prepare(apk, full = false)
+      live.applied()
+      builds.clear()
+
+      // The preview daemon's compiler wrote the edit into the class directory: diff it, build
+      // nothing.
+      project.compile("com/example/UiKt", listOf(greeting.copy(text = "2"), onCreate))
+      val plan = assertIs<LiveReload.Plan.Overlay>(live.prepare(apk, full = false, compile = false))
+      assertTrue(builds.isEmpty(), "no Gradle task ran: $builds")
+      assertTrue(plan.build.ok && plan.build.tasks.isEmpty())
+      assertEquals(
+        listOf("com/example/UiKt"),
+        assertIs<LiveReload.Swap.Classes>(live.hotSwap(plan)).names,
+      )
+
+      // Nothing written since: nothing to deliver.
+      live.applied()
+      assertIs<LiveReload.Plan.Unchanged>(live.prepare(apk, full = false, compile = false))
+    }
+
+  @Test
   fun `only the configuration cache's own refusal turns it off`() {
     assertTrue(
       LiveReload.refusedConfigurationCache(
