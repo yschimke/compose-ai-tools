@@ -1678,9 +1678,9 @@ and stopped. The app coming forward resumes its task, or starts its launcher act
 time. In a window, the app on screen has the device's one window; the other apps' windows are
 hidden, and each app comes forward where the last one was. Each change is a `foreground` event
 from both apps (`{"event":"foreground","package":…,"onScreen":true}`), `info` reports `onScreen`
-and the device's `otherApps`, and `"device":"phone"` follows the app on screen. Another app's icon
-is the default one, since its resources are in its own process, but its label is right: each app
-tells the others its own over the bus.
+and the device's `otherApps`, and `"device":"phone"` follows the app on screen. An app's resources
+are in its own process, so each draws its launcher icons and tells the others them and its label
+over the bus: every home screen shows each app as its own does.
 
 ### Split screen
 

@@ -163,11 +163,73 @@ final class DeviceApps {
     this.home = home;
   }
 
-  /** Tells the device's other apps this one's label, once the bus is joined. */
+  /**
+   * Tells the device's other apps this one's label and its launcher activities' icons, drawn here
+   * from its own resources as PNGs, once the bus is joined.
+   */
   void announce() {
     if (!DeviceBus.enabled()) return;
-    CharSequence label = app.getApplicationInfo().loadLabel(app.getPackageManager());
-    DeviceBus.broadcast(LABEL, new Protocol.Json().put("label", String.valueOf(label)).object());
+    android.content.pm.PackageManager pm = app.getPackageManager();
+    CharSequence label = app.getApplicationInfo().loadLabel(pm);
+    JSONObject drawn = new JSONObject();
+    Intent launcher =
+        new Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(app.getPackageName());
+    for (ResolveInfo info : pm.queryIntentActivities(launcher, 0)) {
+      String png = png(info.loadIcon(pm));
+      if (png == null) continue;
+      try {
+        drawn.put(info.activityInfo.name, png);
+      } catch (JSONException e) {
+        throw new IllegalStateException(e);
+      }
+    }
+    DeviceBus.broadcast(
+        LABEL,
+        new Protocol.Json().put("label", String.valueOf(label)).put("icons", drawn).object());
+  }
+
+  /** The size another app's icon is drawn at: the largest a launcher shows (48dp at xxxhdpi). */
+  private static final int ICON_PX = 192;
+
+  /**
+   * [icon] drawn at {@link #ICON_PX} as a base64 PNG, or null when it cannot be. It is laid out at
+   * its own size and scaled, so insets and strokes given in dp keep their proportions.
+   */
+  private static String png(android.graphics.drawable.Drawable icon) {
+    try {
+      android.graphics.Bitmap bitmap =
+          android.graphics.Bitmap.createBitmap(
+              ICON_PX, ICON_PX, android.graphics.Bitmap.Config.ARGB_8888);
+      int width = icon.getIntrinsicWidth() > 0 ? icon.getIntrinsicWidth() : ICON_PX;
+      int height = icon.getIntrinsicHeight() > 0 ? icon.getIntrinsicHeight() : ICON_PX;
+      android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+      canvas.scale((float) ICON_PX / width, (float) ICON_PX / height);
+      icon.setBounds(0, 0, width, height);
+      icon.draw(canvas);
+      java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+      bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+      return java.util.Base64.getEncoder().encodeToString(out.toByteArray());
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  /** Another app's launcher icons, by package then activity class, as PNG bytes. */
+  private static final Map<String, Map<String, byte[]>> icons = new ConcurrentHashMap<>();
+
+  /**
+   * [activity]'s icon as its app drew it, for this app's home screen; null until that app has told
+   * it.
+   */
+  static android.graphics.drawable.Drawable iconOf(
+      android.content.res.Resources res, ComponentName activity) {
+    Map<String, byte[]> drawn = icons.get(activity.getPackageName());
+    byte[] png = drawn == null ? null : drawn.get(activity.getClassName());
+    if (png == null) return null;
+    android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
+    return bitmap == null ? null : new android.graphics.drawable.BitmapDrawable(res, bitmap);
   }
 
   /** The label another app of the device told, or null. */
@@ -176,8 +238,19 @@ final class DeviceApps {
   }
 
   private void heardLabel(String from, JSONObject body) {
-    String label = body.optString("label", null);
-    if (label == null || label.equals(labels.put(from, label))) return;
+    String label = body.isNull("label") ? null : body.optString("label");
+    if (label == null) return;
+    boolean known = label.equals(labels.put(from, label)) && icons.containsKey(from);
+    Map<String, byte[]> drawn = new java.util.HashMap<>();
+    JSONObject sent = body.optJSONObject("icons");
+    if (sent != null) {
+      for (java.util.Iterator<String> it = sent.keys(); it.hasNext(); ) {
+        String name = it.next();
+        drawn.put(name, java.util.Base64.getDecoder().decode(sent.optString(name)));
+      }
+    }
+    icons.put(from, drawn);
+    if (known) return;
     // An app that joined after this one announced has not heard it yet.
     announce();
     if (home != null) home.relabel(from);
