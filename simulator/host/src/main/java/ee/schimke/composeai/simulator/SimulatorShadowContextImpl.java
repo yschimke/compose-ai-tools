@@ -67,6 +67,20 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   }
 
   /**
+   * A URI of one of this app's providers granted to another of the device's apps, which may then
+   * open it ({@link DeviceProviders}).
+   */
+  @Implementation
+  protected void grantUriPermission(String toPackage, android.net.Uri uri, int modeFlags) {
+    DeviceProviders.grant(toPackage, uri, modeFlags);
+  }
+
+  @Implementation
+  protected void revokeUriPermission(android.net.Uri uri, int modeFlags) {
+    DeviceProviders.revoke(uri, modeFlags);
+  }
+
+  /**
    * The system services Robolectric has no fetcher for, which a device always has: {@code
    * AppFunctionManager} (API 36), whose calls {@link SimulatorShadowAppFunctionManager} answers.
    */

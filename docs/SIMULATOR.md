@@ -1641,11 +1641,18 @@ What the apps share:
 - **Content providers.** Each app reaches the others' providers by authority, every call run by
   the owning app's provider in its own simulator with the caller as its `getCallingPackage()`:
   `query` (typed rows: integers, floats, strings, blobs, nulls), `insert`, `update`, `delete`,
-  `getType` and `call`, and `openFile` / `openInputStream` for reading, which hands the caller a
-  copy. A provider's `SecurityException`, `IllegalArgumentException` and `FileNotFoundException`
-  are thrown in the caller as such. A provider neither exported nor granting URI permissions
-  refuses other apps; one that grants them answers, as if the grant had been made. Writing to
-  another app's file and change notifications (`notifyChange`) do not cross.
+  `getType` and `call`, and `openFile` / `openInputStream` / `openOutputStream`. Reading hands the
+  caller a copy; writing hands it a copy that the owning app writes through its provider when the
+  caller closes it, before the close returns. A provider's `SecurityException`,
+  `IllegalArgumentException` and `FileNotFoundException` are thrown in the caller as such.
+  - Access is the owning app's to grant. A provider that is not exported answers another app only
+    for a URI granted to it: by an intent the owner sent it (a cross-app `startActivity` or
+    broadcast) with `FLAG_GRANT_READ_URI_PERMISSION` / `FLAG_GRANT_WRITE_URI_PERMISSION` on its
+    data, clip or `EXTRA_STREAM` (`FLAG_GRANT_PREFIX_URI_PERMISSION` covers the URIs under it), or
+    by `grantUriPermission`, until `revokeUriPermission`. An exported provider's read or write
+    permission is checked against the caller, which a grant also satisfies.
+  - A change an app's provider reports with `notifyChange` on its own authority reaches the other
+    apps' `ContentObserver`s.
 - **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
   writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
   under it. It is a temporary directory, deleted when the launch ends.
@@ -1855,8 +1862,9 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers and `/sdcard` are shared, but its services are not reached, URI grants are not checked,
-  a result from its activity does not come back, and the apps share no clipboard or settings.
+  providers, with their URI grants and change notifications, and `/sdcard` are shared, but its
+  services are not reached, a result from its activity does not come back, and the apps share no
+  clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global

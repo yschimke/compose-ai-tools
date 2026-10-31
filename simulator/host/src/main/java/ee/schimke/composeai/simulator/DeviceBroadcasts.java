@@ -60,6 +60,9 @@ final class DeviceBroadcasts {
     // simulator sends itself: only the system may send a protected android.* action.
     String action = intent.getAction();
     if (target == null && action != null && action.startsWith("android.")) return false;
+    // The URIs it grants, the apps it reaches may now open (DeviceProviders).
+    if (target != null) DeviceProviders.grantFrom(intent, target);
+    else DeviceProviders.grantFromToAll(intent);
     DeviceBus.broadcast(
         EVENT,
         new Protocol.Json()
