@@ -1653,6 +1653,14 @@ What the apps share:
     permission is checked against the caller, which a grant also satisfies.
   - A change an app's provider reports with `notifyChange` on its own authority reaches the other
     apps' `ContentObserver`s.
+- **Services.** `startService`, `startForegroundService`, `stopService`, `bindService` and
+  `unbindService` naming another app's service run it in that app's simulator: started there, it
+  gets `onStartCommand` and is destroyed on `stopService`. Bound, the caller's connection gets a
+  binder whose every `transact` the service's own binder runs in its app, the `Parcel`s marshalled
+  each way, so AIDL interfaces and `Messenger`s work with plain-data arguments; a binder inside a
+  call (a callback, a `replyTo` messenger) or a file descriptor does not cross. `onBind` sees the
+  bind's intent, its action included, once per distinct intent, and the last unbind calls
+  `onUnbind` and destroys a service that was not started.
 - **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
   writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
   under it. It is a temporary directory, deleted when the launch ends.
@@ -1685,9 +1693,9 @@ and stopped. The app coming forward resumes its task, or starts its launcher act
 time. In a window, the app on screen has the device's one window; the other apps' windows are
 hidden, and each app comes forward where the last one was. Each change is a `foreground` event
 from both apps (`{"event":"foreground","package":…,"onScreen":true}`), `info` reports `onScreen`
-and the device's `otherApps`, and `"device":"phone"` follows the app on screen. Another app's icon
-is the default one, since its resources are in its own process, but its label is right: each app
-tells the others its own over the bus.
+and the device's `otherApps`, and `"device":"phone"` follows the app on screen. An app's resources
+are in its own process, so each draws its launcher icons and tells the others them and its label
+over the bus: every home screen shows each app as its own does.
 
 ### Split screen
 
@@ -1862,9 +1870,9 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers, with their URI grants and change notifications, and `/sdcard` are shared, but its
-  services are not reached, a result from its activity does not come back, and the apps share no
-  clipboard or settings.
+  providers, with their URI grants and change notifications, `/sdcard` and its services are
+  shared, but a result from its activity does not come back, and the apps share no clipboard or
+  settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
