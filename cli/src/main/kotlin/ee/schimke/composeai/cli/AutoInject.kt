@@ -426,6 +426,26 @@ fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io
     return composeAiPreviewResolved
 }
 
+// The repository hosts of [this] handler's Maven repositories (lower-case), e.g. `dl.google.com`.
+fun org.gradle.api.artifacts.dsl.RepositoryHandler.composeAiPreviewHosts(): Set<String> =
+    mapNotNull {
+        (it as? org.gradle.api.artifacts.repositories.MavenArtifactRepository)
+            ?.url?.host?.lowercase()
+    }.toSet()
+
+// Add the repositories the plugin classpath resolves from — google(), the Plugin Portal and Maven
+// Central, in that order (see the call site) — skipping any whose host [this] already declares, so
+// a repository an earlier init script added (or rewrote to a mirror) keeps its place and isn't
+// shadowed by a duplicate. The host check is per repository, not all-or-nothing: a build that
+// declares only Maven Central still gets google() and the Plugin Portal.
+fun org.gradle.api.artifacts.dsl.RepositoryHandler.composeAiPreviewAddDefaultRepositories() {
+    val present = composeAiPreviewHosts()
+    if ("dl.google.com" !in present) google()
+    if ("plugins.gradle.org" !in present) gradlePluginPortal()
+    if ("repo.maven.apache.org" !in present && "repo1.maven.org" !in present) mavenCentral()
+    if (useMavenLocal && none { it.name == "MavenLocal" }) mavenLocal()
+}
+
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
     // In the exclusiveContent shape Gradle 9.3+ rejects adding to buildscript.repositories from
@@ -482,12 +502,18 @@ allprojects {
                 // markers, and AGP's exist only there. Asked first, Maven Central 404s and Gradle
                 // falls through, but a 429 from a rate-limited Central is fatal, which failed every
                 // project of a Lightbuild-generated build.
+                //
+                // The adds are deferred to beforeEvaluate and skip a host already present (issue
+                // #6361). `-I` scripts run before ~/.gradle/init.d, so adding here directly put
+                // these repos in place before a mirror / proxy init script registered its hooks: one
+                // that rewrites repositories as they are added (`whenObjectAdded`) never saw them,
+                // and the plugin resolved straight from Maven Central around the mirror. By
+                // beforeEvaluate every init script's allprojects hook has run, so ours are added
+                // after — and through — theirs, and a host another init script already declared
+                // (rewritten or not) is not declared a second time ahead of the build's own repos.
                 if (!composeAiPreviewSettingsHasExclusiveContent) {
-                    repositories {
-                        google()
-                        gradlePluginPortal()
-                        mavenCentral()
-                        if (useMavenLocal) mavenLocal()
+                    beforeEvaluate {
+                        buildscript.repositories.composeAiPreviewAddDefaultRepositories()
                     }
                 }
                 dependencies {
