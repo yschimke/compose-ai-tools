@@ -2,6 +2,7 @@ package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -147,6 +148,69 @@ public class AdbShellTest {
                 + " --ei index 2");
     assertEquals("show-tile", show.get("operation"));
     assertEquals(2, show.get("index"));
+  }
+
+  @Test
+  public void androidStudiosWholeWearLaunchTranslates() {
+    // AndroidWearConfigurationExecutor asks the surface version before every launch.
+    Map<String, Object> version =
+        t("am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation version");
+    assertEquals("debugSurface", version.get("cmd"));
+    assertEquals("version", version.get("operation"));
+    // Quoted operations, as AndroidTileConfigurationExecutor sends them.
+    assertEquals(
+        "add-tile",
+        t("am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation 'add-tile'"
+                + " --ecn component com.x/com.x.MyTile")
+            .get("operation"));
+    // show-tile and show-watchface go to DEBUG_SYSUI, not DEBUG_SURFACE.
+    Map<String, Object> show =
+        t(
+            "am broadcast -a com.google.android.wearable.app.DEBUG_SYSUI --es operation show-tile"
+                + " --ei index 101");
+    assertEquals("debugSurface", show.get("cmd"));
+    assertEquals("show-tile", show.get("operation"));
+    assertEquals(101, show.get("index"));
+    assertEquals(
+        "show-watchface",
+        t("am broadcast -a com.google.android.wearable.app.DEBUG_SYSUI --es operation show-watchface")
+            .get("operation"));
+    // A Debug launch brackets it with set-debug-app / clear-debug-app.
+    Map<String, Object> set = t("am set-debug-app -w 'com.x'");
+    assertEquals("debugApp", set.get("cmd"));
+    assertEquals("com.x", set.get("package"));
+    assertEquals(true, set.get("wait"));
+    Map<String, Object> clear = t("am clear-debug-app");
+    assertEquals("debugApp", clear.get("cmd"));
+    assertNull(clear.get("package"));
+    assertEquals(
+        "com.x",
+        t("am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation"
+                + " set-debug-app --es package 'com.x'")
+            .get("package"));
+  }
+
+  @Test
+  public void androidStudiosComplicationLaunchCarriesSlotTypeAndWatchFace() {
+    // AndroidComplicationConfigurationExecutor's set-complication, quoted components and all.
+    Map<String, Object> set =
+        t(
+            "am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation"
+                + " set-complication --ecn component 'com.x/com.x.Source'"
+                + " --ecn watchface 'com.x/com.x.Face' --ei slot 3 --ei type 5");
+    assertEquals("debugSurface", set.get("cmd"));
+    assertEquals("set-complication", set.get("operation"));
+    assertEquals("com.x/com.x.Source", set.get("component"));
+    assertEquals("com.x/com.x.Face", set.get("watchface"));
+    assertEquals(3, set.get("slot"));
+    assertEquals(5, set.get("type"));
+    // A declarative watch face names its package instead of a component.
+    Map<String, Object> declarative =
+        t(
+            "am broadcast -a com.google.android.wearable.app.DEBUG_SURFACE --es operation"
+                + " set-watchface --es watchFaceId com.x");
+    assertEquals("com.x", declarative.get("watchFaceId"));
+    assertNull(declarative.get("component"));
   }
 
   @Test

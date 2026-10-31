@@ -333,6 +333,24 @@ final class AdbShell {
         }
       case "kill-all":
         return cmd("forceStop");
+      case "set-debug-app":
+        {
+          // Android Studio's Debug launch of a Wear tile, widget, complication or watch face.
+          Map<String, Object> command = cmd("debugApp");
+          skipUser(a);
+          while (a.hasNext() && a.peek().startsWith("-")) {
+            String flag = a.next();
+            if (flag.equals("-w")) command.put("wait", true);
+            else if (!flag.equals("--persistent")) {
+              throw new UnsupportedException("am set-debug-app " + flag + " is not supported");
+            }
+          }
+          command.put("package", a.required("package"));
+          return command;
+        }
+      case "clear-debug-app":
+        skipUser(a);
+        return cmd("debugApp");
       case "stack":
       case "task":
         if (a.hasNext() && a.peek().equals("list")) a.next();
@@ -346,20 +364,27 @@ final class AdbShell {
   static final String DEBUG_SURFACE = "com.google.android.wearable.app.DEBUG_SURFACE";
 
   /**
-   * {@code am broadcast -a DEBUG_SURFACE --es operation <op> …}: Android Studio's tile, Wear Widget
-   * and watch face launches. On a device the system UI receives it; here it becomes the {@code
-   * debugSurface} command, which {@code Session} runs against the tiles carousel or the home screen.
-   * Any other broadcast is returned as it was.
+   * Its companion, which brings a surface forward: Android Studio sends {@code show-tile --ei index}
+   * after {@code add-tile}, and {@code show-watchface} after setting a watch face or complication.
+   */
+  static final String DEBUG_SYSUI = "com.google.android.wearable.app.DEBUG_SYSUI";
+
+  /**
+   * {@code am broadcast -a DEBUG_SURFACE|DEBUG_SYSUI --es operation <op> …}: Android Studio's tile,
+   * Wear Widget, complication and watch face launches. On a device the system UI receives it; here
+   * it becomes the {@code debugSurface} command, which {@code Session} runs against the tiles
+   * carousel or the home screen. Any other broadcast is returned as it was.
    */
   @SuppressWarnings("unchecked")
   static Map<String, Object> debugSurface(Map<String, Object> broadcast) {
     Map<String, Object> intent = (Map<String, Object>) broadcast.get("intent");
-    if (!DEBUG_SURFACE.equals(intent.get("action"))) return broadcast;
+    Object action = intent.get("action");
+    if (!DEBUG_SURFACE.equals(action) && !DEBUG_SYSUI.equals(action)) return broadcast;
     Map<String, Object> extras =
         (Map<String, Object>) intent.getOrDefault("extras", new LinkedHashMap<>());
     Map<String, Object> command = cmd("debugSurface");
     Object operation = extras.get("operation");
-    if (operation == null) throw new UnsupportedException("DEBUG_SURFACE needs --es operation");
+    if (operation == null) throw new UnsupportedException(action + " needs --es operation");
     command.put("operation", ((Map<String, Object>) operation).get("value"));
     for (Map.Entry<String, Object> extra : extras.entrySet()) {
       if (extra.getKey().equals("operation")) continue;

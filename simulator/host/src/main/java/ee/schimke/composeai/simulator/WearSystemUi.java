@@ -99,6 +99,8 @@ final class WearSystemUi {
   private Navigator.Entry home;
   private Surface surface = Surface.WATCHFACE;
   private boolean ambient;
+  private final WatchFaceHost watchFaces;
+  private int lastMinute = -1;
 
   private Context context;
   private Root root;
@@ -128,6 +130,22 @@ final class WearSystemUi {
     this.stream = stream;
     this.systemData = new SystemData(app);
     this.tiles = new TileHost(app, navigator, systemData, this::tileRendered, this::widgetRendered);
+    this.watchFaces =
+        new WatchFaceHost(
+            app,
+            navigator,
+            protocol,
+            new WatchFaceHost.Display() {
+              @Override
+              public void frame(android.graphics.Bitmap frame) {
+                if (faceView != null) faceView.appFrame(frame);
+              }
+
+              @Override
+              public void builtInComplication(String text) {
+                if (faceView != null) faceView.complication(text);
+              }
+            });
     stream.onChange(this::streamChanged);
   }
 
@@ -163,6 +181,9 @@ final class WearSystemUi {
     if (now - lastTick < 1000) return;
     lastTick = now;
     faceView.tick();
+    int minute = (int) (System.currentTimeMillis() / 60_000L);
+    watchFaces.tick(minute != lastMinute);
+    lastMinute = minute;
     if (surface == Surface.WATCHFACE) refreshChip();
   }
 
@@ -310,6 +331,15 @@ final class WearSystemUi {
         }
       case "tiles":
         return tilesCommand(c);
+      case "watchface":
+        {
+          JSONObject result = watchFaces.command(c);
+          String op = c.optString("op", "status");
+          if (!op.equals("status") && !op.equals("uncomplication") && !op.equals("unset")) {
+            show(Surface.WATCHFACE);
+          }
+          return result;
+        }
       case "health":
         {
           JSONObject data = systemData.command(c);
@@ -328,6 +358,7 @@ final class WearSystemUi {
       case "notifications":
       case "quickSettings":
       case "tiles":
+      case "watchface":
       case "health":
         return true;
       default:
@@ -343,6 +374,7 @@ final class WearSystemUi {
   void screen(ScreenPolicy.State state) {
     ambient = state != ScreenPolicy.State.ON;
     if (faceView != null) faceView.ambient(ambient);
+    watchFaces.ambient(ambient);
     if (ongoingChip != null) ongoingChip.setAlpha(ambient ? 0.5f : 1f);
     if (ambient && onTop() && surface != Surface.WATCHFACE) show(Surface.WATCHFACE);
   }

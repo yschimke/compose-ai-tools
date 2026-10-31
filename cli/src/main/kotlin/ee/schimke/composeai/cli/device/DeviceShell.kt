@@ -432,13 +432,17 @@ internal object AdbText {
           "Broadcasting: Intent { ${intent(command["intent"])} }",
           "Broadcast completed: result=0",
         )
+      // The Wear system UI's reply, which Android Studio parses: `data="3"` from `version`,
+      // `data="Index=[N]"` from `add-tile`.
       "debugSurface" -> {
         val index = (result["index"] as? JsonPrimitive)?.intOrNull
+        val data = result.string("data") ?: index?.let { "Index=[$it]" }
         listOf(
-          if (index != null) "Broadcast completed: result=1, data=\"Index=[$index]\""
+          if (data != null) "Broadcast completed: result=1, data=\"$data\""
           else "Broadcast completed: result=1"
         )
       }
+      "debugApp",
       "forceStop",
       "kill",
       "tap",
