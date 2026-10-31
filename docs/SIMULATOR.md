@@ -1646,6 +1646,14 @@ What the apps share:
   are thrown in the caller as such. A provider neither exported nor granting URI permissions
   refuses other apps; one that grants them answers, as if the grant had been made. Writing to
   another app's file and change notifications (`notifyChange`) do not cross.
+- **Services.** `startService`, `startForegroundService`, `stopService`, `bindService` and
+  `unbindService` naming another app's service run it in that app's simulator: started there, it
+  gets `onStartCommand` and is destroyed on `stopService`. Bound, the caller's connection gets a
+  binder whose every `transact` the service's own binder runs in its app, the `Parcel`s marshalled
+  each way, so AIDL interfaces and `Messenger`s work with plain-data arguments; a binder inside a
+  call (a callback, a `replyTo` messenger) or a file descriptor does not cross. `onBind` sees the
+  bind's intent, its action included, once per distinct intent, and the last unbind calls
+  `onUnbind` and destroys a service that was not started.
 - **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
   writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
   under it. It is a temporary directory, deleted when the launch ends.
@@ -1855,8 +1863,8 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers and `/sdcard` are shared, but its services are not reached, URI grants are not checked,
-  a result from its activity does not come back, and the apps share no clipboard or settings.
+  providers, `/sdcard` and its services are shared, but URI grants are not checked, a result from
+  its activity does not come back, and the apps share no clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
