@@ -23,6 +23,7 @@ import android.view.Display;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -112,8 +113,12 @@ final class Navigator {
   /** A running service and how it is held. */
   static final class Running {
     final ServiceController<? extends Service> controller;
-    /** What {@code onBind} returned, once something bound it. */
-    IBinder binder;
+    /**
+     * What {@code onBind} returned for each bind intent (as {@code Intent.filterEquals} tells them
+     * apart), once something bound it with that intent: a device calls {@code onBind} once per
+     * distinct intent.
+     */
+    final Map<Intent.FilterComparison, IBinder> binders = new HashMap<>();
     boolean started;
     int bindings;
     int lastStartId;
@@ -1361,6 +1366,18 @@ final class Navigator {
     return describe(component, running, "started");
   }
 
+  /** Whether the service [intent] names is running, started (as {@code stopService} answers). */
+  boolean isStarted(Intent intent) {
+    ComponentName component;
+    try {
+      component = resolveService(intent);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+    Running running = services.get(component);
+    return running != null && running.started;
+  }
+
   JSONObject stopService(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = services.get(component);
@@ -1422,9 +1439,10 @@ final class Navigator {
       component =
           new ComponentName(resolved.serviceInfo.packageName, resolved.serviceInfo.name);
     }
-    LazyBinder binder = bindable.get(component);
-    if (binder == null) return;
+    if (!bindable.containsKey(component)) return;
     Intent key = new Intent(intent);
+    // Bound with this intent, as onBind will see it: its action, data and categories included.
+    LazyBinder binder = new LazyBinder(component, new Intent(intent).setComponent(component));
     ShadowApplication shadowApp = Shadow.extract(app);
     shadowApp.setComponentNameAndServiceForBindServiceForIntent(key, component, binder);
     boundByApp.add(new Intent.FilterComparison(key));
@@ -1437,40 +1455,61 @@ final class Navigator {
   private void destroyService(ComponentName component, Running running) {
     services.remove(component);
     running.controller.destroy();
-    LazyBinder binder = bindable.get(component);
-    if (binder != null) binder.forget();
   }
 
-  /** Binds [component] for the app: creates the service if needed and returns its binder. */
-  private IBinder bindForApp(ComponentName component) {
-    Intent intent = new Intent().setComponent(component);
+  /**
+   * Binds [component] for the app with [intent]: creates the service if needed and returns the
+   * binder its {@code onBind} returned for that intent.
+   */
+  private IBinder bindForApp(ComponentName component, Intent intent) {
     Running running = runningOrCreate(component, intent);
-    if (running.binder == null) running.binder = running.controller.get().onBind(intent);
+    Intent.FilterComparison key = new Intent.FilterComparison(intent);
+    if (!running.binders.containsKey(key)) {
+      running.binders.put(key, running.controller.get().onBind(intent));
+    }
     running.bindings++;
     protocol.event("service", describe(component, running, "bound"));
-    return running.binder;
+    return running.binders.get(key);
   }
 
   /**
    * The binder the app's {@code onServiceConnected} receives: the real service's, created on first
    * use, which a device would have created before connecting.
    */
+  /**
+   * [binder] as the service's own: a {@link LazyBinder} binds the service now, running its
+   * creation and {@code onBind}, and returns what that gave, null included.
+   */
+  static IBinder materialize(IBinder binder) {
+    return binder instanceof LazyBinder ? ((LazyBinder) binder).real() : binder;
+  }
+
   private static final class LazyBinder implements IBinder {
     private final ComponentName component;
+    /** The intent the app bound with, which {@code onBind} sees; null for the manifest's entry. */
+    private final Intent intent;
     private IBinder real;
-
-    /** The service was destroyed: the next call binds a new instance. */
-    void forget() {
-      real = null;
-    }
+    /** The service instance [real] came from: one destroyed since is bound anew. */
+    private Running boundTo;
 
     LazyBinder(ComponentName component) {
+      this(component, null);
+    }
+
+    LazyBinder(ComponentName component, Intent intent) {
       this.component = component;
+      this.intent = intent;
     }
 
     private IBinder real() {
       Navigator navigator = current;
-      if (real == null && navigator != null) real = navigator.bindForApp(component);
+      if (navigator == null) return real;
+      if (real == null || navigator.services.get(component) != boundTo) {
+        real =
+            navigator.bindForApp(
+                component, intent != null ? intent : new Intent().setComponent(component));
+        boundTo = navigator.services.get(component);
+      }
       return real;
     }
 
@@ -1626,8 +1665,6 @@ final class Navigator {
       if (shadow.isStoppedBySelf()) {
         it.remove();
         e.getValue().controller.destroy();
-        LazyBinder binder = bindable.get(e.getKey());
-        if (binder != null) binder.forget();
         protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
       }
     }

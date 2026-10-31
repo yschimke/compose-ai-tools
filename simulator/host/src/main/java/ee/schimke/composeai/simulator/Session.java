@@ -155,6 +155,17 @@ final class Session {
     // An activity of another of the device's apps (--app): that app comes on screen and starts it.
     this.deviceApps = new DeviceApps(app, navigator, protocol, display);
     if (home != null) deviceApps.attach(home);
+    // As this app's screenshot draws it: black while its screen is off or dozing with nothing to
+    // draw, as the panel shows.
+    deviceApps.screenSource(
+        () -> {
+          Bitmap bitmap = ui.takeScreenshot();
+          if (bitmap == null || !screen.dark()) return bitmap;
+          Bitmap black =
+              Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+          black.eraseColor(android.graphics.Color.BLACK);
+          return black;
+        });
     new Handoffs(app, protocol, navigator);
     this.appActions = new AppActions(app, navigator);
     this.appFunctions = new AppFunctions(app, protocol);
@@ -163,6 +174,7 @@ final class Session {
     // Broadcasts to and from the device's other apps, and calls into this app's providers.
     DeviceBroadcasts.attach(app, navigator, protocol);
     DeviceProviders.serve(app);
+    DeviceServices.serve(app);
     DeviceBus.start(app.getPackageName());
     deviceApps.announce();
   }
@@ -765,6 +777,12 @@ final class Session {
           Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
       black.eraseColor(android.graphics.Color.BLACK);
       bitmap = black;
+    }
+    if (displayId == android.view.Display.DEFAULT_DISPLAY
+        && !screen.dark()
+        && !c.optBoolean("app", false)) {
+      // A split screen's whole screen, both apps' halves, unless this app's alone is asked for.
+      bitmap = deviceApps.wholeScreen(bitmap);
     }
     if (displayId == android.view.Display.DEFAULT_DISPLAY
         && FormFactor.isRound()

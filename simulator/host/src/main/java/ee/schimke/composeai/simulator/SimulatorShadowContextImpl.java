@@ -27,6 +27,10 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation
   @Override
   protected boolean bindService(Intent service, ServiceConnection connection, int flags) {
+    // Another of the device's apps' service is bound in that app (DeviceServices).
+    if (DeviceServices.ownerOf(service) != null) {
+      return DeviceServices.bind(service, connection, flags, null);
+    }
     Navigator.prepareBind(service);
     return super.bindService(service, connection, flags);
   }
@@ -35,8 +39,33 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Override
   protected boolean bindService(
       Intent service, int flags, Executor executor, ServiceConnection connection) {
+    if (DeviceServices.ownerOf(service) != null) {
+      return DeviceServices.bind(service, connection, flags, executor);
+    }
     Navigator.prepareBind(service);
     return super.bindService(service, flags, executor, connection);
+  }
+
+  @Implementation
+  @Override
+  protected void unbindService(ServiceConnection connection) {
+    if (DeviceServices.unbind(connection)) return;
+    super.unbindService(connection);
+  }
+
+  /** Another of the device's apps' service is started in that app ({@link DeviceServices}). */
+  @Implementation
+  @Override
+  protected android.content.ComponentName startService(Intent service) {
+    if (DeviceServices.ownerOf(service) != null) return DeviceServices.start(service, false);
+    return super.startService(service);
+  }
+
+  @Implementation
+  @Override
+  protected boolean stopService(Intent service) {
+    if (DeviceServices.ownerOf(service) != null) return DeviceServices.stop(service);
+    return super.stopService(service);
   }
 
   /**
@@ -107,6 +136,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation(minSdk = Build.VERSION_CODES.O)
   @Override
   protected android.content.ComponentName startForegroundService(Intent service) {
+    if (DeviceServices.ownerOf(service) != null) return DeviceServices.start(service, true);
     Navigator.expectForeground(service);
     return super.startForegroundService(service);
   }
@@ -115,6 +145,9 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Override
   protected boolean bindServiceAsUser(
       Intent service, ServiceConnection connection, int flags, UserHandle user) {
+    if (DeviceServices.ownerOf(service) != null) {
+      return DeviceServices.bind(service, connection, flags, null);
+    }
     Navigator.prepareBind(service);
     return super.bindServiceAsUser(service, connection, flags, user);
   }

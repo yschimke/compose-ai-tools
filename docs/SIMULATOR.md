@@ -282,7 +282,7 @@ Commands run in order. Those that change the UI answer after `settleMs` of simul
 | `ping` | | uptime |
 | `zoom` | `value`? (`in`, `out`, `actual`, `fit`, `"75%"` or `0.75`) | the window's [zoom](#running-an-apk-in-the-robolectric-simulator); returns `scale`, the device and shown sizes, where the display is on screen (`screenX`, `screenY`) and `alwaysOnTop`. Errors with `--headless` |
 | `wait` | `ms` (or `settleMs`) | lets the app run |
-| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square` |
+| `screenshot` | `path`?, `display`? (an id, or `"all"`), `square`?, `app`? | PNG to `path`, else base64 in `png`; `"all"` writes one per display, `<path>-display<id>.png` beside `path`; a round display's is cropped to the circle unless `square`; on a [split screen](#split-screen) both halves, unless `app` asks for this app's alone |
 | `hierarchy` | `flat`?, `path`? (JSON written there) | windows → views and Compose semantics (via accessibility nodes): `cls`, `text`, `desc`, `resourceId`, `hint`, `state`, `bounds`, `flags` |
 | `find` | selector | matching nodes |
 | `tap` | `x`,`y` or selector, `index`? | touch down/up at the point or the node's center |
@@ -1646,6 +1646,14 @@ What the apps share:
   are thrown in the caller as such. A provider neither exported nor granting URI permissions
   refuses other apps; one that grants them answers, as if the grant had been made. Writing to
   another app's file and change notifications (`notifyChange`) do not cross.
+- **Services.** `startService`, `startForegroundService`, `stopService`, `bindService` and
+  `unbindService` naming another app's service run it in that app's simulator: started there, it
+  gets `onStartCommand` and is destroyed on `stopService`. Bound, the caller's connection gets a
+  binder whose every `transact` the service's own binder runs in its app, the `Parcel`s marshalled
+  each way, so AIDL interfaces and `Messenger`s work with plain-data arguments; a binder inside a
+  call (a callback, a `replyTo` messenger) or a file descriptor does not cross. `onBind` sees the
+  bind's intent, its action included, once per distinct intent, and the last unbind calls
+  `onUnbind` and destroys a service that was not started.
 - **`/sdcard`.** The device's shared storage is one directory for all its apps, so a file one app
   writes to `Download/` or `Pictures/` the others read. Each app's own `Android/data/<package>` is
   under it. It is a temporary directory, deleted when the launch ends.
@@ -1680,9 +1688,9 @@ and stopped. The app coming forward resumes its task, or starts its launcher act
 time. In a window, the app on screen has the device's one window; the other apps' windows are
 hidden, and each app comes forward where the last one was. Each change is a `foreground` event
 from both apps (`{"event":"foreground","package":…,"onScreen":true}`), `info` reports `onScreen`
-and the device's `otherApps`, and `"device":"phone"` follows the app on screen. Another app's icon
-is the default one, since its resources are in its own process, but its label is right: each app
-tells the others its own over the bus.
+and the device's `otherApps`, and `"device":"phone"` follows the app on screen. An app's resources
+are in its own process, so each draws its launcher icons and tells the others them and its label
+over the bus: every home screen shows each app as its own does.
 
 ### Split screen
 
@@ -1710,9 +1718,10 @@ In a window, the second app's window opens beside the first's. Each app's `info`
 `split` (`side`, `with`), and its `foreground` event carries its `side`.
 
 The split ends when either app goes to the background or another app comes on screen. The app left
-on screen gets the whole display back, its preset and fold included. Each app's display is its own
-half, so a `screenshot` is that app's half and each app draws its own status bar, with no divider
-between the halves.
+on screen gets the whole display back, its preset and fold included. A `screenshot` is the whole
+screen, both halves in their places, whichever app takes it (the other app draws its own half);
+`"app": true` takes the app's own half alone. Each app draws its own status bar, and there is no
+divider between the halves.
 
 On a watch the `foreground` command switches apps, but the watch's launcher lists only its
 own app. `--install` combines with `--pair` (and both with `--app`), but
@@ -1856,8 +1865,8 @@ What does not, or not yet:
 - **Several apps.** Each `--install`ed app is a manifest to the others and a target of App
   Functions calls ([above](#several-apps-on-one-device)), and its activities start in its own
   simulator, which comes on screen ([switching](#switching-between-them)); broadcasts, content
-  providers and `/sdcard` are shared and its activities' results come back, but its services are
-  not reached, URI grants are not checked, and the apps share no clipboard or settings.
+  providers, `/sdcard` and its services are shared and its activities' results come back, but
+  URI grants are not checked, and the apps share no clipboard or settings.
 - **App integrations.** App Actions are invoked by capability, not by a spoken query, and slices,
   `<fulfillment>`-only legacy actions.xml and web inventories are not read. AppSearch has no
   ranking expressions, joins, projections, snippets, suggestions, blobs, visibility or global
