@@ -91,6 +91,10 @@ final class SimulatorSandbox {
                 SimulatorShadowJobScheduler.class,
                 // Content changes tell the device's other apps (DeviceProviders).
                 SimulatorShadowContentResolver.class,
+                // The device's settings, shared by its apps (DeviceSettings).
+                SimulatorShadowSettings.SimulatorShadowSystem.class,
+                SimulatorShadowSettings.SimulatorShadowSecure.class,
+                SimulatorShadowSettings.SimulatorShadowGlobal.class,
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class,

@@ -175,7 +175,13 @@ final class Session {
     DeviceBroadcasts.attach(app, navigator, protocol);
     DeviceProviders.serve(app);
     DeviceServices.serve(app);
+    // The device's one clipboard and settings, shared with its other apps.
+    DeviceClipboard.attach(app);
+    DeviceSettings.attach(app);
     DeviceBus.start(app.getPackageName());
+    // What this app set while starting goes out now, and the apps already there answer.
+    DeviceClipboard.joined();
+    DeviceSettings.joined();
     deviceApps.announce();
   }
 
