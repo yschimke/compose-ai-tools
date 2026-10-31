@@ -119,6 +119,19 @@ internal class SimulatorSupervisor(
     }
   }
 
+  /**
+   * Asks the running simulator [command] (a control command, without an id) and waits up to
+   * [timeoutMs] for its answer: the result, or a failure saying why (its error, a timeout, or no
+   * simulator running). Called from the command worker, as a reload is.
+   */
+  fun ask(command: JsonObject, timeoutMs: Long): Result<JsonObject> {
+    val child = current ?: return Result.failure(IllegalStateException("no simulator is running"))
+    return when (val reply = child.request(command, timeoutMs)) {
+      is Reply.Ok -> Result.success(reply.result)
+      is Reply.Failed -> Result.failure(IllegalStateException(reply.message))
+    }
+  }
+
   /** The exit code once the session is over: its simulator exited, or [close] was called. */
   fun awaitExit(): Int = finished.get()
 

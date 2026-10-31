@@ -1556,7 +1556,8 @@ and with no APK given the CLI builds one first. The control channel's **`reload`
 3. copies each class that changed or is new into an overlay directory, renamed as the APK converter
    names classes. dex2jar turns every `-` in a name into `_`, so kotlinc's `constructor-impl` and
    `lambda-1` would otherwise call names the converted jar does not have;
-4. restarts the app on the APK's converted classes with the overlay in front, keeping its data, as
+4. hot-swaps the edit into the running app when it can ([below](#hot-swap)), and otherwise
+   restarts the app on the APK's converted classes with the overlay in front, keeping its data, as
    [`restart`](#restart-and-update) does. Nothing is dexed, packaged or converted. `--project`
    turns `--standby` on, so the restart takes over a prepared JVM.
 
@@ -1571,9 +1572,53 @@ compiler's `e:` lines, and the running app is left alone.
 reports each as a `reload` event. `--gradle-arg` (repeatable) passes arguments to the build, such
 as `--max-workers=2`.
 
-`reload` answers like `restart`, plus `mode` (`classes`, `resources`, `apk`, or `unchanged` when
-the build changed nothing the app does not already run), `build` (`ok`, `ms`, `tasks`, `errors`),
-`classesChanged` with the first few names, and `prepareMs` for the overlay and resource merge.
+`reload` answers like `restart`, plus `mode` (`hotswap`, `classes`, `resources`, `apk`, or
+`unchanged` when the build changed nothing the app does not already run), `build` (`ok`, `ms`,
+`tasks`, `errors`), `classesChanged` with the first few names, and `prepareMs` for the overlay and
+resource merge. A restart says why it did not hot-swap in `hotswapSkipped`; a hot swap's `hotswap`
+has `redefined`, `redefineMs` and `recreateMs`.
+
+The build asks for Gradle's configuration cache, which saves about half a second of each warm
+compile, unless `--gradle-arg` already chooses. When the build fails on the configuration cache
+itself, the reload builds again without it, and later reloads leave it off.
+
+### Hot swap
+
+A composable edit reaches the running app without a restart: the changed classes are redefined in
+the simulator's JVM (its `simulator-host` jar is also its `-javaagent`), then the activity is
+re-created from its saved state, as a configuration change re-creates it. The app keeps its process,
+its data, its `ViewModel`s and what it saves across a rotation, such as `rememberSaveable` and a
+saveable navigation back stack; plain `remember` state starts over, as on a rotation. A reload hot-swaps
+only when all of this holds, and restarts otherwise, saying why in `hotswapSkipped`:
+
+- no resource and no resource id changed;
+- every class changed since what the app runs already runs as compiler output. The first edit of a
+  class since the launch restarts: the app runs it from the converted APK, whose shape is dex2jar's,
+  not the compiler's. Its later edits can swap;
+- no field or method was added or removed, and no declaration changed, which the JVM's
+  redefinition does not allow;
+- every method whose code changed takes a `Composer`, so the re-created activity runs it again.
+  Other code, an `onCreate` or an initializer, has already run, and a swap would hide the edit.
+  Line numbers are ignored, since an edit shifts every method below it;
+- the app has one activity alive, on the default display: re-creation refreshes only that one;
+- a class reverted to its launch version restarts, to load the APK's copy.
+
+The swap is all or nothing: the simulator checks before redefining, and the JVM redefines every
+class or none. `{"cmd":"reload","hotswap":false}` always restarts.
+
+ComposeStarter (Wear OS), a string in a composable, 15 edits in a row, one session:
+
+| Edit | Mode | Edit to pixels | Where the time went |
+| --- | --- | --- | --- |
+| 1st | `classes` (restart: first edit of the class) | 5.0 s | compile 1.4 s, restart from the standby |
+| 2nd–15th | `hotswap`, 14 of 14 | 1.8–2.0 s warm (2.8 s on the 2nd) | compile 1.0–1.2 s, redefine 65–105 ms, re-create 140–210 ms, settle 250 ms |
+
+Before hot swap the same edit took 8.2 s warm: compile 2.9 s, restart 2.4 s, and 2.4 s before the
+restarted app's first frame. On the list screen, a hot-swapped edit to that screen stays on it:
+
+| On the list screen | After a hot swap of its card title (2.0 s) |
+| --- | --- |
+| ![](design/evidence/simulator-launch/hot-swap-composestarter-list-before.png) | ![](design/evidence/simulator-launch/hot-swap-composestarter-list-after.png) |
 
 Sunflower (Compose, Hilt, Room; `--sdk 36`), its empty garden screen. A three-line edit to the
 `EmptyGarden` composable's `Text` (its text, style and color), then a string resource:
@@ -1593,10 +1638,10 @@ and a conversion of the APK that reused its previous build's unchanged classes (
 
 What a reload does not keep or cover:
 
-- **UI state.** The back stack, scroll positions and anything not on disk are lost: the app starts
-  at its launcher activity, as after `adb install -r`. Compose's own hot reload, which keeps
-  state, redefines classes in place; that needs the JetBrains Runtime's enhanced class
-  redefinition and is not attempted.
+- **UI state, on a restart.** The back stack, scroll positions and anything not on disk are lost:
+  the app starts at its launcher activity, as after `adb install -r`. A [hot swap](#hot-swap) keeps
+  what a rotation keeps. Structural edits (a method added or removed) would need the JetBrains
+  Runtime's enhanced class redefinition, which is not attempted: they restart.
 - **Desugared library APIs.** Overlaid classes are kotlinc's and javac's JVM output, not D8's. An
   app using core library desugaring passes `java.time` where the APK's classes expect `j$.time`,
   so a changed class must not exchange those types with one that did not change.

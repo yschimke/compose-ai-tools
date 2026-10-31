@@ -102,7 +102,7 @@ internal class LaunchCommand(private val args: List<String>) {
     val simulatorJars = sidecar("lib-simulator")
     val dex2jarJars = sidecar("lib-dex2jar")
     val hostJar =
-      simulatorJars.firstOrNull { it.name.startsWith("simulator-host") }
+      simulatorJars.firstOrNull { it.name.startsWith(SIMULATOR_HOST_JAR) }
         ?: fail("lib-simulator/ has no simulator-host jar")
 
     // Before provisioning: under the network switch Robolectric needs pre-provisioned android-all.
@@ -324,6 +324,48 @@ internal class LaunchCommand(private val args: List<String>) {
           }
             .with()
         is LiveReload.Plan.Overlay -> {
+          // Composable edits go into the running app: no new JVM, no relaunch, state kept. Any
+          // other change, or a swap the simulator refuses, restarts as before.
+          val swap =
+            if (command.boolean("hotswap") == false) LiveReload.Swap.Restart("hotswap: false")
+            else live.hotSwap(plan)
+          val skipped =
+            when (swap) {
+              is LiveReload.Swap.Restart -> swap.reason
+              is LiveReload.Swap.Classes -> {
+                val asked =
+                  supervisor.ask(
+                    buildJsonObject {
+                      put("cmd", "hotswap")
+                      put("dir", plan.overlay!!.path)
+                      put(
+                        "classes",
+                        kotlinx.serialization.json.JsonArray(swap.names.map(::JsonPrimitive)),
+                      )
+                    },
+                    HOT_SWAP_TIMEOUT_MS,
+                  )
+                val answer = asked.getOrNull()
+                if (answer?.boolean("swapped") == true) {
+                  live.applied()
+                  return buildJsonObject {
+                    put("mode", "hotswap")
+                    put("build", plan.build.toJson())
+                    put("classesChanged", swap.names.size)
+                    put(
+                      "classes",
+                      kotlinx.serialization.json.JsonArray(
+                        swap.names.take(MAX_LISTED_CLASSES).map(::JsonPrimitive)
+                      ),
+                    )
+                    put("hotswap", answer)
+                    put("prepareMs", plan.prepareMs)
+                  }
+                    .with()
+                }
+                answer?.string("reason") ?: asked.exceptionOrNull()?.message ?: "no answer"
+              }
+            }
           val restarted =
             supervisor.restart(
               SimulatorSupervisor.Launch(
@@ -346,6 +388,7 @@ internal class LaunchCommand(private val args: List<String>) {
               "resourcesChanged" to JsonPrimitive(plan.resources),
               "resourceIdsChanged" to JsonPrimitive(plan.resourceIds),
               "prepareMs" to JsonPrimitive(plan.prepareMs),
+              "hotswapSkipped" to JsonPrimitive(skipped),
             )
         }
         is LiveReload.Plan.Rebuild -> {
@@ -939,6 +982,12 @@ internal class LaunchCommand(private val args: List<String>) {
     }
 
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
+
+    /** The name `:simulator-host`'s jar starts with in `lib-simulator/`. */
+    const val SIMULATOR_HOST_JAR = "simulator-host"
+
+    /** How long a reload waits for the simulator to redefine and recompose before restarting. */
+    const val HOT_SWAP_TIMEOUT_MS = 30_000L
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
 
     /**
@@ -1114,6 +1163,11 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(SIMULATOR_JVM_ARGS)
       addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
+      // The host jar is also the simulator's agent: it lets a reload redefine changed classes in
+      // the running app (`hotswap`) instead of restarting it.
+      classpath
+        .firstOrNull { it.name.startsWith(SIMULATOR_HOST_JAR) }
+        ?.let { add("-javaagent:${it.path}") }
       // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
       // the app's real traffic reaches.
       add("--add-opens=java.base/java.net=ALL-UNNAMED")
@@ -1281,8 +1335,10 @@ internal class LaunchCommand(private val args: List<String>) {
                               sharing one are <device>/<package>. Without an APK argument the
                               first --app is the one on screen.
         --project <dir>       The app's Gradle build: the APK becomes optional (it is built),
-                              and the control channel's "reload" compiles an edit and restarts
-                              the app on just the changed classes, with no dexing or APK.
+                              and the control channel's "reload" compiles an edit and hot-swaps
+                              a composable change into the running app (its activity re-created,
+                              what a rotation keeps kept), or restarts the app on just the changed
+                              classes, with no dexing or APK.
         --module <name>       With --project: the app module (default app).
         --variant <name>      With --project: the variant (default debug).
         --live                With --project: reload after every edit to the sources.

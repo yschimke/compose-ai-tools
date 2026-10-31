@@ -1345,6 +1345,15 @@ final class Navigator {
     return json.object();
   }
 
+  /** The app's activities alive on display [displayId] and on every display, system UI left out. */
+  int appActivities(int displayId, boolean anyDisplay) {
+    int count = 0;
+    for (Entry entry : stack) {
+      if (!entry.system && (anyDisplay || entry.displayId == displayId)) count++;
+    }
+    return count;
+  }
+
   JSONArray describeStack() {
     JSONArray array = new JSONArray();
     for (Entry entry : stack) {

@@ -305,3 +305,14 @@ dependencies {
   )
   runtimeOnly(files(tileRendererRJar.flatMap { it.archiveFile }).builtBy(tileRendererRJar))
 }
+
+// The simulator JVM also loads this jar as its `-javaagent`, so a reload can redefine the app's
+// changed classes in place (`hotswap.HotSwap`) instead of restarting it.
+tasks.named<Jar>("jar") {
+  manifest {
+    attributes(
+      "Premain-Class" to "ee.schimke.composeai.simulator.hotswap.HotSwap",
+      "Can-Redefine-Classes" to "true",
+    )
+  }
+}
