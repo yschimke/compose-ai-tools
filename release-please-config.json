@@ -36,6 +36,10 @@
         {
           "type": "generic",
           "path": ".github/workflows/preview-release-diff-reusable.yml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/preview-audit-reusable.yml"
         }
       ]
     }

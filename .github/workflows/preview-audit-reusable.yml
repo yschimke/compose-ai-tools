@@ -1,0 +1,560 @@
+name: Preview Audit (reusable)
+
+# An advisory design-guidelines audit of the previews a pull request (or a release) changed, for
+# compose-preview consumers. An agent, or Jev with a vision recheck, checks the changed previews
+# against the consumer's pinned guideline packs and posts the findings as a sticky
+# `<!-- preview-audit -->` comment, or appends them to the release notes. Findings are advisory
+# model output, never a merge gate.
+#
+# The caller keeps the triggers, which must live in its own repository, and passes its repository
+# variables through:
+#
+#   on:
+#     issue_comment: { types: [created] }
+#     workflow_dispatch: { inputs: { pr: { description: PR number to audit, required: true } } }
+#     workflow_call:
+#       inputs:
+#         release: { type: string, required: true }
+#         base: { type: string, required: false, default: '' }
+#   permissions: {}
+#   jobs:
+#     audit:
+#       if: >-
+#         inputs.release != '' || github.event_name == 'workflow_dispatch' ||
+#         (github.event.issue.pull_request != null &&
+#          github.event.comment.user.login == github.repository_owner &&
+#          (github.event.comment.body == '/audit' || startsWith(github.event.comment.body, '/audit ')))
+#       uses: yschimke/compose-ai-tools/.github/workflows/preview-audit-reusable.yml@v2.83.0
+#       with:
+#         pr: ${{ inputs.pr }}
+#         release: ${{ inputs.release }}
+#         base: ${{ inputs.base }}
+#         agent: ${{ vars.PREVIEW_AUDIT_AGENT }}
+#         recheck-model: ${{ vars.PREVIEW_AUDIT_RECHECK_MODEL }}
+#         opencode-model: ${{ vars.PREVIEW_AUDIT_OPENCODE_MODEL }}
+#         claude-model: ${{ vars.PREVIEW_AUDIT_CLAUDE_MODEL }}
+#         codex-model: ${{ vars.PREVIEW_AUDIT_CODEX_MODEL }}
+#         catalog-key: composePreviewPlugin
+#       secrets: inherit
+#       permissions: { contents: write, pull-requests: write, issues: write, id-token: write }
+#
+# Inside this workflow `github.event` is still the caller's event, so a `/audit` comment's PR, id
+# and text are read from it. The caller's repository supplies what the agents read:
+# `.github/preview-audit/PROMPT.md` (the agents' instructions), its guideline files, and
+# `.github/preview-audit/jev.json` (which guidelines file covers which module, for `jev`).
+#
+# Agents (`agent`; `auto` tries them in this order): jev (OPENROUTER_API_KEY), opencode
+# (OPENCODE_API_KEY), claude (CLAUDE_CODE_OAUTH_TOKEN), claude-api (ANTHROPIC_API_KEY), codex
+# (OPENAI_API_KEY); `off` disables the audit. The jev agent is no coding agent: it runs the
+# preview-audit-jev action, whose report gives the cost and how much of it was the recheck.
+#
+# Release mode: with `release` (and `base`), the audit reads the comparison of the caller's release
+# diff (the `release-preview-diff` artifact of the same run) instead of a PR comment, checks out
+# the release tag, and appends its report to the release notes instead of commenting.
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: PR number to audit (a manual run's input; a /audit comment needs none).
+        required: false
+        type: string
+        default: ''
+      release:
+        description: Release tag whose preview changes to audit (release mode).
+        required: false
+        type: string
+        default: ''
+      base:
+        description: The tag the release was compared with.
+        required: false
+        type: string
+        default: ''
+      agent:
+        description: auto (default), jev, opencode, claude, claude-api, codex or off.
+        required: false
+        type: string
+        default: ''
+      recheck-model:
+        description: jev only; empty takes the preview-audit-jev action's default, `none` turns the recheck off.
+        required: false
+        type: string
+        default: ''
+      opencode-model:
+        required: false
+        type: string
+        default: ''
+      claude-model:
+        required: false
+        type: string
+        default: ''
+      codex-model:
+        required: false
+        type: string
+        default: ''
+      catalog-key:
+        description: The gradle/libs.versions.toml versions key that pins the compose-preview CLI.
+        required: false
+        type: string
+        default: composePreviewPlugin
+      render-workflow:
+        description: The caller's workflow that renders a PR's previews and posts the preview-diff comment.
+        required: false
+        type: string
+        default: compose-preview.yml
+      setup:
+        description: >
+          How the audit job sets up the build. `default`: the JDK (`java-version`, temurin), the
+          Android SDK (`android-packages`) and Gradle. `local`: the caller's own
+          `./.github/actions/setup`, called with `cache-read-only: 'true'`.
+        required: false
+        type: string
+        default: default
+      java-version:
+        required: false
+        type: string
+        default: '21'
+      android-packages:
+        required: false
+        type: string
+        default: platform-tools platforms;android-36 build-tools;36.0.0
+      pre-render:
+        description: Shell run in the checkout before discovery (fonts, generated sources).
+        required: false
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  gate:
+    name: Decide whether to audit
+    # issue_comment runs this file from main with secrets, so only the
+    # repository owner can start it, and the gate below still refuses PRs whose
+    # head branch lives in a fork before the audit job checks out any code.
+    # Every other PR comment also starts this workflow; this `if` keeps those
+    # from doing anything.
+    if: >-
+      inputs.release != '' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request != null &&
+       github.event.comment.user.login == github.repository_owner &&
+       (github.event.comment.body == '/audit' || startsWith(github.event.comment.body, '/audit ')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+      # Reacting to and replying on the `/audit` comment.
+      issues: write
+    outputs:
+      agent: ${{ steps.gate.outputs.agent }}
+      pr: ${{ steps.gate.outputs.pr }}
+      sha: ${{ steps.gate.outputs.sha }}
+      fingerprint: ${{ steps.gate.outputs.fingerprint }}
+      focus: ${{ steps.gate.outputs.focus }}
+      release: ${{ steps.gate.outputs.release }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          INPUT_PR: ${{ inputs.pr }}
+          COMMENT_PR: ${{ github.event.issue.number }}
+          RELEASE: ${{ inputs.release }}
+          BASE_TAG: ${{ inputs.base }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          HAS_JEV: ${{ secrets.OPENROUTER_API_KEY != '' }}
+          HAS_OPENCODE: ${{ secrets.OPENCODE_API_KEY != '' }}
+          HAS_CLAUDE: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          HAS_CLAUDE_API: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_CODEX: ${{ secrets.OPENAI_API_KEY != '' }}
+          PREFERRED: ${{ inputs.agent }}
+          RENDER_WORKFLOW: ${{ inputs.render-workflow }}
+        run: |
+          set -euo pipefail
+          skip() {
+            echo "::notice::Preview audit skipped: $1"
+            if [ "$EVENT" = issue_comment ]; then
+              gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=confused >/dev/null || true
+              gh api "repos/$REPO/issues/$COMMENT_PR/comments" \
+                -f body="Preview audit not started: $1." >/dev/null || true
+            fi
+            exit 0
+          }
+
+          case "${PREFERRED:-auto}" in
+            off) skip "PREVIEW_AUDIT_AGENT is off" ;;
+            jev) [ "$HAS_JEV" = true ] && agent=jev || skip "PREVIEW_AUDIT_AGENT=jev but no OPENROUTER_API_KEY secret" ;;
+            opencode) [ "$HAS_OPENCODE" = true ] && agent=opencode || skip "PREVIEW_AUDIT_AGENT=opencode but no OPENCODE_API_KEY secret" ;;
+            claude) [ "$HAS_CLAUDE" = true ] && agent=claude || skip "PREVIEW_AUDIT_AGENT=claude but no CLAUDE_CODE_OAUTH_TOKEN secret" ;;
+            claude-api) [ "$HAS_CLAUDE_API" = true ] && agent=claude-api || skip "PREVIEW_AUDIT_AGENT=claude-api but no ANTHROPIC_API_KEY secret" ;;
+            codex) [ "$HAS_CODEX" = true ] && agent=codex || skip "PREVIEW_AUDIT_AGENT=codex but no OPENAI_API_KEY secret" ;;
+            *)
+              if [ "$HAS_JEV" = true ]; then agent=jev
+              elif [ "$HAS_OPENCODE" = true ]; then agent=opencode
+              elif [ "$HAS_CLAUDE" = true ]; then agent=claude
+              elif [ "$HAS_CLAUDE_API" = true ]; then agent=claude-api
+              elif [ "$HAS_CODEX" = true ]; then agent=codex
+              else skip "no OPENROUTER_API_KEY, OPENCODE_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or OPENAI_API_KEY secret"; fi ;;
+          esac
+
+          if [ -n "${RELEASE:-}" ]; then
+            # Release mode: the caller has already compared the release with the
+            # previous one and found changes, so there is nothing else to gate on.
+            head_sha=$(gh api "repos/$REPO/commits/$RELEASE" --jq .sha)
+            echo "Auditing release $RELEASE (since ${BASE_TAG:-the previous release}) at ${head_sha:0:8} with $agent"
+            {
+              echo "agent=$agent"
+              echo "pr="
+              echo "sha=$head_sha"
+              echo "fingerprint="
+              echo "focus="
+              echo "release=$RELEASE"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            pr="$INPUT_PR"
+          else
+            pr="$COMMENT_PR"
+          fi
+          [ -n "$pr" ] || skip "no pull request for this run"
+
+          read -r state author_type head_sha head_repo < <(gh api "repos/$REPO/pulls/$pr" \
+            --jq '[.state, .user.type, .head.sha, .head.repo.full_name] | @tsv')
+          [ "$state" = open ] || skip "PR #$pr is $state"
+          [ "$head_repo" = "$REPO" ] || skip "PR #$pr comes from a fork"
+
+          # The preview-diff comment is only current once Compose Preview has
+          # finished for the head commit.
+          render=$(gh api "repos/$REPO/actions/workflows/$RENDER_WORKFLOW/runs?head_sha=$head_sha&event=pull_request&per_page=1" \
+            --jq '.workflow_runs[0] | [.status, .conclusion] | @tsv' || true)
+          read -r render_status render_conclusion <<<"${render:-}"
+          [ -n "${render_status:-}" ] || skip "Compose Preview has not run for ${head_sha:0:8} yet"
+          [ "$render_status" = completed ] || skip "Compose Preview is still rendering ${head_sha:0:8}; comment \`/audit\` again when it finishes"
+          [ "$render_conclusion" = success ] || skip "Compose Preview did not succeed for ${head_sha:0:8} ($render_conclusion)"
+
+          comments=$(gh api --paginate "repos/$REPO/issues/$pr/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | {id, updated_at, body}' | jq -s .)
+          diff_comment=$(jq -c '[.[] | select(.body | startswith("<!-- preview-diff -->"))] | last // empty' <<<"$comments")
+          [ -n "$diff_comment" ] || skip "no preview-diff comment on PR #$pr"
+          body=$(jq -r .body <<<"$diff_comment")
+          grep -qE '^### (Changed|New)' <<<"$body" || skip "the preview diff lists no changed or new previews"
+
+          # Which previews moved, not how: the bold function headings of the
+          # Changed / New sections. Image URLs change on every push.
+          fingerprint=$(awk '/^### /{keep = ($2 == "Changed" || $2 == "New")} /^<details>/{keep = 0} keep && /^\*\*`/' <<<"$body" | sort | sha256sum | cut -c1-16)
+          if [ "$EVENT" = issue_comment ]; then
+            gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=eyes >/dev/null || true
+          fi
+          # Anything after `/audit` is the requester's focus, passed to the agent.
+          focus=$(printf '%s' "${COMMENT_BODY:-}" | sed -n '1s#^/audit[[:space:]]*##p' | head -c 500)
+
+          echo "Auditing PR #$pr at ${head_sha:0:8} with $agent"
+          {
+            echo "agent=$agent"
+            echo "pr=$pr"
+            echo "sha=$head_sha"
+            echo "fingerprint=$fingerprint"
+            echo "focus=$(printf '%s' "$focus" | tr '\n' ' ')"
+          } >> "$GITHUB_OUTPUT"
+
+  audit:
+    name: Audit changed previews (${{ needs.gate.outputs.agent }})
+    needs: gate
+    if: needs.gate.outputs.agent != ''
+    # Job-level, so only a run that passed the gate replaces an audit in
+    # progress; every Compose Preview completion starts this workflow.
+    concurrency:
+      group: preview-audit-${{ needs.gate.outputs.pr || needs.gate.outputs.release }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      # The sticky audit comment.
+      pull-requests: write
+      # Exchanged by claude-code-action for a short-lived Claude App token.
+      id-token: write
+    env:
+      PR: ${{ needs.gate.outputs.pr }}
+      AGENT: ${{ needs.gate.outputs.agent }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Set up the JDK
+        if: inputs.setup != 'local'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+      - name: Set up Android SDK
+        if: inputs.setup != 'local'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: ${{ inputs.android-packages }}
+      - name: Set up Gradle
+        if: inputs.setup != 'local'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: true
+      - name: Set up the build (the repository's own action)
+        if: inputs.setup == 'local'
+        uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
+      - name: Prepare the build
+        if: inputs.pre-render != ''
+        env:
+          PRE_RENDER: ${{ inputs.pre-render }}
+        run: bash -euo pipefail -c "$PRE_RENDER"
+      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        with:
+          # Same CLI as the caller's render workflow renders with.
+          version: catalog
+          catalog-key: ${{ inputs.catalog-key }}
+
+      - name: Fetch the release comparison
+        if: needs.gate.outputs.release != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-preview-diff
+          path: _release-diff
+      - name: Stage audit inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          FOCUS: ${{ needs.gate.outputs.focus }}
+          RELEASE: ${{ needs.gate.outputs.release }}
+          BASE_TAG: ${{ inputs.base }}
+        run: |
+          set -euo pipefail
+          mkdir -p _audit
+          if [ -n "$RELEASE" ]; then
+            cp _release-diff/diff-linked.md _audit/preview-diff.md
+            printf '# Release %s\n\nCompared with: %s\nHead: %s\n\nThis audit covers every preview that changed between the two releases, not one pull request.\n' \
+              "$RELEASE" "${BASE_TAG:-the previous release}" "$SHA" > _audit/context.md
+            exit 0
+          fi
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- preview-diff -->"))) | .id' | tail -1)
+          gh api "repos/$REPO/issues/comments/$id" --jq .body > _audit/preview-diff.md
+          title=$(gh api "repos/$REPO/pulls/$PR" --jq .title)
+          printf '# PR #%s\n\nTitle: %s\nHead: %s\n' "$PR" "$title" "$SHA" > _audit/context.md
+          if [ -n "$FOCUS" ]; then
+            printf '\nThe requester asked the audit to look at: %s\n' "$FOCUS" >> _audit/context.md
+          fi
+
+      # Discovery is the slow, cold part (a Gradle configure + compile per
+      # module). Done here, before the agent starts, it can't outlive the
+      # agent's shell timeout: runs that left it to the agent ended after ~2
+      # minutes with Gradle still going and no report written. The agent reads
+      # these files instead of running `compose-preview show` itself.
+      - name: Discover the changed modules' previews
+        timeout-minutes: 30
+        run: |
+          set -uo pipefail
+          modules=$(grep -oE '^\*\*`[^`]+`\*\* \([A-Za-z0-9_.-]+\)' _audit/preview-diff.md \
+            | sed -E 's/.*\(([^)]+)\)$/\1/' | sort -u)
+          for m in $modules; do
+            echo "::group::compose-preview show --module $m"
+            compose-preview show --module "$m" --variant debug --json > "_audit/$m.show.json" \
+              || { echo "::warning::compose-preview show failed for $m"; rm -f "_audit/$m.show.json"; }
+            echo "::endgroup::"
+          done
+
+      - name: Audit with Jev
+        if: env.AGENT == 'jev'
+        timeout-minutes: 40
+        # compose-ai-tools' reusable Jev audit: the defaults (typesafe/jev-1.13, rechecked by
+        # xiaomi/mimo-v2.6-flash) are its own; .github/preview-audit/jev.json says which guidelines
+        # file covers which module.
+        uses: yschimke/compose-ai-tools/.github/actions/preview-audit-jev@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        with:
+          openrouter-key: ${{ secrets.OPENROUTER_API_KEY }}
+          recheck-model: ${{ inputs.recheck-model }}
+
+      - name: Audit with Claude
+        if: env.AGENT == 'claude' || env.AGENT == 'claude-api'
+        env:
+          # Keep Gradle in the foreground. With a backgrounded command the agent
+          # ends its turn to wait, which ends a headless session with no report.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          BASH_DEFAULT_TIMEOUT_MS: '1200000'
+          BASH_MAX_TIMEOUT_MS: '2400000'
+        uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d # v1.0.266
+        with:
+          # Exactly one credential, chosen by the gate: the subscription token,
+          # or the API key (billed to the API organization's credits).
+          claude_code_oauth_token: ${{ env.AGENT == 'claude' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_api_key: ${{ env.AGENT == 'claude-api' && secrets.ANTHROPIC_API_KEY || '' }}
+          prompt: Read .github/preview-audit/PROMPT.md and follow it exactly.
+          settings: |
+            {
+              "includeCoAuthoredBy": false,
+              "attribution": { "commit": "", "pr": "" }
+            }
+          claude_args: >-
+            --max-turns 120
+            ${{ inputs.claude-model && format('--model {0}', inputs.claude-model) || '' }}
+            --allowedTools "Bash(compose-preview:*),Bash(./gradlew:*),Bash(ls:*),Bash(cat:*),Bash(jq:*),Bash(head:*),Bash(wc:*),Bash(mkdir:*),Read,Write,Edit,Glob,Grep"
+
+      - name: Audit with OpenCode
+        if: env.AGENT == 'opencode'
+        timeout-minutes: 45
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          MODEL: ${{ inputs.opencode-model || 'opencode/glm-5.3-flash' }}
+          # No web access and no GitHub tooling: the agent only needs the
+          # checkout, the CLI and its own file tools.
+          OPENCODE_CONFIG_CONTENT: |
+            {
+              "permission": {
+                "*": "deny",
+                "read": "allow",
+                "list": "allow",
+                "glob": "allow",
+                "grep": "allow",
+                "edit": "allow",
+                "bash": "allow",
+                "task": "allow"
+              }
+            }
+        run: |
+          npm install -g opencode-ai@1.19.5
+          opencode run --model "$MODEL" "Read .github/preview-audit/PROMPT.md and follow it exactly."
+
+      - name: Audit with Codex
+        if: env.AGENT == 'codex'
+        timeout-minutes: 45
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+        with:
+          # Held by the action's local proxy and passed on stdin, so Codex
+          # itself never sees the key.
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: Read .github/preview-audit/PROMPT.md and follow it exactly.
+          model: ${{ inputs.codex-model }}
+          # Gradle needs the network and its daemon, which the workspace-write
+          # sandbox blocks. The checkout has no persisted credentials and the
+          # job holds no write token in the environment; drop-sudo (the
+          # default safety strategy) still applies.
+          sandbox: danger-full-access
+
+      - name: Post the audit comment
+        if: always() && needs.gate.outputs.release == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          FINGERPRINT: ${{ needs.gate.outputs.fingerprint }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OPENCODE_MODEL: ${{ inputs.opencode-model || 'opencode/glm-5.3-flash' }}
+          RECHECK_MODEL: ${{ inputs.recheck-model || 'xiaomi/mimo-v2.6-flash' }}
+        run: |
+          set -euo pipefail
+          # Only a finished report records the fingerprint the gate skips on,
+          # so a failed audit is retried on the next run.
+          marker="<!-- preview-audit -->"
+          [ -s _audit/report.md ] && marker="<!-- preview-audit fingerprint=$FINGERPRINT -->"
+          judge="$AGENT"
+          [ "$AGENT" = opencode ] && judge="OpenCode ($OPENCODE_MODEL)"
+          [ "$AGENT" = claude ] && judge="Claude"
+          [ "$AGENT" = claude-api ] && judge="Claude (API)"
+          [ "$AGENT" = codex ] && judge="Codex"
+          if [ "$AGENT" = jev ]; then
+            judge="Jev (typesafe/jev-1.13)"
+            [ "$RECHECK_MODEL" != none ] && judge="$judge, rechecked by $RECHECK_MODEL"
+          fi
+          {
+            echo "$marker"
+            if [ -s _audit/report.md ]; then
+              head -c 60000 _audit/report.md
+            else
+              echo "## Preview audit"
+              echo
+              echo "The audit did not produce a report. See [the run]($RUN_URL)."
+              echo
+              echo "How far it got:"
+              echo
+              found=0
+              for f in _audit/*.show.json _audit/*.ids; do
+                [ -e "$f" ] || continue
+                found=1
+                echo "- \`$f\` ($(wc -l < "$f") lines)"
+              done
+              requests=$( (ls -d */build/compose-previews/review/*/ 2>/dev/null || true) | wc -l)
+              replies=$( (ls */build/compose-previews/review/*/reply.json 2>/dev/null || true) | wc -l)
+              [ "$requests" -gt 0 ] && { found=1; echo "- review requests: $requests, replies written: $replies"; }
+              [ "$found" = 1 ] || echo "- nothing past the staged inputs"
+            fi
+            echo
+            echo "---"
+            echo "<sub>Advisory: judged by $judge against the pinned guideline packs in \`.github/preview-audit/\` at ${SHA:0:8}. [Run]($RUN_URL) · re-run with `/audit`.</sub>"
+          } > _audit/comment.md
+          existing=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- preview-audit"))) | .id' | tail -1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@_audit/comment.md >/dev/null
+          else
+            gh api "repos/$REPO/issues/$PR/comments" -F body=@_audit/comment.md >/dev/null
+          fi
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: preview-audit
+          path: |
+            _audit/
+            **/build/compose-previews/guidelines.json
+            **/build/compose-previews/review/
+            **/build/compose-previews/renders/**/*.guidelines.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release-notes:
+    name: Add the audit to the release notes
+    needs: [gate, audit]
+    if: always() && needs.gate.outputs.release != '' && needs.audit.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: preview-audit
+          path: _evidence
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE: ${{ needs.gate.outputs.release }}
+          AGENT: ${{ needs.gate.outputs.agent }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report=$(find _evidence -path '*_audit/report.md' | head -1)
+          gh release view "$RELEASE" --repo "$REPO" --json body --jq .body > body.md
+          python3 - "$report" <<'PY'
+          import os, re, sys
+          body = open("body.md").read()
+          start, end = "<!-- preview-release-audit:start -->", "<!-- preview-release-audit:end -->"
+          body = re.sub(re.escape(start) + ".*?" + re.escape(end), "", body, flags=re.S).rstrip()
+          path = sys.argv[1] if len(sys.argv) > 1 else ""
+          if path and os.path.getsize(path) > 0:
+              report = open(path).read().strip()[:40000]
+              summary = "Design audit of these preview changes"
+          else:
+              report = f"The audit did not produce a report. See [the run]({os.environ['RUN_URL']})."
+              summary = "Design audit of these preview changes (no report)"
+          footer = (f"<sub>Advisory: judged by {os.environ['AGENT']} against the pinned guideline packs "
+                    f"in `.github/preview-audit/`. [Run]({os.environ['RUN_URL']}).</sub>")
+          section = f"{start}\n\n<details>\n<summary>{summary}</summary>\n\n{report}\n\n{footer}\n\n</details>\n{end}"
+          open("notes.md", "w").write(body + "\n\n" + section + "\n")
+          PY
+          gh release edit "$RELEASE" --repo "$REPO" --notes-file notes.md >/dev/null
