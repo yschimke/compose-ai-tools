@@ -130,16 +130,16 @@ class ReportTest(unittest.TestCase):
         data["model"] = "typesafe/jev-1.13"
         for result in data["results"]:
             result["record"]["servedModel"] = "typesafe/jev-1.13-20260917"
-        # A preview with no finding and only text-only unchecked rules gets no section of its own.
+        # A preview with no finding and only undecided rules gets no section of its own.
         data["results"][1]["unchecked"] = ["wear.layout.no-clipping"]
         report.write_text(json.dumps(data))
         body = gr.build(self.tmp, _args())
         assert body is not None
-        self.assertIn("Checked by Jev (text-only, experimental) (typesafe/jev-1.13-20260917)", body)
+        self.assertIn("Checked by Jev (experimental) (typesafe/jev-1.13-20260917)", body)
         self.assertIn("**2 rule verdict(s) on 2 preview(s) were NOT checked**", body)
-        self.assertIn("need the picture; the jev checker is text-only", body)
+        self.assertIn("Jev could not decide them", body)
         self.assertIn("unchecked, not passed", body)
-        self.assertIn("never the render", body)
+        self.assertIn("decision model judging the render", body)
         self.assertNotIn("#### `Ok`", body)
 
     def test_a_vision_report_says_nothing_of_jev(self) -> None:

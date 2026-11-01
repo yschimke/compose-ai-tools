@@ -129,7 +129,7 @@ public data class GuidelineRunOptions(
 
   /**
    * Which model answers the rules: [GuidelineChecker.VISION] (default) or the EXPERIMENTAL
-   * text-only [GuidelineChecker.JEV]. A body property like [retry]: set it with [withChecker].
+   * decision-model [GuidelineChecker.JEV]. A body property like [retry]: set it with [withChecker].
    */
   public var checker: GuidelineChecker = GuidelineChecker.VISION
     private set

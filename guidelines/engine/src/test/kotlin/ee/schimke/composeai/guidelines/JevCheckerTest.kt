@@ -6,17 +6,20 @@ import ee.schimke.composeai.guidelines.protocol.GuidelineEvidenceNeedV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineRequestV1
 import ee.schimke.composeai.guidelines.protocol.GuidelineVerdictV1
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
+import java.util.Base64
 import java.util.Collections
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
-/** The experimental text-only checker, over a fake decisions API: no network. */
+/** The experimental decision-model checker, over a fake decisions API: no network. */
 class JevCheckerTest {
   private val guidelines: CatalogGuidelinesV1 =
     CatalogGuidelinesLoader.parse(
@@ -206,8 +209,162 @@ class JevCheckerTest {
       )
       .inOrder()
     assertThat(touch["criteria"]!!.jsonObject["fail"].toString()).contains("smaller than 48dp")
-    // Visual rules are never asked.
+    // Jev sees the render, so the visual rule is asked too.
+    assertThat(questions(body).toString()).contains("glyph")
+    assertThat(state["task"]!!.jsonPrimitive.content).contains("Judge from the render below")
+    // The 40px render, grown by whole pixels to Jev's least size: 7× is 280×280, 78,400 pixels.
+    val render = state["render"]!!.jsonArray.single().jsonObject
+    assertThat(render["shows"]!!.jsonPrimitive.content).contains("7.00× its pixels")
+    val image = render["image"]!!.jsonObject
+    assertThat(image["type"]!!.jsonPrimitive.content).isEqualTo("image_url")
+    val url = image["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content
+    assertThat(url).startsWith("data:image/png;base64,")
+    val decoded =
+      ImageIO.read(ByteArrayInputStream(Base64.getDecoder().decode(url.substringAfter("base64,"))))
+    assertThat(decoded.width to decoded.height).isEqualTo(280 to 280)
+  }
+
+  @Test
+  fun `with pictures off, a subject is asked from text alone and its visual rules unchecked`() {
+    val model = FakeDecisions()
+    val checker =
+      JevChecker(
+          model,
+          A11yHost(),
+          null,
+          GuidelineRunOptions(triage = false).withChecker(GuidelineChecker.JEV),
+          System::currentTimeMillis,
+        )
+        .also { it.sleep = {} }
+    assertThat(checker.pictures).isTrue()
+    checker.pictures = false
+    val run = checker.run(guidelines, listOf(subject("a")))
+
+    val body = model.bodies.single()
+    assertThat(body["state"]!!.jsonObject.keys).doesNotContain("render")
+    assertThat(body["state"]!!.jsonObject["task"]!!.jsonPrimitive.content)
+      .contains("You cannot see the render")
     assertThat(questions(body).toString()).doesNotContain("glyph")
+    val result = run.results.single()
+    assertThat(result.unchecked).containsExactly("clipping")
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo(JevChecker.TEXT_ONLY_REASON)
+    assertThat(result.record.verdicts.single { it.ruleId == "touch" }.reason)
+      .startsWith("Jev (text-only, round 1): ")
+    assertThat(run.problems.joinToString("\n")).contains("1 visual rule(s) never asked")
+  }
+
+  @Test
+  fun `a fail Jev judged from the render says so rather than citing a fact that did not decide it`() {
+    val model =
+      FakeDecisions(
+        answer = { _, rule, key -> if (rule == "clipping" && !isNode(key)) "fail" to 0.9 else null }
+      )
+    val result = jev(model, A11yHost()).run(guidelines, listOf(subject("a"))).results.single()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo("Jev (with the render, round 1): judged broken from the render (p 0.90).")
+  }
+
+  /** A decisions API whose image processing answers 503 for the first [down] requests with one. */
+  private inner class ImageDown(val down: Int) : GuidelineModel {
+    val inner = FakeDecisions()
+    var refused = 0
+    val withPicture = mutableListOf<Boolean>()
+
+    override fun complete(request: GuidelineRequestV1, model: String): ModelResponse =
+      error("the jev checker must not ask the vision model")
+
+    override fun decide(body: JsonObject): ModelResponse {
+      val picture = body["state"]!!.jsonObject.containsKey("render")
+      withPicture += picture
+      if (picture && refused < down) {
+        refused++
+        return ModelResponse(
+          503,
+          """{"error":{"message":"HTTP 503: {\"detail\":{\"error_type\":\"api_usage_error\",""" +
+            """\"message\":\"Image processing is unavailable.\"}}","code":503}}""",
+        )
+      }
+      return inner.decide(body)
+    }
+  }
+
+  @Test
+  fun `an image-processing outage is asked again, outside the run's retry allowance`() {
+    val model = ImageDown(down = JevChecker.IMAGE_ATTEMPTS - 1)
+    val run = jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
+    assertThat(model.withPicture).containsExactly(true, true, true, true)
+    val result = run.results.single()
+    assertThat(result.failures()).isEmpty()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
+    assertThat(run.problems.joinToString("\n")).doesNotContain("text alone")
+  }
+
+  @Test
+  fun `a render Jev's image processing never takes is asked from text alone, not failed`() {
+    val model = ImageDown(down = Int.MAX_VALUE)
+    val run = jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
+    // Every try with the picture, then once without it.
+    assertThat(model.withPicture)
+      .containsExactlyElementsIn(List(JevChecker.IMAGE_ATTEMPTS) { true } + false)
+      .inOrder()
+    val result = run.results.single()
+    assertThat(result.failures()).isEmpty()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo(JevChecker.IMAGE_DOWN_REASON)
+    assertThat(result.record.verdicts.single { it.ruleId == "touch" }.reason)
+      .startsWith("Jev (text-only, round 1): ")
+    assertThat(run.problems.joinToString("\n")).contains("1 preview(s) were asked from text alone")
+  }
+
+  @Test
+  fun `a render that is not an image is asked from text alone`() {
+    val model = FakeDecisions()
+    val blind =
+      subject("a").copy(pictures = listOf(SubjectPicture("device", byteArrayOf(1, 2, 3), 40, 40)))
+    val result = jev(model, A11yHost()).run(guidelines, listOf(blind)).results.single()
+    assertThat(model.bodies.single()["state"]!!.jsonObject.keys).doesNotContain("render")
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo(JevChecker.TEXT_ONLY_REASON)
+  }
+
+  @Test
+  fun `pictures are fitted into Jev's image limits`() {
+    fun fits(w: Int, h: Int): JevPictures.Layout {
+      val layout = JevPictures.layout(w, h)
+      assertThat(layout.canvasWidth).isIn(280..1_568)
+      assertThat(layout.canvasHeight).isIn(280..1_568)
+      assertThat(layout.canvasWidth.toLong() * layout.canvasHeight).isIn(78_400L..2_458_624L)
+      assertThat(layout.width).isAtMost(layout.canvasWidth)
+      assertThat(layout.height).isAtMost(layout.canvasHeight)
+      return layout
+    }
+    // Already inside: untouched.
+    fits(454, 454).let {
+      assertThat(it.scale).isEqualTo(1.0)
+      assertThat(it.padded).isFalse()
+    }
+    // A phone screen: shrunk to the longest side Jev reads.
+    fits(1_080, 2_400).let {
+      assertThat(it.scale).isLessThan(1.0)
+      assertThat(it.height).isEqualTo(1_568)
+      assertThat(it.padded).isFalse()
+    }
+    // A small icon: grown by a whole factor.
+    fits(48, 48).let {
+      assertThat(it.scale).isEqualTo(6.0)
+      assertThat(it.padded).isFalse()
+    }
+    // A long, thin strip: shrunk along its length, padded across it.
+    fits(4_000, 40).let { assertThat(it.padded).isTrue() }
+    // A short row: grown as far as its length allows, then padded.
+    fits(1_000, 100).let {
+      assertThat(it.scale).isEqualTo(1.0)
+      assertThat(it.padded).isTrue()
+    }
+    fits(1, 1)
+    fits(3_000, 3_000)
   }
 
   @Test
@@ -220,7 +377,7 @@ class JevCheckerTest {
     val fail = run.results.single().failures().single()
     assertThat(fail.ruleId).isEqualTo("touch")
     assertThat(fail.nodeIds).containsExactly("add")
-    assertThat(fail.reason).startsWith("Jev (text-only, round 1): ")
+    assertThat(fail.reason).startsWith("Jev (with the render, round 1): ")
     assertThat(fail.reason).contains("48dp")
     val record = run.results.single().record
     assertThat(record.model).isEqualTo(JevTriage.MODEL)
@@ -266,7 +423,7 @@ class JevCheckerTest {
     val fail = a.failures().single()
     assertThat(fail.ruleId).isEqualTo("described")
     assertThat(fail.nodeIds).containsExactly("add")
-    assertThat(fail.reason).startsWith("Jev (text-only, round 2)")
+    assertThat(fail.reason).startsWith("Jev (with the render, round 2)")
     assertThat(a.jev!!.rules.single { it.ruleId == "described" }.requested).containsExactly("a11y")
     assertThat(run.problems.joinToString("\n")).contains("Jev asked for more evidence: a11y ×1")
   }
@@ -290,16 +447,18 @@ class JevCheckerTest {
     assertThat(options.none { it.startsWith("needs:") }).isTrue()
 
     val result = run.results.single()
-    assertThat(result.unchecked).containsExactly("described", "clipping")
+    // The visual rule was asked of the render, and answered.
+    assertThat(result.unchecked).containsExactly("described")
     val described = result.record.verdicts.single { it.ruleId == "described" }
     assertThat(described.verdict).isEqualTo(GuidelineVerdictV1.NEEDS_EVIDENCE)
-    assertThat(described.reason).startsWith(JevChecker.TEXT_ONLY_REASON)
-    assertThat(described.reason).contains("after 2 round(s)")
-    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
-      .isEqualTo(JevChecker.TEXT_ONLY_REASON)
+    assertThat(described.reason).startsWith(JevChecker.UNDECIDED_REASON)
+    assertThat(described.reason).contains("from the render and the text after 2 round(s)")
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
     assertThat(result.failures()).isEmpty()
     val problems = run.problems.joinToString("\n")
-    assertThat(problems).contains("2 rule verdict(s) on 1 preview(s)")
+    assertThat(problems).contains("1 rule verdict(s) on 1 preview(s)")
+    assertThat(problems).contains("0 visual rule(s) never asked")
     assertThat(problems).contains("set-scoped rule(s) were not asked")
   }
 
@@ -312,7 +471,7 @@ class JevCheckerTest {
     val result = jev(model, rounds = 0).run(guidelines, listOf(subject("a"))).results.single()
     assertThat(result.unchecked).contains("touch")
     assertThat(result.record.verdicts.single { it.ruleId == "touch" }.reason)
-      .startsWith(JevChecker.TEXT_ONLY_REASON)
+      .startsWith(JevChecker.UNDECIDED_REASON)
   }
 
   @Test
@@ -339,7 +498,17 @@ class JevCheckerTest {
     val dir = Files.createTempDirectory("jev-cache").toFile()
     try {
       val cache = GuidelineResultCache(dir)
-      jev(FakeDecisions(), cache = cache).run(guidelines, listOf(subject("a")))
+      // Jev cannot tell the visual rule: the one verdict left unchecked.
+      jev(
+          FakeDecisions(
+            answer = { _, rule, key ->
+              if (rule == "clipping" && !isNode(key)) "cannot_tell" to 0.7 else null
+            }
+          ),
+          cache = cache,
+          rounds = 0,
+        )
+        .run(guidelines, listOf(subject("a")))
       val options = GuidelineRunOptions(triage = false)
       assertThat(cache.get(subject("a"), guidelines, options.cacheModel)).isNull()
       val jevOptions = options.withChecker(GuidelineChecker.JEV)

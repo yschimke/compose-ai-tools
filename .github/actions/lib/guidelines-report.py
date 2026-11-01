@@ -75,9 +75,9 @@ MAX_OVER_LIMIT_LISTED = 200
 MAX_NAME_CHARS = 120
 
 
-# The EXPERIMENTAL text-only checker, as the comment names it.
-JEV_LABEL = "Jev (text-only, experimental)"
-JEV_UNCHECKED_REASON = "need the picture; the jev checker is text-only"
+# The EXPERIMENTAL decision-model checker, as the comment names it.
+JEV_LABEL = "Jev (experimental)"
+JEV_UNCHECKED_REASON = "Jev could not decide them from the render and the text it was shown"
 
 
 def load(module_dir: Path) -> tuple[dict, dict] | None:
@@ -379,8 +379,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     total_cost = 0.0
     total_predicted: float | None = None
     models: set[str] = set()
-    # The EXPERIMENTAL text-only checker (`--checker jev`): rules it could not judge without the
-    # picture, counted for the header rather than listed under every preview.
+    # The EXPERIMENTAL decision-model checker (`--checker jev`): rules it could not decide,
+    # counted for the header rather than listed under every preview.
     jev_modules = 0
     text_only_unchecked = 0
     text_only_previews: set[str] = set()
@@ -558,7 +558,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         if text_only_unchecked:
             header += [
                 f"❔ **{text_only_unchecked} rule verdict(s) on {len(text_only_previews)} "
-                f"preview(s) were NOT checked**: they {JEV_UNCHECKED_REASON}. They are "
+                f"preview(s) were NOT checked**: {JEV_UNCHECKED_REASON}. They are "
                 "unchecked, not passed.",
                 "",
             ]
@@ -621,9 +621,9 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
             header.append(f"… and {len(problems) - MAX_PROBLEMS} more")
         header += ["```", ""]
     header += [
-        ("<sub>Findings are advice from Jev, an experimental text-only check judging the source, "
-         "the accessibility nodes and the measured checks, never the render; each links the guide "
-         "it comes from.</sub>")
+        ("<sub>Findings are advice from Jev, an experimental decision model judging the render, "
+         "its source, the accessibility nodes and the measured checks; it writes no reasons, so "
+         "each cites the measured fact it was shown and links the guide it comes from.</sub>")
         if jev_modules else
         ("<sub>Findings are advice from a model judging the render, its source and its "
          "accessibility nodes; each links the guide it comes from.</sub>"),
