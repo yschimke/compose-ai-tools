@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.84.0](https://github.com/yschimke/compose-ai-tools/compare/v2.83.0...v2.84.0) (2026-11-01)
+
+
+### Features
+
+* **ci:** reusable Preview Audit workflow for consumers ([#6397](https://github.com/yschimke/compose-ai-tools/issues/6397)) ([2d4d398](https://github.com/yschimke/compose-ai-tools/commit/2d4d398745d93307e289a366bbe304cb0d838dca))
+* **ci:** reusable release-to-release preview diff for consumers ([#6395](https://github.com/yschimke/compose-ai-tools/issues/6395)) ([c1518d3](https://github.com/yschimke/compose-ai-tools/commit/c1518d37e001cf968b952f07b60c9648ec53a475))
+
 ## [2.83.0](https://github.com/yschimke/compose-ai-tools/compare/v2.82.0...v2.83.0) (2026-11-01)
 
 
