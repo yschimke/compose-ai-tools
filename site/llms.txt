@@ -11,15 +11,15 @@ Core path: install one thing for your agent, then ask it to render one of your p
 
 The `compose-preview` plugin carries the `compose-preview` and `compose-ui-builder` skills, the local MCP server and the hosted catalog server. Install only that one plugin in a coding agent.
 
-Start pages: https://preview.coo.ee/start/ for the CLI and project previews; https://ui.coo.ee/start for designing a new screen in the UI Builder. Without an agent there is also a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension and CI actions. Java 17 or newer and Gradle 8.13 or newer are required for local rendering.
+Start pages: https://yschimke.github.io/compose-ai-tools/ for the CLI and project previews; https://ui.coo.ee/start for designing a new screen in the UI Builder. Without an agent there is also a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension and CI actions. Java 17 or newer and Gradle 8.13 or newer are required for local rendering.
 
 MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio, renders the user's own project). The hosted catalog server has one URL, `https://preview.coo.ee/mcp`; `https://ui.coo.ee/mcp` is an alias of the same server, so never configure both.
 
 ## Getting started
 
-- [Overview](https://preview.coo.ee/start/): The one install per agent host, then the alternatives for people (VS Code, CLI, Gradle plugin) and what to reach for next.
+- [Overview](https://yschimke.github.io/compose-ai-tools/): The one install per agent host, then the alternatives for people (VS Code, CLI, Gradle plugin) and what to reach for next.
 - [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews; an agent that can only fetch URLs can bootstrap the CLI from it.
-- [Installation and requirements](https://preview.coo.ee/start/install/): Gradle plugin, CLI build integration, CI actions, compatibility requirements and configuration examples.
+- [Installation and requirements](https://yschimke.github.io/compose-ai-tools/install/): Gradle plugin, CLI build integration, CI actions, compatibility requirements and configuration examples.
 - [Other hosts and install options](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md): Per-host plugin and MCP wiring beyond the core path.
 - [CLI and skills setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md): `install.sh` flags, `npx skills`, and updating the CLI and skills.
 
@@ -31,9 +31,9 @@ MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio,
 
 ## Core documentation
 
-- [Data product reference](https://preview.coo.ee/start/reference/): Index of structured outputs including accessibility, layout, theme, resources, recomposition, localization, and render traces.
-- [Agents and MCP](https://preview.coo.ee/start/mcp/): Local vs hosted MCP server, agent workflows, and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
-- [Render daemon](https://preview.coo.ee/start/daemon/): Optional long-lived renderer for low-latency preview iteration.
+- [Data product reference](https://yschimke.github.io/compose-ai-tools/reference/): Index of structured outputs including accessibility, layout, theme, resources, recomposition, localization, and render traces.
+- [Agents and MCP](https://yschimke.github.io/compose-ai-tools/mcp/): Local vs hosted MCP server, agent workflows, and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
+- [Render daemon](https://yschimke.github.io/compose-ai-tools/daemon/): Optional long-lived renderer for low-latency preview iteration.
 - [How rendering works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md): Preview discovery, rendering backends, caching, and project structure.
 
 ## Optional
