@@ -12,7 +12,7 @@ builder shell. To update it, build that repository's serve-web package and copy
 `server/src/main/resources/ee/schimke/composeai/cli/serve/assets/analytics.js` here. Include the
 source commit in this document when updating the bundle.
 
-Current source: [compose-preview-server 3ca304a1](https://github.com/yschimke/compose-preview-server/commit/3ca304a1).
+Current source: [compose-preview-server 4725847f](https://github.com/yschimke/compose-preview-server/commit/4725847f).
 
 It records page views and link navigation categories, respects Do Not Track and Global Privacy
 Control, and drops query strings, fragments, page titles and referrers. Search input, source code
