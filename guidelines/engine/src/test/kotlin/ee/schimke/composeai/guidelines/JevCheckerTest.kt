@@ -318,6 +318,102 @@ class JevCheckerTest {
     assertThat(run.problems.joinToString("\n")).contains("1 preview(s) were asked from text alone")
   }
 
+  /**
+   * Jev through [jevAnswers], and a vision model answering every rule it is asked with [vision].
+   */
+  private inner class JevThenVision(
+    jevAnswers: (body: JsonObject, rule: String?, key: String) -> Pair<String, Double>?,
+    val vision: String,
+  ) : GuidelineModel {
+    val jev = FakeDecisions(answer = jevAnswers)
+    val asked = mutableListOf<GuidelineRequestV1>()
+    val models = mutableListOf<String>()
+
+    override fun complete(request: GuidelineRequestV1, model: String): ModelResponse {
+      asked += request
+      models += model
+      val content =
+        """{"verdicts":[""" +
+          request.rules.asked.joinToString(",") {
+            """{"subjectId":"s1","ruleId":"${it.id}","verdict":"$vision","confidence":0.9,""" +
+              """"nodeIds":[],"reason":"seen.","needs":[],"regions":[]}"""
+          } +
+          """],"others":[]}"""
+      val reply =
+        """{"id":"gen-v","model":"vision","provider":"P","usage":{"cost":0.01},""" +
+          """"choices":[{"message":{"content":${JsonPrimitive(content)}}}]}"""
+      return ModelResponse(200, reply)
+    }
+
+    override fun decide(body: JsonObject): ModelResponse = jev.decide(body)
+  }
+
+  private fun rechecking(model: GuidelineModel) =
+    GuidelineEngine(
+        model,
+        A11yHost(),
+        null,
+        GuidelineRunOptions(triage = false, maxRounds = 0)
+          .withChecker(GuidelineChecker.JEV)
+          .withRecheck(GuidelineRecheck("big/vision")),
+      )
+      .also { it.sleep = {} }
+
+  @Test
+  fun `a recheck asks the vision model only what Jev left unsure, and takes its verdict`() {
+    val model =
+      JevThenVision(
+        jevAnswers = { _, rule, key ->
+          when {
+            isNode(key) -> null
+            rule == "clipping" -> "pass" to 0.6
+            rule == "described" -> "cannot_tell" to 0.7
+            else -> "pass" to 0.95
+          }
+        },
+        vision = "fail",
+      )
+    val run = rechecking(model).run(guidelines, listOf(subject("a")))
+
+    // One vision request, for the two rules Jev was unsure of, not the one it settled.
+    assertThat(model.models).containsExactly("big/vision")
+    assertThat(model.asked.single().rules.asked.map { it.id })
+      .containsExactly("clipping", "described")
+    val result = run.results.single()
+    val clipping = result.record.verdicts.single { it.ruleId == "clipping" }
+    assertThat(clipping.verdict).isEqualTo(GuidelineVerdictV1.FAIL)
+    assertThat(clipping.reason).startsWith("Rechecked by big/vision (Jev: pass p 0.60): ")
+    assertThat(result.record.verdicts.single { it.ruleId == "described" }.reason)
+      .startsWith("Rechecked by big/vision (Jev: undecided): ")
+    // Jev's firm answer stands.
+    assertThat(result.record.verdicts.single { it.ruleId == "touch" }.reason).startsWith("Jev (")
+    assertThat(result.unchecked).isEmpty()
+    assertThat(result.jev).isNotNull()
+    assertThat(run.costUsd).isGreaterThan(0.01)
+    assertThat(run.recheckModel).isEqualTo("big/vision")
+    assertThat(run.recheckCostUsd).isWithin(1e-9).of(0.01)
+    assertThat(run.recheckRequests).isEqualTo(1)
+    assertThat(run.problems.joinToString("\n"))
+      .contains("(1 request(s), $0.0100; Jev's own pass cost $")
+    val problems = run.problems.joinToString("\n")
+    assertThat(problems).contains("2 rule verdict(s) on 1 preview(s)")
+    assertThat(problems).contains("2 changed, 0 still unchecked")
+    assertThat(problems).doesNotContain("were left unchecked (")
+  }
+
+  @Test
+  fun `a recheck with nothing unsure asks no vision model`() {
+    val model =
+      JevThenVision(
+        jevAnswers = { _, _, key -> if (isNode(key)) null else "pass" to 0.95 },
+        vision = "fail",
+      )
+    val run = rechecking(model).run(guidelines, listOf(subject("a")))
+    assertThat(model.asked).isEmpty()
+    assertThat(run.results.single().record.verdicts.all { it.verdict == GuidelineVerdictV1.PASS })
+      .isTrue()
+  }
+
   @Test
   fun `a render that is not an image is asked from text alone`() {
     val model = FakeDecisions()

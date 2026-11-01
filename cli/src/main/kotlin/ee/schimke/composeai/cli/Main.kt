@@ -245,9 +245,12 @@ private fun printFullUsage() {
                        variants and themes are always asked; the rest are reported as
                        covered by the size asked; default every size),
                        --checker vision|jev (default vision; jev is EXPERIMENTAL: Jev
-                       decides structural rules from text only, starting minimal and
-                       asking for a11y/source/facts over --rounds (default 3), and
-                       leaves rules needing the picture unchecked),
+                       decides each rule from the render and the text, starting minimal
+                       and asking for a11y/source/facts over --rounds (default 3), and
+                       leaves rules it cannot tell unchecked),
+                       --recheck-model <id> (jev only: ask this vision model again
+                       what Jev left unchecked or answered below --recheck-below,
+                       default 0.8),
                        --compare-with <guidelines.json> (verdicts vs another run's),
                        --surface / --profile (default: each preview's manifest entry),
                        --previews-json / --renders-dir / --a11y-json /

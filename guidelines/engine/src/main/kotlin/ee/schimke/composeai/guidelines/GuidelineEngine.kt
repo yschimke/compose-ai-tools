@@ -176,6 +176,33 @@ public data class GuidelineRunOptions(
   /** These options, answered by [judge]. */
   public fun withJudge(judge: String?): GuidelineRunOptions = carry().also { it.judge = judge }
 
+  /**
+   * EXPERIMENTAL, [GuidelineChecker.JEV] only: the rules Jev leaves unchecked or answers below
+   * [GuidelineRecheck.below] are asked again of a vision model ([GuidelineRecheck]). Null (the
+   * default): Jev's answers stand. A body property like [retry]: set it with [withRecheck].
+   */
+  public var recheck: GuidelineRecheck? = null
+    private set
+
+  /** These options, with Jev's unsure answers asked again as [recheck] says. */
+  public fun withRecheck(recheck: GuidelineRecheck?): GuidelineRunOptions =
+    carry().also { it.recheck = recheck }
+
+  /**
+   * The options a [recheck] asks the vision model with: these, for [model], with what is left of
+   * [maxCostUsd] after [spent]. The jev run's price and reasoning effort are its own.
+   */
+  internal fun forRecheck(model: String, spent: Double): GuidelineRunOptions =
+    copy(model = model, maxCostUsd = maxCostUsd?.let { (it - spent).coerceAtLeast(0.0) }).also {
+      it.maxVariants = maxVariants
+      it.variantsPerSizeClass = variantsPerSizeClass
+      it.retry = retry
+      it.concurrency = concurrency
+      it.checker = GuidelineChecker.VISION
+      it.judge = judge
+      it.keyStatus = keyStatus
+    }
+
   /** These options, with up to [concurrency] requests in flight at once. */
   public fun withConcurrency(concurrency: Int): GuidelineRunOptions =
     carry().also { it.concurrency = concurrency.coerceAtLeast(1) }
@@ -265,6 +292,7 @@ public data class GuidelineRunOptions(
       it.judge = judge
       it.price = price
       it.keyStatus = keyStatus
+      it.recheck = recheck
     }
 
   public companion object {
@@ -303,6 +331,20 @@ public data class GuidelineRunResult(
    * (`usage.completion_tokens`). A body property, so the constructor and `copy` keep their ABI.
    */
   public var completionTokens: Long = 0
+    internal set
+
+  /**
+   * EXPERIMENTAL, a jev run with a [GuidelineRunOptions.recheck]: the vision model that answered
+   * again, and what its requests cost and numbered. Already counted in [costUsd] and [requests];
+   * apart so a report can say what the recheck added. Null and 0 when nothing was rechecked.
+   */
+  public var recheckModel: String? = null
+    internal set
+
+  public var recheckCostUsd: Double? = null
+    internal set
+
+  public var recheckRequests: Int = 0
     internal set
 
   /**
@@ -388,9 +430,15 @@ public class GuidelineEngine(
   ): GuidelineRunResult {
     // EXPERIMENTAL, opt-in: a separate path, so the vision run below is unchanged by it.
     if (options.checker == GuidelineChecker.JEV) {
-      return JevChecker(model, host, cache, options, clock)
-        .also { it.sleep = sleep }
-        .run(guidelines, subjects)
+      val jev =
+        JevChecker(model, host, cache, options, clock)
+          .also { it.sleep = sleep }
+          .run(guidelines, subjects)
+      val recheck = options.recheck ?: return jev
+      return JevRecheck(options, recheck) { visionOptions ->
+          GuidelineEngine(model, host, cache, visionOptions, clock).also { it.sleep = sleep }
+        }
+        .run(guidelines, subjects, jev)
     }
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()

@@ -54,6 +54,8 @@ internal object CliFlagValidation {
         "--preferred-max-latency",
         "--preferred-min-throughput",
         "--checker",
+        "--recheck-model",
+        "--recheck-below",
         "--compare-with",
         "--no-triage",
         "--annotate",

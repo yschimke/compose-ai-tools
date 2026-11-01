@@ -401,6 +401,14 @@ inputs:
       alone and its visual rules are unchecked. Needs a CLI with
       `--checker` (one that sends renders to Jev for the visual rules).
     default: 'vision'
+  guidelines-recheck-model:
+    description: >
+      EXPERIMENTAL, with `guidelines-checker: jev` only. A vision model
+      (an OpenRouter id) that answers again, per preview, the rules Jev
+      left unchecked or answered below p 0.8; its verdicts replace Jev's.
+      Empty (the default) keeps Jev's answers. Needs a CLI with
+      `--recheck-model`.
+    default: ''
 
 runs:
   using: 'composite'
@@ -1995,6 +2003,7 @@ runs:
         GUIDELINES_SURFACE: ${{ inputs.guidelines-surface }}
         GUIDELINES_PROFILE: ${{ inputs.guidelines-profile }}
         GUIDELINES_CHECKER: ${{ inputs.guidelines-checker }}
+        GUIDELINES_RECHECK_MODEL: ${{ inputs.guidelines-recheck-model }}
       run: |
         set -uo pipefail
         if ! [[ "$MAX_PREVIEWS" =~ ^[0-9]{1,6}$ ]]; then
@@ -2082,13 +2091,21 @@ runs:
             echo "::warning::compose-preview/apply: guidelines-profile is not a profile name; ignoring it."
           fi
         fi
-        # EXPERIMENTAL: the text-only Jev checker, only when asked for; the default passes nothing,
+        # EXPERIMENTAL: the Jev checker, only when asked for; the default passes nothing,
         # so a CLI without `--checker` runs exactly as before.
         rounds=2
         case "$GUIDELINES_CHECKER" in
           ''|vision) ;;
           # Minimal first: Jev asks for evidence over up to three follow-up rounds.
-          jev) kind_args+=(--checker jev); rounds=3 ;;
+          jev) kind_args+=(--checker jev); rounds=3
+            # What Jev is unsure of, asked again of a vision model.
+            if [ -n "${GUIDELINES_RECHECK_MODEL:-}" ]; then
+              if [[ "$GUIDELINES_RECHECK_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._/:~-]*$ ]]; then
+                kind_args+=(--recheck-model "$GUIDELINES_RECHECK_MODEL")
+              else
+                echo "::warning::compose-preview/apply: guidelines-recheck-model is not a model id; ignoring it."
+              fi
+            fi ;;
           *) echo "::warning::compose-preview/apply: guidelines-checker must be vision or jev; using vision." ;;
         esac
         checked=0

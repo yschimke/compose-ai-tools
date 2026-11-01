@@ -11,6 +11,7 @@ import ee.schimke.composeai.guidelines.GuidelineEvidenceHost
 import ee.schimke.composeai.guidelines.GuidelineModel
 import ee.schimke.composeai.guidelines.GuidelinePlan
 import ee.schimke.composeai.guidelines.GuidelinePrice
+import ee.schimke.composeai.guidelines.GuidelineRecheck
 import ee.schimke.composeai.guidelines.GuidelineResultCache
 import ee.schimke.composeai.guidelines.GuidelineRetry
 import ee.schimke.composeai.guidelines.GuidelineRunOptions
@@ -188,6 +189,22 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
   private val checker: GuidelineChecker? =
     if (checkerFlag == null) GuidelineChecker.VISION else GuidelineChecker.parse(checkerFlag)
   /**
+   * `--recheck-model <id>` (EXPERIMENTAL, `--checker jev` only): the vision model that answers
+   * again what Jev left unchecked or answered below `--recheck-below` (default
+   * [GuidelineRecheck.DEFAULT_BELOW]).
+   */
+  private val recheck: GuidelineRecheck? =
+    args
+      .flagValue("--recheck-model")
+      ?.takeIf { it.isNotBlank() }
+      ?.let { model ->
+        GuidelineRecheck(
+          model,
+          args.flagValue("--recheck-below")?.toDoubleOrNull()?.takeIf { it in 0.0..1.0 }
+            ?: GuidelineRecheck.DEFAULT_BELOW,
+        )
+      }
+  /**
    * `--compare-with <guidelines.json>`: another run's report to set this run's verdicts against.
    */
   private val compareWith: String? = args.flagValue("--compare-with")
@@ -207,6 +224,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       )
       .withConcurrency(concurrency)
       .withChecker(checker ?: GuidelineChecker.VISION)
+      .withRecheck(recheck?.takeIf { checker == GuidelineChecker.JEV })
       // The cache's half of the effort the client sends: a verdict at one is not reused at another.
       .withReasoningEffort(reasoningEffort)
       // An agent's unreadable reply is its to fix: asking again would read the same file, and
@@ -1004,6 +1022,12 @@ data class ModuleGuidelines(
    * ([GuidelineRunResult.predictedCostUsd]); null without a price, and in older files.
    */
   val predictedCostUsd: Double? = null,
+  /**
+   * EXPERIMENTAL, `--recheck-model`: the vision model that answered again what Jev was unsure of,
+   * and what that cost (already in [costUsd]). Null, and absent, when nothing was rechecked.
+   */
+  val recheckModel: String? = null,
+  val recheckCostUsd: Double? = null,
 ) {
   companion object {
     fun of(
@@ -1027,6 +1051,8 @@ data class ModuleGuidelines(
         reasoningTokens = run.reasoningTokens.takeIf { it > 0 },
         completionTokens = run.completionTokens.takeIf { it > 0 },
         predictedCostUsd = run.predictedCostUsd,
+        recheckModel = run.recheckModel,
+        recheckCostUsd = run.recheckCostUsd,
       )
   }
 }
@@ -1058,6 +1084,13 @@ internal object GuidelinesReportRenderer {
         "$" +
         "%.4f".format(run.costUsd) +
         (run.predictedCostUsd?.let { " (predicted $" + "%.4f".format(it) + ")" } ?: "") +
+        (run.recheckCostUsd?.let {
+          " (Jev $" +
+            "%.4f".format(run.costUsd - it) +
+            " + recheck by ${run.recheckModel} $" +
+            "%.4f".format(it) +
+            " over ${run.recheckRequests} request(s))"
+        } ?: "") +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
         (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +
