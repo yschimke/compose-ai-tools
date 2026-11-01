@@ -38,6 +38,7 @@ class PreviewWidgetTest {
   /** The calls [fixture]'s body renders through, read from its bytecode as discovery reads them. */
   private fun callsOf(fixture: String): List<PreviewTargetInference.Invocation> =
     ClassGraph()
+      .enableClasspath()
       .enableClassInfo()
       .enableMethodInfo()
       .acceptPackages("ee.schimke.composeai.discovery", "ee.schimke.composeai.wear.preview")

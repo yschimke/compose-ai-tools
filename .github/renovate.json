@@ -52,7 +52,7 @@
       "allowedVersions": "!/(-compat|-SNAPSHOT)$/"
     },
     {
-      "description": "Hold ClassGraph below 6. 6.0.0 is compiled for Java 25 (class file 69), so on this repository's JDK 17 floor every scan fails with UnsupportedClassVersionError, and it also removes the 4.x API (`overrideClasspath`, `getAnnotationInfo`, `typeDescriptorStr`). The shared preset carries the same cap, but the gradle-wide `-compat` rule just above also sets `allowedVersions` and comes later, so it overrides the preset's ClassGraph rule (last match wins); this rule restores the cap. It names plain `x.y.z` releases, which also keeps out `-compat` and `-SNAPSHOT`; Renovate's RE2 regexes have no lookahead to exclude them otherwise. Lift it only together with a Java 25 floor and a ported discovery.",
+      "description": "Hold ClassGraph below 6. 6.0.0 is compiled for Java 25 (class file 69), so on this repository's JDK 17 floor every scan fails with UnsupportedClassVersionError. (5.x keeps class file 61; it is 5.0 that removed the 4.x API, `overrideClasspath`, `getAnnotationInfo`, `typeDescriptorStr`, so a 5.x bump is a port that must land with compose-preview-daemon and compose-preview-server, never a version-only Renovate merge.) The shared preset carries the same cap, but the gradle-wide `-compat` rule just above also sets `allowedVersions` and comes later, so it overrides the preset's ClassGraph rule (last match wins); this rule restores the cap. It names plain `x.y.z` releases, which also keeps out `-compat` and `-SNAPSHOT`; Renovate's RE2 regexes have no lookahead to exclude them otherwise. Lift it only together with a Java 25 floor and a ported discovery.",
       "matchManagers": [
         "gradle"
       ],
