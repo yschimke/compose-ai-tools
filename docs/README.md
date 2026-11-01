@@ -5,7 +5,7 @@ renderers, daemon, VS Code extension). They assume you're building from source
 with `./gradlew` against the local tree.
 
 > **Consumer docs live elsewhere.** If you just want to *use* the published
-> plugin/CLI, see the [documentation site](https://yschimke.github.io/compose-ai-tools/)
+> plugin/CLI, see the [documentation site](https://preview.coo.ee/start/)
 > and the [`yschimke/skills`](https://github.com/yschimke/skills) bundles
 > (`compose-preview`, `compose-preview-review`). Don't duplicate consumer
 > guidance here.
