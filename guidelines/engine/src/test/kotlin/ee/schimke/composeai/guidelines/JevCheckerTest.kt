@@ -12,6 +12,7 @@ import java.nio.file.Files
 import java.util.Base64
 import java.util.Collections
 import javax.imageio.ImageIO
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -64,8 +65,19 @@ class JevCheckerTest {
 
   private fun questions(body: JsonObject): JsonObject = body["questions"]!!.jsonObject
 
+  /** The request's text state: `state` itself, or the first item when pictures follow it. */
+  private fun stateOf(body: JsonObject): JsonObject =
+    when (val state = body["state"]!!) {
+      is JsonArray -> state.first().jsonObject
+      else -> state.jsonObject
+    }
+
+  /** The image parts after the text state: none for a text-only request. */
+  private fun pictureParts(body: JsonObject): List<JsonObject> =
+    (body["state"] as? JsonArray)?.drop(1)?.map { it.jsonObject }.orEmpty()
+
   private fun name(body: JsonObject): String =
-    body["state"]!!.jsonObject["preview"]!!.jsonObject["name"]!!.jsonPrimitive.content
+    stateOf(body)["preview"]!!.jsonObject["name"]!!.jsonPrimitive.content
 
   /** The rule a question key asks, read back from its instructions. */
   private fun ruleOf(body: JsonObject, key: String): String? =
@@ -182,7 +194,7 @@ class JevCheckerTest {
     jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
 
     val body = model.bodies.single()
-    val state = body["state"]!!.jsonObject
+    val state = stateOf(body)
     // The wrapper's signature, not its body.
     val excerpt = state["source_excerpt"]!!.jsonPrimitive.content
     assertThat(excerpt).contains("fun Frame(content: @Composable () -> Unit) {")
@@ -211,11 +223,14 @@ class JevCheckerTest {
     assertThat(touch["criteria"]!!.jsonObject["fail"].toString()).contains("smaller than 48dp")
     // Jev sees the render, so the visual rule is asked too.
     assertThat(questions(body).toString()).contains("glyph")
-    assertThat(state["task"]!!.jsonPrimitive.content).contains("Judge from the render below")
+    assertThat(state["task"]!!.jsonPrimitive.content)
+      .contains("Judge from the render (the images after this text)")
     // The 40px render, grown by whole pixels to Jev's least size: 7× is 280×280, 78,400 pixels.
-    val render = state["render"]!!.jsonArray.single().jsonObject
-    assertThat(render["shows"]!!.jsonPrimitive.content).contains("7.00× its pixels")
-    val image = render["image"]!!.jsonObject
+    // Captioned in the text, and sent as a top-level state item after it, where every decisions
+    // model reads images.
+    assertThat(state["render"]!!.jsonArray.single().jsonPrimitive.content)
+      .contains("7.00× its pixels")
+    val image = pictureParts(body).single()
     assertThat(image["type"]!!.jsonPrimitive.content).isEqualTo("image_url")
     val url = image["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content
     assertThat(url).startsWith("data:image/png;base64,")
@@ -241,9 +256,8 @@ class JevCheckerTest {
     val run = checker.run(guidelines, listOf(subject("a")))
 
     val body = model.bodies.single()
-    assertThat(body["state"]!!.jsonObject.keys).doesNotContain("render")
-    assertThat(body["state"]!!.jsonObject["task"]!!.jsonPrimitive.content)
-      .contains("You cannot see the render")
+    assertThat(stateOf(body).keys).doesNotContain("render")
+    assertThat(stateOf(body)["task"]!!.jsonPrimitive.content).contains("You cannot see the render")
     assertThat(questions(body).toString()).doesNotContain("glyph")
     val result = run.results.single()
     assertThat(result.unchecked).containsExactly("clipping")
@@ -275,7 +289,7 @@ class JevCheckerTest {
       error("the jev checker must not ask the vision model")
 
     override fun decide(body: JsonObject): ModelResponse {
-      val picture = body["state"]!!.jsonObject.containsKey("render")
+      val picture = pictureParts(body).isNotEmpty()
       withPicture += picture
       if (picture && refused < down) {
         refused++
@@ -420,7 +434,7 @@ class JevCheckerTest {
     val blind =
       subject("a").copy(pictures = listOf(SubjectPicture("device", byteArrayOf(1, 2, 3), 40, 40)))
     val result = jev(model, A11yHost()).run(guidelines, listOf(blind)).results.single()
-    assertThat(model.bodies.single()["state"]!!.jsonObject.keys).doesNotContain("render")
+    assertThat(stateOf(model.bodies.single()).keys).doesNotContain("render")
     assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
       .isEqualTo(JevChecker.TEXT_ONLY_REASON)
   }
@@ -492,7 +506,7 @@ class JevCheckerTest {
     val model =
       FakeDecisions(
         answer = { body, rule, key ->
-          val full = body["state"]!!.jsonObject["accessibility"] is JsonObject
+          val full = stateOf(body)["accessibility"] is JsonObject
           when {
             isNode(key) -> if (full && name(body) == "a") "add" to 0.8 else null
             rule == "described" && name(body) == "a" && !full -> "needs:a11y" to 0.7
@@ -505,8 +519,7 @@ class JevCheckerTest {
 
     // Round 0 had nothing in hand: no fetch, and the state says so.
     val first = model.bodies.first { name(it) == "a" }
-    assertThat(first["state"]!!.jsonObject["accessibility"]!!.jsonPrimitive.content)
-      .isEqualTo("not fetched")
+    assertThat(stateOf(first)["accessibility"]!!.jsonPrimitive.content).isEqualTo("not fetched")
     // One prefetch, for the subject that asked only.
     assertThat(host.prefetched).containsExactly(setOf("a"))
     val followUp = model.bodies.filter { name(it) == "a" }[1]
@@ -537,7 +550,7 @@ class JevCheckerTest {
     assertThat(model.bodies).hasSize(2)
     val last = model.bodies[1]
     assertThat(last["state"].toString()).contains("add | Button | Add")
-    assertThat(last["state"]!!.jsonObject.keys).contains("source")
+    assertThat(stateOf(last).keys).contains("source")
     // The last round offers nothing more: decide, or cannot_tell.
     val options = questions(last).values.first().jsonObject["criteria"]!!.jsonObject.keys
     assertThat(options.none { it.startsWith("needs:") }).isTrue()

@@ -392,7 +392,10 @@ TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesaf
   Choice's first option.
 
 **The render.** Every request for a subject carries its first `JevPictures.MAX_PICTURES` (2)
-pictures under `state.render`, each with a `shows` caption. `JevPictures` fits them into Jev's
+pictures. `state` is then an array: the text state, whose `render` lists each picture's caption,
+followed by one `image_url` part per picture. Decision models other than Jev read images only as
+top-level `state` items (`openai/gpt-6-luna-decisions` answers 400 for one nested in an object), and
+Jev reads them there too, so `--model` can name any decisions model with image input. `JevPictures` fits them into Jev's
 limits. A render too large is scaled down (bicubic) until it fits the longest side and the pixel
 total. One too small is scaled up by a whole factor (nearest-neighbour, so a 1px clip edge stays
 1px wide in each block). Only when its shape keeps one side short is it centred on a flat grey
