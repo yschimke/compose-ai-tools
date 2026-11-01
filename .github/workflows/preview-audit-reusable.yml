@@ -312,7 +312,7 @@ jobs:
         env:
           PRE_RENDER: ${{ inputs.pre-render }}
         run: bash -euo pipefail -c "$PRE_RENDER"
-      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # zizmor: ignore[unpinned-uses] (Dependabot moves it to new releases; release-please cannot write workflow files)
         with:
           # Same CLI as the caller's render workflow renders with.
           version: catalog
@@ -374,7 +374,7 @@ jobs:
         # compose-ai-tools' reusable Jev audit: the defaults (typesafe/jev-1.13, rechecked by
         # xiaomi/mimo-v2.6-flash) are its own; .github/preview-audit/jev.json says which guidelines
         # file covers which module.
-        uses: yschimke/compose-ai-tools/.github/actions/preview-audit-jev@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        uses: yschimke/compose-ai-tools/.github/actions/preview-audit-jev@v2.83.0 # zizmor: ignore[unpinned-uses] (Dependabot moves it to new releases; release-please cannot write workflow files)
         with:
           openrouter-key: ${{ secrets.OPENROUTER_API_KEY }}
           recheck-model: ${{ inputs.recheck-model }}

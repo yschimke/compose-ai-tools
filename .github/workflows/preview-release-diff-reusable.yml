@@ -184,7 +184,7 @@ jobs:
           set -euo pipefail
           v=$(python3 -c 'import sys,tomllib; print(tomllib.load(open("gradle/libs.versions.toml","rb")).get("versions",{}).get(sys.argv[1],""))' "$CATALOG_KEY")
           echo "version=${v:-$FALLBACK}" >> "$GITHUB_OUTPUT"
-      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # zizmor: ignore[unpinned-uses] (Dependabot moves it to new releases; release-please cannot write workflow files)
         with:
           version: ${{ steps.cli.outputs.version }}
 
@@ -238,7 +238,7 @@ jobs:
           pattern: release-render-*
           path: _dl
       - id: diff
-        uses: yschimke/compose-ai-tools/.github/actions/release-preview-diff@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        uses: yschimke/compose-ai-tools/.github/actions/release-preview-diff@v2.83.0 # zizmor: ignore[unpinned-uses] (Dependabot moves it to new releases; release-please cannot write workflow files)
         with:
           base-tag: ${{ needs.prep.outputs.base }}
           head-tag: ${{ needs.prep.outputs.head }}
