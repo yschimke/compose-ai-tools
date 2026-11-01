@@ -739,7 +739,11 @@ internal class JevChecker(
       if (verdict == GuidelineVerdictV1.FAIL)
         answer.node ?: relevant.firstOrNull { it.decisive && it.nodeId != null }?.nodeId
       else null
-    val because = relevant.firstOrNull { it.decisive }?.text ?: relevant.firstOrNull()?.text
+    // Where Jev saw the render, a fact that is not decisive did not settle the answer: the reason
+    // says it was judged from the render rather than citing that fact.
+    val because =
+      relevant.firstOrNull { it.decisive }?.text
+        ?: relevant.firstOrNull()?.text?.takeIf { state.shown.isEmpty() }
     state.verdicts[rule.id] =
       GuidelineVerdictV1.Builder(rule.id, verdict)
         .apply {

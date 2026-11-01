@@ -255,6 +255,17 @@ class JevCheckerTest {
   }
 
   @Test
+  fun `a fail Jev judged from the render says so rather than citing a fact that did not decide it`() {
+    val model =
+      FakeDecisions(
+        answer = { _, rule, key -> if (rule == "clipping" && !isNode(key)) "fail" to 0.9 else null }
+      )
+    val result = jev(model, A11yHost()).run(guidelines, listOf(subject("a"))).results.single()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo("Jev (with the render, round 1): judged broken from the render (p 0.90).")
+  }
+
+  @Test
   fun `a render that is not an image is asked from text alone`() {
     val model = FakeDecisions()
     val blind =
