@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.81.0](https://github.com/yschimke/compose-ai-tools/compare/v2.80.0...v2.81.0) (2026-11-01)
+
+
+### Features
+
+* **apply:** expose debug variant input ([#6382](https://github.com/yschimke/compose-ai-tools/issues/6382)) ([ec08c0a](https://github.com/yschimke/compose-ai-tools/commit/ec08c0a3d282a91ac27addc555deb5c6f81db569))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.22.0 ([#6378](https://github.com/yschimke/compose-ai-tools/issues/6378)) ([c3161e9](https://github.com/yschimke/compose-ai-tools/commit/c3161e9315acf59f97108dec81003b14a80100ac))
+
 ## [2.80.0](https://github.com/yschimke/compose-ai-tools/compare/v2.79.2...v2.80.0) (2026-11-01)
 
 
