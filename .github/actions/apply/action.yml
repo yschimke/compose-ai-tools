@@ -406,9 +406,11 @@ inputs:
       EXPERIMENTAL, with `guidelines-checker: jev` only. A vision model
       (an OpenRouter id) that answers again, per preview, the rules Jev
       left unchecked or answered below p 0.8; its verdicts replace Jev's.
-      Empty (the default) keeps Jev's answers. Needs a CLI with
+      The default, xiaomi/mimo-v2.6-flash, rechecked as accurately as
+      deepseek-v4.1-flash for a quarter of the cost on a 40-render eval.
+      Empty or `none` keeps Jev's answers. Needs a CLI with
       `--recheck-model`.
-    default: ''
+    default: 'xiaomi/mimo-v2.6-flash'
 
 runs:
   using: 'composite'
@@ -2099,7 +2101,7 @@ runs:
           # Minimal first: Jev asks for evidence over up to three follow-up rounds.
           jev) kind_args+=(--checker jev); rounds=3
             # What Jev is unsure of, asked again of a vision model.
-            if [ -n "${GUIDELINES_RECHECK_MODEL:-}" ]; then
+            if [ -n "${GUIDELINES_RECHECK_MODEL:-}" ] && [ "$GUIDELINES_RECHECK_MODEL" != none ]; then
               if [[ "$GUIDELINES_RECHECK_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._/:~-]*$ ]]; then
                 kind_args+=(--recheck-model "$GUIDELINES_RECHECK_MODEL")
               else
