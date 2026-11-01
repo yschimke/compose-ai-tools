@@ -3,8 +3,12 @@ description: >-
   Render @Preview composables to PNG outside Android Studio, plus per-render
   structured data products (a11y, layout, theme, recomposition…) so AI coding
   agents can see and reason about the UI they're changing.
-url: https://yschimke.github.io
-baseurl: /compose-ai-tools
+# The site's address is preview.coo.ee/start/: GitHub Pages still hosts it, and the preview host's
+# caddy edge proxies /start/ to it (compose-preview-server deploy/image README, "Start pages served
+# in place"). Links are built for that address, so the github.io copy redirects there
+# (_includes/head_custom.html).
+url: https://preview.coo.ee
+baseurl: /start
 
 remote_theme: just-the-docs/just-the-docs
 plugins:
