@@ -1,7 +1,7 @@
 # compose-ai-tools
 
 **Let your coding agent see the Compose UI it just changed.** Start at
-**<https://yschimke.github.io/compose-ai-tools/>** (designing a new screen
+**<https://preview.coo.ee/start/>** (designing a new screen
 instead? <https://ui.coo.ee/start>).
 
 ## Get started
@@ -47,7 +47,7 @@ Then **ask your agent to render one of your previews.**
   `com.android.library` / `org.jetbrains.compose`.
 - **Gradle plugin**: version-pinned, on
   [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin).
-  See the [Install page](https://yschimke.github.io/compose-ai-tools/install/) for that, CI
+  See the [Install page](https://preview.coo.ee/start/install/) for that, CI
   recipes, and the requirements (Java 17+, Gradle 8.13+, AGP 8.13.0+, Kotlin 2.0.21+).
 
 ## When you need more
@@ -61,14 +61,14 @@ None of this is required to get value from the tool.
   skills review UI PRs and set that CI up.
 - **[UI Builder](https://ui.coo.ee/start)** — design a new screen with an agent.
 - **[Whole-app simulator](docs/SIMULATOR.md)** — `compose-preview launch app.apk`, no emulator.
-- **[Data products](https://yschimke.github.io/compose-ai-tools/reference/)** — structured data
+- **[Data products](https://preview.coo.ee/start/reference/)** — structured data
   alongside each PNG: accessibility findings, layout trees, theme tokens, recomposition heat maps,
   drawn text, resource captures, and more.
-- **[Agents & MCP](https://yschimke.github.io/compose-ai-tools/mcp/)** — the local and hosted MCP
+- **[Agents & MCP](https://preview.coo.ee/start/mcp/)** — the local and hosted MCP
   servers and a token-frugal agent loop over Compose UI. The same native MCP process can
   optionally connect agents to a concurrent preview-server UI-builder session; see the
   [MCP design reference](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md#remote-ui-builder-tools).
-- **[Daemon](https://yschimke.github.io/compose-ai-tools/daemon/)** — an optional long-lived
+- **[Daemon](https://preview.coo.ee/start/daemon/)** — an optional long-lived
   renderer that keeps Robolectric / Compose-Desktop warm so re-renders are fast.
 
 ## Samples
@@ -95,7 +95,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 
 ## More
 
-- [Documentation site](https://yschimke.github.io/compose-ai-tools/) — install, reference, agents & MCP, daemon.
+- [Documentation site](https://preview.coo.ee/start/) — install, reference, agents & MCP, daemon.
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure.
 - [Configuration-only plugin](docs/CONFIG_ONLY_PLUGIN.md) — commit `composePreview { }` config to your build without pinning the rendering runtime.
 - [PR review workflow](docs/PR_REVIEW_WORKFLOW.md) — reusable, preview-gated AI PR review (Codex / Claude / Gemini).

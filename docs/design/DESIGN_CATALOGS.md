@@ -224,7 +224,7 @@ animated capture itself, under **`motion/`**. Both renderer backends produce the
 `@InteractionPreview` used to be desktop-only, and on an Android or Wear catalog it
 produced no capture *and* took the component's ordinary still down with it
 ([#4215](https://github.com/yschimke/compose-ai-tools/issues/4215)); see
-[Motion captures](https://yschimke.github.io/compose-ai-tools/reference/motion/) for
+[Motion captures](https://preview.coo.ee/start/reference/motion/) for
 what the two backends share and what stays per-backend. It is named from the sticker it sits
 beside — `images/switch-on/ideal__default__dark.png` publishes its capture as
 `motion/switch-on/ideal__default__dark.apng` — so the two cannot drift apart, and a
