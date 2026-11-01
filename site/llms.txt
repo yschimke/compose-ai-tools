@@ -2,17 +2,32 @@
 
 > compose-ai-tools renders Jetpack Compose and Compose Multiplatform `@Preview` composables to PNG outside Android Studio, and produces structured UI data so developers and coding agents can inspect and verify changes.
 
-Start pages: https://yschimke.github.io/compose-ai-tools/ for the CLI and project previews; https://ui.coo.ee/start for the UI Builder agent flow. The project supports a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension, CI actions, and an optional MCP server and render daemon. Java 17 or newer and Gradle 8.13 or newer are required.
+Core path: install one thing for your agent, then ask it to render one of your previews.
+
+- Claude Code: `/plugin marketplace add yschimke/compose-agent-plugins` then `/plugin install compose-preview@compose-agent-plugins`.
+- Codex: `codex plugin marketplace add yschimke/compose-agent-plugins`, then enable `compose-preview` from `/plugins`.
+- Antigravity: `curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 -`
+- Any other agent, or no plugin system: `curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash` (installs the `compose-preview` CLI and the two default skills).
+
+The `compose-preview` plugin carries the `compose-preview` and `compose-ui-builder` skills, the local MCP server and the hosted catalog server. Install only that one plugin in a coding agent.
+
+Start pages: https://yschimke.github.io/compose-ai-tools/ for the CLI and project previews; https://ui.coo.ee/start for designing a new screen in the UI Builder. Without an agent there is also a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension and CI actions. Java 17 or newer and Gradle 8.13 or newer are required for local rendering.
 
 MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio, renders the user's own project). The hosted catalog server has one URL, `https://preview.coo.ee/mcp`; `https://ui.coo.ee/mcp` is an alias of the same server, so never configure both.
 
 ## Getting started
 
-- [Overview](https://yschimke.github.io/compose-ai-tools/): Choose the agent, editor, or command-line workflow and see the core rendering capabilities.
+- [Overview](https://yschimke.github.io/compose-ai-tools/): The one install per agent host, then the alternatives for people (VS Code, CLI, Gradle plugin) and what to reach for next.
+- [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews; an agent that can only fetch URLs can bootstrap the CLI from it.
 - [Installation and requirements](https://yschimke.github.io/compose-ai-tools/install/): Gradle plugin, CLI build integration, CI actions, compatibility requirements and configuration examples.
-- [CLI and skills setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md): Installing and updating the `compose-preview` CLI and agent skills.
-- [Agent host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md): Plugins and MCP wiring per agent host.
-- [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews.
+- [Other hosts and install options](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md): Per-host plugin and MCP wiring beyond the core path.
+- [CLI and skills setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md): `install.sh` flags, `npx skills`, and updating the CLI and skills.
+
+## When you need more
+
+- [PR review and preview CI](https://github.com/yschimke/skills/tree/main/skills/compose-preview-review): Optional review and CI skills (`compose-preview-review`, `compose-preview-ci`; Claude Code: `/plugin install compose-review@compose-agent-plugins`) and the `apply` GitHub Action that posts before/after renders on PRs.
+- [UI Builder](https://ui.coo.ee/start): Design a new screen with an agent, then export Compose code.
+- [Whole-app simulator](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md): Run an APK without an emulator with `compose-preview launch`.
 
 ## Core documentation
 

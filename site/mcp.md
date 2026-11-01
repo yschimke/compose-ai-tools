@@ -74,9 +74,10 @@ mean two separate grants to approve and refresh. If a config already has a
 adding a second server. (`https://ui.coo.ee/start` is the UI Builder start page
 for people; it is not an MCP endpoint.)
 
-The per-harness plugins in
+The `compose-preview` plugin from
 [`yschimke/compose-agent-plugins`](https://github.com/yschimke/compose-agent-plugins)
-wire both servers for you; how each host is configured is in its
+wires both servers for you (install commands on the [home page](../#get-started));
+how each other host is configured is in its
 [host setup notes](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md).
 The rest of this page is about the local server.
 

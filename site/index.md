@@ -8,14 +8,11 @@ permalink: /
 
 # compose-ai-tools
 
-**See your Compose UI without opening Android Studio.**
+**Let your coding agent see the Compose UI it just changed.**
 
-`compose-ai-tools` renders your `@Preview` composables to PNG from the
-command line — so your AI coding agent can actually *look* at the screen it
-just changed, and so can you. Works with Jetpack Compose (Android) and
-Compose Multiplatform Desktop.
-
-That's the whole idea. Everything else is optional.
+`compose-ai-tools` renders your `@Preview` composables to PNG outside Android
+Studio, so your agent can *look* at its work, and so can you. Jetpack Compose
+(Android) and Compose Multiplatform Desktop.
 
 [Get started](#get-started){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [Reference](./reference/){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
@@ -25,57 +22,58 @@ That's the whole idea. Everything else is optional.
 
 ## Get started
 
-This page is the start page for the CLI and your project's previews. Designing
-a new screen with an agent in the UI Builder? That flow starts at <https://ui.coo.ee/start>.
+Pick your agent and run its one install.
 
-### 🤖 With an AI coding agent
+**Claude Code**
 
-One command installs the `compose-preview` CLI and the default agent skills
-(Antigravity doesn't read that skills folder; install its plugins instead, from
-[host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md#antigravity)):
+```text
+/plugin marketplace add yschimke/compose-agent-plugins
+/plugin install compose-preview@compose-agent-plugins
+```
+
+**Codex**
+
+```sh
+codex plugin marketplace add yschimke/compose-agent-plugins
+```
+
+then enable `compose-preview` from `/plugins`.
+
+**Antigravity**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 -
+```
+
+**Any other agent** (Gemini CLI, OpenCode, Cursor, Copilot, …), or no plugin system:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
-Then ask your agent to preview a composable. The
-[`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview)
-tells it how to render, iterate and check its own work; an agent that can only
-fetch URLs can read the
-[SKILL.md](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
-and bootstrap the CLI itself.
+Then: **ask your agent to render one of your previews.** That's the whole onboarding.
 
-- Other install routes (`npx skills`, flags, updating):
-  [setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md).
-- Plugins and MCP wiring for Claude Code, Codex, Gemini/Antigravity, OpenCode:
-  [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md).
-- Which MCP server is which: [Agents & MCP](./mcp/#two-mcp-servers-local-and-hosted).
+Designing a new screen instead? Start at <https://ui.coo.ee/start>.
 
-### 🧩 In VS Code (or Cursor / Windsurf / VSCodium)
+[Other hosts and install options](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md)
 
-Open the Extensions view (⇧⌘X / Ctrl+Shift+X), search **Compose Preview**,
-click *Install*. It renders previews inline and needs no project changes.
+### Without an agent
 
-[Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview) ·
-[Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)
+**VS Code** (or Cursor / Windsurf / VSCodium): search the Extensions view for
+**Compose Preview** and click *Install*. It renders previews inline and needs no
+project changes.
+([Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview) ·
+[Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview))
 
-### ⌨️ From the command line
-
-Install the CLI (same one-liner as above), then point it at any Compose
-project — no build edits required:
+**Command line.** The `install.sh` one-liner above also installs the
+`compose-preview` CLI. Point it at any Compose project, no build edits required:
 
 ```sh
 compose-preview render    # render every @Preview to PNG
 compose-preview browse    # Storybook-like local component catalog
 ```
 
-The CLI injects itself into your build at runtime, so projects that already
-use `com.android.application` / `com.android.library` /
-`org.jetbrains.compose` just work.
-
-### 🐘 With the Gradle plugin
-
-Prefer a version-pinned plugin in your build? It's on
+**Gradle plugin.** Prefer a version-pinned plugin in your build? It's on
 [Maven Central](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
 — no auth, no token. Replace `<published-version>` with the version shown there.
 
@@ -95,17 +93,31 @@ Render filters, CI recipes and requirements are on the [Install page](./install/
 
 ---
 
-## Going further
+## When you need more
 
-Once you're rendering PNGs, there's more your agent can do — but none of it
-is required to get value from the tool.
+None of this is required to get value from the tool. Your agent will offer the
+relevant one when it comes up.
 
-- **[Data products](./reference/)** — alongside each PNG the renderer can
-  emit structured data: accessibility findings, layout trees, theme tokens,
-  recomposition heat maps, drawn text, and more. One page per product.
-- **[MCP server](./mcp/)** — a push-based, token-frugal agent loop over
-  Compose UI (target by semantic ref, observe semantics instead of pixels,
-  diff renders, generate tests). The aria-snapshot story for Compose.
+- **PR review and preview CI.** Before/after renders posted on every pull
+  request by the
+  [`apply`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply)
+  action, and the
+  [`compose-preview-review`](https://github.com/yschimke/skills/tree/main/skills/compose-preview-review)
+  and [`compose-preview-ci`](https://github.com/yschimke/skills/tree/main/skills/compose-preview-ci)
+  skills that review a UI PR and set that CI up. Claude Code:
+  `/plugin install compose-review@compose-agent-plugins`; elsewhere,
+  `install.sh --skills compose-preview-review,compose-preview-ci`.
+- **[UI Builder](https://ui.coo.ee/start)** — design a new screen with an agent
+  in the browser, then export it as Compose code.
+- **[Whole-app simulator](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md)**
+  — `compose-preview launch app.apk` runs an APK without an emulator, for
+  navigation, deep links, Wear OS and more.
+- **[Data products](./reference/)** — structured data alongside each PNG:
+  accessibility findings, layout trees, theme tokens, recomposition heat maps,
+  drawn text, and more.
+- **[Agents & MCP](./mcp/)** — the local and hosted MCP servers, and a
+  token-frugal agent loop over Compose UI (semantic refs, semantics diffs,
+  recording to tests).
 - **[Daemon](./daemon/)** — a long-lived renderer that keeps Robolectric /
   Compose-Desktop warm so re-renders are fast.
 
@@ -116,5 +128,3 @@ is required to get value from the tool.
 - **[How it works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md)** — discovery, renderer pipeline, caching.
 - **[Samples](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main)** — rendered baselines for `samples:android`, `samples:wear`, `samples:cmp`, `samples:remotecompose`, regenerated on every push to `main`.
 - **[Releases](https://github.com/yschimke/compose-ai-tools/releases)** · **[Changelog](https://github.com/yschimke/compose-ai-tools/blob/main/CHANGELOG.md)** · **[License](https://github.com/yschimke/compose-ai-tools/blob/main/LICENSE)** (Apache 2.0).
-</content>
-</invoke>

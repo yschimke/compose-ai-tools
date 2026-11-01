@@ -13,15 +13,16 @@ CI, and requirements.
 
 | You want | Go to |
 |---|---|
-| The CLI and agent skills (`install.sh`, `npx skills`, flags, updating) | [compose-preview setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md) |
-| Plugins and MCP wiring per agent host (Claude Code, Codex, Gemini/Antigravity, OpenCode) | [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md) |
+| Your coding agent rendering previews (Claude Code, Codex, Antigravity) | The `compose-preview` plugin from [compose-agent-plugins](https://github.com/yschimke/compose-agent-plugins); the commands are under [Agents](#agents) |
+| Any other agent, or just the CLI | `install.sh`, under [CLI](#cli); flags, `npx skills` and updating are in [compose-preview setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md) |
+| Other hosts, and per-host MCP wiring | [host setup](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md) |
 | The local vs hosted MCP server, and the one hosted URL | [Agents & MCP](../mcp/#two-mcp-servers-local-and-hosted) |
 
 ## CLI
 
 The `compose-preview` binary works against any Compose project with **no
 build edits** — it injects the preview plugin at runtime via a bundled
-Gradle init script. Install it (and the default skills) with:
+Gradle init script. Install it (and the two default agent skills) with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
@@ -250,9 +251,40 @@ on every Gradle invocation it makes — no project changes needed.
 
 ## Agents
 
-Point any agent that can fetch a URL at the
-[`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md);
-it checks for the CLI and bootstraps it if missing. Per-host plugins and MCP
+One install per host. Each gives the agent the `compose-preview` and
+`compose-ui-builder` skills, the local MCP server and the hosted catalog server.
+
+Claude Code:
+
+```text
+/plugin marketplace add yschimke/compose-agent-plugins
+/plugin install compose-preview@compose-agent-plugins
+```
+
+Codex:
+
+```sh
+codex plugin marketplace add yschimke/compose-agent-plugins
+```
+
+then enable `compose-preview` from `/plugins`.
+
+Antigravity:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 -
+```
+
+Any other agent (Gemini CLI, OpenCode, Cursor, Copilot, …), or no plugin system:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
+```
+
+Then ask your agent to render one of your previews. An agent that can only
+fetch URLs can read the
+[`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md),
+which checks for the CLI and bootstraps it if missing. Other hosts and MCP
 registration are in the
 [host setup notes](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md);
 what `compose-preview mcp install` writes is on [Agents & MCP](../mcp/#register-the-local-server).

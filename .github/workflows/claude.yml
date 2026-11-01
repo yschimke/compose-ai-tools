@@ -86,14 +86,14 @@ jobs:
           # CI-enforced invariants"). Branch commits land as claude[bot],
           # which the gate deliberately allows; squash-merge from PR title +
           # body keeps main human-authored.
-          # Install the skills plugin (compose-preview-review and friends)
-          # before the session starts. Plugins install via these action
+          # Install the compose-review plugin (compose-preview-review and
+          # compose-preview-ci) before the session starts. Plugins install via these action
           # inputs; enabledPlugins in `settings` alone would not install
           # anything on the runner.
           plugin_marketplaces: |
-            https://github.com/yschimke/skills.git
+            https://github.com/yschimke/compose-agent-plugins.git
           plugins: |
-            yschimke-skills@yschimke-skills
+            compose-review@compose-agent-plugins
           settings: |
             {
               "includeCoAuthoredBy": false,
