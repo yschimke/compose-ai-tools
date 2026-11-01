@@ -1,0 +1,253 @@
+name: Preview Release Diff (reusable)
+
+# Release-to-release preview comparison, for a consumer's release. Renders every @Preview at the
+# previous release tag and at the new one, compares them by the sha256 the compose-preview CLI
+# reports, pushes the before/after PNGs of every changed or new preview to the
+# `compose-preview/releases` branch of `out-repo` under `<tag>/`, and adds a collapsed "Preview
+# changes since <previous tag>" section to the release notes (the `release-preview-diff` action).
+#
+# A caller (usually its release-please workflow, since a release created with GITHUB_TOKEN raises
+# no `release` event) does:
+#
+#   preview-release-diff:
+#     needs: release-please
+#     if: needs.release-please.outputs.release_created == 'true'
+#     uses: yschimke/compose-ai-tools/.github/workflows/preview-release-diff-reusable.yml@v2.83.0
+#     with:
+#       tag: ${{ needs.release-please.outputs.tag_name }}
+#       out-repo: owner/app-out           # or the repo itself
+#       catalog-key: composePreviewPlugin # versions.<key> pins the compose-preview CLI
+#     secrets:
+#       push_token: ${{ secrets.ARTIFACTS_TOKEN }}
+#     permissions:
+#       contents: write
+#
+# and, to audit what changed, a job after it that calls its own Preview Audit in release mode when
+# `outputs.changed` is 'true'. The comparison is uploaded as the `release-preview-diff` artifact
+# (`diff-linked.md`) for that audit to read.
+#
+# Each side renders with the compose-preview CLI its own version catalog pins (`catalog-key`); a
+# side whose catalog has no pin uses the new tag's. A renderer bump between the two releases can
+# therefore show up as changes of its own.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to compare (e.g. v0.1.10).
+        required: true
+        type: string
+      base:
+        description: Tag to compare against (default the previous v* tag).
+        required: false
+        type: string
+        default: ''
+      out-repo:
+        description: owner/name the images are pushed to (default this repository).
+        required: false
+        type: string
+        default: ''
+      catalog-key:
+        description: The gradle/libs.versions.toml versions key that pins the compose-preview CLI.
+        required: false
+        type: string
+        default: composePreviewPlugin
+      setup:
+        description: >
+          How the render jobs set up the build. `default`: the JDK (`java-version`, temurin), the Android SDK
+          (`android-packages`) and Gradle. `local`: the repository's own `./.github/actions/setup`
+          action, called with `cache-read-only: 'true'`.
+        required: false
+        type: string
+        default: default
+      java-version:
+        description: 'The JDK setup default installs (temurin).'
+        required: false
+        type: string
+        default: '21'
+      android-packages:
+        description: 'The Android SDK packages that setup default installs.'
+        required: false
+        type: string
+        default: platform-tools platforms;android-36 build-tools;36.0.0
+      pre-render:
+        description: Shell run in the checkout before rendering (fonts, generated sources).
+        required: false
+        type: string
+        default: ''
+    secrets:
+      push_token:
+        description: Contents write on out-repo (default the run's GITHUB_TOKEN, enough when out-repo is this repository).
+        required: false
+      buildfetch_cache_token:
+        description: Optional read-only BuildFetch Gradle remote cache token, as BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN.
+        required: false
+    outputs:
+      changed:
+        description: "'true' when any preview changed or is new."
+        value: ${{ jobs.compare.outputs.changed }}
+      head:
+        value: ${{ jobs.prep.outputs.head }}
+      base:
+        value: ${{ jobs.prep.outputs.base }}
+
+permissions: {}
+
+jobs:
+  prep:
+    name: Pick the tags and the CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      head: ${{ steps.tags.outputs.head }}
+      base: ${{ steps.tags.outputs.base }}
+      cli: ${{ steps.tags.outputs.cli }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: tags
+        env:
+          HEAD_TAG: ${{ inputs.tag }}
+          BASE_TAG: ${{ inputs.base }}
+          CATALOG_KEY: ${{ inputs.catalog-key }}
+        run: |
+          set -euo pipefail
+          git rev-parse --verify --quiet "refs/tags/$HEAD_TAG" >/dev/null || { echo "::error::No tag $HEAD_TAG"; exit 1; }
+          base="$BASE_TAG"
+          if [ -z "$base" ]; then
+            # The newest v* tag reachable from the parent of this release.
+            base=$(git tag --merged "$HEAD_TAG^" --sort=-v:refname --list 'v[0-9]*' | head -1)
+          fi
+          [ -n "$base" ] || echo "::notice::No earlier release tag than $HEAD_TAG; nothing to compare."
+          cli=$(python3 -c 'import sys,tomllib; print(tomllib.load(open("gradle/libs.versions.toml","rb")).get("versions",{}).get(sys.argv[1],""))' "$CATALOG_KEY")
+          [ -n "$cli" ] || { echo "::error::$HEAD_TAG pins no compose-preview CLI under versions.$CATALOG_KEY"; exit 1; }
+          echo "Comparing $HEAD_TAG with ${base:-nothing} (CLI $cli for sides without a pin)"
+          { echo "head=$HEAD_TAG"; echo "base=$base"; echo "cli=$cli"; } >> "$GITHUB_OUTPUT"
+
+  render:
+    name: Render ${{ matrix.side }}
+    needs: prep
+    if: needs.prep.outputs.base != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        side: [base, head]
+    env:
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_cache_token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.side == 'base' && needs.prep.outputs.base || needs.prep.outputs.head }}
+          persist-credentials: false
+
+      - name: Set up the JDK
+        if: inputs.setup != 'local'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+      - name: Set up Android SDK
+        if: inputs.setup != 'local'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: ${{ inputs.android-packages }}
+      - name: Set up Gradle
+        if: inputs.setup != 'local'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: true
+      - name: Set up the build (the repository's own action)
+        if: inputs.setup == 'local'
+        uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
+      - name: Prepare the render
+        if: inputs.pre-render != ''
+        env:
+          PRE_RENDER: ${{ inputs.pre-render }}
+        run: bash -euo pipefail -c "$PRE_RENDER"
+
+      - id: cli
+        env:
+          FALLBACK: ${{ needs.prep.outputs.cli }}
+          CATALOG_KEY: ${{ inputs.catalog-key }}
+        run: |
+          set -euo pipefail
+          v=$(python3 -c 'import sys,tomllib; print(tomllib.load(open("gradle/libs.versions.toml","rb")).get("versions",{}).get(sys.argv[1],""))' "$CATALOG_KEY")
+          echo "version=${v:-$FALLBACK}" >> "$GITHUB_OUTPUT"
+      - uses: yschimke/compose-ai-tools/.github/actions/install@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        with:
+          version: ${{ steps.cli.outputs.version }}
+
+      - name: Render every preview
+        run: |
+          set -uo pipefail
+          mkdir -p _release
+          # A preview that fails to render is left out of the JSON rather than failing the
+          # comparison; the render log keeps the reason.
+          compose-preview show --variant debug --json > _release/show.json 2> _release/show.log
+          status=$?
+          [ "$status" -eq 0 ] || echo "::warning::compose-preview show exited $status; comparing what rendered."
+          python3 - <<'PY'
+          import json, os
+          ws = os.environ["GITHUB_WORKSPACE"] + "/"
+          d = json.load(open("_release/show.json"))
+          pngs = []
+          for p in d["previews"] if isinstance(d, dict) else d:
+              for c in p.get("captures") or []:
+                  if (c.get("pngPath") or "").startswith(ws):
+                      c["pngPath"] = c["pngPath"][len(ws):]
+                  if c.get("pngPath") and os.path.exists(c["pngPath"]):
+                      pngs.append(c["pngPath"])
+          json.dump(d, open("_release/show.json", "w"))
+          open("_release/pngs.txt", "w").write("\n".join(pngs) + "\n")
+          print(f"{len(pngs)} capture(s) rendered")
+          PY
+          tar czf _release/renders.tgz -T _release/pngs.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-render-${{ matrix.side }}
+          path: |
+            _release/show.json
+            _release/show.log
+            _release/renders.tgz
+          retention-days: 14
+
+  compare:
+    name: Compare and publish
+    needs: [prep, render]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # The release notes, and (when out-repo is this repository) the images branch.
+      contents: write
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-render-*
+          path: _dl
+      - id: diff
+        uses: yschimke/compose-ai-tools/.github/actions/release-preview-diff@v2.83.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+        with:
+          base-tag: ${{ needs.prep.outputs.base }}
+          head-tag: ${{ needs.prep.outputs.head }}
+          out-repo: ${{ inputs.out-repo || github.repository }}
+          push-token: ${{ secrets.push_token || github.token }}
+          github-token: ${{ github.token }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # A release Preview Audit reads the comparison from here.
+          name: release-preview-diff
+          path: _out/diff-linked.md
+          retention-days: 14

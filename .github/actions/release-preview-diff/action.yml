@@ -1,0 +1,140 @@
+name: 'Compose Preview Release Diff'
+description: >
+  Compares the `compose-preview show --json` renders of two releases and
+  publishes the result. It pushes the before/after PNGs of every changed or
+  new preview to the `compose-preview/releases` branch of `out-repo` under
+  `<head-tag>/`, and adds a collapsed "Preview changes since <base-tag>"
+  section to the head release's notes, replacing any earlier one. It also
+  writes `<out-dir>/diff-linked.md` (the same shape as a PR's
+  `<!-- preview-diff -->` comment, with absolute image links) for a release
+  Preview Audit to read.
+
+  Expects, in `renders-dir`, `release-render-base/` and
+  `release-render-head/`, each holding `show.json` (relative `pngPath`s) and
+  `renders.tgz` (those PNGs). This is what
+  `preview-release-diff-reusable.yml`'s render jobs upload. Captures are
+  matched by module, preview id and capture index, and compared by sha256.
+
+inputs:
+  base-tag:
+    description: 'The earlier release tag.'
+    required: true
+  head-tag:
+    description: 'The release being compared; its notes are edited.'
+    required: true
+  out-repo:
+    description: 'owner/name the images are pushed to (the repo itself, or a public -out repo).'
+    required: true
+  push-token:
+    description: 'Contents write on out-repo.'
+    required: true
+  github-token:
+    description: 'Contents write on this repo, to edit the release notes.'
+    required: true
+  renders-dir:
+    description: 'Where the two render artifacts were downloaded.'
+    default: '_dl'
+  out-dir:
+    description: 'Where diff.md, diff-linked.md, summary.json and images/ are written.'
+    default: '_out'
+  max-functions:
+    description: 'Functions listed per section before the rest are counted.'
+    default: '60'
+  commit-name:
+    description: 'Author of the images commit.'
+    default: 'github-actions[bot]'
+  commit-email:
+    description: 'Email of the images commit author.'
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
+
+outputs:
+  changed:
+    description: "'true' when any preview changed or is new."
+    value: ${{ steps.diff.outputs.changed }}
+  sha:
+    description: 'The images commit on compose-preview/releases (empty when nothing changed).'
+    value: ${{ steps.push.outputs.sha }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compare the two renders
+      id: diff
+      shell: bash
+      env:
+        BASE: ${{ inputs.base-tag }}
+        HEAD: ${{ inputs.head-tag }}
+        DL: ${{ inputs.renders-dir }}
+        OUT: ${{ inputs.out-dir }}
+        MAX_FUNCTIONS: ${{ inputs.max-functions }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        for side in base head; do
+          mkdir -p "_r/$side"
+          tar xzf "$DL/release-render-$side/renders.tgz" -C "_r/$side"
+        done
+        python3 "$ACTION_PATH/release_preview_diff.py" \
+          "$DL/release-render-base/show.json" "$DL/release-render-head/show.json" \
+          --base-root _r/base --head-root _r/head \
+          --base-tag "$BASE" --head-tag "$HEAD" --out "$OUT" \
+          --image-url-prefix '@@IMAGES@@' --max-functions "$MAX_FUNCTIONS"
+        changed=$(jq '.changed + .new' "$OUT/summary.json")
+        echo "changed=$([ "$changed" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        jq -r '"Changed: \(.changed) · New: \(.new) · Removed: \(.removed) · Unchanged: \(.unchanged)"' "$OUT/summary.json" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Push the images
+      id: push
+      if: steps.diff.outputs.changed == 'true'
+      shell: bash
+      env:
+        PUSH_TOKEN: ${{ inputs.push-token }}
+        OUT_REPO: ${{ inputs.out-repo }}
+        HEAD: ${{ inputs.head-tag }}
+        BASE: ${{ inputs.base-tag }}
+        OUT: ${{ inputs.out-dir }}
+        NAME: ${{ inputs.commit-name }}
+        EMAIL: ${{ inputs.commit-email }}
+      run: |
+        set -euo pipefail
+        branch=compose-preview/releases
+        out=$(cd "$OUT" && pwd)
+        work=$(mktemp -d)
+        git -C "$work" init -q
+        auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+        git -C "$work" config http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+        git -C "$work" remote add origin "https://github.com/$OUT_REPO.git"
+        if git -C "$work" ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+          git -C "$work" fetch -q --depth 1 origin "$branch"
+          git -C "$work" checkout -q -B "$branch" FETCH_HEAD
+        else
+          git -C "$work" checkout -q --orphan "$branch"
+        fi
+        rm -rf "${work:?}/$HEAD"
+        mkdir -p "$work/$HEAD"
+        cp -r "$out/images/." "$work/$HEAD/"
+        sed "s#@@IMAGES@@#.#g" "$out/diff.md" > "$work/$HEAD/README.md"
+        git -C "$work" add -A
+        git -C "$work" -c user.name="$NAME" -c user.email="$EMAIL" \
+          commit -q -m "Preview changes in $HEAD since $BASE" || echo "Nothing new to commit."
+        git -C "$work" push -q origin "HEAD:$branch"
+        echo "sha=$(git -C "$work" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    - name: Add the comparison to the release notes
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        OUT_REPO: ${{ inputs.out-repo }}
+        HEAD: ${{ inputs.head-tag }}
+        BASE: ${{ inputs.base-tag }}
+        SHA: ${{ steps.push.outputs.sha }}
+        OUT: ${{ inputs.out-dir }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        sed "s#@@IMAGES@@#https://raw.githubusercontent.com/$OUT_REPO/${SHA:-main}/$HEAD#g" "$OUT/diff.md" > "$OUT/diff-linked.md"
+        gh release view "$HEAD" --repo "$REPO" --json body --jq .body > "$OUT/body.md"
+        python3 "$ACTION_PATH/release_notes.py" "$OUT/body.md" "$OUT/summary.json" "$OUT/diff-linked.md" \
+          --base-tag "$BASE" --out-repo "$OUT_REPO" --out "$OUT/notes.md"
+        gh release edit "$HEAD" --repo "$REPO" --notes-file "$OUT/notes.md" >/dev/null
