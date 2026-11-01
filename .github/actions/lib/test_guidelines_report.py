@@ -142,6 +142,21 @@ class ReportTest(unittest.TestCase):
         self.assertIn("decision model judging the render", body)
         self.assertNotIn("#### `Ok`", body)
 
+    def test_a_recheck_says_what_it_added_to_the_cost(self) -> None:
+        report = self.tmp / "catalog" / "guidelines.json"
+        data = json.loads(report.read_text())
+        data["checker"] = "jev"
+        data["costUsd"] = 0.013
+        data["recheckModel"] = "deepseek/deepseek-v4.1-flash"
+        data["recheckCostUsd"] = 0.009
+        report.write_text(json.dumps(data))
+        body = gr.build(self.tmp, _args())
+        assert body is not None
+        self.assertIn(
+            "(of which $0.0090 rechecking Jev's unsure answers with deepseek/deepseek-v4.1-flash)",
+            body,
+        )
+
     def test_a_vision_report_says_nothing_of_jev(self) -> None:
         body = gr.build(self.tmp, _args())
         assert body is not None

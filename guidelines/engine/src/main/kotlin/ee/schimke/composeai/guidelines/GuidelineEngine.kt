@@ -334,6 +334,20 @@ public data class GuidelineRunResult(
     internal set
 
   /**
+   * EXPERIMENTAL, a jev run with a [GuidelineRunOptions.recheck]: the vision model that answered
+   * again, and what its requests cost and numbered. Already counted in [costUsd] and [requests];
+   * apart so a report can say what the recheck added. Null and 0 when nothing was rechecked.
+   */
+  public var recheckModel: String? = null
+    internal set
+
+  public var recheckCostUsd: Double? = null
+    internal set
+
+  public var recheckRequests: Int = 0
+    internal set
+
+  /**
    * How many of [completionTokens] were the model's reasoning
    * (`usage.completion_tokens_details.reasoning_tokens`): billed, never shown. What to watch when
    * tuning the reasoning effort.

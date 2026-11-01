@@ -1022,6 +1022,12 @@ data class ModuleGuidelines(
    * ([GuidelineRunResult.predictedCostUsd]); null without a price, and in older files.
    */
   val predictedCostUsd: Double? = null,
+  /**
+   * EXPERIMENTAL, `--recheck-model`: the vision model that answered again what Jev was unsure of,
+   * and what that cost (already in [costUsd]). Null, and absent, when nothing was rechecked.
+   */
+  val recheckModel: String? = null,
+  val recheckCostUsd: Double? = null,
 ) {
   companion object {
     fun of(
@@ -1045,6 +1051,8 @@ data class ModuleGuidelines(
         reasoningTokens = run.reasoningTokens.takeIf { it > 0 },
         completionTokens = run.completionTokens.takeIf { it > 0 },
         predictedCostUsd = run.predictedCostUsd,
+        recheckModel = run.recheckModel,
+        recheckCostUsd = run.recheckCostUsd,
       )
   }
 }
@@ -1076,6 +1084,13 @@ internal object GuidelinesReportRenderer {
         "$" +
         "%.4f".format(run.costUsd) +
         (run.predictedCostUsd?.let { " (predicted $" + "%.4f".format(it) + ")" } ?: "") +
+        (run.recheckCostUsd?.let {
+          " (Jev $" +
+            "%.4f".format(run.costUsd - it) +
+            " + recheck by ${run.recheckModel} $" +
+            "%.4f".format(it) +
+            " over ${run.recheckRequests} request(s))"
+        } ?: "") +
         (run.results.count { it.fromCache }.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
         (run.results.count { it.pending }.takeIf { it > 0 }?.let { ", $it pending" } ?: "") +
         (ruleless.takeIf { it > 0 }?.let { ", $it with no rule to ask" } ?: "") +

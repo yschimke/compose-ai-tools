@@ -121,8 +121,13 @@ internal class JevRecheck(
     val problems =
       jev.problems.filterNot { it.contains(UNCHECKED_LINE) } +
         ("$asked rule verdict(s) on ${wanted.size} preview(s) Jev left unchecked or answered " +
-          "below p ${recheck.below} were asked again of ${recheck.model}: $changed changed, " +
-          "$stillUnchecked still unchecked") +
+          "below p ${recheck.below} were asked again of ${recheck.model} " +
+          "(${runs.sumOf { it.requests }} request(s), " +
+          "$" +
+          String.format(java.util.Locale.ROOT, "%.4f", runs.sumOf { it.costUsd }) +
+          "; Jev's own pass cost $" +
+          String.format(java.util.Locale.ROOT, "%.4f", jev.costUsd) +
+          "): $changed changed, $stillUnchecked still unchecked") +
         runs.flatMap { it.problems }.map { "recheck: $it" }
     return GuidelineRunResult(
         results = results,
@@ -136,6 +141,9 @@ internal class JevRecheck(
         it.completionTokens = jev.completionTokens + runs.sumOf { r -> r.completionTokens }
         it.reasoningTokens = jev.reasoningTokens + runs.sumOf { r -> r.reasoningTokens }
         it.reasoningRetries = jev.reasoningRetries + runs.sumOf { r -> r.reasoningRetries }
+        it.recheckModel = recheck.model
+        it.recheckCostUsd = runs.sumOf { r -> r.costUsd }
+        it.recheckRequests = runs.sumOf { r -> r.requests }
       }
   }
 

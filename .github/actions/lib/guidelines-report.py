@@ -382,6 +382,8 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     # The EXPERIMENTAL decision-model checker (`--checker jev`): rules it could not decide,
     # counted for the header rather than listed under every preview.
     jev_modules = 0
+    recheck_models: set[str] = set()
+    recheck_cost = 0.0
     text_only_unchecked = 0
     text_only_previews: set[str] = set()
     seen: set[str] = set()
@@ -405,6 +407,10 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         report, rules = loaded
         text_only = report.get("checker") == "jev"
         jev_modules += text_only
+        # What a recheck of Jev's unsure answers added, already inside the run's own cost.
+        if report.get("recheckModel"):
+            recheck_models.add(str(report["recheckModel"]))
+            recheck_cost += float(report.get("recheckCostUsd") or 0.0)
         tier.failed_requests += int(report.get("failedRequests") or 0)
         for problem in report.get("problems") or []:
             if quoted(problem) not in problems:
@@ -517,6 +523,12 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
     model_text = ", ".join(sorted(models)) or "the configured model"
     if jev_modules:
         model_text = JEV_LABEL + (f" ({model_text})" if models else "")
+    # The total below includes the recheck; say what part of it was.
+    recheck_text = (
+        f" (of which ${recheck_cost:.4f} rechecking Jev's unsure answers with "
+        f"{', '.join(sorted(recheck_models))})"
+        if recheck_models else ""
+    )
     header = [MARKER, "### Design guidelines", ""]
     if total_checked == 0 and not_checked:
         # Nothing was judged: say so, never a pass.
@@ -552,6 +564,7 @@ def build(dir_: Path, args: argparse.Namespace) -> str | None:
         header += [
             f"{total_checked} {noun} checked against their catalog's design guidelines{split}; "
             f"**{total_findings} finding(s)**. Checked by {model_text} · ${total_cost:.4f}"
+            f"{recheck_text}"
             f"{predicted_text}{cached}.",
             "",
         ]
