@@ -73,6 +73,9 @@ fi
 if [ -n "${MISSING_RENDERS:-}" ]; then
   gradle_args+=("-PcomposePreview.missingRenders=${MISSING_RENDERS}")
 fi
+if [ -n "${VARIANT:-}" ]; then
+  gradle_args+=("-PcomposePreview.variant=${VARIANT}")
+fi
 
 # In auto-detect mode an absent task is a "project doesn't ship notification
 # previews" signal rather than an error — drop into soft-skip so consumers

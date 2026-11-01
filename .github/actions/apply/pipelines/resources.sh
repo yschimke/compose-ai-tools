@@ -33,6 +33,9 @@ if [ "${SKIP_RENDER:-false}" = "true" ]; then
   echo "0" > "$GITHUB_WORKSPACE/_resources_render_rc"
 else
   res_args=(show-resources --json --progress --timeout "$RENDER_TIMEOUT")
+  if [ -n "${VARIANT:-}" ]; then
+    res_args+=(--variant "${VARIANT}")
+  fi
   if [ -n "${MISSING_RENDERS:-}" ]; then
     res_args+=(--missing-renders "${MISSING_RENDERS}")
   fi

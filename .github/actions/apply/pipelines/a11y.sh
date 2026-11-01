@@ -116,6 +116,9 @@ mapfile -t ALLOW_MODULES < <(split_csv "${A11Y_MODULES:-}")
 mapfile -t SKIP_MODULES < <(split_csv "${A11Y_SKIP_MODULES:-}")
 
 cli_args=(a11y --progress)
+if [ -n "${VARIANT:-}" ]; then
+  cli_args+=(--variant "${VARIANT}")
+fi
 if [ "$scoped_to_pr" = true ]; then
   cli_args+=(--id-file "$GITHUB_WORKSPACE/_a11y_preview_ids.txt")
 fi
