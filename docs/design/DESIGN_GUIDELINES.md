@@ -392,7 +392,10 @@ TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesaf
   Choice's first option.
 
 **The render.** Every request for a subject carries its first `JevPictures.MAX_PICTURES` (2)
-pictures under `state.render`, each with a `shows` caption. `JevPictures` fits them into Jev's
+pictures. `state` is then an array: the text state, whose `render` lists each picture's caption,
+followed by one `image_url` part per picture. Decision models other than Jev read images only as
+top-level `state` items (`openai/gpt-6-luna-decisions` answers 400 for one nested in an object), and
+Jev reads them there too, so `--model` can name any decisions model with image input. `JevPictures` fits them into Jev's
 limits. A render too large is scaled down (bicubic) until it fits the longest side and the pixel
 total. One too small is scaled up by a whole factor (nearest-neighbour, so a 1px clip edge stays
 1px wide in each block). Only when its shape keeps one side short is it centred on a flat grey
@@ -501,6 +504,20 @@ apps), Jev alone was 47 of 51 labelled answers right with 4 unchecked and none w
 With `--recheck-model deepseek/deepseek-v4.1-flash` it was 51 of 51, for $0.013. At 0.8, 35 of the
 40 previews sent something up, although every Jev pass between 0.5 and 0.8 had been right, so the
 threshold has room to come down.
+
+**In a consumer's Preview Audit** (`.github/actions/preview-audit-jev`). This is the reusable form
+of the above, for a consumer's PR or release audit. It takes the changed previews off the preview
+diff, groups them by the guidelines file a small JSON config names per module, runs `review
+--backend openrouter --checker jev --recheck-model …` per group, and writes a Markdown report:
+findings, rules left unchecked, and cost, with how much of it was the recheck. Its defaults are
+`typesafe/jev-1.13` and `xiaomi/mimo-v2.6-flash`, from the eval in yschimke/compose-ai-tools#6392:
+
+- jev-1.13 got all 51 labelled answers right on its own.
+- mimo-v2.6-flash rechecked as accurately as deepseek-v4.1-flash for a quarter of the cost.
+- ling-3.0-flash-vl takes at most 4 images a request.
+- gpt-6-luna-decisions left two thirds of the rules `cannot_tell`.
+
+The apply action's `guidelines-recheck-model` defaults to the same recheck model.
 
 **Evaluating it.** `--compare-with <guidelines.json>` sets this run's verdicts against another
 run's, per (preview, rule): agree, disagree, decided on one side only, neither. The output has:

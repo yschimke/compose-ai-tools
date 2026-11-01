@@ -12,9 +12,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -1264,8 +1266,7 @@ internal object JevRuleRequests {
   ): List<List<GuidelineRuleV1>> {
     // Pictures counted as the vision path counts them, not by their base64 length.
     val stateTokens =
-      state(guidelines, view, pictures = false).toString().length / 4 +
-        view.pictures.sumOf { it.tokens }
+      state(guidelines, view).toString().length / 4 + view.pictures.sumOf { it.tokens }
     val room = (MAX_REQUEST_TOKENS - stateTokens).coerceAtLeast(2_000)
     val out = mutableListOf<MutableList<GuidelineRuleV1>>()
     var used = 0
@@ -1347,7 +1348,7 @@ internal object JevRuleRequests {
     offered: List<String>,
   ): JsonObject = buildJsonObject {
     put("model", model)
-    put("state", state(guidelines, view))
+    put("state", stateWithPictures(guidelines, view))
     putJsonObject("questions") {
       rules.forEachIndexed { index, rule ->
         put(key(index), question(rule, view, offered))
@@ -1372,14 +1373,26 @@ internal object JevRuleRequests {
   }
 
   /**
-   * What Jev is shown about the subject this round: its render ([View.pictures], as image parts,
-   * left out when [pictures] is false: for sizing a request) and the text evidence.
+   * The request's `state`: [state] alone, or with pictures an array of it followed by one image
+   * part per picture. Decision models other than Jev read images only as top-level `state` items
+   * (OpenRouter answers 400 for `openai/gpt-6-luna-decisions` given one nested in an object), and
+   * Jev reads them there too, so every decisions model gets the same request.
    */
-  fun state(
-    guidelines: CatalogGuidelinesV1,
-    view: View,
-    pictures: Boolean = true,
-  ): JsonObject = buildJsonObject {
+  fun stateWithPictures(guidelines: CatalogGuidelinesV1, view: View): JsonElement {
+    val text = state(guidelines, view)
+    if (view.pictures.isEmpty()) return text
+    return buildJsonArray {
+      add(text)
+      view.pictures.forEach { add(it.part()) }
+    }
+  }
+
+  /**
+   * What the decisions model is shown about the subject this round, as text: the task, the
+   * pictures' captions ([View.pictures]; the images themselves follow it in [stateWithPictures])
+   * and the text evidence.
+   */
+  fun state(guidelines: CatalogGuidelinesV1, view: View): JsonObject = buildJsonObject {
     val subject = view.subject
     put(
       "task",
@@ -1390,20 +1403,15 @@ internal object JevRuleRequests {
           "offered, ask for it rather than guess."
       else
         "Decide whether one rendered Jetpack Compose @Preview follows design rules. Judge from " +
-          "the render below — what is drawn, how it is laid out, what is cut off — and from " +
+          "the render (the images after this text) — what is drawn, how it is laid out, what is cut off — and from " +
           "the text: the source, the accessibility data and the facts computed from them. " +
           "Measured facts settle what they measure. Where a rule needs more than is shown and " +
           "more is offered, ask for it rather than guess.",
     )
-    if (pictures && view.pictures.isNotEmpty()) {
+    if (view.pictures.isNotEmpty()) {
       putJsonArray("render") {
-        view.pictures.forEach { picture ->
-          add(
-            buildJsonObject {
-              put("shows", picture.caption)
-              put("image", picture.part())
-            }
-          )
+        view.pictures.forEachIndexed { index, picture ->
+          add(JsonPrimitive("picture ${index + 1} (the image after this text): ${picture.caption}"))
         }
       }
     }

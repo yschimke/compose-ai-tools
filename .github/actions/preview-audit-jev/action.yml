@@ -1,0 +1,70 @@
+name: 'Compose Preview Audit (Jev)'
+description: >
+  EXPERIMENTAL. Checks a pull request's (or a release's) changed previews
+  against design guidelines with Jev, OpenRouter's decision model, and
+  asks a vision model again what Jev is unsure of. No coding agent runs:
+  the changed previews are read off the preview diff, grouped by the
+  guidelines file a small JSON config names for each module, and checked
+  with `compose-preview review --backend openrouter --checker jev
+  --recheck-model <model>`. Writes `<audit-dir>/report.md`, a Markdown
+  report that gives the findings, the rules left unchecked, and the cost
+  (with how much of it was the recheck), for the caller to post.
+
+  Inputs the caller stages first, in `audit-dir`: `preview-diff.md` (the
+  `<!-- preview-diff -->` comment or a release comparison),
+  `<module>.show.json` (`compose-preview show --module <module> --json`
+  for each module in the diff) and, optionally, `context.md` (its first
+  line heads the report). Needs the compose-preview CLI on PATH (the
+  `install` action), the project's Gradle set up, and an OpenRouter key.
+
+inputs:
+  openrouter-key:
+    description: 'OpenRouter API key (e.g. secrets.OPENROUTER_API_KEY).'
+    required: true
+  config:
+    description: >
+      JSON naming the guidelines file per module:
+      `{"default": "<guidelines.json>", "groups": [{"module": "wear",
+      "match": "<id substring, optional>", "guidelines": "<file>",
+      "surface": "<widget|screen, optional>"}]}`. The first group whose
+      module (and `match`, if given) fits a preview wins; else `default`.
+    default: '.github/preview-audit/jev.json'
+  model:
+    description: >
+      The decisions model. Any OpenRouter decisions model with image input
+      works; typesafe/jev-1.13 was the most accurate on the eval behind
+      these defaults.
+    default: 'typesafe/jev-1.13'
+  recheck-model:
+    description: >
+      The vision model that answers again what Jev left unchecked or
+      answered below p 0.8; `none` turns the recheck off. Needs
+      compose-preview 2.82.0 or later (older CLIs check from text only,
+      and the report says so).
+    default: 'xiaomi/mimo-v2.6-flash'
+  max-cost:
+    description: 'Spending cap per guidelines group, in dollars.'
+    default: '0.25'
+  max-previews:
+    description: 'At most this many changed previews are checked; the report counts the rest.'
+    default: '30'
+  audit-dir:
+    description: 'Where the staged inputs are, and report.md is written.'
+    default: '_audit'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Audit the changed previews with Jev
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        COMPOSE_PREVIEW_OPENROUTER_KEY: ${{ inputs.openrouter-key }}
+        JEV_CONFIG: ${{ inputs.config }}
+        JEV_MODEL: ${{ inputs.model }}
+        RECHECK_MODEL: ${{ inputs.recheck-model }}
+        MAX_COST: ${{ inputs.max-cost }}
+        MAX_PREVIEWS: ${{ inputs.max-previews }}
+        AUDIT_DIR: ${{ inputs.audit-dir }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/jev_audit.py"
