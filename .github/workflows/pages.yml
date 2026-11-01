@@ -56,10 +56,11 @@ jobs:
               json.dump(config, output)
           PYCONFIG
       - name: Build with Jekyll
-        run: bundle exec jekyll build --config _config.yml,_analytics.yml --baseurl "${STEPS_PAGES_OUTPUTS_BASE_PATH}"
+        # Built for preview.coo.ee/start/ (the baseurl in _config.yml), not for the Pages path: the
+        # preview host's edge proxies /start/ to this deployment, and the github.io copy redirects there.
+        run: bundle exec jekyll build --config _config.yml,_analytics.yml
         env:
           JEKYLL_ENV: production
-          STEPS_PAGES_OUTPUTS_BASE_PATH: ${{ steps.pages.outputs.base_path }}
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site/_site
