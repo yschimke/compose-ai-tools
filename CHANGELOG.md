@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.80.0](https://github.com/yschimke/compose-ai-tools/compare/v2.79.2...v2.80.0) (2026-11-01)
+
+
+### Features
+
+* answer Android Studio's Wear run configurations and host androidx watch faces ([#6373](https://github.com/yschimke/compose-ai-tools/issues/6373)) ([02da6b0](https://github.com/yschimke/compose-ai-tools/commit/02da6b02a6c668fc6f1d9740e5b04423249c0fbf))
+
+
+### Bug Fixes
+
+* **deps:** update classgraph to 5.0.1 ([#6376](https://github.com/yschimke/compose-ai-tools/issues/6376)) ([78b9744](https://github.com/yschimke/compose-ai-tools/commit/78b97449ecb005c729c2b7e2bd939e768549f5c0))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.39.1 ([#6377](https://github.com/yschimke/compose-ai-tools/issues/6377)) ([b00bb0a](https://github.com/yschimke/compose-ai-tools/commit/b00bb0ab0607496ff2aa2045ae155fc870fc8720))
+
 ## [2.79.2](https://github.com/yschimke/compose-ai-tools/compare/v2.79.1...v2.79.2) (2026-10-31)
 
 
