@@ -55,6 +55,8 @@ internal object CliFlags {
       "--preferred-max-latency",
       "--preferred-min-throughput",
       "--checker",
+      "--recheck-model",
+      "--recheck-below",
       "--compare-with",
       "--guidelines",
       "--surface",

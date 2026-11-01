@@ -488,6 +488,20 @@ Jev (experimental)" and counts the rule verdicts it left unchecked instead of li
 them under every preview. In jev mode `--model` names the decisions model (`typesafe/jev-1.13`
 unless given).
 
+**Rechecking what Jev is unsure of** (`--recheck-model <id>`, the apply action's
+`guidelines-recheck-model`). Jev answers every rule first. Then each preview's rules that Jev left
+unchecked, or answered below `--recheck-below` (default 0.8, where OpenRouter's Jev-verified
+cascade cookbook accepts), are asked again of that vision model: one vision request per group of
+previews wanting the same rules, against the catalog cut down to those rules. The vision verdict
+replaces Jev's, with a reason starting "Rechecked by <model> (Jev: pass p 0.63): …". Jev's firm
+answers stand. Vision results are cached under the vision model's own key, so a recheck is not paid
+for twice. The run's problems say how many verdicts were asked again, how many changed, and how many
+are still unchecked. On a 40-render eval (hand-labelled truncation and contrast cases from three
+apps), Jev alone was 47 of 51 labelled answers right with 4 unchecked and none wrong, for $0.004.
+With `--recheck-model deepseek/deepseek-v4.1-flash` it was 51 of 51, for $0.013. At 0.8, 35 of the
+40 previews sent something up, although every Jev pass between 0.5 and 0.8 had been right, so the
+threshold has room to come down.
+
 **Evaluating it.** `--compare-with <guidelines.json>` sets this run's verdicts against another
 run's, per (preview, rule): agree, disagree, decided on one side only, neither. The output has:
 
