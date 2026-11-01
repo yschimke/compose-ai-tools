@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.83.0](https://github.com/yschimke/compose-ai-tools/compare/v2.82.0...v2.83.0) (2026-11-01)
+
+
+### Features
+
+* **audit:** reusable Jev preview-audit action, and pictures any decisions model reads ([#6392](https://github.com/yschimke/compose-ai-tools/issues/6392)) ([d492034](https://github.com/yschimke/compose-ai-tools/commit/d492034478ceee0b4e9ce4e4aacd4d4af1a8ecae))
+
 ## [2.82.0](https://github.com/yschimke/compose-ai-tools/compare/v2.81.0...v2.82.0) (2026-11-01)
 
 
