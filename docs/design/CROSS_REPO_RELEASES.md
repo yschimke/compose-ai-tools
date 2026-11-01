@@ -44,18 +44,25 @@ compose-preview-mcp           (3)   the local MCP server (a leaf)
 | `compose-preview-server` | all four | `composeai-contracts`, `composeai-preview-daemon`, `rc-players`, `composeai-tools` |
 | `compose-preview-mcp` | contracts, daemon, compose-ai-tools, rc-players' JS player, and the server's MCP App pages | `composeai-contracts`, `composeai-preview-daemon`, `composeai-tools`, `remote-compose-player-js`, `mcp-app/server-assets.provenance.json` (a server **release tag**, not a coordinate) |
 
-> **There is no cycle, and there has not been one since compose-ai-tools#5336.** Read that
-> sentence carefully before acting on the older one in
-> [`REPOSITORY_LAYERS.md`](REPOSITORY_LAYERS.md#consequences-worth-naming), which describes
-> rc-players consuming `data-fonts-google` and `data-layoutinspector-connector` *back* from
-> compose-ai-tools. Those two coordinates moved to `compose-preview-daemon` with the extractors,
-> and rc-players' catalog now names **no compose-ai-tools coordinate at all**. The mutual
-> dependency that paragraph tolerates at module granularity no longer exists even at repository
-> granularity. Verify with one command before assuming otherwise:
+> **There is a cycle between `compose-preview-daemon` and `rc-players`, but only through
+> compile-only and test edges, so the order above still holds.** rc-players depends on the
+> daemon at runtime (`rc-embedded-player` `implementation`s `data-fonts-google`, and tests
+> use `data-layoutinspector-connector`, through `compose-preview-daemon-bom`). The daemon
+> points back at rc-players only through `rc-players-bom` on `compileOnly`, test and
+> `carriedRemoteComposeTestRuntime` configurations (`daemon/desktop`, `daemon/android`,
+> `data/remotecompose/connector`): nothing it publishes resolves an rc-players coordinate at
+> runtime. So a daemon release never waits for rc-players. But an rc-players release that
+> changes the player API can turn the daemon's tests red on its next `rcplayers` bump, which
+> lands *after* the daemon has shipped. Verify both directions before assuming otherwise:
 >
 > ```sh
 > grep -n 'ee\.schimke\.composeai:' ../rc-players/gradle/libs.versions.toml
+> grep -rn 'libs.rcplayers' ../compose-preview-daemon --include=*.gradle.kts
 > ```
+>
+> compose-ai-tools itself is no longer on either side of it: rc-players names no compose-ai-tools
+> coordinate (compose-ai-tools#5336 moved `data-fonts-google` and
+> `data-layoutinspector-connector` to the daemon).
 
 ## The smoothest path
 
@@ -89,9 +96,18 @@ previous one's artifacts resolve from Maven Central.** The whole train is:
 **Bump every coordinate from one repository in the same PR, to the same version.** Each
 repository publishes all of its coordinates on **one version line**, so a catalog holding two
 versions from the same train puts two releases' worth of one library on a single classpath.
-`compose-preview-daemon` is doing this today — `composeai-contracts = "3.0.0"` next to
-`composeai-contracts-layoutinspector = "3.1.1"` — and a split ref like that should carry a
-comment saying why it is split and what retires it, or be collapsed.
+A catalog that holds two versions from one train should carry a comment saying why it is split
+and what retires it, or be collapsed. (`compose-preview-daemon` carried exactly that split at
+`composeai-contracts = "3.0.0"` / `3.1.1` until it collapsed to one ref.)
+
+**The exception is a dependency that crosses repositories on one classpath.** When a third-party
+library that several repositories call directly makes an API break, as ClassGraph 5 did, the
+repositories that share a runtime classpath have to move it together with the pins that carry the
+port. compose-ai-tools' `cli` and `render-host` load `daemon-core`, and the server and
+compose-preview-mcp load both. So each downstream PR bumps the library *and* the upstream pins in
+one change (compose-preview-server#1852, compose-preview-mcp#145). Splitting them leaves a 4.x
+caller on a 5.x classpath, which is a `NoSuchMethodError` that no compile step catches. Say so in
+the PR body, and keep everything else out of that PR.
 
 **Skip a repository only when nothing in it consumes the change.** rc-players sits between the
 daemon and compose-ai-tools in the order above, but it consumes only four coordinates; a daemon
@@ -137,8 +153,8 @@ and is actually a repository boundary.
 
 **Clear stuck draft releases before cutting the next one.** A Release that is still a draft means
 the Central upload did not finish — the artifacts are not there, whatever the tag says.
-`compose-preview-daemon` is carrying drafts at `v3.6.0` and `v3.0.2`, and `compose-ai-tools` one
-at `v2.18.0`, all behind published later versions. Re-run the release workflow for the tag and
+`compose-preview-contracts` is carrying one at `v3.23.0`: its tag exists but nothing at 3.23.0
+is on Central, behind published later versions. Re-run the release workflow for the tag and
 let the finalize step un-draft it, or delete the draft; do not leave a tag that consumers can see
 and cannot resolve.
 
@@ -146,6 +162,35 @@ and cannot resolve.
 **last released** version, not the next one. Writing the version being released into it tells
 release-please that version already shipped and makes it propose the one after a number nothing
 has tagged.
+
+**A GitHub release is not a Maven version.** compose-ai-tools cuts a GitHub Release on every
+merge of its release PR, but publishes to Central only the modules that changed
+([`RELEASING.md`](../RELEASING.md), "Not every release publishes"). A release that changed no
+published module uploads nothing, not even the BOM, so `v2.76.0`–`v2.78.0` exist as tags and CLI
+tarballs while `compose-ai-tools-bom` went from `2.75.0` straight to `2.79.0`. That is correct, and
+there is nothing to "pick up":
+
+- **A Maven consumer** (the server, compose-preview-mcp, the vscode plugin pin, rc-players, xr)
+  needs no bump for a skipped release. It changed none of the coordinates that consumer
+  resolves, so the pin it has already resolves the same bytes. Renovate only proposes versions
+  Central serves, so it never offers a skipped one. Do not publish a marker BOM to make the
+  numbers line up. It would spend Central quota (file count, size and release count are metered
+  per organisation) on an artifact with no new content.
+- **A GitHub-asset consumer** (the CLI installer, the `install` action, the agent plugins)
+  follows GitHub releases. It gates on the `compose-preview-maven-ready-<version>.json` marker,
+  which records the Maven line that release's CLI resolves.
+- **A hand-written Maven pin** must name a version Central serves. Read it from the marker's
+  `pluginVersion` or from `compose-ai-tools-bom`'s `maven-metadata.xml`, never from the newest
+  GitHub tag. For a release you are waiting on, check
+  `curl -sI https://repo1.maven.org/maven2/ee/schimke/composeai/compose-ai-tools-bom/<v>/compose-ai-tools-bom-<v>.pom`.
+
+**A derived pin needs automation, or every Renovate bump of it stays red.** compose-preview-vscode
+writes down `composePreviewDaemon`, the daemon release the pinned plugin's BOM imports, and vendors
+protocol fixtures at that tag. Renovate can move the plugin pin but can't derive the other two.
+So its plugin-pin PRs failed `check-daemon-pin.mjs` and sat red, and the extension fell six
+releases behind (2.74.1 while 2.79.0 was on Central). Anything a repository derives from an
+upstream release belongs in a workflow that runs on the Renovate branch, as the server's
+`Regenerate goldens` does.
 
 ## Checklist
 
@@ -158,3 +203,4 @@ For each repository, in order, lowest first:
 - [ ] Release PR merged; GitHub Release **un-drafted**.
 - [ ] Coordinate resolves from Maven Central for real.
 - [ ] Next repository up: one PR, all coordinates from this train, same version, CI green.
+- [ ] Pins name versions Central serves, not GitHub tags: a release that skipped Maven needs no bump.
