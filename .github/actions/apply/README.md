@@ -86,6 +86,25 @@ See [`action.yml`](action.yml) for the full input schema — there are ~20 input
 covering pipeline selection (`only` / `skip`), per-module allow/deny lists, the
 missing-render policy, and non-Gradle `skip-render` integration.
 
+## Android render variant
+
+The action renders the Android `debug` variant by default. This matters on AGP
+9.5+, where release variants disable unit tests by default: Compose Preview uses
+the variant's unit-test APK to provide Android XML resources to Layoutlib, so a
+release render otherwise fails before rendering. Override the default only when
+you intentionally need release-shaped output:
+
+```yaml
+- uses: yschimke/compose-ai-tools/.github/actions/apply@v2
+  with:
+    variant: release
+```
+
+Release renders still require `enableUnitTest = true` for the selected variant.
+The action passes `variant` to every compose, resources, accessibility, and
+notification render; a module that explicitly sets `composePreview { variant =
+"release" }` retains that DSL setting.
+
 ## Running the pipelines in parallel
 
 The single step above runs all four pipelines

@@ -67,6 +67,9 @@ elif [ -n "${SCOPE_MODULES:-}" ] && [ "${SCOPE_MODULES}" != "full" ]; then
     out="_previews_scope_${i}.json"
     i=$((i + 1))
     show_args=(show --json --progress --timeout "$RENDER_TIMEOUT" --module ":${m#:}")
+    if [ -n "${VARIANT:-}" ]; then
+      show_args+=(--variant "${VARIANT}")
+    fi
     if [ -n "${MISSING_RENDERS:-}" ]; then
       show_args+=(--missing-renders "${MISSING_RENDERS}")
     fi
@@ -86,6 +89,9 @@ elif [ -n "${SCOPE_MODULES:-}" ] && [ "${SCOPE_MODULES}" != "full" ]; then
 else
   # Render. Don't fail on non-zero — partial envelope still drives the rest.
   show_args=(show --json --progress --timeout "$RENDER_TIMEOUT")
+  if [ -n "${VARIANT:-}" ]; then
+    show_args+=(--variant "${VARIANT}")
+  fi
   # Forwards as `-PcomposePreview.missingRenders=<value>` to the Gradle
   # `composePreviewRenderAll` task the CLI spawns; default `fail` is a
   # no-op vs the plugin's own default so always-pass is safe.

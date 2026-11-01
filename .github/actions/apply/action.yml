@@ -49,6 +49,13 @@ inputs:
   timeout:
     description: 'CLI render timeout in seconds.'
     default: '600'
+  variant:
+    description: >
+      Android build variant to render. Defaults to `debug`, whose unit-test APK is
+      enabled by default on AGP 9.5+. Set `release` only when release-shaped renders
+      are intentional; that variant must have `enableUnitTest = true` for Layoutlib
+      resources.
+    default: 'debug'
   development-branch:
     description: >
       Long-lived branch that drives baseline pushes. A `push` to this branch
@@ -1064,6 +1071,7 @@ runs:
         GITHUB_TOKEN_INLINE: ${{ inputs.artifacts-token || github.token }}
         MODE: ${{ steps.scope.outputs.mode }}
         RENDER_TIMEOUT: ${{ inputs.timeout }}
+        VARIANT: ${{ inputs.variant }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
