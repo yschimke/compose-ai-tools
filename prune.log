@@ -1,1 +1,4 @@
-148 kept, 0 prunable
+155 kept, 2 prunable
+  prune docs/evidence/figma-svg-coil-content
+  prune docs/evidence/figma-svg-zero-bounds
+removed 2 directories
