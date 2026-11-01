@@ -32,6 +32,10 @@
         {
           "type": "generic",
           "path": ".github/actions/notification-previews/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/preview-release-diff-reusable.yml"
         }
       ]
     }

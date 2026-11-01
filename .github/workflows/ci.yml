@@ -902,6 +902,8 @@ jobs:
         run: python3 .github/actions/lib/test_guidelines_report.py -v
       - name: Run notification-previews tests
         run: python3 .github/actions/lib/test_notification_previews.py -v
+      - name: Run release-preview-diff tests
+        run: python3 .github/actions/release-preview-diff/test_release_preview_diff.py -v
       - name: Run preview-audit-jev tests
         run: python3 .github/actions/preview-audit-jev/test_jev_audit.py -v
       - name: Run xr-gallery tests
