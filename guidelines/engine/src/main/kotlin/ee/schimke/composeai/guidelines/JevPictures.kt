@@ -44,13 +44,19 @@ internal class JevPicture(
 }
 
 /**
- * Fits renders into Jev's image limits (OpenRouter's multimodal Decisions guide): 256 to 1,568
- * pixels a side, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file. A render too large is
- * scaled down; one too small is scaled up by whole-pixel repetition, so an edge stays as sharp as
- * it was drawn, and centred on a grey margin only where its shape keeps one side short.
+ * Fits renders into Jev's image limits (OpenRouter's multimodal Decisions guide, and [MIN_SIDE]):
+ * 280 to 1,568 pixels a side, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file. A render
+ * too large is scaled down; one too small is scaled up by whole-pixel repetition, so an edge stays
+ * as sharp as it was drawn, and centred on a grey margin only where its shape keeps one side short.
  */
 internal object JevPictures {
-  const val MIN_SIDE: Int = 256
+  /**
+   * The least side sent: 280, not the documented 256. Measured on typesafe/jev-1.13 (2026-11-01):
+   * any image with a 256px side answered 400 "Invalid image dimensions" (300×256, 512×256,
+   * 1024×256, 256×768), while 280px sides passed (280×280, 280×900, 1100×280, 1300×280). 280² is
+   * also [MIN_PIXELS], so a square at the least side meets both.
+   */
+  const val MIN_SIDE: Int = 280
   const val MAX_SIDE: Int = 1_568
   const val MIN_PIXELS: Long = 78_400
   const val MAX_PIXELS: Long = 2_458_624

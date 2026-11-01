@@ -280,8 +280,8 @@ class JevCheckerTest {
   fun `pictures are fitted into Jev's image limits`() {
     fun fits(w: Int, h: Int): JevPictures.Layout {
       val layout = JevPictures.layout(w, h)
-      assertThat(layout.canvasWidth).isIn(256..1_568)
-      assertThat(layout.canvasHeight).isIn(256..1_568)
+      assertThat(layout.canvasWidth).isIn(280..1_568)
+      assertThat(layout.canvasHeight).isIn(280..1_568)
       assertThat(layout.canvasWidth.toLong() * layout.canvasHeight).isIn(78_400L..2_458_624L)
       assertThat(layout.width).isAtMost(layout.canvasWidth)
       assertThat(layout.height).isAtMost(layout.canvasHeight)

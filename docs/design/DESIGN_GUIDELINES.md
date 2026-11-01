@@ -376,7 +376,8 @@ TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesaf
 - images as `{"type": "image_url", "image_url": {"url": "data:image/png;base64,…"}}` parts,
   PNG or JPEG only, which Jev reads at any depth of `state`
   ([multimodal decisions](https://openrouter.ai/docs/guides/community/multimodal-decisions)). Each
-  image must be 256–1,568 px a side and 78,400–2,458,624 px in all, at most 16 MiB, with all of a
+  image must be 256–1,568 px a side (in practice 280: a 256 px side answers 400 "Invalid image
+  dimensions", so `JevPictures.MIN_SIDE` is 280) and 78,400–2,458,624 px in all, at most 16 MiB, with all of a
   request's processed images under 32 MiB. Images bill as input tokens, and a request with one runs
   in TypeSafe's slower long-context mode. TypeSafe marks image input as early and subject to change;
 - question types `noul` (probability of yes), `choice` (one of up to 255 options, with a
