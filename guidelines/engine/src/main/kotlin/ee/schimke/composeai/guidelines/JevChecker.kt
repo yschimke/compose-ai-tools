@@ -120,6 +120,9 @@ internal class JevChecker(
   var pictures: Boolean = true
 
   private val jevModel: String = options.answeringModel
+
+  /** Subjects asked from text alone after Jev's image processing stayed unavailable. */
+  private val imageFallbacks = java.util.concurrent.atomic.AtomicInteger()
   private val cacheModel: String = options.cacheModel
 
   /** One subject through the rounds. Touched by one worker at a time, and between rounds. */
@@ -143,9 +146,19 @@ internal class JevChecker(
     val undecided: String
       get() = if (shown.isEmpty()) TEXT_ONLY_REASON else UNDECIDED_REASON
 
+    /**
+     * Jev's image processing stayed unavailable for it ([IMAGE_UNAVAILABLE]): asked from text alone
+     * from then on, its pictures still [shown] for what was already settled with them.
+     */
+    var picturesDown = false
+
+    /** Whether the next request carries its pictures. */
+    val seen: Boolean
+      get() = shown.isNotEmpty() && !picturesDown
+
     /** What Jev judged from, for a reason. */
     val from: String
-      get() = if (shown.isEmpty()) "the text" else "the render and the text"
+      get() = if (seen) "the render and the text" else "the text"
 
     val verdicts = linkedMapOf<String, GuidelineVerdictV1>()
     val traces = linkedMapOf<String, JevRuleTrace>()
@@ -179,7 +192,7 @@ internal class JevChecker(
           else host.summary(subject.previewId)?.substringBefore(". Ask for"),
         sourceFull = sourceFull,
         factsFull = factsFull,
-        pictures = shown,
+        pictures = if (picturesDown) emptyList() else shown,
       )
 
     /** The evidence kinds this subject could still be shown. */
@@ -217,6 +230,7 @@ internal class JevChecker(
 
   fun run(guidelines: CatalogGuidelinesV1, subjects: List<PreviewSubject>): GuidelineRunResult {
     fetchFailures.clear()
+    imageFallbacks.set(0)
     val problems = mutableListOf<String>()
     val results = mutableListOf<PreviewGuidelineResult>()
 
@@ -412,6 +426,14 @@ internal class JevChecker(
               textOnly++
             else cannotTell++
           }
+      }
+    imageFallbacks
+      .get()
+      .takeIf { it > 0 }
+      ?.let { n ->
+        problems +=
+          "$n preview(s) were asked from text alone: Jev's image processing stayed unavailable " +
+            "after $IMAGE_ATTEMPTS tries, so their visual rules are unchecked"
       }
     if (textOnly + cannotTell > 0) {
       problems +=
@@ -676,6 +698,35 @@ internal class JevChecker(
           ledger.keyLimit()
           return stop(capped = true)
         }
+        // Jev's image service fails at random rather than on a bad request: asked again up to
+        // IMAGE_ATTEMPTS times, outside the run's shared retry allowance (one in four requests
+        // would spend it), and past that the subject is asked from text alone, not failed.
+        if (
+          view.pictures.isNotEmpty() && response.status == 503 && IMAGE_UNAVAILABLE in response.body
+        ) {
+          if (attempt < IMAGE_ATTEMPTS) {
+            sleep(backoff.coerceAtMost(options.retry.maxDelayMillis))
+            reservation = ledger.reserve() ?: return stop(capped = true)
+            continue
+          }
+          imageFallbacks.incrementAndGet()
+          state.picturesDown = true
+          // Visual rules not yet settled cannot be asked without the picture.
+          val remaining = stillOpen + chunks.drop(index).flatten()
+          remaining
+            .filter { it.kind == KIND_VISUAL }
+            .forEach { rule ->
+              state.verdicts[rule.id] = unchecked(state.subject, rule, IMAGE_DOWN_REASON)
+              state.traces[rule.id] = JevRuleTrace(rule.id, round, VISUAL, 0.0)
+            }
+          val settled = stillOpen.filter { it.kind != KIND_VISUAL }
+          state.open = chunks.drop(index).flatten().filter { it.kind != KIND_VISUAL }
+          if (state.open.isNotEmpty()) {
+            ask(guidelines, state, round, offered, state.view(), ledger)
+          }
+          state.open = settled + state.open
+          return
+        }
         val wait = backoff
         val retry =
           failure.kind != FailureKind.FATAL &&
@@ -751,13 +802,13 @@ internal class JevChecker(
           confidence = answer.probability
           nodeIds = listOfNotNull(cite)
           reason =
-            "Jev (${if (state.shown.isEmpty()) "text-only" else "with the render"}, " +
+            "Jev (${if (state.seen) "with the render" else "text-only"}, " +
               "round ${round + 1}): " +
               when (verdict) {
                 GuidelineVerdictV1.FAIL ->
                   (because?.removeSuffix(".")
-                    ?: if (state.shown.isEmpty()) "judged broken from the source"
-                    else "judged broken from the render") + " (p $p)."
+                    ?: if (state.seen) "judged broken from the render"
+                    else "judged broken from the source") + " (p $p)."
                 GuidelineVerdictV1.PASS -> "follows it (p $p)."
                 else -> "not applicable (p $p)."
               }
@@ -973,6 +1024,24 @@ internal class JevChecker(
 
     /** Why a rule Jev saw the render for, and still could not tell, is unchecked. */
     const val UNDECIDED_REASON: String = "Jev could not decide it"
+
+    /**
+     * Why a visual rule is unchecked when Jev's image processing stayed unavailable for its
+     * subject: the rest of the subject was asked from text alone.
+     */
+    const val IMAGE_DOWN_REASON: String =
+      "needs the picture; Jev's image processing was unavailable for it"
+
+    /**
+     * The 503 Jev answers when its image service fails a request ("Image processing is
+     * unavailable."). Measured 2026-11-01 at about one request in four with a picture on
+     * typesafe/jev-1.13 and one in ten on 1.14, at any image size and concurrency, and passing on
+     * the next try: asked again rather than failed.
+     */
+    internal const val IMAGE_UNAVAILABLE: String = "Image processing is unavailable"
+
+    /** How many times a request is asked while Jev's image processing is unavailable. */
+    internal const val IMAGE_ATTEMPTS: Int = 4
 
     /** The least probability a verdict is taken at; below it the rule counts as `cannot_tell`. */
     const val MIN_PROBABILITY: Double = 0.5

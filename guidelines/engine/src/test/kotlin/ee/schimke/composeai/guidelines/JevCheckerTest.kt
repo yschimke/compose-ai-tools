@@ -265,6 +265,59 @@ class JevCheckerTest {
       .isEqualTo("Jev (with the render, round 1): judged broken from the render (p 0.90).")
   }
 
+  /** A decisions API whose image processing answers 503 for the first [down] requests with one. */
+  private inner class ImageDown(val down: Int) : GuidelineModel {
+    val inner = FakeDecisions()
+    var refused = 0
+    val withPicture = mutableListOf<Boolean>()
+
+    override fun complete(request: GuidelineRequestV1, model: String): ModelResponse =
+      error("the jev checker must not ask the vision model")
+
+    override fun decide(body: JsonObject): ModelResponse {
+      val picture = body["state"]!!.jsonObject.containsKey("render")
+      withPicture += picture
+      if (picture && refused < down) {
+        refused++
+        return ModelResponse(
+          503,
+          """{"error":{"message":"HTTP 503: {\"detail\":{\"error_type\":\"api_usage_error\",""" +
+            """\"message\":\"Image processing is unavailable.\"}}","code":503}}""",
+        )
+      }
+      return inner.decide(body)
+    }
+  }
+
+  @Test
+  fun `an image-processing outage is asked again, outside the run's retry allowance`() {
+    val model = ImageDown(down = JevChecker.IMAGE_ATTEMPTS - 1)
+    val run = jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
+    assertThat(model.withPicture).containsExactly(true, true, true, true)
+    val result = run.results.single()
+    assertThat(result.failures()).isEmpty()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.verdict)
+      .isEqualTo(GuidelineVerdictV1.PASS)
+    assertThat(run.problems.joinToString("\n")).doesNotContain("text alone")
+  }
+
+  @Test
+  fun `a render Jev's image processing never takes is asked from text alone, not failed`() {
+    val model = ImageDown(down = Int.MAX_VALUE)
+    val run = jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
+    // Every try with the picture, then once without it.
+    assertThat(model.withPicture)
+      .containsExactlyElementsIn(List(JevChecker.IMAGE_ATTEMPTS) { true } + false)
+      .inOrder()
+    val result = run.results.single()
+    assertThat(result.failures()).isEmpty()
+    assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
+      .isEqualTo(JevChecker.IMAGE_DOWN_REASON)
+    assertThat(result.record.verdicts.single { it.ruleId == "touch" }.reason)
+      .startsWith("Jev (text-only, round 1): ")
+    assertThat(run.problems.joinToString("\n")).contains("1 preview(s) were asked from text alone")
+  }
+
   @Test
   fun `a render that is not an image is asked from text alone`() {
     val model = FakeDecisions()
