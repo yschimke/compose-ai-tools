@@ -10,8 +10,9 @@ render.
 
 The renderer here is the source of truth; the importable bundle is assembled by
 [`@design-parity/catalog-export`](https://github.com/yschimke/design-parity/tree/main/packages/catalog-export),
-and the workflow is documented by the `compose-design-catalog` skill in
-[yschimke/skills](https://github.com/yschimke/skills). Published Figma kits are
+and the workflow was documented by the `compose-design-catalog` skill, since
+removed from [yschimke/skills](https://github.com/yschimke/skills) (it remains in
+that repository's git history). Published Figma kits are
 seed/reference only — a kit/render divergence is a bug in the kit.
 
 ## Why a dedicated module per system
