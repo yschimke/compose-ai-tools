@@ -1138,7 +1138,7 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
         "automatically."
     )
     append(
-      "Docs: https://yschimke.github.io/compose-ai-tools/install/" +
+      "Docs: https://preview.coo.ee/start/install/" +
         "#builds-that-apply-agp-via-a-convention-plugin"
     )
   }
