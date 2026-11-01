@@ -87,8 +87,10 @@ run to put pixels inline. It's also already this repo's convention.
 
 ### The compose-preview-review skill
 
-The workflow installs the
-[`yschimke-skills`](https://github.com/yschimke/skills) plugin via the
+The workflow installs the `compose-review` plugin from
+[compose-agent-plugins](https://github.com/yschimke/compose-agent-plugins)
+(which vendors the review skills from
+[yschimke/skills](https://github.com/yschimke/skills)) via the
 action's `plugin_marketplaces` / `plugins` inputs (the action installs
 plugins from these inputs before the session starts; `enabledPlugins`
 in `settings` alone would not install anything on the runner), so every
