@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.82.0](https://github.com/yschimke/compose-ai-tools/compare/v2.81.0...v2.82.0) (2026-11-01)
+
+
+### Features
+
+* **guidelines:** recheck what Jev is unsure of with a vision model ([#6390](https://github.com/yschimke/compose-ai-tools/issues/6390)) ([6e0d530](https://github.com/yschimke/compose-ai-tools/commit/6e0d530b98b9d08f21e3d71125458b56b3e8d121))
+* **guidelines:** show Jev the render, and ask it the visual rules ([#6386](https://github.com/yschimke/compose-ai-tools/issues/6386)) ([bc45e56](https://github.com/yschimke/compose-ai-tools/commit/bc45e5666533bfa50086bb4916286af5fb9f304b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.27.2 ([#6192](https://github.com/yschimke/compose-ai-tools/issues/6192)) ([31778e6](https://github.com/yschimke/compose-ai-tools/commit/31778e686b0f3a03123b25a579e327461c2cba19))
+
 ## [2.81.0](https://github.com/yschimke/compose-ai-tools/compare/v2.80.0...v2.81.0) (2026-11-01)
 
 
