@@ -353,14 +353,15 @@ first drops the previews' old entries from `accessibility.json`, so a failed fet
 rather than an older render's nodes, and `--permutations` ids are fetched as their declared
 preview with the permutation's overrides.
 
-## Experimental: the text-only Jev checker (`--checker jev`)
+## Experimental: the Jev checker (`--checker jev`)
 
 Opt-in and experimental; the default (`--checker vision`, the `guidelines-checker` input's
 `vision`) is unchanged. Most rules are structural — wear-m3-catalog's file has 22 `structure`
 rules to 2 `visual` — and their evidence is text: the source (with its wrapper's), the accessibility
 nodes (role, label, bounds, `scrollable`, `off:` edges) and the ATF results. `--checker jev` asks
 those of Jev instead of the vision model, which on a 12-screen × 24-rule batch wrote verdicts
-serially past the request timeout.
+serially past the request timeout. Jev also reads images now, so each request carries the render
+too, and the `visual` rules are asked alongside the structural ones.
 
 **What the decisions API offers** (OpenRouter
 [Jev hub](https://openrouter.ai/docs/guides/community/jev),
@@ -369,9 +370,15 @@ serially past the request timeout.
 TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesafe.ai/api),
 [Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)):
 
-- one `state` (text: a string, object or array) and any number of independent `questions`, keyed
+- one `state` (a string, object or array) and any number of independent `questions`, keyed
   by ids the caller chooses, all answered in parallel against that state and unable to see each
   other's answers;
+- images as `{"type": "image_url", "image_url": {"url": "data:image/png;base64,…"}}` parts,
+  PNG or JPEG only, which Jev reads at any depth of `state`
+  ([multimodal decisions](https://openrouter.ai/docs/guides/community/multimodal-decisions)). Each
+  image must be 256–1,568 px a side and 78,400–2,458,624 px in all, at most 16 MiB, with all of a
+  request's processed images under 32 MiB. Images bill as input tokens, and a request with one runs
+  in TypeSafe's slower long-context mode. TypeSafe marks image input as early and subject to change;
 - question types `noul` (probability of yes), `choice` (one of up to 255 options, with a
   probability per option and a `confidence`) and `score`;
 - **no text back**: no reason, no explanation, no citation — only the typed answers;
@@ -383,9 +390,21 @@ TypeSafe's [models](https://docs.typesafe.ai/models), [API](https://docs.typesaf
 - known weak spots: literal reading, arithmetic and numeric comparison, and a lean toward a
   Choice's first option.
 
-**Minimal first, then asked for.** Round 0 shows Jev, per subject, a compact source excerpt (the
+**The render.** Every request for a subject carries its first `JevPictures.MAX_PICTURES` (2)
+pictures under `state.render`, each with a `shows` caption. `JevPictures` fits them into Jev's
+limits. A render too large is scaled down (bicubic) until it fits the longest side and the pixel
+total. One too small is scaled up by a whole factor (nearest-neighbour, so a 1px clip edge stays
+1px wide in each block). Only when its shape keeps one side short is it centred on a flat grey
+margin. The caption gives the scale, says the node bounds are still in the render's own pixels,
+and says the margin is not part of the render. A picture ImageIO cannot read is dropped. A subject
+with none is asked from text alone, as before: the task says it cannot see the render, and its
+visual rules are unchecked. `JevChecker.pictures` (on by default) turns pictures off, for comparing
+the two designs. Request sizing counts a picture the way the vision path does (pixels / 750, at
+least 1,200 tokens), not by the length of its base64.
+
+**Minimal first, then asked for.** Round 0 shows Jev, per subject, the render, a compact source excerpt (the
 preview's body, and only the signature line of each wrapper it calls), the ~30-token accessibility
-summary line, and a one-line list of the computed facts (below). Each structural rule is one
+summary line, and a one-line list of the computed facts (below). Each rule is one
 `choice` question keyed `r1`, `r2`, … whose instructions carry the rule's check, its guidance and
 the facts that bear on it, decisive ones first. Options: `cannot_tell`, then one `needs:<kind>` per
 evidence kind the subject could still be shown, then `not_applicable`, `fail`, `pass`:
@@ -396,10 +415,10 @@ evidence kind the subject could still be shown, then `not_applicable`, `fail`, `
 | `needs:source` | the whole source, wrapper bodies included |
 | `needs:facts` | every computed fact, not only the rule's |
 
-`scroll-capture` and `render` are pictures, so they are never offered. A follow-up round re-asks
+`scroll-capture` and other renders are not offered: the subject's pictures are shown from round 0. A follow-up round re-asks
 only the rules that asked, up to `--rounds` (3 by default under `--checker jev`, and in the apply
 action). `cannot_tell` while evidence is still on offer counts as asking for all of it, so a rule
-becomes unchecked ("needs the picture") only after the last round, when nothing more is offered.
+becomes unchecked only after the last round, when nothing more is offered.
 `cannot_tell` is listed first because Jev leans toward a Choice's first option, so that lean errs
 toward unchecked. A subject whose questions would not fit 64k is asked in several requests.
 Subjects are asked four at a time in a fixed pool in `JevChecker`; the vision path's batching and
@@ -441,17 +460,19 @@ buttons, 7sp text and hex colours, low contrast, fixed sizes, text cut at the en
 round-edge clipping, and eight lines overflowing a 108dp widget.
 
 **What it records.** Each verdict is recorded at the chosen option's probability. Jev returns no
-text, so the reason is the decisive fact the question was shown: "Jev (text-only, round 1): add
-(Button 'Add') is 24×24dp: 24dp short of the 48dp minimum touch target (p 0.88)." `nodeIds` come
+text, so the reason is the decisive fact the question was shown: "Jev (with the render, round 1):
+add (Button 'Add') is 24×24dp: 24dp short of the 48dp minimum touch target (p 0.88)." The reason
+says "text-only" instead for a subject asked without a picture. `nodeIds` come
 from a second Choice over the node ids in play (those the rule's facts name, plus every node once
 `a11y` is served), or else from the decisive fact's node. The served model, provider, cost and
 generation id are recorded as in any record. An answer to a question the request did not ask is
 dropped and counted, as #5784 does for verdicts. The result also carries a `jev` trace: rounds,
 requests, latency and cost, and for each rule its round, choice, probability, the fact kinds it
-was handed and the evidence it asked for. These are left unchecked, never passed, with the reason
-"needs the picture; the jev checker is text-only":
+was handed and the evidence it asked for. These are left unchecked, never passed. The reason is
+"Jev could not decide it" where Jev saw the render, and "needs the picture; the jev checker is
+text-only" where it did not:
 
-- every `visual` rule: never asked;
+- every `visual` rule of a subject with no readable picture: never asked;
 - every rule still `cannot_tell`, or answered below p 0.5, after the last round;
 - every rule that asked for evidence the host could not supply;
 - set-scoped rules: not asked at all, since the checker judges each preview alone. The run's
@@ -459,9 +480,10 @@ was handed and the evidence it asked for. These are left unchecked, never passed
 
 **Kept apart.** Results are cached under `GuidelineRunOptions.cacheModel`
 (`checker:jev@<format>/typesafe/jev-1.13`), so a vision verdict never answers a jev run or the
-reverse. The vision key is unchanged, so `REQUEST_FORMAT` is not bumped. The report's
+reverse. `JevChecker.FORMAT` is 3 since pictures were added, so no text-only verdict answers a run
+that sees the render. The vision key is unchanged, so `REQUEST_FORMAT` is not bumped. The report's
 `guidelines.json` carries `"checker": "jev"` (absent for vision). The PR comment says "Checked by
-Jev (text-only, experimental)" and counts the rule verdicts it left unchecked instead of listing
+Jev (experimental)" and counts the rule verdicts it left unchecked instead of listing
 them under every preview. In jev mode `--model` names the decisions model (`typesafe/jev-1.13`
 unless given).
 

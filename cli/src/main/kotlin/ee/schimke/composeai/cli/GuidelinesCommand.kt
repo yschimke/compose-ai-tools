@@ -181,8 +181,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
   private val a11yJson: String? = args.flagValue("--a11y-json")
   private val sourceRoot: String? = args.flagValue("--source-root")
   /**
-   * `--checker vision|jev`. `jev` is EXPERIMENTAL: text-only, leaving rules that need the picture
-   * unchecked. Null for any other value.
+   * `--checker vision|jev`. `jev` is EXPERIMENTAL: Jev decides each rule from the render and the
+   * text evidence, leaving a rule it cannot tell unchecked. Null for any other value.
    */
   private val checkerFlag: String? = args.flagValue("--checker")
   private val checker: GuidelineChecker? =
@@ -1048,8 +1048,8 @@ internal object GuidelinesReportRenderer {
     val otherVariants = run.results.count { it.variantOf != null }
     if (checker == GuidelineChecker.JEV) {
       println(
-        "$module: checked by Jev (text-only, experimental): rules that need the picture are " +
-          "left unchecked"
+        "$module: checked by Jev (experimental): it sees each render and its text evidence, " +
+          "and leaves a rule it cannot tell unchecked"
       )
     }
     println(

@@ -27,17 +27,19 @@ import kotlinx.serialization.json.putJsonObject
  * Which model answers a run's rules ([GuidelineRunOptions.withChecker]).
  *
  * [VISION] is the default and the established check: a vision model sees each render and writes a
- * verdict per rule. [JEV] is EXPERIMENTAL: Jev, TypeSafe's decision model, decides each structural
- * rule from text alone and leaves every rule that needs the picture unchecked.
+ * verdict per rule. [JEV] is EXPERIMENTAL: Jev, TypeSafe's decision model, decides each rule from
+ * the render and the text evidence, or from the text alone where a preview has no render.
  */
 public enum class GuidelineChecker(public val id: String) {
   /** A vision model judges the render, its source and its evidence (the default). */
   VISION("vision"),
 
   /**
-   * EXPERIMENTAL. Jev decides each structural rule from text evidence only, asking for more over up
-   * to [GuidelineRunOptions.maxRounds] follow-up rounds; visual rules, and any rule still
-   * `cannot_tell` after them, are reported unchecked ([JevChecker.TEXT_ONLY_REASON]).
+   * EXPERIMENTAL. Jev decides each rule from the render (fitted into its image limits,
+   * [JevPictures]) and text evidence, asking for more over up to [GuidelineRunOptions.maxRounds]
+   * follow-up rounds; any rule still `cannot_tell` after them is reported unchecked
+   * ([JevChecker.UNDECIDED_REASON]). A preview with no render is asked from text alone, and its
+   * visual rules are unchecked ([JevChecker.TEXT_ONLY_REASON]).
    */
   JEV("jev");
 
@@ -79,16 +81,18 @@ public data class JevSubjectTrace(
 )
 
 /**
- * EXPERIMENTAL: the text-only checker, minimal first.
+ * EXPERIMENTAL: the decision-model checker, minimal first.
  *
- * Round 0 shows Jev, per subject, a compact source excerpt (the preview body plus wrapper
- * signatures), the accessibility summary line and the computed [GuidelineFacts]; each structural
- * rule is one Choice carrying the rule's check, guidance and relevant facts ([JevRuleShapes]).
- * Options are `cannot_tell`, `not_applicable`, `fail`, `pass` and one `needs:<kind>` per evidence
- * kind still available (`a11y`, `source`, `facts`); a follow-up round serves what was asked and
- * re-asks only those rules. `cannot_tell` while evidence remains counts as asking for all of it,
- * and becomes unchecked ([TEXT_ONLY_REASON]) only after the last round. Visual rules are never
- * asked; nothing is passed silently.
+ * Round 0 shows Jev, per subject, its render as an image part ([JevPictures]: scaled or padded into
+ * Jev's limits, at most [JevPictures.MAX_PICTURES]), a compact source excerpt (the preview body
+ * plus wrapper signatures), the accessibility summary line and the computed [GuidelineFacts]; each
+ * structural rule is one Choice carrying the rule's check, guidance and relevant facts
+ * ([JevRuleShapes]). Options are `cannot_tell`, `not_applicable`, `fail`, `pass` and one
+ * `needs:<kind>` per evidence kind still available (`a11y`, `source`, `facts`); a follow-up round
+ * serves what was asked and re-asks only those rules. `cannot_tell` while evidence remains counts
+ * as asking for all of it, and becomes unchecked ([UNDECIDED_REASON]) only after the last round.
+ * Visual rules are asked only of a subject Jev can see; without a render they are unchecked
+ * ([TEXT_ONLY_REASON]). Nothing is passed silently.
  *
  * Jev returns probabilities, not text, so a verdict's reason is the decisive fact it was shown.
  * Results are cached under [GuidelineRunOptions.cacheModel], which names the checker.
@@ -109,6 +113,12 @@ internal class JevChecker(
   /** For comparison only: show every subject's full accessibility data before round 0. */
   var a11yUpFront: Boolean = false
 
+  /**
+   * For comparison only: show Jev each subject's render (the default). Off, every subject is asked
+   * from text alone, as before Jev read images.
+   */
+  var pictures: Boolean = true
+
   private val jevModel: String = options.answeringModel
   private val cacheModel: String = options.cacheModel
 
@@ -125,7 +135,18 @@ internal class JevChecker(
     var subject: PreviewSubject = arrived
     val asked: List<GuidelineRuleV1> =
       guidelines.subjectRules(arrived.surface, arrived.profile, arrived.pictures.isNotEmpty())
-    var open: List<GuidelineRuleV1> = asked.filter { it.kind != KIND_VISUAL }
+    /** What Jev sees of it: its render, fitted, or nothing (asked from text alone). */
+    val shown: List<JevPicture> = if (pictures) JevPictures.of(arrived.pictures) else emptyList()
+    var open: List<GuidelineRuleV1> = asked.filter { it.kind != KIND_VISUAL || shown.isNotEmpty() }
+
+    /** Why a rule Jev did not settle is unchecked. */
+    val undecided: String
+      get() = if (shown.isEmpty()) TEXT_ONLY_REASON else UNDECIDED_REASON
+
+    /** What Jev judged from, for a reason. */
+    val from: String
+      get() = if (shown.isEmpty()) "the text" else "the render and the text"
+
     val verdicts = linkedMapOf<String, GuidelineVerdictV1>()
     val traces = linkedMapOf<String, JevRuleTrace>()
     val requested = mutableMapOf<String, MutableSet<String>>()
@@ -158,6 +179,7 @@ internal class JevChecker(
           else host.summary(subject.previewId)?.substringBefore(". Ask for"),
         sourceFull = sourceFull,
         factsFull = factsFull,
+        pictures = shown,
       )
 
     /** The evidence kinds this subject could still be shown. */
@@ -334,7 +356,7 @@ internal class JevChecker(
               unchecked(
                 subject,
                 rule,
-                "$TEXT_ONLY_REASON (Jev could not tell from the text after " +
+                "${state.undecided} (Jev could not tell from ${state.from} after " +
                   "${state.rounds} round(s))",
               )
             state.traces.putIfAbsent(
@@ -343,7 +365,7 @@ internal class JevChecker(
             )
           }
           state.asked
-            .filter { it.kind == KIND_VISUAL }
+            .filter { it.kind == KIND_VISUAL && state.shown.isEmpty() }
             .forEach { rule ->
               state.verdicts[rule.id] = unchecked(subject, rule, TEXT_ONLY_REASON)
               state.traces[rule.id] = JevRuleTrace(rule.id, 0, VISUAL, 0.0)
@@ -385,14 +407,17 @@ internal class JevChecker(
           .filter { it.verdict == NEEDS }
           .forEach { verdict ->
             textOnlyPreviews += result.previewId
-            if (kinds[verdict.ruleId] == KIND_VISUAL) textOnly++ else cannotTell++
+            // A visual rule is never asked only of a subject Jev could not see.
+            if (kinds[verdict.ruleId] == KIND_VISUAL && verdict.reason == TEXT_ONLY_REASON)
+              textOnly++
+            else cannotTell++
           }
       }
     if (textOnly + cannotTell > 0) {
       problems +=
         "${textOnly + cannotTell} rule verdict(s) on ${textOnlyPreviews.size} preview(s) were " +
-          "left unchecked: $TEXT_ONLY_REASON ($textOnly visual rule(s) never asked, " +
-          "$cannotTell Jev could not tell from the text)"
+          "left unchecked ($textOnly visual rule(s) never asked: $TEXT_ONLY_REASON; " +
+          "$cannotTell Jev could not tell)"
     }
     if (asking.isNotEmpty()) {
       problems +=
@@ -562,7 +587,7 @@ internal class JevChecker(
             unchecked(
               state.subject,
               rule,
-              "$TEXT_ONLY_REASON (the evidence Jev asked for is not available)",
+              "${state.undecided} (the evidence Jev asked for is not available)",
             )
           state.traces.putIfAbsent(
             rule.id,
@@ -703,8 +728,8 @@ internal class JevChecker(
         unchecked(
           state.subject,
           rule,
-          "$TEXT_ONLY_REASON (Jev could not tell from the text after ${round + 1} round(s), " +
-            "p $p)",
+          "${state.undecided} (Jev could not tell from ${state.from} after ${round + 1} " +
+            "round(s), p $p)",
         )
       state.traces[rule.id] = state.trace(rule, round, CANNOT_TELL, answer.probability)
       return
@@ -722,10 +747,13 @@ internal class JevChecker(
           confidence = answer.probability
           nodeIds = listOfNotNull(cite)
           reason =
-            "Jev (text-only, round ${round + 1}): " +
+            "Jev (${if (state.shown.isEmpty()) "text-only" else "with the render"}, " +
+              "round ${round + 1}): " +
               when (verdict) {
                 GuidelineVerdictV1.FAIL ->
-                  (because?.removeSuffix(".") ?: "judged broken from the source") + " (p $p)."
+                  (because?.removeSuffix(".")
+                    ?: if (state.shown.isEmpty()) "judged broken from the source"
+                    else "judged broken from the render") + " (p $p)."
                 GuidelineVerdictV1.PASS -> "follows it (p $p)."
                 else -> "not applicable (p $p)."
               }
@@ -933,10 +961,14 @@ internal class JevChecker(
 
   companion object {
     /**
-     * Why a rule the jev checker did not decide is unchecked: a visual rule, never asked, or one
-     * Jev could not tell from the text after its follow-up rounds.
+     * Why a rule the jev checker did not decide on a subject it could not see (no render, or none
+     * ImageIO reads) is unchecked: a visual rule, never asked, or one Jev could not tell from the
+     * text after its follow-up rounds.
      */
     const val TEXT_ONLY_REASON: String = "needs the picture; the jev checker is text-only"
+
+    /** Why a rule Jev saw the render for, and still could not tell, is unchecked. */
+    const val UNDECIDED_REASON: String = "Jev could not decide it"
 
     /** The least probability a verdict is taken at; below it the rule counts as `cannot_tell`. */
     const val MIN_PROBABILITY: Double = 0.5
@@ -945,7 +977,7 @@ internal class JevChecker(
      * Bumped when what the jev checker asks or computes changes its verdicts; part of
      * [GuidelineRunOptions.cacheModel].
      */
-    const val FORMAT: Int = 2
+    const val FORMAT: Int = 3
 
     const val KIND_A11Y: String = "a11y"
     const val KIND_SOURCE: String = "source"
@@ -1093,6 +1125,8 @@ internal object JevRuleRequests {
     val a11ySummary: String?,
     val sourceFull: Boolean,
     val factsFull: Boolean,
+    /** The pictures shown with it ([JevPictures]); empty asks from text alone. */
+    val pictures: List<JevPicture> = emptyList(),
   )
 
   /** One rule's answer: a verdict, a request for evidence, or neither (`cannot_tell`). */
@@ -1155,7 +1189,10 @@ internal object JevRuleRequests {
     rules: List<GuidelineRuleV1>,
     offered: List<String>,
   ): List<List<GuidelineRuleV1>> {
-    val stateTokens = state(guidelines, view).toString().length / 4
+    // Pictures counted as the vision path counts them, not by their base64 length.
+    val stateTokens =
+      state(guidelines, view, pictures = false).toString().length / 4 +
+        view.pictures.sumOf { it.tokens }
     val room = (MAX_REQUEST_TOKENS - stateTokens).coerceAtLeast(2_000)
     val out = mutableListOf<MutableList<GuidelineRuleV1>>()
     var used = 0
@@ -1197,10 +1234,16 @@ internal object JevRuleRequests {
         }
       }
       putJsonObject("criteria") {
+        val seen = view.pictures.isNotEmpty()
         put(
           CANNOT_TELL,
-          "The text shown (the source, the accessibility summary and the facts) does not settle " +
-            "it, and no evidence offered below would: answering needs the rendered picture.",
+          if (seen)
+            "Neither the render nor the text shown (the source, the accessibility data and the " +
+              "facts) settles it, and no evidence offered below would."
+          else
+            "The text shown (the source, the accessibility summary and the facts) does not " +
+              "settle it, and no evidence offered below would: answering needs the rendered " +
+              "picture.",
         )
         offered.forEach { kind -> put(NEEDS_PREFIX + kind, NEEDS_TEXT.getValue(kind)) }
         put(
@@ -1210,10 +1253,15 @@ internal object JevRuleRequests {
         )
         put(
           "fail",
-          "No: the text shows the preview breaks the rule." +
+          "No: ${if (seen) "the render or the text" else "the text"} shows the preview breaks " +
+            "the rule." +
             (JevRuleShapes.failWhen(rule)?.let { " For this rule that is when $it." } ?: ""),
         )
-        put("pass", "Yes: the text shows the preview follows the rule.")
+        put(
+          "pass",
+          "Yes: ${if (seen) "the render and the text show" else "the text shows"} the preview " +
+            "follows the rule.",
+        )
       }
     }
 
@@ -1250,16 +1298,42 @@ internal object JevRuleRequests {
     }
   }
 
-  /** What Jev is shown about the subject this round: text only, no picture. */
-  fun state(guidelines: CatalogGuidelinesV1, view: View): JsonObject = buildJsonObject {
+  /**
+   * What Jev is shown about the subject this round: its render ([View.pictures], as image parts,
+   * left out when [pictures] is false: for sizing a request) and the text evidence.
+   */
+  fun state(
+    guidelines: CatalogGuidelinesV1,
+    view: View,
+    pictures: Boolean = true,
+  ): JsonObject = buildJsonObject {
     val subject = view.subject
     put(
       "task",
-      "Decide whether one rendered Jetpack Compose @Preview follows design rules. You cannot see " +
-        "the render: judge only from the text below — the source, the accessibility data and " +
-        "the facts computed from them. Where a rule needs more than is shown and more is " +
-        "offered, ask for it rather than guess.",
+      if (view.pictures.isEmpty())
+        "Decide whether one rendered Jetpack Compose @Preview follows design rules. You cannot " +
+          "see the render: judge only from the text below — the source, the accessibility data " +
+          "and the facts computed from them. Where a rule needs more than is shown and more is " +
+          "offered, ask for it rather than guess."
+      else
+        "Decide whether one rendered Jetpack Compose @Preview follows design rules. Judge from " +
+          "the render below — what is drawn, how it is laid out, what is cut off — and from " +
+          "the text: the source, the accessibility data and the facts computed from them. " +
+          "Measured facts settle what they measure. Where a rule needs more than is shown and " +
+          "more is offered, ask for it rather than guess.",
     )
+    if (pictures && view.pictures.isNotEmpty()) {
+      putJsonArray("render") {
+        view.pictures.forEach { picture ->
+          add(
+            buildJsonObject {
+              put("shows", picture.caption)
+              put("image", picture.part())
+            }
+          )
+        }
+      }
+    }
     put("platform", guidelines.platform)
     put("catalog", guidelines.catalog)
     putJsonObject("preview") {
