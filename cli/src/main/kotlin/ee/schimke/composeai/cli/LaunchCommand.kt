@@ -282,8 +282,9 @@ internal class LaunchCommand(private val args: List<String>) {
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
     }
-    // Per APK, since --adb installs and --pair launch APKs other than the first. Memoised: a
-    // restart or reload of the same APK does not re-read it.
+    // Per APK, since --adb installs and --pair launch APKs other than the first. Memoised by path,
+    // size and modification time: a restart of the same APK does not re-read it, while a rebuild
+    // or update written over the same path (live reload, `update`) does.
     val libraryPaths = ConcurrentHashMap<String, List<String>>()
     fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> =
       simulatorCommand(
@@ -295,7 +296,9 @@ internal class LaunchCommand(private val args: List<String>) {
           options.copy(
             properties = options.properties + launch.properties,
             libraryPath =
-              libraryPaths.computeIfAbsent(launch.apk.absolutePath) {
+              libraryPaths.computeIfAbsent(
+                "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
+              ) {
                 hostLibraryPath(launch.apk, options)
               },
           ),
