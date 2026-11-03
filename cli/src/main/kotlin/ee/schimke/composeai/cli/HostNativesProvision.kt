@@ -21,10 +21,10 @@ import kotlinx.serialization.json.Json
  *
  * Nothing is bundled and no version is baked in. The CLI reads an index at run time
  * (`host-natives/index.json` on this repository's `main`, or [INDEX_ENV]) that maps each library to
- * its host builds. A build is an archive per platform, either a `host-natives-v<n>` release from
- * `host-natives.yml` or a library's own JVM artifact on Maven, with its sha256 and the library's
- * path inside it. `host-natives/index.py` maintains the index, and scheduled workflows add new
- * versions to it. See `docs/RELEASING.md`, "The host-natives binaries".
+ * its host builds. A build is an archive per platform, either a `host-natives-<recipe>-<version>`
+ * release from `host-natives.yml` or a library's own JVM artifact on Maven, with its sha256 and the
+ * library's path inside it. `host-natives/index.py` maintains the index, and scheduled workflows
+ * add new versions to it. See `docs/RELEASING.md`, "The host-natives binaries".
  *
  * The build chosen for an APK is the one at its exact AndroidX version when the index has it, and
  * otherwise the nearest, which may well work and is better than the certain failure without one.

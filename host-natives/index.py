@@ -6,20 +6,27 @@ The CLI bundles no host libraries and no versions. At launch it fetches this fil
 downloads the builds it names. Each build is one archive URL per platform, its sha256, and the path
 of the library inside it. Two kinds of archive appear, both handled the same way:
 
-- **Built here:** a `host-natives-v<VERSION>` release tarball from `host-natives.yml`. `add-release`
-  records one, and the publish job runs it and opens the PR.
+- **Built here:** a recipe under `host-natives/<recipe>/`, released per LIBRARY version as
+  `host-natives-<recipe>-<version>` by `host-natives.yml`, which runs `add-release` and opens the
+  PR. A later library version whose native API is unchanged reuses that build: `watch` adds it
+  pointing at the same archives, and reports the versions whose native API changed, which need a
+  recipe bump (a new release) instead.
 - **Upstream host builds:** a library's own JVM artifact on Maven, at the same version as its
-  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm). A library with an `upstream` block is
-  watched: `watch` adds each new stable version, and `host-natives-watch.yml` runs it on a schedule
-  and opens the PR.
+  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm). `watch` adds each new stable
+  version.
+
+`host-natives-watch.yml` runs `watch` and `survey` weekly and opens one PR.
 
 Commands:
 
   index.py check [--online]     validate the index; --online downloads every archive, checks its
                                 sha256 and that the library is inside it
-  index.py watch                add new upstream versions (downloads them to hash them)
-  index.py add-release --dist <dir> --tag <tag>
-                                record a host-natives release whose tarballs are in <dir>
+  index.py watch                add new versions (downloads them to hash or compare them)
+  index.py add-release --dist <dir>
+                                record the host-natives tarballs in <dir>
+  index.py survey [--out <md>]  the AndroidX menu: every AndroidX artifact whose AAR ships native
+                                libraries, any upstream host build of it, and whether the index has
+                                it; written to host-natives/ANDROIDX.md
 
 Standard library only, so every workflow can run it with a bare `python3`.
 """
@@ -27,18 +34,23 @@ Standard library only, so every workflow can run it with a bare `python3`.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import io
 import json
 import re
+import struct
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 INDEX = HERE / "index.json"
+SURVEY = HERE / "ANDROIDX.md"
+GOOGLE_MAVEN = "https://dl.google.com/dl/android/maven2"
 SCHEMA = "compose-preview-host-natives/v1"
 RELEASE_REPO = "yschimke/compose-ai-tools"
 
@@ -187,8 +199,12 @@ def watch(index: dict, fetch_versions=maven_versions, fetch_bytes=fetch) -> list
     return added
 
 
-def add_release(index: dict, dist: Path, tag: str) -> list[str]:
-    """Record the tarballs in [dist] (host-natives.yml's publish output) under release [tag]."""
+def add_release(index: dict, dist: Path) -> list[str]:
+    """Record the recipe tarballs in [dist] (host-natives.yml's publish output).
+
+    Each tarball's `host-natives.properties` names its recipe, release tag, platform, library
+    version and file; the index library whose `release.recipe` matches gets a build at that version
+    (replacing the platforms a `-r<revision>` rebuild supersedes)."""
     added = []
     for tarball in sorted(dist.glob("host-natives-*.tar.gz")):
         data = tarball.read_bytes()
@@ -201,21 +217,306 @@ def add_release(index: dict, dist: Path, tag: str) -> list[str]:
             properties = dict(
                 line.split("=", 1) for line in member.read().decode().splitlines() if "=" in line
             )
-        url = f"https://github.com/{RELEASE_REPO}/releases/download/{tag}/{tarball.name}"
+        library = next(
+            (
+                lib
+                for lib in index["libraries"]
+                if lib.get("release", {}).get("recipe") == properties["recipe"]
+            ),
+            None,
+        )
+        if library is None:
+            print(f"{tarball.name}: no index library has recipe {properties['recipe']}",
+                  file=sys.stderr)
+            continue
+        version = properties["version"]
+        url = f"https://github.com/{RELEASE_REPO}/releases/download/{properties['tag']}/{tarball.name}"
+        build = next((b for b in library["builds"] if b["version"] == version), None)
+        if build is None:
+            build = {"version": version, "platforms": {}}
+            library["builds"].append(build)
+        build.pop("sameAs", None)
         sha = hashlib.sha256(data).hexdigest()
-        for library in index["libraries"]:
-            key = library.get("release", {}).get("property")
-            if not key or key not in properties:
-                continue
-            version = properties[f"{key.rsplit('.', 1)[0]}.version"]
-            build = next((b for b in library["builds"] if b["version"] == version), None)
-            if build is None:
-                build = {"version": version, "platforms": {}}
-                library["builds"].append(build)
-            for platform in RELEASE_PLATFORMS[properties["platform"]]:
-                build["platforms"][platform] = {"url": url, "sha256": sha, "entry": properties[key]}
-                added.append(f"{library['library']} {version} {platform} from {tag}")
+        for platform in RELEASE_PLATFORMS[properties["platform"]]:
+            build["platforms"][platform] = {"url": url, "sha256": sha, "entry": properties["file"]}
+            added.append(f"{library['library']} {version} {platform} from {properties['tag']}")
     return added
+
+
+# --- Native API of an Android artifact -------------------------------------------------------------
+
+def _native_methods(class_bytes: bytes) -> list[str]:
+    """`Class.method(descriptor)` for each `native` method of one class file."""
+    data = class_bytes
+    pos = 8
+    (count,) = struct.unpack_from(">H", data, pos)
+    pos += 2
+    utf8: dict[int, str] = {}
+    classes: dict[int, int] = {}
+    i = 1
+    while i < count:
+        tag = data[pos]
+        pos += 1
+        if tag == 1:
+            (length,) = struct.unpack_from(">H", data, pos)
+            utf8[i] = data[pos + 2 : pos + 2 + length].decode("utf-8", "replace")
+            pos += 2 + length
+        elif tag == 7:
+            (classes[i],) = struct.unpack_from(">H", data, pos)
+            pos += 2
+        elif tag in (8, 16, 19, 20):
+            pos += 2
+        elif tag == 15:
+            pos += 3
+        elif tag in (3, 4, 9, 10, 11, 12, 17, 18):
+            pos += 4
+        elif tag in (5, 6):
+            pos += 8
+            i += 1
+        else:
+            raise ValueError(f"constant pool tag {tag}")
+        i += 1
+    _, this_class, _ = struct.unpack_from(">HHH", data, pos)
+    pos += 6
+    (interfaces,) = struct.unpack_from(">H", data, pos)
+    pos += 2 + 2 * interfaces
+
+    def skip_attributes(p: int) -> int:
+        (n,) = struct.unpack_from(">H", data, p)
+        p += 2
+        for _ in range(n):
+            (length,) = struct.unpack_from(">I", data, p + 2)
+            p += 6 + length
+        return p
+
+    (fields,) = struct.unpack_from(">H", data, pos)
+    pos += 2
+    for _ in range(fields):
+        pos = skip_attributes(pos + 6)
+    (methods,) = struct.unpack_from(">H", data, pos)
+    pos += 2
+    owner = utf8[classes[this_class]].replace("/", ".")
+    natives = []
+    for _ in range(methods):
+        flags, name, descriptor = struct.unpack_from(">HHH", data, pos)
+        if flags & 0x0100:
+            natives.append(f"{owner}.{utf8[name]}{utf8[descriptor]}")
+        pos = skip_attributes(pos + 6)
+    return natives
+
+
+def native_api(archive: bytes) -> list[str]:
+    """Every `native` method declared in an AAR's `classes.jar` (or a jar), sorted: the JNI surface
+    a host build of the library has to provide."""
+    with zipfile.ZipFile(io.BytesIO(archive)) as outer:
+        if "classes.jar" in outer.namelist():
+            archive = outer.read("classes.jar")
+    natives = []
+    with zipfile.ZipFile(io.BytesIO(archive)) as jar:
+        for name in jar.namelist():
+            if name.endswith(".class") and not name.startswith("META-INF/"):
+                natives.extend(_native_methods(jar.read(name)))
+    return sorted(natives)
+
+
+def watch_recipes(index: dict, fetch_versions=None, fetch_bytes=fetch) -> tuple[list[str], list[str]]:
+    """New stable versions of built-here libraries, below `fixedIn`: one whose native API matches
+    the build it would otherwise fall back to is added reusing that build (`sameAs`); one whose API
+    changed is reported, since it needs a recipe bump and a new release."""
+    fetch_versions = fetch_versions or maven_versions
+    added, rebuild = [], []
+    for library in index["libraries"]:
+        release = library.get("release")
+        if not release or not library["builds"]:
+            continue
+        repository = release.get("repository", GOOGLE_MAVEN)
+        coordinate = release.get("androidArtifact", library["artifact"])
+        have = {b["version"] for b in library["builds"]}
+        fixed = library.get("fixedIn")
+        newest = max(version_key(b["version"]) for b in library["builds"])
+        api_cache: dict[str, list[str]] = {}
+
+        def api(version: str) -> list[str]:
+            if version not in api_cache:
+                api_cache[version] = native_api(
+                    fetch_bytes(maven_url(repository, coordinate, version, "aar"))
+                )
+            return api_cache[version]
+
+        for version in sorted(fetch_versions(repository, coordinate), key=version_key):
+            key = version_key(version)
+            if version in have or not STABLE_RE.match(version) or key < newest:
+                continue
+            if fixed and key >= version_key(fixed):
+                continue
+            base = max(
+                (b for b in library["builds"] if version_key(b["version"]) < key),
+                key=lambda b: version_key(b["version"]),
+            )
+            base_version = base.get("sameAs", base["version"])
+            try:
+                same = api(version) == api(base_version)
+            except Exception as e:  # noqa: BLE001
+                print(f"{library['library']} {version}: skipped: {e}", file=sys.stderr)
+                continue
+            if same:
+                library["builds"].append(
+                    {"version": version, "sameAs": base_version, "platforms": base["platforms"]}
+                )
+                added.append(
+                    f"{library['library']} {version}: native API unchanged, reuses {base_version}"
+                )
+            else:
+                rebuild.append(
+                    f"{library['library']} {version}: native API differs from {base_version}; "
+                    f"bump host-natives/{release['recipe']}/recipe.properties to release a build"
+                )
+    return added, rebuild
+
+
+# --- The AndroidX survey -----------------------------------------------------------------------------
+
+# KMP targets that publish klibs rather than JVM or Android archives.
+KLIB_SUFFIXES = re.compile(
+    r"-(ios|tvos|watchos|macos|linux|mingw|js|wasm|androidnative)[\w-]*$"
+)
+NATIVE_RE = re.compile(r"\.(so|dylib|dll|jnilib)$")
+
+
+def fetch_range(url: str, spec: str) -> bytes | None:
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "compose-preview-host-natives", "Range": f"bytes={spec}"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
+def zip_names_from(tail: bytes, read_range) -> list[str]:
+    """Entry names of a zip from its last bytes [tail], reading the central directory with
+    [read_range] (`start, end` inclusive, relative to the archive) when it starts before them."""
+    eocd = tail.rfind(b"PK\x05\x06")
+    if eocd < 0:
+        raise ValueError("no end of central directory")
+    entries, size, offset = struct.unpack_from("<HII", tail, eocd + 10)
+    total = offset + size + (len(tail) - eocd)
+    start_in_tail = offset - (total - len(tail))
+    directory = (
+        tail[start_in_tail : start_in_tail + size]
+        if start_in_tail >= 0
+        else read_range(offset, offset + size - 1)
+    )
+    names, pos = [], 0
+    for _ in range(entries):
+        if directory[pos : pos + 4] != b"PK\x01\x02":
+            break
+        name_len, extra_len, comment_len = struct.unpack_from("<HHH", directory, pos + 28)
+        names.append(directory[pos + 46 : pos + 46 + name_len].decode("utf-8", "replace"))
+        pos += 46 + name_len + extra_len + comment_len
+    return names
+
+
+def remote_zip_names(url: str) -> list[str] | None:
+    """Entry names of a remote zip, from two ranged requests at most; None when it 404s."""
+    tail = fetch_range(url, "-65536")
+    if tail is None:
+        return None
+    return zip_names_from(tail, lambda a, b: fetch_range(url, f"{a}-{b}") or b"")
+
+
+def survey_group(group: str, artifacts: dict[str, list[str]], names=remote_zip_names) -> list[dict]:
+    """The artifacts of one AndroidX group whose newest stable (else newest) AAR ships natives."""
+    rows = []
+    for name, versions in artifacts.items():
+        if KLIB_SUFFIXES.search(name) or name.endswith(("-jvm", "-desktop", "-jvmstubs")):
+            continue
+        stable = [v for v in versions if STABLE_RE.match(v)]
+        version = max(stable or versions, key=version_key)
+        url = f"{GOOGLE_MAVEN}/{group.replace('.', '/')}/{name}/{version}/{name}-{version}.aar"
+        entries = names(url) or []
+        libs = sorted({
+            e.rsplit("/", 1)[-1].removeprefix("lib").removesuffix(".so")
+            for e in entries
+            if e.startswith("jni/") and e.endswith(".so")
+        })
+        if not libs:
+            continue
+        host = None
+        base = name.removesuffix("-android")
+        for sibling in (f"{base}-jvm", f"{base}-desktop"):
+            if sibling not in artifacts:
+                continue
+            host_version = version if version in artifacts[sibling] else max(
+                artifacts[sibling], key=version_key
+            )
+            jar = (
+                f"{GOOGLE_MAVEN}/{group.replace('.', '/')}/{sibling}/{host_version}/"
+                f"{sibling}-{host_version}.jar"
+            )
+            host_natives = sorted(e for e in (names(jar) or []) if NATIVE_RE.search(e))
+            if host_natives:
+                host = {"artifact": f"{group}:{sibling}", "version": host_version,
+                        "natives": host_natives}
+                break
+        rows.append({"artifact": f"{group}:{name}", "version": version, "libraries": libs,
+                     "host": host})
+    return rows
+
+
+def survey(fetch_text=lambda url: fetch(url).decode(), names=remote_zip_names) -> list[dict]:
+    master = fetch_text(f"{GOOGLE_MAVEN}/master-index.xml")
+    groups = re.findall(r"<(androidx\.[\w.]+)\s*/>", master)
+
+    def one(group: str) -> list[dict]:
+        xml = fetch_text(f"{GOOGLE_MAVEN}/{group.replace('.', '/')}/group-index.xml")
+        artifacts = {
+            m.group(1): m.group(2).split(",")
+            for m in re.finditer(r'<([\w.-]+) versions="([^"]*)"', xml)
+        }
+        return survey_group(group, artifacts, names)
+
+    with concurrent.futures.ThreadPoolExecutor(16) as pool:
+        rows = [row for rows in pool.map(one, groups) for row in rows]
+    return sorted(rows, key=lambda r: r["artifact"])
+
+
+def render_survey(rows: list[dict], index: dict) -> str:
+    covered = {lib["library"]: lib for lib in index["libraries"]}
+    out = [
+        "# AndroidX native libraries",
+        "",
+        "Generated by `host-natives/index.py survey` (weekly, in `host-natives-watch.yml`); do not",
+        "edit by hand. Every AndroidX artifact whose newest stable AAR (else newest) ships",
+        "`jni/<abi>/*.so`: the menu of libraries `compose-preview launch` could serve a host build of",
+        "through `index.json`.",
+        "",
+        "- **Host build:** an upstream `-jvm`/`-desktop` sibling that ships desktop libraries; add it",
+        "  to the index with an `upstream` block.",
+        "- **Index:** the library is in `index.json`, with its build count.",
+        "- Neither: a recipe candidate if its code reaches the library off Android; see",
+        "  `docs/design/SIMULATOR_NATIVE_LIBRARIES.md` for which ones do.",
+        "",
+        "| Artifact | Version | Libraries | Host build | Index |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        host = row["host"]
+        host_text = (
+            f"`{host['artifact']}` {host['version']} ({len(host['natives'])} libraries)"
+            if host else ""
+        )
+        index_text = ", ".join(
+            f"{len(covered[lib]['builds'])} builds" for lib in row["libraries"] if lib in covered
+        )
+        libs = ", ".join(f"`{lib}`" for lib in row["libraries"])
+        out.append(
+            f"| `{row['artifact']}` | {row['version']} | {libs} | {host_text} | {index_text} |"
+        )
+    return "\n".join(out) + "\n"
 
 
 def main() -> int:
@@ -226,25 +527,38 @@ def main() -> int:
     sub.add_parser("watch")
     release = sub.add_parser("add-release")
     release.add_argument("--dist", type=Path, required=True)
-    release.add_argument("--tag", required=True)
+    survey_cmd = sub.add_parser("survey")
+    survey_cmd.add_argument("--out", type=Path, default=SURVEY)
     args = ap.parse_args()
 
     index = load()
     errors = validate(index)
+    for e in errors:
+        print(f"::error::host-natives/index.json: {e}", file=sys.stderr)
     if args.command == "check":
         if not errors and args.online:
             errors = check_online(index)
-        for e in errors:
-            print(f"::error::host-natives/index.json: {e}", file=sys.stderr)
+            for e in errors:
+                print(f"::error::host-natives/index.json: {e}", file=sys.stderr)
         if not errors:
             builds = sum(len(lib["builds"]) for lib in index["libraries"])
             print(f"ok: {len(index['libraries'])} libraries, {builds} builds")
         return 1 if errors else 0
     if errors:
-        for e in errors:
-            print(f"::error::host-natives/index.json: {e}", file=sys.stderr)
         return 1
-    added = watch(index) if args.command == "watch" else add_release(index, args.dist, args.tag)
+    if args.command == "survey":
+        rows = survey()
+        args.out.write_text(render_survey(rows, index))
+        print(f"{len(rows)} AndroidX artifacts ship native libraries; wrote {args.out}")
+        return 0
+    if args.command == "watch":
+        added = watch(index)
+        recipe_added, rebuild = watch_recipes(index)
+        added += recipe_added
+        for line in rebuild:
+            print(f"needs a rebuild: {line}")
+    else:
+        added = add_release(index, args.dist)
     save(index)
     for line in added:
         print(line)

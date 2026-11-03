@@ -1,9 +1,14 @@
 name: Host Natives Watch
 
-# Keeps `host-natives/index.json` current with the upstream host builds it tracks: each library with
-# an `upstream` block (sqlite-bundled-jvm, ink-nativeloader-jvm, ...) gets every new stable version
-# on its Maven repository, hashed and checked to carry the library, in a PR for review. Libraries
-# built here move by publishing a new `host-natives-v<VERSION>` instead (`host-natives.yml`).
+# Keeps `host-natives/index.json` and the AndroidX menu current, in one PR for review:
+#
+# - Upstream host builds (an `upstream` block: sqlite-bundled-jvm, ink-nativeloader-jvm, ...) get
+#   every new stable version on their Maven repository, hashed and checked to carry the library.
+# - Libraries built here (a `release.recipe`) get each new stable version whose native API matches
+#   their existing build, reusing it. One whose API changed is listed in the PR as needing a recipe
+#   bump, which `host-natives.yml` then releases as `host-natives-<recipe>-<version>`.
+# - `host-natives/ANDROIDX.md` is regenerated: every AndroidX artifact shipping native libraries,
+#   its upstream host build if any, and whether the index has it.
 #
 # `compose-preview launch` reads the index from main at run time, so merging that PR is the whole
 # release: no CLI or plugin release is involved.
@@ -31,12 +36,16 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Add new upstream versions
+      - name: Add new versions and survey AndroidX
         id: watch
         run: |
           set -euo pipefail
           python3 host-natives/index.py watch | tee added.txt
-          if [ -z "$(git status --porcelain host-natives/index.json)" ]; then
+          python3 host-natives/index.py survey
+          # A built-here library whose native API changed is not added; surface it even when
+          # nothing else changed and no PR opens.
+          grep '^needs a rebuild' added.txt | sed 's/^/::warning::/' || true
+          if [ -z "$(git status --porcelain host-natives/index.json host-natives/ANDROIDX.md)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -61,15 +70,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add host-natives/index.json
-          git commit -q -m "chore: add new upstream host-natives versions"
+          git add host-natives/index.json host-natives/ANDROIDX.md
+          git commit -q -m "chore: update the host-natives index and AndroidX survey"
           git push -u origin "$branch"
           {
-            echo "New upstream host builds for \`host-natives/index.json\`, found by \`host-natives/index.py watch\` and checked online (each archive downloads, matches its sha256 and carries the library):"
+            echo "Found by \`host-natives/index.py watch\` and \`survey\`, and checked online (each archive downloads, matches its sha256 and carries the library):"
             echo
-            sed 's/^/- /' added.txt
+            if [ -s added.txt ]; then sed 's/^/- /' added.txt; else echo "- No index changes."; fi
             echo
+            if ! git diff --quiet HEAD~1 -- host-natives/ANDROIDX.md; then
+              echo "\`host-natives/ANDROIDX.md\`, the AndroidX menu, changed: see the diff."
+              echo
+            fi
             echo "\`compose-preview launch\` reads the index from main, so merging this is what ships them."
           } > body.md
-          gh pr create --title "chore: add new upstream host-natives versions" --body-file body.md \
+          gh pr create --title "chore: update the host-natives index and AndroidX survey" --body-file body.md \
             --base main --head "$branch"
