@@ -12,8 +12,10 @@ of the library inside it. Two kinds of archive appear, both handled the same way
   pointing at the same archives, and reports the versions whose native API changed, which need a
   recipe bump (a new release) instead.
 - **Upstream host builds:** a library's own JVM artifact on Maven, at the same version as its
-  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm). `watch` adds each new stable
-  version.
+  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm, zstd-jni, JNA, Conscrypt's
+  openjdk-uber, libsignal-client). `watch` adds each new stable version, and records the GNU build
+  IDs of each version's Android libraries (`androidBuildIds`), by which the CLI recognises the
+  exact build an APK carries.
 
 `host-natives-watch.yml` runs `watch` and `survey` weekly and opens one PR.
 
@@ -70,10 +72,59 @@ SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def version_key(version: str) -> tuple:
-    """Order `1.2.3[-suffix]`, a suffix before its release, like the CLI's `compareSemver`."""
+    """Order `1.2.3[-suffix]` as the CLI's `HostNativesProvision.compareVersions` does: a
+    pre-release suffix (`-alpha03`, `-rc01`) before its release, a numeric one (zstd-jni's
+    `1.5.7-9`) after it, and suffixes compared part by part, numbers as numbers."""
     head, _, suffix = version.partition("-")
     nums = tuple(int(p) if p.isdigit() else 0 for p in head.split("."))
-    return nums + (0,) * (4 - len(nums)), suffix == "", suffix
+    nums = nums + (0,) * (4 - len(nums))
+    if not suffix:
+        return nums, 1, ()
+    parts = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in re.split(r"[.-]", suffix))
+    return nums, 2 if suffix[0].isdigit() else 0, parts
+
+
+def matches(library: dict, name: str) -> re.Match | None:
+    """Whether a load name is [library]'s; for a pattern, the match carries the version."""
+    if "library" in library:
+        return re.fullmatch(re.escape(library["library"]), name)
+    return re.fullmatch(library["libraryPattern"], name)
+
+
+def label(library: dict) -> str:
+    return library.get("library") or library.get("libraryPattern", "?")
+
+
+def elf_build_id(elf: bytes) -> str | None:
+    """The GNU build ID of an ELF file, or None. It survives stripping, so it names the exact build
+    an APK carries even after its packaging stripped symbols."""
+    if len(elf) < 64 or elf[:4] != b"\x7fELF":
+        return None
+    is64, e = elf[4] == 2, "<" if elf[5] == 1 else ">"
+    if is64:
+        (phoff,) = struct.unpack_from(e + "Q", elf, 0x20)
+        phentsize, phnum = struct.unpack_from(e + "HH", elf, 0x36)
+    else:
+        (phoff,) = struct.unpack_from(e + "I", elf, 0x1C)
+        phentsize, phnum = struct.unpack_from(e + "HH", elf, 0x2A)
+    for i in range(phnum):
+        header = phoff + i * phentsize
+        if struct.unpack_from(e + "I", elf, header)[0] != 4:  # PT_NOTE
+            continue
+        if is64:
+            (offset,) = struct.unpack_from(e + "Q", elf, header + 8)
+            (size,) = struct.unpack_from(e + "Q", elf, header + 32)
+        else:
+            (offset,) = struct.unpack_from(e + "I", elf, header + 4)
+            (size,) = struct.unpack_from(e + "I", elf, header + 16)
+        pos = offset
+        while pos + 12 <= min(offset + size, len(elf)):
+            namesz, descsz, kind = struct.unpack_from(e + "III", elf, pos)
+            desc = pos + 12 + ((namesz + 3) & ~3)
+            if kind == 3 and elf[pos + 12 : pos + 12 + namesz].rstrip(b"\0") == b"GNU":
+                return elf[desc : desc + descsz].hex()
+            pos = desc + ((descsz + 3) & ~3)
+    return None
 
 
 def load(path: Path = INDEX) -> dict:
@@ -93,19 +144,30 @@ def validate(index: dict) -> list[str]:
         errors.append(f"schema must be {SCHEMA}")
     seen = set()
     for library in index.get("libraries", []):
-        name = library.get("library")
+        name = label(library)
         where = f"library {name!r}"
-        if not name or name in seen:
-            errors.append(f"{where}: missing or duplicate name")
+        if ("library" in library) == ("libraryPattern" in library) or name in seen:
+            errors.append(f"{where}: needs exactly one of library and libraryPattern, unique")
         seen.add(name)
+        if "libraryPattern" in library:
+            try:
+                if re.compile(library["libraryPattern"]).groups != 1:
+                    errors.append(f"{where}: libraryPattern needs one group, the version")
+            except re.error as e:
+                errors.append(f"{where}: libraryPattern: {e}")
         if not re.fullmatch(r"[\w.-]+:[\w.-]+", library.get("artifact", "")):
             errors.append(f"{where}: artifact must be group:name (its META-INF version marker)")
+        for key, value in library.get("properties", {}).items():
+            if not isinstance(value, str) or not re.fullmatch(r"[\w.-]+", key):
+                errors.append(f"{where}: property {key!r} must map a name to a string")
         versions = set()
         for build in library.get("builds", []):
             v = build.get("version", "")
             if not re.fullmatch(r"\d+(\.\d+)*(-[\w.]+)?", v) or v in versions:
                 errors.append(f"{where}: bad or duplicate build version {v!r}")
             versions.add(v)
+            if any(not re.fullmatch(r"[0-9a-f]{8,80}", i) for i in build.get("androidBuildIds", [])):
+                errors.append(f"{where} {v}: androidBuildIds must be lowercase hex")
             for platform, entry in build.get("platforms", {}).items():
                 at = f"{where} {v} {platform}"
                 if platform not in PLATFORMS:
@@ -179,21 +241,29 @@ def archive_names(data: bytes, url: str) -> set[str]:
 
 
 def check_online(index: dict) -> list[str]:
+    """Downloads every archive once (keeping only its hash and listing, not its bytes: the index
+    names some 100 MB jars) and checks each entry's sha256 and library path."""
     errors = []
-    cache: dict[str, bytes] = {}
+    seen: dict[str, tuple[str, set[str]] | Exception] = {}
     for library in index["libraries"]:
         for build in library["builds"]:
             for platform, entry in build["platforms"].items():
-                at = f"{library['library']} {build['version']} {platform}"
+                at = f"{label(library)} {build['version']} {platform}"
                 url = entry["url"]
-                try:
-                    data = cache.get(url) or cache.setdefault(url, fetch(url))
-                except Exception as e:  # noqa: BLE001 — any failure to fetch is the finding
-                    errors.append(f"{at}: could not fetch {url}: {e}")
+                if url not in seen:
+                    try:
+                        data = fetch(url)
+                        seen[url] = (hashlib.sha256(data).hexdigest(), archive_names(data, url))
+                    except Exception as e:  # noqa: BLE001 — any failure to fetch is the finding
+                        seen[url] = e
+                result = seen[url]
+                if isinstance(result, Exception):
+                    errors.append(f"{at}: could not fetch {url}: {result}")
                     continue
-                if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                sha, names = result
+                if sha != entry["sha256"]:
                     errors.append(f"{at}: sha256 of {url} does not match")
-                elif entry["entry"] not in archive_names(data, url):
+                elif entry["entry"] not in names:
                     errors.append(f"{at}: {url} has no {entry['entry']}")
     return errors
 
@@ -209,8 +279,54 @@ def maven_versions(repository: str, coordinate: str) -> list[str]:
     return re.findall(r"<version>([^<]+)</version>", xml)
 
 
+def android_build_ids(library: dict, version: str, fetch_bytes=fetch) -> list[str]:
+    """Build IDs of [library]'s Android libraries at [version], every ABI, from its `android`
+    artifact: what the CLI matches an APK's copy against."""
+    android = library.get("android")
+    if not android:
+        return []
+    url = maven_url(android.get("repository", GOOGLE_MAVEN), android["artifact"], version,
+                    android.get("ext", "aar"))
+    ids = set()
+    with zipfile.ZipFile(io.BytesIO(fetch_bytes(url))) as aar:
+        for name in aar.namelist():
+            if not (name.startswith("jni/") and name.endswith(".so")):
+                continue
+            load = name.rsplit("/", 1)[-1].removeprefix("lib").removesuffix(".so")
+            if matches(library, load):
+                build_id = elf_build_id(aar.read(name))
+                if build_id:
+                    ids.add(build_id)
+    return sorted(ids)
+
+
+def backfill_build_ids(index: dict, fetch_bytes=fetch) -> list[str]:
+    """Records `androidBuildIds` on every build that has none yet (an empty list marks one whose
+    Android libraries carry no build ID, so it is not fetched again)."""
+    added = []
+    for library in index["libraries"]:
+        if not library.get("android"):
+            continue
+        for build in library["builds"]:
+            if "androidBuildIds" in build:
+                continue
+            version = build["version"]
+            try:
+                build["androidBuildIds"] = android_build_ids(library, version, fetch_bytes)
+            except Exception as e:  # noqa: BLE001
+                print(f"{label(library)} {version}: no build IDs: {e}", file=sys.stderr)
+                continue
+            if build["androidBuildIds"]:
+                added.append(f"{label(library)} {version}: {len(build['androidBuildIds'])} build IDs")
+    return added
+
+
 def watch(index: dict, fetch_versions=maven_versions, fetch_bytes=fetch) -> list[str]:
-    """Add every new stable upstream version at or after `since`. Returns what was added."""
+    """Add every new stable upstream version at or after `since`. Returns what was added.
+
+    An upstream block names the host artifact, `entries` (the library's path in it per platform,
+    `{version}` filled in), and optionally `stable`, a regex for which versions count as stable
+    (zstd-jni's `1.5.7-9` are)."""
     added = []
     for library in index["libraries"]:
         upstream = library.get("upstream")
@@ -218,30 +334,28 @@ def watch(index: dict, fetch_versions=maven_versions, fetch_bytes=fetch) -> list
             continue
         have = {b["version"] for b in library["builds"]}
         since = version_key(upstream.get("since", "0"))
+        stable = re.compile(upstream["stable"]) if "stable" in upstream else STABLE_RE
         for version in fetch_versions(upstream["repository"], upstream["artifact"]):
-            if version in have or not STABLE_RE.match(version) or version_key(version) < since:
+            if version in have or not stable.match(version) or version_key(version) < since:
                 continue
             url = maven_url(upstream["repository"], upstream["artifact"], version)
             try:
                 data = fetch_bytes(url)
             except Exception as e:  # noqa: BLE001
-                print(f"{library['library']} {version}: skipped, {url}: {e}", file=sys.stderr)
+                print(f"{label(library)} {version}: skipped, {url}: {e}", file=sys.stderr)
                 continue
             names = archive_names(data, url)
-            platforms = {
-                platform: {
-                    "url": url,
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                    "entry": entry,
-                }
-                for platform, entry in upstream["entries"].items()
-                if entry in names
-            }
+            sha = hashlib.sha256(data).hexdigest()
+            platforms = {}
+            for platform, template in upstream["entries"].items():
+                entry = template.replace("{version}", version)
+                if entry in names:
+                    platforms[platform] = {"url": url, "sha256": sha, "entry": entry}
             if not platforms:
-                print(f"{library['library']} {version}: no known entry in {url}", file=sys.stderr)
+                print(f"{label(library)} {version}: no known entry in {url}", file=sys.stderr)
                 continue
             library["builds"].append({"version": version, "platforms": platforms})
-            added.append(f"{library['library']} {version} ({', '.join(sorted(platforms))})")
+            added.append(f"{label(library)} {version} ({', '.join(sorted(platforms))})")
     return added
 
 
@@ -285,7 +399,7 @@ def add_release(index: dict, dist: Path) -> list[str]:
         sha = hashlib.sha256(data).hexdigest()
         for platform in RELEASE_PLATFORMS[properties["platform"]]:
             build["platforms"][platform] = {"url": url, "sha256": sha, "entry": properties["file"]}
-            added.append(f"{library['library']} {version} {platform} from {properties['tag']}")
+            added.append(f"{label(library)} {version} {platform} from {properties['tag']}")
     return added
 
 
@@ -375,8 +489,9 @@ def watch_recipes(index: dict, fetch_versions=None, fetch_bytes=fetch) -> tuple[
         release = library.get("release")
         if not release or not library["builds"]:
             continue
-        repository = release.get("repository", GOOGLE_MAVEN)
-        coordinate = release.get("androidArtifact", library["artifact"])
+        android = library.get("android", {})
+        repository = android.get("repository", GOOGLE_MAVEN)
+        coordinate = android.get("artifact", library["artifact"])
         have = {b["version"] for b in library["builds"]}
         fixed = library.get("fixedIn")
         newest = max(version_key(b["version"]) for b in library["builds"])
@@ -403,18 +518,18 @@ def watch_recipes(index: dict, fetch_versions=None, fetch_bytes=fetch) -> tuple[
             try:
                 same = api(version) == api(base_version)
             except Exception as e:  # noqa: BLE001
-                print(f"{library['library']} {version}: skipped: {e}", file=sys.stderr)
+                print(f"{label(library)} {version}: skipped: {e}", file=sys.stderr)
                 continue
             if same:
                 library["builds"].append(
                     {"version": version, "sameAs": base_version, "platforms": base["platforms"]}
                 )
                 added.append(
-                    f"{library['library']} {version}: native API unchanged, reuses {base_version}"
+                    f"{label(library)} {version}: native API unchanged, reuses {base_version}"
                 )
             else:
                 rebuild.append(
-                    f"{library['library']} {version}: native API differs from {base_version}; "
+                    f"{label(library)} {version}: native API differs from {base_version}; "
                     f"bump host-natives/{release['recipe']}/recipe.properties to release a build"
                 )
     return added, rebuild
@@ -535,7 +650,9 @@ def survey(fetch_text=lambda url: fetch(url).decode(), names=remote_zip_names) -
 
 
 def render_survey(rows: list[dict], index: dict) -> str:
-    covered = {lib["library"]: lib for lib in index["libraries"]}
+    def covering(name: str) -> dict | None:
+        return next((lib for lib in index["libraries"] if matches(lib, name)), None)
+
     out = [
         "# AndroidX native libraries",
         "",
@@ -560,7 +677,7 @@ def render_survey(rows: list[dict], index: dict) -> str:
             if host else ""
         )
         index_text = ", ".join(
-            f"{len(covered[lib]['builds'])} builds" for lib in row["libraries"] if lib in covered
+            f"{len(lib['builds'])} builds" for lib in map(covering, row["libraries"]) if lib
         )
         libs = ", ".join(f"`{lib}`" for lib in row["libraries"])
         out.append(
@@ -604,11 +721,11 @@ def main() -> int:
     if args.command == "watch":
         added = watch(index)
         recipe_added, rebuild = watch_recipes(index)
-        added += recipe_added
+        added += recipe_added + backfill_build_ids(index)
         for line in rebuild:
             print(f"needs a rebuild: {line}")
     else:
-        added = add_release(index, args.dist)
+        added = add_release(index, args.dist) + backfill_build_ids(index)
     save(index)
     for line in added:
         print(line)

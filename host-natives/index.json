@@ -6,6 +6,9 @@
       "artifact": "androidx.graphics:graphics-path",
       "minSdk": 34,
       "fixedIn": "1.1.0",
+      "android": {
+        "artifact": "androidx.graphics:graphics-path"
+      },
       "release": {
         "recipe": "graphics-path"
       },
@@ -14,6 +17,9 @@
     {
       "library": "sqliteJni",
       "artifact": "androidx.sqlite:sqlite-bundled",
+      "android": {
+        "artifact": "androidx.sqlite:sqlite-bundled-android"
+      },
       "upstream": {
         "repository": "https://dl.google.com/dl/android/maven2",
         "artifact": "androidx.sqlite:sqlite-bundled-jvm",
@@ -55,7 +61,8 @@
               "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.5.1",
@@ -85,7 +92,8 @@
               "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.5.2",
@@ -115,7 +123,8 @@
               "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.6.0",
@@ -145,7 +154,8 @@
               "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.6.1",
@@ -175,7 +185,8 @@
               "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.6.2",
@@ -205,7 +216,8 @@
               "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.7.0",
@@ -230,7 +242,8 @@
               "sha256": "66e531b5bf45c8c47d8ca443642588577ff027e610b3fb8b6500a0958f4f12e4",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         },
         {
           "version": "2.7.1",
@@ -255,13 +268,17 @@
               "sha256": "ced6f3d8433a7091745c294f1e4bd7f17434986d81dfd2145147cd571b167251",
               "entry": "natives/windows_x64/sqliteJni.dll"
             }
-          }
+          },
+          "androidBuildIds": []
         }
       ]
     },
     {
       "library": "ink",
       "artifact": "androidx.ink:ink-nativeloader",
+      "android": {
+        "artifact": "androidx.ink:ink-nativeloader-android"
+      },
       "upstream": {
         "repository": "https://dl.google.com/dl/android/maven2",
         "artifact": "androidx.ink:ink-nativeloader-jvm",
@@ -280,7 +297,1027 @@
               "sha256": "426dd607a08dbf88ce1ce29df327cb5f0a5b8ff14b053ac5c5ae7e842e0f959b",
               "entry": "linux-x86_64/libink.so"
             }
-          }
+          },
+          "androidBuildIds": [
+            "0c6a4a39412938aebe77d175860e6790",
+            "29f5614229259777c42644a72bb1a635",
+            "d6ce51350da9788456e6d1980857174f",
+            "f1d1c3bd763943e1864e2073844e0572"
+          ]
+        }
+      ]
+    },
+    {
+      "libraryPattern": "zstd-jni-(.+)",
+      "artifact": "com.github.luben:zstd-jni",
+      "android": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "com.github.luben:zstd-jni"
+      },
+      "upstream": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "com.github.luben:zstd-jni",
+        "since": "1.5.7-18",
+        "stable": "^\\d+\\.\\d+\\.\\d+-\\d+$",
+        "entries": {
+          "linux-x86_64": "linux/amd64/libzstd-jni-{version}.so",
+          "linux-arm64": "linux/aarch64/libzstd-jni-{version}.so",
+          "macos-arm64": "darwin/aarch64/libzstd-jni-{version}.dylib",
+          "macos-x86_64": "darwin/x86_64/libzstd-jni-{version}.dylib",
+          "windows-x86_64": "win/amd64/libzstd-jni-{version}.dll"
+        }
+      },
+      "builds": [
+        {
+          "version": "1.5.7-18",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-18/zstd-jni-1.5.7-18.jar",
+              "sha256": "ac2f3a07d9893a562668c8f65d8967d23111d6081d1633fa063df218a14a8877",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-18.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-18/zstd-jni-1.5.7-18.jar",
+              "sha256": "ac2f3a07d9893a562668c8f65d8967d23111d6081d1633fa063df218a14a8877",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-18.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-18/zstd-jni-1.5.7-18.jar",
+              "sha256": "ac2f3a07d9893a562668c8f65d8967d23111d6081d1633fa063df218a14a8877",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-18.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-18/zstd-jni-1.5.7-18.jar",
+              "sha256": "ac2f3a07d9893a562668c8f65d8967d23111d6081d1633fa063df218a14a8877",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-18.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-18/zstd-jni-1.5.7-18.jar",
+              "sha256": "ac2f3a07d9893a562668c8f65d8967d23111d6081d1633fa063df218a14a8877",
+              "entry": "win/amd64/libzstd-jni-1.5.7-18.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-19",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-19/zstd-jni-1.5.7-19.jar",
+              "sha256": "d90e352774ea9cbf9ce7de2e95192fbfa021a453d25aff3cc769f0e077f0649c",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-19.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-19/zstd-jni-1.5.7-19.jar",
+              "sha256": "d90e352774ea9cbf9ce7de2e95192fbfa021a453d25aff3cc769f0e077f0649c",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-19.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-19/zstd-jni-1.5.7-19.jar",
+              "sha256": "d90e352774ea9cbf9ce7de2e95192fbfa021a453d25aff3cc769f0e077f0649c",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-19.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-19/zstd-jni-1.5.7-19.jar",
+              "sha256": "d90e352774ea9cbf9ce7de2e95192fbfa021a453d25aff3cc769f0e077f0649c",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-19.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-19/zstd-jni-1.5.7-19.jar",
+              "sha256": "d90e352774ea9cbf9ce7de2e95192fbfa021a453d25aff3cc769f0e077f0649c",
+              "entry": "win/amd64/libzstd-jni-1.5.7-19.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-20",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-20/zstd-jni-1.5.7-20.jar",
+              "sha256": "b9995fa20dce1007b8c4bead9532776088a44be0a228a2fa71da8d8ce70d797e",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-20.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-20/zstd-jni-1.5.7-20.jar",
+              "sha256": "b9995fa20dce1007b8c4bead9532776088a44be0a228a2fa71da8d8ce70d797e",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-20.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-20/zstd-jni-1.5.7-20.jar",
+              "sha256": "b9995fa20dce1007b8c4bead9532776088a44be0a228a2fa71da8d8ce70d797e",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-20.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-20/zstd-jni-1.5.7-20.jar",
+              "sha256": "b9995fa20dce1007b8c4bead9532776088a44be0a228a2fa71da8d8ce70d797e",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-20.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-20/zstd-jni-1.5.7-20.jar",
+              "sha256": "b9995fa20dce1007b8c4bead9532776088a44be0a228a2fa71da8d8ce70d797e",
+              "entry": "win/amd64/libzstd-jni-1.5.7-20.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-21",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-21/zstd-jni-1.5.7-21.jar",
+              "sha256": "efa8c6fb2fc4255d70346bd2eadedf68a8605d797c96c1f8d36096f4b6dc1af4",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-21.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-21/zstd-jni-1.5.7-21.jar",
+              "sha256": "efa8c6fb2fc4255d70346bd2eadedf68a8605d797c96c1f8d36096f4b6dc1af4",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-21.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-21/zstd-jni-1.5.7-21.jar",
+              "sha256": "efa8c6fb2fc4255d70346bd2eadedf68a8605d797c96c1f8d36096f4b6dc1af4",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-21.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-21/zstd-jni-1.5.7-21.jar",
+              "sha256": "efa8c6fb2fc4255d70346bd2eadedf68a8605d797c96c1f8d36096f4b6dc1af4",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-21.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-21/zstd-jni-1.5.7-21.jar",
+              "sha256": "efa8c6fb2fc4255d70346bd2eadedf68a8605d797c96c1f8d36096f4b6dc1af4",
+              "entry": "win/amd64/libzstd-jni-1.5.7-21.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-22",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-22/zstd-jni-1.5.7-22.jar",
+              "sha256": "f065a9ee01be633f2eb26f5016a0e0cdfa9842d92352b0a9044c0ffb5b54682a",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-22.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-22/zstd-jni-1.5.7-22.jar",
+              "sha256": "f065a9ee01be633f2eb26f5016a0e0cdfa9842d92352b0a9044c0ffb5b54682a",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-22.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-22/zstd-jni-1.5.7-22.jar",
+              "sha256": "f065a9ee01be633f2eb26f5016a0e0cdfa9842d92352b0a9044c0ffb5b54682a",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-22.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-22/zstd-jni-1.5.7-22.jar",
+              "sha256": "f065a9ee01be633f2eb26f5016a0e0cdfa9842d92352b0a9044c0ffb5b54682a",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-22.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-22/zstd-jni-1.5.7-22.jar",
+              "sha256": "f065a9ee01be633f2eb26f5016a0e0cdfa9842d92352b0a9044c0ffb5b54682a",
+              "entry": "win/amd64/libzstd-jni-1.5.7-22.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-23",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-23/zstd-jni-1.5.7-23.jar",
+              "sha256": "7d2532cec67276bfde31055025937eab34faeda536867482003e2903808af300",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-23.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-23/zstd-jni-1.5.7-23.jar",
+              "sha256": "7d2532cec67276bfde31055025937eab34faeda536867482003e2903808af300",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-23.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-23/zstd-jni-1.5.7-23.jar",
+              "sha256": "7d2532cec67276bfde31055025937eab34faeda536867482003e2903808af300",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-23.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-23/zstd-jni-1.5.7-23.jar",
+              "sha256": "7d2532cec67276bfde31055025937eab34faeda536867482003e2903808af300",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-23.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-23/zstd-jni-1.5.7-23.jar",
+              "sha256": "7d2532cec67276bfde31055025937eab34faeda536867482003e2903808af300",
+              "entry": "win/amd64/libzstd-jni-1.5.7-23.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-24",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-24/zstd-jni-1.5.7-24.jar",
+              "sha256": "79f5e678ce437f09d5ab55df1c6e7fc8cf6a2eb8e73052f34b143464062fcb0b",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-24.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-24/zstd-jni-1.5.7-24.jar",
+              "sha256": "79f5e678ce437f09d5ab55df1c6e7fc8cf6a2eb8e73052f34b143464062fcb0b",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-24.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-24/zstd-jni-1.5.7-24.jar",
+              "sha256": "79f5e678ce437f09d5ab55df1c6e7fc8cf6a2eb8e73052f34b143464062fcb0b",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-24.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-24/zstd-jni-1.5.7-24.jar",
+              "sha256": "79f5e678ce437f09d5ab55df1c6e7fc8cf6a2eb8e73052f34b143464062fcb0b",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-24.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-24/zstd-jni-1.5.7-24.jar",
+              "sha256": "79f5e678ce437f09d5ab55df1c6e7fc8cf6a2eb8e73052f34b143464062fcb0b",
+              "entry": "win/amd64/libzstd-jni-1.5.7-24.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-25",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-25/zstd-jni-1.5.7-25.jar",
+              "sha256": "1ff04cfd265453102c700ba2634b9eb50a3455fee27145c7a6e8a5d0563b1d5f",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-25.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-25/zstd-jni-1.5.7-25.jar",
+              "sha256": "1ff04cfd265453102c700ba2634b9eb50a3455fee27145c7a6e8a5d0563b1d5f",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-25.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-25/zstd-jni-1.5.7-25.jar",
+              "sha256": "1ff04cfd265453102c700ba2634b9eb50a3455fee27145c7a6e8a5d0563b1d5f",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-25.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-25/zstd-jni-1.5.7-25.jar",
+              "sha256": "1ff04cfd265453102c700ba2634b9eb50a3455fee27145c7a6e8a5d0563b1d5f",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-25.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-25/zstd-jni-1.5.7-25.jar",
+              "sha256": "1ff04cfd265453102c700ba2634b9eb50a3455fee27145c7a6e8a5d0563b1d5f",
+              "entry": "win/amd64/libzstd-jni-1.5.7-25.dll"
+            }
+          },
+          "androidBuildIds": []
+        }
+      ]
+    },
+    {
+      "library": "jnidispatch",
+      "artifact": "net.java.dev.jna:jna",
+      "properties": {
+        "jna.boot.library.path": "{dir}"
+      },
+      "android": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "net.java.dev.jna:jna"
+      },
+      "upstream": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "net.java.dev.jna:jna",
+        "since": "5.14.0",
+        "entries": {
+          "linux-x86_64": "com/sun/jna/linux-x86-64/libjnidispatch.so",
+          "linux-arm64": "com/sun/jna/linux-aarch64/libjnidispatch.so",
+          "macos-arm64": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib",
+          "macos-x86_64": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib",
+          "windows-x86_64": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+        }
+      },
+      "builds": [
+        {
+          "version": "5.14.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
+              "sha256": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
+              "sha256": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
+              "sha256": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
+              "sha256": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
+              "sha256": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "5.15.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
+              "sha256": "a564158d28ab5127fc6a958028ed54279fe0999662c46425b6a3b09a2a52094d",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
+              "sha256": "a564158d28ab5127fc6a958028ed54279fe0999662c46425b6a3b09a2a52094d",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
+              "sha256": "a564158d28ab5127fc6a958028ed54279fe0999662c46425b6a3b09a2a52094d",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
+              "sha256": "a564158d28ab5127fc6a958028ed54279fe0999662c46425b6a3b09a2a52094d",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
+              "sha256": "a564158d28ab5127fc6a958028ed54279fe0999662c46425b6a3b09a2a52094d",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "1aeaeff4a0f0f1c03ccbc9dab7aa0e0876324537",
+            "327f9b857cb2f577b38c7c3d5873e2da5ed153b0",
+            "3baa2cf09be17371a38e23d400b5bbaa26302e92",
+            "46ebdbb91f7c8cd6b4a962c4aec087a44edec06d",
+            "4e11e2b18a53e182be2cc9b0ee8cafa9da1bbb8c",
+            "868d61166c89dcd111c57065ba7b1118c16002b0",
+            "ddeb5c7dcafc8a4ed4ba180f840e1967d8207a8b"
+          ]
+        },
+        {
+          "version": "5.16.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar",
+              "sha256": "3f5233589a799eb66dc2969afa3433fb56859d3d787c58b9bc7dd9e86f0a250c",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar",
+              "sha256": "3f5233589a799eb66dc2969afa3433fb56859d3d787c58b9bc7dd9e86f0a250c",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar",
+              "sha256": "3f5233589a799eb66dc2969afa3433fb56859d3d787c58b9bc7dd9e86f0a250c",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar",
+              "sha256": "3f5233589a799eb66dc2969afa3433fb56859d3d787c58b9bc7dd9e86f0a250c",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.16.0/jna-5.16.0.jar",
+              "sha256": "3f5233589a799eb66dc2969afa3433fb56859d3d787c58b9bc7dd9e86f0a250c",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "250b958e1c7b2b30851e8c8fc432870c04f0e7d9",
+            "2dfe840ade5cd4733e102f89b74e37532396ce68",
+            "4dcb0bf7cc4b96682ef87f5e95eb4e553ed42434",
+            "5d120822b83e4cbef97b7aa5f9037dd8b9d8b315",
+            "93b2f9545d27a84372ca7fba3b2b473c2f9c6edd",
+            "f2a2c580afcc056d63fa5d0eb09dcbb23bab832e",
+            "fd2ad46a915445b0dd6f40a1fb91f07ca4f749fc"
+          ]
+        },
+        {
+          "version": "5.17.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar",
+              "sha256": "b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar",
+              "sha256": "b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar",
+              "sha256": "b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar",
+              "sha256": "b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.17.0/jna-5.17.0.jar",
+              "sha256": "b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0f342c5c4b6c2629e4a0e44ea778331c0fdbf94b",
+            "121143d636091c7f79f7e490056004c7623bf104",
+            "4c7857015ca7e99f9960adb27eda9bffa80212b8",
+            "8549526bbd95df90b51b87eaf518d627a449eb24",
+            "af5e1e26643b8fba0c3619cc6465ec7a8360b3b0",
+            "cf15c6448c337eff804ff5722778301585b184c9",
+            "d098224a80677564e64d32ad887358f210e2cb64"
+          ]
+        },
+        {
+          "version": "5.18.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.0/jna-5.18.0.jar",
+              "sha256": "fe27c1e5e34a6aca84cb44da5f15271cd69069b1cf701ab5ba7320c57c55c439",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.0/jna-5.18.0.jar",
+              "sha256": "fe27c1e5e34a6aca84cb44da5f15271cd69069b1cf701ab5ba7320c57c55c439",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.0/jna-5.18.0.jar",
+              "sha256": "fe27c1e5e34a6aca84cb44da5f15271cd69069b1cf701ab5ba7320c57c55c439",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.0/jna-5.18.0.jar",
+              "sha256": "fe27c1e5e34a6aca84cb44da5f15271cd69069b1cf701ab5ba7320c57c55c439",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.0/jna-5.18.0.jar",
+              "sha256": "fe27c1e5e34a6aca84cb44da5f15271cd69069b1cf701ab5ba7320c57c55c439",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0f342c5c4b6c2629e4a0e44ea778331c0fdbf94b",
+            "121143d636091c7f79f7e490056004c7623bf104",
+            "4c7857015ca7e99f9960adb27eda9bffa80212b8",
+            "8549526bbd95df90b51b87eaf518d627a449eb24",
+            "af5e1e26643b8fba0c3619cc6465ec7a8360b3b0",
+            "cf15c6448c337eff804ff5722778301585b184c9",
+            "d098224a80677564e64d32ad887358f210e2cb64"
+          ]
+        },
+        {
+          "version": "5.18.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+              "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+              "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+              "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+              "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.18.1/jna-5.18.1.jar",
+              "sha256": "260c4b1e22b1db9e110ee441c4f13ce115f841fa48c41d78750986214b395557",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0f342c5c4b6c2629e4a0e44ea778331c0fdbf94b",
+            "121143d636091c7f79f7e490056004c7623bf104",
+            "4c7857015ca7e99f9960adb27eda9bffa80212b8",
+            "8549526bbd95df90b51b87eaf518d627a449eb24",
+            "af5e1e26643b8fba0c3619cc6465ec7a8360b3b0",
+            "cf15c6448c337eff804ff5722778301585b184c9",
+            "d098224a80677564e64d32ad887358f210e2cb64"
+          ]
+        },
+        {
+          "version": "5.19.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar",
+              "sha256": "f05122f39e2fd8aa1bfbdb2b0306034e2b20dc92817eba119f8c0c2f3399bf3a",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar",
+              "sha256": "f05122f39e2fd8aa1bfbdb2b0306034e2b20dc92817eba119f8c0c2f3399bf3a",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar",
+              "sha256": "f05122f39e2fd8aa1bfbdb2b0306034e2b20dc92817eba119f8c0c2f3399bf3a",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar",
+              "sha256": "f05122f39e2fd8aa1bfbdb2b0306034e2b20dc92817eba119f8c0c2f3399bf3a",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar",
+              "sha256": "f05122f39e2fd8aa1bfbdb2b0306034e2b20dc92817eba119f8c0c2f3399bf3a",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0f342c5c4b6c2629e4a0e44ea778331c0fdbf94b",
+            "121143d636091c7f79f7e490056004c7623bf104",
+            "4c7857015ca7e99f9960adb27eda9bffa80212b8",
+            "8549526bbd95df90b51b87eaf518d627a449eb24",
+            "af5e1e26643b8fba0c3619cc6465ec7a8360b3b0",
+            "cf15c6448c337eff804ff5722778301585b184c9",
+            "d098224a80677564e64d32ad887358f210e2cb64"
+          ]
+        },
+        {
+          "version": "5.19.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+              "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+              "entry": "com/sun/jna/linux-x86-64/libjnidispatch.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+              "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+              "entry": "com/sun/jna/linux-aarch64/libjnidispatch.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+              "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+              "entry": "com/sun/jna/darwin-aarch64/libjnidispatch.jnilib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+              "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+              "entry": "com/sun/jna/darwin-x86-64/libjnidispatch.jnilib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+              "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+              "entry": "com/sun/jna/win32-x86-64/jnidispatch.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0f342c5c4b6c2629e4a0e44ea778331c0fdbf94b",
+            "121143d636091c7f79f7e490056004c7623bf104",
+            "4c7857015ca7e99f9960adb27eda9bffa80212b8",
+            "8549526bbd95df90b51b87eaf518d627a449eb24",
+            "af5e1e26643b8fba0c3619cc6465ec7a8360b3b0",
+            "cf15c6448c337eff804ff5722778301585b184c9",
+            "d098224a80677564e64d32ad887358f210e2cb64"
+          ]
+        }
+      ]
+    },
+    {
+      "library": "conscrypt_jni",
+      "artifact": "org.conscrypt:conscrypt-android",
+      "android": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "org.conscrypt:conscrypt-android"
+      },
+      "upstream": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "org.conscrypt:conscrypt-openjdk-uber",
+        "since": "2.6.0",
+        "entries": {
+          "linux-x86_64": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so",
+          "linux-arm64": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so",
+          "macos-arm64": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib",
+          "macos-x86_64": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib",
+          "windows-x86_64": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+        }
+      },
+      "builds": [
+        {
+          "version": "2.6.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.0/conscrypt-openjdk-uber-2.6.0.jar",
+              "sha256": "3d8c254ec95e4e864abdba01bc8bcd44b46ccba966f57dc0467a3d9bb0ce7ca1",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.0/conscrypt-openjdk-uber-2.6.0.jar",
+              "sha256": "3d8c254ec95e4e864abdba01bc8bcd44b46ccba966f57dc0467a3d9bb0ce7ca1",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.0/conscrypt-openjdk-uber-2.6.0.jar",
+              "sha256": "3d8c254ec95e4e864abdba01bc8bcd44b46ccba966f57dc0467a3d9bb0ce7ca1",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.0/conscrypt-openjdk-uber-2.6.0.jar",
+              "sha256": "3d8c254ec95e4e864abdba01bc8bcd44b46ccba966f57dc0467a3d9bb0ce7ca1",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.0/conscrypt-openjdk-uber-2.6.0.jar",
+              "sha256": "3d8c254ec95e4e864abdba01bc8bcd44b46ccba966f57dc0467a3d9bb0ce7ca1",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "154ee72144133cad8bf17c9522154b066ae1ad49",
+            "5ab189dbab0b09c90fcfd11bf13f1b7ebe2956fd",
+            "98a5383391b7199f3d2b8dae4a52d17a5889a734",
+            "f0fbece0f14fd75226237e532ccd72512fb87efc"
+          ]
+        },
+        {
+          "version": "2.6.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.1/conscrypt-openjdk-uber-2.6.1.jar",
+              "sha256": "e1e68ca3ba26ad6d994fd1618190b420a42c986328c76da2e416f65a0c6a1e27",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.1/conscrypt-openjdk-uber-2.6.1.jar",
+              "sha256": "e1e68ca3ba26ad6d994fd1618190b420a42c986328c76da2e416f65a0c6a1e27",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.1/conscrypt-openjdk-uber-2.6.1.jar",
+              "sha256": "e1e68ca3ba26ad6d994fd1618190b420a42c986328c76da2e416f65a0c6a1e27",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.1/conscrypt-openjdk-uber-2.6.1.jar",
+              "sha256": "e1e68ca3ba26ad6d994fd1618190b420a42c986328c76da2e416f65a0c6a1e27",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.1/conscrypt-openjdk-uber-2.6.1.jar",
+              "sha256": "e1e68ca3ba26ad6d994fd1618190b420a42c986328c76da2e416f65a0c6a1e27",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "556508ea385b822734bc22d1e9669beeff1d6286",
+            "700362599225b65b05ee30a216ed32fa5d033ff0",
+            "a67484b56698507fe9fd813d214cb25b86bef902",
+            "e1ac173042cd64fcd7ab0a4151696689b2ccce49"
+          ]
+        },
+        {
+          "version": "2.6.2",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.2/conscrypt-openjdk-uber-2.6.2.jar",
+              "sha256": "f8a8f5020c66abc53a3d33cbc855ef8fc06187fa652fb3c0eda6c94e4335b2e9",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.2/conscrypt-openjdk-uber-2.6.2.jar",
+              "sha256": "f8a8f5020c66abc53a3d33cbc855ef8fc06187fa652fb3c0eda6c94e4335b2e9",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.2/conscrypt-openjdk-uber-2.6.2.jar",
+              "sha256": "f8a8f5020c66abc53a3d33cbc855ef8fc06187fa652fb3c0eda6c94e4335b2e9",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.2/conscrypt-openjdk-uber-2.6.2.jar",
+              "sha256": "f8a8f5020c66abc53a3d33cbc855ef8fc06187fa652fb3c0eda6c94e4335b2e9",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.2/conscrypt-openjdk-uber-2.6.2.jar",
+              "sha256": "f8a8f5020c66abc53a3d33cbc855ef8fc06187fa652fb3c0eda6c94e4335b2e9",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "321f262271f39b1a0f802f2e09315cb4f2534567",
+            "58cbe0860b84bba083caf94c9466c93faf0dc901",
+            "7a8265c8293f870c6e9be5d70a17524fc1a5fb9a",
+            "8316bda6f2d8c3847ae64d4f176fee0ec686b833"
+          ]
+        },
+        {
+          "version": "2.6.3",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.3/conscrypt-openjdk-uber-2.6.3.jar",
+              "sha256": "8c3ea0802656730e556331f63a00df381f42c5306ca91e10edce0af2d4597bcc",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.3/conscrypt-openjdk-uber-2.6.3.jar",
+              "sha256": "8c3ea0802656730e556331f63a00df381f42c5306ca91e10edce0af2d4597bcc",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.3/conscrypt-openjdk-uber-2.6.3.jar",
+              "sha256": "8c3ea0802656730e556331f63a00df381f42c5306ca91e10edce0af2d4597bcc",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.3/conscrypt-openjdk-uber-2.6.3.jar",
+              "sha256": "8c3ea0802656730e556331f63a00df381f42c5306ca91e10edce0af2d4597bcc",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.6.3/conscrypt-openjdk-uber-2.6.3.jar",
+              "sha256": "8c3ea0802656730e556331f63a00df381f42c5306ca91e10edce0af2d4597bcc",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "29f9a56cc32e18524a3a9e2bc936040e51a86f45",
+            "7afd2e3a255b34d570a5c1e6a658abb5f9075d00",
+            "8cc1ae92f3e2f4b85322aec91b8a90ae15dc05c5",
+            "9259267b5948d657bcb70dc99a08aa58a7973dc5"
+          ]
+        },
+        {
+          "version": "2.7.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.7.0/conscrypt-openjdk-uber-2.7.0.jar",
+              "sha256": "a82c2efe7d75df6cb077cb72a3cbd9bb437fb9624d62b469013f10114b0cffa4",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.7.0/conscrypt-openjdk-uber-2.7.0.jar",
+              "sha256": "a82c2efe7d75df6cb077cb72a3cbd9bb437fb9624d62b469013f10114b0cffa4",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.7.0/conscrypt-openjdk-uber-2.7.0.jar",
+              "sha256": "a82c2efe7d75df6cb077cb72a3cbd9bb437fb9624d62b469013f10114b0cffa4",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.7.0/conscrypt-openjdk-uber-2.7.0.jar",
+              "sha256": "a82c2efe7d75df6cb077cb72a3cbd9bb437fb9624d62b469013f10114b0cffa4",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.7.0/conscrypt-openjdk-uber-2.7.0.jar",
+              "sha256": "a82c2efe7d75df6cb077cb72a3cbd9bb437fb9624d62b469013f10114b0cffa4",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "5fabce3d2e5d545f5965cff308664558970374bb",
+            "7055f0dbee17667be0b78eb85e090303b7d88597",
+            "c0b33b8b422d11a68ce2bf166d144e8873250051",
+            "e2076d61e40951f097b3d58b18ab7aeafe81eacb"
+          ]
+        },
+        {
+          "version": "2.8.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.8.0/conscrypt-openjdk-uber-2.8.0.jar",
+              "sha256": "4022024808c54211275c7d58ed81e4e13ed8ba170351588cba19f6b947478668",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-x86_64.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.8.0/conscrypt-openjdk-uber-2.8.0.jar",
+              "sha256": "4022024808c54211275c7d58ed81e4e13ed8ba170351588cba19f6b947478668",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-linux-aarch_64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.8.0/conscrypt-openjdk-uber-2.8.0.jar",
+              "sha256": "4022024808c54211275c7d58ed81e4e13ed8ba170351588cba19f6b947478668",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-aarch_64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.8.0/conscrypt-openjdk-uber-2.8.0.jar",
+              "sha256": "4022024808c54211275c7d58ed81e4e13ed8ba170351588cba19f6b947478668",
+              "entry": "META-INF/native/libconscrypt_openjdk_jni-osx-x86_64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/conscrypt/conscrypt-openjdk-uber/2.8.0/conscrypt-openjdk-uber-2.8.0.jar",
+              "sha256": "4022024808c54211275c7d58ed81e4e13ed8ba170351588cba19f6b947478668",
+              "entry": "META-INF/native/conscrypt_openjdk_jni-windows-x86_64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "0025b5f9e1097abb41eec3d37b361bf51363ecf4",
+            "4c3dd3678f3af0ccc150721c0146395969840c94",
+            "5b1739fa49997fba6480ccaacf531ac393e91874",
+            "62a7368f7ef97b5887feac54d9d96238cd1ef73d"
+          ]
+        }
+      ]
+    },
+    {
+      "library": "signal_jni",
+      "artifact": "org.signal:libsignal-android",
+      "android": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "org.signal:libsignal-android"
+      },
+      "upstream": {
+        "repository": "https://repo1.maven.org/maven2",
+        "artifact": "org.signal:libsignal-client",
+        "since": "0.86.0",
+        "entries": {
+          "linux-x86_64": "libsignal_jni_amd64.so",
+          "macos-arm64": "libsignal_jni_aarch64.dylib",
+          "macos-x86_64": "libsignal_jni_amd64.dylib",
+          "windows-x86_64": "signal_jni_amd64.dll"
+        }
+      },
+      "builds": [
+        {
+          "version": "0.86.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.1/libsignal-client-0.86.1.jar",
+              "sha256": "f3273cf4bb80633e77e4e29aeca84d2f3ead7cecfe4e54dff032b650d8d9f61f",
+              "entry": "libsignal_jni_amd64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.1/libsignal-client-0.86.1.jar",
+              "sha256": "f3273cf4bb80633e77e4e29aeca84d2f3ead7cecfe4e54dff032b650d8d9f61f",
+              "entry": "libsignal_jni_aarch64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.1/libsignal-client-0.86.1.jar",
+              "sha256": "f3273cf4bb80633e77e4e29aeca84d2f3ead7cecfe4e54dff032b650d8d9f61f",
+              "entry": "libsignal_jni_amd64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.1/libsignal-client-0.86.1.jar",
+              "sha256": "f3273cf4bb80633e77e4e29aeca84d2f3ead7cecfe4e54dff032b650d8d9f61f",
+              "entry": "signal_jni_amd64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "386f00df165bf623",
+            "3d07c74561f25f25",
+            "4d59f758884eb7ab",
+            "adc5a0a54181a9ac"
+          ]
+        },
+        {
+          "version": "0.86.2",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.2/libsignal-client-0.86.2.jar",
+              "sha256": "9d2f1ca04b3a40742e8bfa0e58e2a6578bf5403c6c0d24e4955eab92b30bf8d4",
+              "entry": "libsignal_jni_amd64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.2/libsignal-client-0.86.2.jar",
+              "sha256": "9d2f1ca04b3a40742e8bfa0e58e2a6578bf5403c6c0d24e4955eab92b30bf8d4",
+              "entry": "libsignal_jni_aarch64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.2/libsignal-client-0.86.2.jar",
+              "sha256": "9d2f1ca04b3a40742e8bfa0e58e2a6578bf5403c6c0d24e4955eab92b30bf8d4",
+              "entry": "libsignal_jni_amd64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.2/libsignal-client-0.86.2.jar",
+              "sha256": "9d2f1ca04b3a40742e8bfa0e58e2a6578bf5403c6c0d24e4955eab92b30bf8d4",
+              "entry": "signal_jni_amd64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "3cdf37d558407e6c",
+            "6e3e21ae09749953",
+            "cf0fa34b1851f14a",
+            "db2be752212f7cab"
+          ]
+        },
+        {
+          "version": "0.86.3",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.3/libsignal-client-0.86.3.jar",
+              "sha256": "41f8a0608e1a615ce6fd3bd45d939d10436e3dd0213b5c8adf506275e1e94a86",
+              "entry": "libsignal_jni_amd64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.3/libsignal-client-0.86.3.jar",
+              "sha256": "41f8a0608e1a615ce6fd3bd45d939d10436e3dd0213b5c8adf506275e1e94a86",
+              "entry": "libsignal_jni_aarch64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.3/libsignal-client-0.86.3.jar",
+              "sha256": "41f8a0608e1a615ce6fd3bd45d939d10436e3dd0213b5c8adf506275e1e94a86",
+              "entry": "libsignal_jni_amd64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.3/libsignal-client-0.86.3.jar",
+              "sha256": "41f8a0608e1a615ce6fd3bd45d939d10436e3dd0213b5c8adf506275e1e94a86",
+              "entry": "signal_jni_amd64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "5463e7f06ce4ce02",
+            "738279b3a6946e72",
+            "85e84a9ef87b517a",
+            "eeea06c5331aac65"
+          ]
+        },
+        {
+          "version": "0.86.4",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.4/libsignal-client-0.86.4.jar",
+              "sha256": "08135806dcffb6cf2ef7c505115576ddaf63ee42bdec27210667a1f9584202cd",
+              "entry": "libsignal_jni_amd64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.4/libsignal-client-0.86.4.jar",
+              "sha256": "08135806dcffb6cf2ef7c505115576ddaf63ee42bdec27210667a1f9584202cd",
+              "entry": "libsignal_jni_aarch64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.4/libsignal-client-0.86.4.jar",
+              "sha256": "08135806dcffb6cf2ef7c505115576ddaf63ee42bdec27210667a1f9584202cd",
+              "entry": "libsignal_jni_amd64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.4/libsignal-client-0.86.4.jar",
+              "sha256": "08135806dcffb6cf2ef7c505115576ddaf63ee42bdec27210667a1f9584202cd",
+              "entry": "signal_jni_amd64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "121491991580c183",
+            "8b8769c4f4a8455d",
+            "d623ade901ad7804",
+            "e08288722e99a684"
+          ]
+        },
+        {
+          "version": "0.86.5",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.5/libsignal-client-0.86.5.jar",
+              "sha256": "d300c272dae155b21ae8988f51b6b493001cd2d83f5d2f9ae15e743c7ff971bd",
+              "entry": "libsignal_jni_amd64.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.5/libsignal-client-0.86.5.jar",
+              "sha256": "d300c272dae155b21ae8988f51b6b493001cd2d83f5d2f9ae15e743c7ff971bd",
+              "entry": "libsignal_jni_aarch64.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.5/libsignal-client-0.86.5.jar",
+              "sha256": "d300c272dae155b21ae8988f51b6b493001cd2d83f5d2f9ae15e743c7ff971bd",
+              "entry": "libsignal_jni_amd64.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/org/signal/libsignal-client/0.86.5/libsignal-client-0.86.5.jar",
+              "sha256": "d300c272dae155b21ae8988f51b6b493001cd2d83f5d2f9ae15e743c7ff971bd",
+              "entry": "signal_jni_amd64.dll"
+            }
+          },
+          "androidBuildIds": [
+            "5023151a0fb39f79",
+            "72010f57ada8b578",
+            "a2939dbf89d0fb65",
+            "ab79625ffd1ea504"
+          ]
         }
       ]
     }

@@ -1963,14 +1963,17 @@ What does not, or not yet:
   `UnsatisfiedLinkError`; the simulator names the library and, on the control channel, sends an
   `error` event with `kind` `native` instead of exiting with no message. `Build.SUPPORTED_ABIS`
   leads with the host ABI, and `nativeLibraryDir` is a real directory. The exception is a library
-  with a host build in [`host-natives/index.json`](../host-natives/index.json): graphics-path 1.0.1
-  (every stable Compose UI up to 1.12.x pins it; `--sdk 34` and up), AndroidX sqlite-bundled and
-  Ink. `launch` reads that index at run time and takes the build at the APK's version, or the
-  nearest one with a warning. It downloads that build once into
-  `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives` and puts it on the simulator's
-  `java.library.path`. `COMPOSE_PREVIEW_HOST_NATIVES_INDEX` points at another index (a URL or a
-  file). `compose-preview provision --host-natives` fetches the index and every build for this host
-  ahead of an offline run.
+  with a host build in [`host-natives/index.json`](../host-natives/index.json):
+  - graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins (`--sdk 34` and up);
+  - AndroidX sqlite-bundled and Ink;
+  - zstd-jni, JNA, Conscrypt and libsignal.
+
+  `launch` reads that index at run time. It takes the build whose Android library has the same GNU
+  build ID as the APK's, else the one at the APK's version, else the nearest, with a warning. It
+  downloads that build once into `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives` and puts it
+  on the simulator's `java.library.path`. `COMPOSE_PREVIEW_HOST_NATIVES_INDEX` points at another
+  index (a URL or a file). Ahead of an offline run, `compose-preview provision --host-natives`
+  fetches the index and either what each `--apk` needs or each library's newest build.
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any

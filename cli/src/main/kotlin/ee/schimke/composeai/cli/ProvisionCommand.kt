@@ -22,7 +22,8 @@ import kotlinx.serialization.json.Json
  *   [AndroidBundleLaunch.DEFAULT_SDK]), into the directory [ROBOLECTRIC_DEPS_DIR_ENV] names.
  * - `--server` / `--mcp`: the preview server and the MCP server ([ServerDistributionProvision]).
  * - `--xr`: the XR compositor ([XrCompositeProvision]).
- * - `--host-natives`: host builds of APK native libraries for `launch` ([HostNativesProvision]).
+ * - `--host-natives`: host builds of APK native libraries for `launch` ([HostNativesProvision]):
+ *   what each `--apk` needs, or each library's newest build.
  *
  * With no part named, `--desktop --android`. Exits 1 when any part could not be provisioned.
  */
@@ -148,7 +149,9 @@ internal class ProvisionCommand(
 
     if (Part.HOST_NATIVES in parts) {
       attempt(Part.HOST_NATIVES, "host-natives") {
-        val dir = steps.hostNatives() ?: error("could not provision host-natives (see above)")
+        val dir =
+          steps.hostNatives(args.flagValuesAll("--apk").map(::File))
+            ?: error("could not provision host-natives (see above)")
         ProvisionedItem("host_natives", "host-natives", ok = true, path = dir.absolutePath)
       }
     }
@@ -248,7 +251,8 @@ internal class ProvisionCommand(
     internal val USAGE =
       """
       compose-preview provision [--desktop] [--android] [--server] [--mcp] [--xr]
-                                [--host-natives] [--all] [--android-sdk <n>[,<n>…]] [--json]
+                                [--host-natives [--apk <app.apk>]…] [--all]
+                                [--android-sdk <n>[,<n>…]] [--json]
 
       Fetch everything a render would otherwise download on first use into
       ${'$'}{XDG_CACHE_HOME:-~/.cache}/composeai, then print that directory, each provisioned
@@ -261,8 +265,8 @@ internal class ProvisionCommand(
         --server       the preview server (serve, browse, ui-builder)
         --mcp          the MCP server (mcp serve)
         --xr           the XR compositor (XR previews)
-        --host-natives host builds of APK native libraries for launch: the index and
-                       every build it lists for this host
+        --host-natives host builds of APK native libraries for launch: the index, and what
+                       each --apk (repeatable) needs, or else each library's newest build
         --all          every part above
         --android-sdk  API levels to fetch android-all for (repeatable or comma-separated);
                        a Gradle module renders on its compileSdk, a Bazel target on its own
@@ -312,7 +316,8 @@ internal interface ProvisionSteps {
 
   fun xr(): File?
 
-  fun hostNatives(): File?
+  /** Host builds of APK native libraries: for [apks], or each library's newest when empty. */
+  fun hostNatives(apks: List<File>): File?
 
   /** `${XDG_CACHE_HOME:-~/.cache}/composeai`. */
   fun cacheRoot(): File
@@ -356,7 +361,7 @@ internal interface ProvisionSteps {
 
     override fun xr(): File? = XrCompositeProvision.ensureCached(XR_COMPOSITE_VERSION)
 
-    override fun hostNatives(): File? = HostNativesProvision.provisionAll()
+    override fun hostNatives(apks: List<File>): File? = HostNativesProvision.provisionAll(apks)
 
     override fun cacheRoot(): File = DaemonSidecarProvision.defaultCacheRoot().parentFile
   }

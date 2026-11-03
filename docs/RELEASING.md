@@ -314,11 +314,22 @@ of them, and the CLI carries no versions of them.
 
 - **Consuming:** [`host-natives/index.json`](../host-natives/index.json), which `launch` reads from
   `main` at run time (`HostNativesProvision`). It maps each library's load name to its builds. Each
-  build gives, per platform, an archive URL, its sha256 and the library's path inside it. The
-  launch takes the build at the APK's AndroidX version, or the nearest one, with a warning, when
-  there is no exact match. Builds come from two places:
-  - **Upstream host builds:** the library's own JVM artifact on Maven at the same version
-    (AndroidX sqlite-bundled and Ink today), recorded under an `upstream` block.
+  build gives, per platform, an archive URL, its sha256 and the library's path inside it. The host
+  library is saved under the name the APK's code loads, so a desktop build named differently
+  (Conscrypt's `conscrypt_openjdk_jni-<os>-<arch>`, libsignal's `signal_jni_<arch>`) still loads.
+  The launch picks a build in this order:
+  1. the one whose Android libraries share a **GNU build ID** with the APK's copy. It survives
+     symbol stripping and identifies the exact binary, with no version information needed.
+  2. the one at the APK's version: its AndroidX `META-INF/*.version` marker, or the version in the
+     library's name (zstd-jni's `libzstd-jni-<version>.so`, matched by `libraryPattern`).
+  3. the nearest version, or the newest when the version is unknown, with a warning that it may not
+     match.
+
+  An entry can also set system properties the library needs to find its build (`properties`, with
+  `{dir}` for the build's directory; JNA's `jna.boot.library.path`). Builds come from two places:
+  - **Upstream host builds:** the library's own JVM artifact on Maven at the same version, recorded
+    under an `upstream` block: AndroidX sqlite-bundled and Ink, zstd-jni, JNA, Conscrypt
+    (`conscrypt-openjdk-uber`) and libsignal (`libsignal-client`) today.
   - **Built here:** a recipe, `host-natives/<recipe>/`, for a library with no upstream host build
     (graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins and which loads its
     library unconditionally).
@@ -355,9 +366,18 @@ The PRs these jobs open use `GITHUB_TOKEN`, so CI does not start on them by itse
 branch or re-run from the Actions tab.
 
 **Adding a library:**
-- If it has an upstream host build, add an index entry with an `upstream` block (repository, JVM
-  artifact, `since`, and the library's path in the jar for each platform), then run
-  `index.py watch`.
+- If it has an upstream host build, add an index entry with:
+  - `library` (the Android load name) or `libraryPattern` (a regex whose one group is the version);
+  - `artifact`;
+  - an `android` block, naming the Android artifact the watcher reads build IDs from;
+  - an `upstream` block: the repository, the JVM artifact, `since`, the library's path in the jar
+    for each platform (`{version}` is filled in), and `stable` when its stable versions are not
+    plain `X.Y.Z`;
+  - `properties`, if the library needs any.
+
+  Then run `index.py watch`. Before adding one, check that the Android and desktop classes declare
+  the same `native` methods, as `index.native_api` reads them. ONNX Runtime's Android classes
+  declare nine (telemetry) that its desktop build does not, so it is left out.
 - Otherwise, add a recipe directory beside `graphics-path/`, containing:
   - `recipe.properties`;
   - `sources.sha256`, pinning every source file;
