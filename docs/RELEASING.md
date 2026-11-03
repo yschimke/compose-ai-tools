@@ -362,8 +362,10 @@ of them, and the CLI carries no versions of them.
 - **Checks:** the `Index` job validates every index change online. Each archive must download, match
   its sha256 and carry the library.
 
-The PRs these jobs open use `GITHUB_TOKEN`, so CI does not start on them by itself. Push to the
-branch or re-run from the Actions tab.
+The PRs these jobs open use `GITHUB_TOKEN`, so GitHub starts no workflow for them. Each job
+therefore dispatches `ci.yml`, `pr-title.yml`, `no-agent-attribution.yml` and `host-natives.yml` on
+the PR's branch, as `release-please.yml` does for the release PR, and enables squash auto-merge. The
+PR lands once those checks pass.
 
 **Adding a library:**
 - If it has an upstream host build, add an index entry with:
