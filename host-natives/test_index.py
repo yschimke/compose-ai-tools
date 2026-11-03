@@ -111,6 +111,10 @@ class Watch(unittest.TestCase):
 class AddRelease(unittest.TestCase):
     def test_records_both_mac_architectures_from_the_universal_tarball(self):
         idx = copy.deepcopy(index.load())
+        # Independent of what the checked-in index already lists for graphics-path.
+        for library in idx["libraries"]:
+            if library.get("release", {}).get("recipe") == "graphics-path":
+                library["builds"] = []
         with tempfile.TemporaryDirectory() as tmp:
             dist = Path(tmp)
             props = (
