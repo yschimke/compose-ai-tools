@@ -48,7 +48,7 @@ dependencies {
 
   // One per index entry, at a version the index has a build of. Renovate moves them; the index
   // resolves a newer one to its nearest build until the weekly watch adds it.
-  implementation("androidx.sqlite:sqlite-bundled:2.6.2")
+  implementation("androidx.sqlite:sqlite-bundled:2.7.1")
   implementation("androidx.ink:ink-strokes:1.0.0")
   implementation("androidx.ink:ink-brush:1.0.0")
   implementation("androidx.ink:ink-geometry:1.0.0")
