@@ -1,13 +1,13 @@
 # Host natives test app
 
 An Android app with one check per native library that
-[`host-natives/index.json`](../../host-natives/index.json) serves. It shows each check's result on
+[`host-natives/index.json`](../../host-natives/index.json) serves, plus Conscrypt. It shows each check's result on
 screen and logs it under the `HostNatives` tag:
 
 ```
 I/HostNatives: PASS sqliteJni SQLite 3.50.1
-I/HostNatives: FAIL jnidispatch NoClassDefFoundError: com/sun/jna/Library
-I/HostNatives: DONE 6/7 passed
+I/HostNatives: PASS jnidispatch strlen = 12, JNA 5.17.0
+I/HostNatives: DONE 7/7 passed
 ```
 
 | Library | Dependency | Check |
@@ -34,6 +34,7 @@ a headless launch has nothing to drive it; with it, keep stdin open (`sleep 600 
 To try an index other than the one on `main` (a build of your own, say), set
 `COMPOSE_PREVIEW_HOST_NATIVES_INDEX` to its path or URL.
 
-Conscrypt passes on the simulator whether or not the host build loads: Robolectric loads
-`org.conscrypt` classes from its own runtime classpath, where its desktop Conscrypt finds its own
-library. The check is kept for the day that changes.
+Conscrypt has no entry in the index, and needs none: the simulator never loads the APK's
+`org.conscrypt` classes (`SimulatorSandbox` leaves them to the runtime classpath), and Robolectric's
+own desktop Conscrypt (`conscrypt-openjdk-uber`) brings its own library. Its check is kept so a
+change there shows up here.

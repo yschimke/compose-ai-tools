@@ -1966,7 +1966,10 @@ What does not, or not yet:
   with a host build in [`host-natives/index.json`](../host-natives/index.json):
   - graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins (`--sdk 34` and up);
   - AndroidX sqlite-bundled and Ink;
-  - zstd-jni, JNA, Conscrypt and libsignal.
+  - zstd-jni, JNA and libsignal.
+
+  Conscrypt needs no host build: the simulator loads `org.conscrypt` from Robolectric's runtime,
+  whose desktop Conscrypt brings its own library.
 
   `launch` reads that index at run time. It takes the build whose Android library has the same GNU
   build ID as the APK's, else the one at the APK's version, else the nearest, with a warning. It
