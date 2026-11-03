@@ -50,6 +50,20 @@ final class Protocol {
     send(new Json().put("id", id).put("ok", false).put("error", message).object());
   }
 
+  /**
+   * An {@code error} event before a {@link Protocol} exists, for a failure while the process is
+   * still starting. No-op when the control channel is off. Does not close file descriptor 1.
+   */
+  static void startupError(String kind, String message) {
+    if (!"stdio".equals(System.getProperty(CONTROL_PROPERTY))) return;
+    JSONObject line =
+        new Json().put("event", "error").put("kind", kind).put("message", message).object();
+    PrintStream stream =
+        new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+    stream.println(line);
+    stream.flush();
+  }
+
   void event(String name, JSONObject body) {
     JSONObject line = body == null ? new JSONObject() : body;
     try {

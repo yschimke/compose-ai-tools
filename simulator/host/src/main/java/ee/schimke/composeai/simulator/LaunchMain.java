@@ -42,8 +42,11 @@ public final class LaunchMain {
     Thread.setDefaultUncaughtExceptionHandler(
         (thread, error) -> {
           System.err.println("Uncaught exception in thread \"" + thread.getName() + "\":");
-          error.printStackTrace();
-          if (thread == launcher) System.exit(1);
+          NativeCode.report(error);
+          // An uncaught UnsatisfiedLinkError is the app failing to load Android native code.
+          // Exit so a control client gets more than a bare status 1 with the cause only on a
+          // thread that already ended.
+          if (thread == launcher || NativeCode.find(error) != null) System.exit(1);
         });
     if (args.length < 1) {
       System.err.println("usage: LaunchMain <apk> [extra jars]");
@@ -70,7 +73,7 @@ public final class LaunchMain {
             }
           });
     } catch (Throwable t) {
-      t.printStackTrace();
+      NativeCode.report(t);
       System.exit(1);
     }
   }

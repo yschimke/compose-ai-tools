@@ -22,6 +22,17 @@ class ResourceCommandsTest {
   }
 
   @Test
+  fun `show-resources forwards --force as --rerun-tasks`() {
+    assertTrue(
+      "--rerun-tasks" in
+        ShowResourcesCommand(listOf("--force=refresh icons")).resourceRenderGradleArguments()
+    )
+    assertFalse(
+      ShowResourcesCommand(emptyList()).resourceRenderGradleArguments().contains("--rerun-tasks")
+    )
+  }
+
+  @Test
   fun `show resources command accepts the resource-specific filter surface`() {
     ShowResourcesCommand(
       listOf("--json", "--changed-only", "--module", ":app", "--id", "drawable/icon")

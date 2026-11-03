@@ -211,7 +211,9 @@ private fun printFullUsage() {
                        The APK's dex is converted once and cached. Needs Java 21+ and an
                        Android SDK. See docs/SIMULATOR.md.
       a11y             Render previews with the a11y data extension on and
-                       print ATF findings (thin wrapper over `--with-extension a11y`)
+                       print ATF findings. `show --with-extension a11y` runs the same
+                       daemon pass; `a11y` also exits non-zero when ATF data is
+                       unavailable.
       review           Review rendered previews against their catalog's design guidelines.
                        --backend auto (the default) picks prompt inside an agent session,
                        OpenRouter with a usable key, prompt otherwise, and says why.
@@ -418,11 +420,11 @@ private fun printFullUsage() {
       --with-extension <id>
                            Enable a data extension for this run (repeatable; comma-separated
                            values accepted). Forwards as `-PcomposePreview.activeExtensions
-                           =<comma-list>`. The `a11y` command is a thin wrapper that always
-                           sets `--with-extension a11y`. Note: a11y data products are
-                           daemon-produced — `compose-preview a11y` spins up a short-lived
-                           daemon, fetches ATF findings, writes accessibility.json, then shuts
-                           it down. It exits non-zero when ATF data is unavailable.
+                           =<comma-list>`. `a11y` is daemon-produced: `show` and `render`
+                           with `--with-extension a11y` run the same short-lived daemon pass
+                           as `compose-preview a11y` (fetch ATF, write accessibility.json).
+                           A plain `show` does not attach a leftover accessibility.json.
+                           `compose-preview a11y` exits non-zero when ATF data is unavailable.
       --force=<reason>     Sanctioned escape hatch when a render looks stale: passes
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged
@@ -441,7 +443,11 @@ private fun printFullUsage() {
                            `--variant demoDebug`). Without this flag the plugin defaults to
                            `debug` with a build-type suffix fallback, so flavorless modules
                            pick `debug` and flavored modules pick the first `*Debug` variant
-                           AGP enumerates (issue #1546).
+                           AGP enumerates (issue #1546). A module whose only variant is not
+                           `debug` (a release-only Android library) uses that variant.
+      --gradle-arg <arg>   Extra argument forwarded to every Gradle invocation (repeatable),
+                           for example `--gradle-arg=-PcomposePreview.rcPlayer=view`. Also
+                           accepted by `launch`.
       --daemon             doctor: also spawn each module's preview daemon and confirm the
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`

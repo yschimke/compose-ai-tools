@@ -61,6 +61,40 @@ class VariantMatchesTargetTest {
   }
 
   @Test
+  fun `main runtime names drop test classpaths`() {
+    assertThat(
+        AndroidPreviewSupport.mainRuntimeVariantNames(
+          listOf(
+            "debugRuntimeClasspath",
+            "releaseRuntimeClasspath",
+            "debugUnitTestRuntimeClasspath",
+            "releaseAndroidTestRuntimeClasspath",
+            "debugScreenshotTestRuntimeClasspath",
+            "releaseTestFixturesRuntimeClasspath",
+            "debugCompileClasspath",
+          )
+        )
+      )
+      .containsExactly("debug", "release")
+      .inOrder()
+  }
+
+  @Test
+  fun `sole variant fallback picks a release-only library`() {
+    assertThat(AndroidPreviewSupport.soleVariantFallback(listOf("release"), "debug"))
+      .isEqualTo("release")
+  }
+
+  @Test
+  fun `sole variant fallback stays quiet when debug exists or the target is flavored`() {
+    assertThat(AndroidPreviewSupport.soleVariantFallback(listOf("demoDebug", "prodDebug"), "debug"))
+      .isNull()
+    assertThat(AndroidPreviewSupport.soleVariantFallback(listOf("release"), "prodRelease")).isNull()
+    assertThat(AndroidPreviewSupport.soleVariantFallback(listOf("release", "benchmark"), "debug"))
+      .isNull()
+  }
+
+  @Test
   fun `empty target matches only an empty variant name`() {
     assertThat(AndroidPreviewSupport.variantMatchesTarget("debug", "")).isFalse()
     assertThat(AndroidPreviewSupport.variantMatchesTarget("", "")).isTrue()

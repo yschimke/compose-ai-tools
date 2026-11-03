@@ -61,8 +61,9 @@ class ExtensionsCommand(private val args: List<String>) {
     println()
     println(
       "Each id can be passed to `--with-extension <id>` on any render-driving command " +
-        "(`show`, `render`, `a11y`, …). Per-extension canned reports — like the ATF findings " +
-        "`compose-preview a11y` prints — are surfaced by binding the id to a `ReportCommand`."
+        "(`show`, `render`, `a11y`, …). `show --with-extension a11y` and `render " +
+        "--with-extension a11y` run the same daemon pass as `compose-preview a11y`. " +
+        "Per-extension canned reports are surfaced by binding the id to a `ReportCommand`."
     )
   }
 
