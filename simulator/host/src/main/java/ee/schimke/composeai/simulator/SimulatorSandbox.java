@@ -199,7 +199,39 @@ final class SimulatorSandbox {
         .addInstrumentedPackage("org.apache.http.")
         .addInstrumentedPackage("org.ccil.cowan.tagsoup.")
         .addInstrumentedPackage("org.kxml2.");
-    return builder.build();
+    return new AppLibraryConfiguration(builder);
+  }
+
+  /**
+   * Robolectric's configuration, but acquiring {@link #APP_PACKAGES}: app libraries that live under a
+   * prefix Robolectric never acquires because the JDK owns most of it. JNA is `com.sun.jna`; left
+   * to the parent class loader, which has none of the APK's classes, the app's first use of it
+   * fails with NoClassDefFoundError. The builder's collections are passed as they are: `build()`
+   * only deduplicates them.
+   */
+  static final class AppLibraryConfiguration extends InstrumentationConfiguration {
+    static final List<String> APP_PACKAGES = List.of("com.sun.jna.");
+
+    AppLibraryConfiguration(InstrumentationConfiguration.Builder builder) {
+      super(
+          builder.classNameTranslations,
+          builder.interceptedMethods,
+          builder.instrumentedPackages,
+          builder.instrumentedClasses,
+          builder.classesToNotAcquire,
+          builder.packagesToNotAcquire,
+          builder.classesToNotInstrument,
+          builder.packagesToNotInstrument,
+          builder.classesToNotInstrumentRegex);
+    }
+
+    @Override
+    public boolean shouldAcquire(String name) {
+      for (String prefix : APP_PACKAGES) {
+        if (name.startsWith(prefix)) return true;
+      }
+      return super.shouldAcquire(name);
+    }
   }
 
   private SimulatorSandbox() {}

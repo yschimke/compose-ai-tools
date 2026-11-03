@@ -12,8 +12,7 @@ of the library inside it. Two kinds of archive appear, both handled the same way
   pointing at the same archives, and reports the versions whose native API changed, which need a
   recipe bump (a new release) instead.
 - **Upstream host builds:** a library's own JVM artifact on Maven, at the same version as its
-  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm, zstd-jni, JNA, Conscrypt's
-  openjdk-uber, libsignal-client). `watch` adds each new stable version, and records the GNU build
+  Android artifact (sqlite-bundled-jvm, ink-nativeloader-jvm, zstd-jni, JNA, libsignal-client). `watch` adds each new stable version, and records the GNU build
   IDs of each version's Android libraries (`androidBuildIds`), by which the CLI recognises the
   exact build an APK carries.
 

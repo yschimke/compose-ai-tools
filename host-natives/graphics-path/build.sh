@@ -26,8 +26,6 @@ if [[ "$platform" == linux-* ]]; then
     -static-libstdc++ -static-libgcc \
     -o "$lib" "${sources[@]}" >&2
   exported="$(nm -D --defined-only "$lib" | awk '$2 == "T" { sub(/@.*/, "", $3); print $3 }')"
-  glibc="$(objdump -T "$lib" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
-  echo "host-natives: $lib needs $glibc" >&2
 else
   lib="$out/lib$library.dylib"
   "${CXX:-clang++}" "${common[@]}" -I "$JAVA_HOME/include/darwin" \

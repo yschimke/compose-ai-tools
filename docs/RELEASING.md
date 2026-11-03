@@ -316,7 +316,7 @@ of them, and the CLI carries no versions of them.
   `main` at run time (`HostNativesProvision`). It maps each library's load name to its builds. Each
   build gives, per platform, an archive URL, its sha256 and the library's path inside it. The host
   library is saved under the name the APK's code loads, so a desktop build named differently
-  (Conscrypt's `conscrypt_openjdk_jni-<os>-<arch>`, libsignal's `signal_jni_<arch>`) still loads.
+  (libsignal's `signal_jni_<arch>`) still loads.
   The launch picks a build in this order:
   1. the one whose Android libraries share a **GNU build ID** with the APK's copy. It survives
      symbol stripping and identifies the exact binary, with no version information needed.
@@ -328,8 +328,9 @@ of them, and the CLI carries no versions of them.
   An entry can also set system properties the library needs to find its build (`properties`, with
   `{dir}` for the build's directory; JNA's `jna.boot.library.path`). Builds come from two places:
   - **Upstream host builds:** the library's own JVM artifact on Maven at the same version, recorded
-    under an `upstream` block: AndroidX sqlite-bundled and Ink, zstd-jni, JNA, Conscrypt
-    (`conscrypt-openjdk-uber`) and libsignal (`libsignal-client`) today.
+    under an `upstream` block: AndroidX sqlite-bundled and Ink, zstd-jni, JNA and libsignal
+    (`libsignal-client`) today. Conscrypt needs none: the simulator never loads the APK's
+    `org.conscrypt` classes, and Robolectric's own desktop Conscrypt serves the app instead.
   - **Built here:** a recipe, `host-natives/<recipe>/`, for a library with no upstream host build
     (graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins and which loads its
     library unconditionally).
