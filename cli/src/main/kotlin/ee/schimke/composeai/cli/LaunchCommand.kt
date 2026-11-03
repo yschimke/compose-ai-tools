@@ -282,13 +282,26 @@ internal class LaunchCommand(private val args: List<String>) {
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
     }
+    // Per APK, since --adb installs and --pair launch APKs other than the first. Memoised by path,
+    // size and modification time: a restart of the same APK does not re-read it, while a rebuild
+    // or update written over the same path (live reload, `update`) does.
+    val libraryPaths = ConcurrentHashMap<String, List<String>>()
     fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> =
       simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
         apk = launch.apk,
         classes = launch.classes + extraJars,
-        options = options.copy(properties = options.properties + launch.properties),
+        options =
+          options.copy(
+            properties = options.properties + launch.properties,
+            libraryPath =
+              libraryPaths.computeIfAbsent(
+                "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
+              ) {
+                hostLibraryPath(launch.apk, options)
+              },
+          ),
         robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
@@ -847,6 +860,12 @@ internal class LaunchCommand(private val args: List<String>) {
     val tiles: List<String> = emptyList(),
     /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
     val jvmOptions: List<String> = emptyList(),
+    /**
+     * The simulator JVM's `java.library.path`, when set: host builds of the APK's native libraries
+     * ([HostNativesProvision]) ahead of the JVM's own. Before [jvmOptions], so a user's own
+     * `-Djava.library.path` wins.
+     */
+    val libraryPath: List<String> = emptyList(),
     /** Further system properties: a restarted simulator's data to restore, its launch time. */
     val properties: Map<String, String> = emptyMap(),
     /**
@@ -855,6 +874,19 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val noLaunch: Boolean = false,
   )
+
+  /**
+   * The simulator's `java.library.path` for [apk] under [options]: the host builds of the native
+   * libraries it carries ([HostNativesProvision]) ahead of the JVM's default, or empty (the JVM's
+   * default) when it needs none or they could not be provisioned.
+   */
+  private fun hostLibraryPath(apk: File, options: Options): List<String> {
+    // A user's own library path wins anyway (it comes later on the command line): fetch nothing.
+    if (options.jvmOptions.any { it.startsWith("-Djava.library.path=") }) return emptyList()
+    val dirs = HostNativesProvision.libraryDirs(apk, options.sdk)
+    if (dirs.isEmpty()) return emptyList()
+    return withJvmLibraryPath(dirs, System.getProperty("java.library.path"))
+  }
 
   private fun convert(
     java: SimulatorJava.Java,
@@ -1154,6 +1186,10 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
 
+    /** [dirs] ahead of the JVM's default `java.library.path` ([default], possibly empty). */
+    fun withJvmLibraryPath(dirs: List<File>, default: String?): List<String> =
+      dirs.map { it.path } + default.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -1168,6 +1204,9 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       addAll(SIMULATOR_JVM_ARGS)
+      if (options.libraryPath.isNotEmpty()) {
+        add("-Djava.library.path=${options.libraryPath.joinToString(File.pathSeparator)}")
+      }
       addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
       // The host jar is also the simulator's agent: it lets a reload redefine changed classes in

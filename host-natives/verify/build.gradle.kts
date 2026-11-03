@@ -10,9 +10,17 @@ val graphicsPathVersions = mapOf("pinnedByCompose" to "1.0.1", "latestStable" to
 val hostNativesDir: File =
   (findProperty("hostNativesDir") as String?)?.let(::File)
     ?: rootDir.resolve(
-      "../build/" +
+      "../build/graphics-path/" +
         if (System.getProperty("os.name").startsWith("Mac")) "macos-universal" else "linux-x86_64"
     )
+
+// Robolectric fetches android-all itself, outside Gradle's repositories, so the private Maven cache
+// coo.ee/env sandboxes configure (and route Gradle through with an init script) has to be handed to
+// it as well. Without all three variables Robolectric uses Maven Central, as on CI.
+val mavenCache =
+  listOf("COO_MAVEN_URL", "COO_MAVEN_USER", "COO_MAVEN_TOKEN")
+    .map { providers.environmentVariable(it).orNull?.trim().orEmpty() }
+    .takeIf { values -> values.all { it.isNotEmpty() } }
 
 val aar = configurations.create("aar") { isTransitive = false }
 
@@ -83,6 +91,11 @@ fun verification(name: String, graphicsPath: String, libraryDir: Provider<File>,
     doFirst {
       libraryDir.get().mkdirs()
       systemProperty("java.library.path", libraryDir.get().absolutePath)
+    }
+    mavenCache?.let { (url, user, token) ->
+      systemProperty("robolectric.dependency.repo.url", "${url.trimEnd('/')}/central")
+      systemProperty("robolectric.dependency.repo.username", user)
+      systemProperty("robolectric.dependency.repo.password", token)
     }
     systemProperty("hostNatives.expect", expect)
     systemProperty("hostNatives.graphicsPath", graphicsPathVersions.getValue(graphicsPath))

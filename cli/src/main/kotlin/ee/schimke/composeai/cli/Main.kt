@@ -317,7 +317,8 @@ private fun printFullUsage() {
                        native, Robolectric's android-all jar, optionally the preview / MCP
                        servers) into ${'$'}{XDG_CACHE_HOME:-~/.cache}/composeai and print the paths
                        and environment for an offline run: `provision [--desktop] [--android]
-                       [--server] [--mcp] [--xr] [--all] [--android-sdk <n>] [--json]`
+                       [--server] [--mcp] [--xr] [--host-natives] [--all] [--android-sdk <n>]
+                       [--json]`
       bazel            init | list | prepare | render for an existing Compose JVM target.
                        Run `compose-preview bazel --help` for setup and build configuration.
       buck             The same for a Buck2 JVM or Android library, collected through BXL.

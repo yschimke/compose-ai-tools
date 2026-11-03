@@ -84,6 +84,11 @@ class ProvisionCommandTest {
       return null
     }
 
+    override fun hostNatives(): File? {
+      maybeFail("host-natives")
+      return File(cache, "host-natives/1.0.0/linux-x86_64")
+    }
+
     override fun cacheRoot(): File = cache
   }
 
@@ -177,6 +182,23 @@ class ProvisionCommandTest {
   }
 
   @Test
+  fun `host natives report the directory launch puts on java library path`() = fixture { root ->
+    val steps = FakeSteps(root)
+    val report =
+      ProvisionCommand(emptyList(), steps)
+        .provision(setOf(ProvisionCommand.Part.HOST_NATIVES), emptyList())
+    assertTrue(report.ok)
+    assertEquals(listOf("host-natives"), steps.calls)
+    val item = report.items.single()
+    assertEquals("host_natives", item.part)
+    assertEquals(File(root, "cache/composeai/host-natives/1.0.0/linux-x86_64").path, item.path)
+    assertEquals(
+      setOf(ProvisionCommand.Part.HOST_NATIVES),
+      ProvisionCommand.parts(listOf("--host-natives")),
+    )
+  }
+
+  @Test
   fun `a failed part is reported, the rest still run, and the command exits 1`() = fixture { root ->
     val steps = FakeSteps(root, failing = setOf("ANDROID"))
     val printed = mutableListOf<String>()
@@ -231,7 +253,15 @@ class ProvisionCommandTest {
       emptyList(),
       CliFlagValidation.unknownFlags(
         "provision",
-        listOf("--all", "--json", "--android-sdk", "35", "--desktop", "--android"),
+        listOf(
+          "--all",
+          "--json",
+          "--android-sdk",
+          "35",
+          "--desktop",
+          "--android",
+          "--host-natives",
+        ),
       ),
     )
     assertEquals(

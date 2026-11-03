@@ -1,0 +1,288 @@
+{
+  "schema": "compose-preview-host-natives/v1",
+  "libraries": [
+    {
+      "library": "androidx.graphics.path",
+      "artifact": "androidx.graphics:graphics-path",
+      "minSdk": 34,
+      "fixedIn": "1.1.0",
+      "release": {
+        "recipe": "graphics-path"
+      },
+      "builds": []
+    },
+    {
+      "library": "sqliteJni",
+      "artifact": "androidx.sqlite:sqlite-bundled",
+      "upstream": {
+        "repository": "https://dl.google.com/dl/android/maven2",
+        "artifact": "androidx.sqlite:sqlite-bundled-jvm",
+        "since": "2.5.0",
+        "entries": {
+          "linux-x86_64": "natives/linux_x64/libsqliteJni.so",
+          "linux-arm64": "natives/linux_arm64/libsqliteJni.so",
+          "macos-arm64": "natives/osx_arm64/libsqliteJni.dylib",
+          "macos-x86_64": "natives/osx_x64/libsqliteJni.dylib",
+          "windows-x86_64": "natives/windows_x64/sqliteJni.dll"
+        }
+      },
+      "builds": [
+        {
+          "version": "2.5.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.0/sqlite-bundled-jvm-2.5.0.jar",
+              "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.0/sqlite-bundled-jvm-2.5.0.jar",
+              "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.0/sqlite-bundled-jvm-2.5.0.jar",
+              "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.0/sqlite-bundled-jvm-2.5.0.jar",
+              "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.0/sqlite-bundled-jvm-2.5.0.jar",
+              "sha256": "bd7bce6059750e3ff62a928d8bbcf7cb6270aaef1e23957aade657707e1adb63",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.5.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.1/sqlite-bundled-jvm-2.5.1.jar",
+              "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.1/sqlite-bundled-jvm-2.5.1.jar",
+              "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.1/sqlite-bundled-jvm-2.5.1.jar",
+              "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.1/sqlite-bundled-jvm-2.5.1.jar",
+              "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.1/sqlite-bundled-jvm-2.5.1.jar",
+              "sha256": "961d876e5a26ff1082ac3597df89b9e1c626608f804dc2c960edd0f319cef80d",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.5.2",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.2/sqlite-bundled-jvm-2.5.2.jar",
+              "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.2/sqlite-bundled-jvm-2.5.2.jar",
+              "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.2/sqlite-bundled-jvm-2.5.2.jar",
+              "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.2/sqlite-bundled-jvm-2.5.2.jar",
+              "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.5.2/sqlite-bundled-jvm-2.5.2.jar",
+              "sha256": "518d032204065c45f20e2e0e55f8de9fcf9fccf6d6439df8f0f97b63463b9e5a",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.6.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.0/sqlite-bundled-jvm-2.6.0.jar",
+              "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.0/sqlite-bundled-jvm-2.6.0.jar",
+              "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.0/sqlite-bundled-jvm-2.6.0.jar",
+              "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.0/sqlite-bundled-jvm-2.6.0.jar",
+              "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.0/sqlite-bundled-jvm-2.6.0.jar",
+              "sha256": "2a08c30ca893e377e4f11391941e576d28ae5ddc5594946631b438efe897411a",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.6.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.1/sqlite-bundled-jvm-2.6.1.jar",
+              "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.1/sqlite-bundled-jvm-2.6.1.jar",
+              "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.1/sqlite-bundled-jvm-2.6.1.jar",
+              "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.1/sqlite-bundled-jvm-2.6.1.jar",
+              "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.1/sqlite-bundled-jvm-2.6.1.jar",
+              "sha256": "d78d8bf8f1fa27bda441d0ae23f9c9a97fc7dcc2c133ca664e677d4bc40152c8",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.6.2",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.2/sqlite-bundled-jvm-2.6.2.jar",
+              "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.2/sqlite-bundled-jvm-2.6.2.jar",
+              "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.2/sqlite-bundled-jvm-2.6.2.jar",
+              "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.2/sqlite-bundled-jvm-2.6.2.jar",
+              "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
+              "entry": "natives/osx_x64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.6.2/sqlite-bundled-jvm-2.6.2.jar",
+              "sha256": "e61efb0647288b486e595950724cc53c4f15eeeca03ce2184751d02de3cfaa17",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.7.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.0/sqlite-bundled-jvm-2.7.0.jar",
+              "sha256": "66e531b5bf45c8c47d8ca443642588577ff027e610b3fb8b6500a0958f4f12e4",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.0/sqlite-bundled-jvm-2.7.0.jar",
+              "sha256": "66e531b5bf45c8c47d8ca443642588577ff027e610b3fb8b6500a0958f4f12e4",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.0/sqlite-bundled-jvm-2.7.0.jar",
+              "sha256": "66e531b5bf45c8c47d8ca443642588577ff027e610b3fb8b6500a0958f4f12e4",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.0/sqlite-bundled-jvm-2.7.0.jar",
+              "sha256": "66e531b5bf45c8c47d8ca443642588577ff027e610b3fb8b6500a0958f4f12e4",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        },
+        {
+          "version": "2.7.1",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.1/sqlite-bundled-jvm-2.7.1.jar",
+              "sha256": "ced6f3d8433a7091745c294f1e4bd7f17434986d81dfd2145147cd571b167251",
+              "entry": "natives/linux_x64/libsqliteJni.so"
+            },
+            "linux-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.1/sqlite-bundled-jvm-2.7.1.jar",
+              "sha256": "ced6f3d8433a7091745c294f1e4bd7f17434986d81dfd2145147cd571b167251",
+              "entry": "natives/linux_arm64/libsqliteJni.so"
+            },
+            "macos-arm64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.1/sqlite-bundled-jvm-2.7.1.jar",
+              "sha256": "ced6f3d8433a7091745c294f1e4bd7f17434986d81dfd2145147cd571b167251",
+              "entry": "natives/osx_arm64/libsqliteJni.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-jvm/2.7.1/sqlite-bundled-jvm-2.7.1.jar",
+              "sha256": "ced6f3d8433a7091745c294f1e4bd7f17434986d81dfd2145147cd571b167251",
+              "entry": "natives/windows_x64/sqliteJni.dll"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "library": "ink",
+      "artifact": "androidx.ink:ink-nativeloader",
+      "upstream": {
+        "repository": "https://dl.google.com/dl/android/maven2",
+        "artifact": "androidx.ink:ink-nativeloader-jvm",
+        "since": "1.0.0",
+        "entries": {
+          "linux-x86_64": "linux-x86_64/libink.so",
+          "macos-arm64": "macos-arm64/libink.dylib"
+        }
+      },
+      "builds": [
+        {
+          "version": "1.0.0",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://dl.google.com/dl/android/maven2/androidx/ink/ink-nativeloader-jvm/1.0.0/ink-nativeloader-jvm-1.0.0.jar",
+              "sha256": "426dd607a08dbf88ce1ce29df327cb5f0a5b8ff14b053ac5c5ae7e842e0f959b",
+              "entry": "linux-x86_64/libink.so"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

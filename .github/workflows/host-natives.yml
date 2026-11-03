@@ -1,14 +1,17 @@
 name: Host Natives
 
 # Builds the host (desktop) native libraries the simulator loads in place of an APK's Android-only
-# ones, on real Linux and macOS runners, and verifies each against Robolectric's native runtime on
-# the architecture it targets. Today that is androidx.graphics:graphics-path's.
+# ones, on real Linux and macOS runners, and verifies them against Robolectric's native runtime on
+# the architecture each targets. Each library is a recipe, `host-natives/<recipe>/`; today that is
+# androidx.graphics:graphics-path's.
 #
-# Publishing is its own line, apart from release.yml: dispatching this workflow with `publish`
-# attaches the archives to a `host-natives-v<host-natives/VERSION>` prerelease that is never marked
-# latest, so the CLI installers, the install action and `/releases/latest` never see it. A
-# compose-ai-tools release does not rebuild these binaries, and a change here cuts no release. See
-# docs/RELEASING.md, "The host-natives binaries".
+# Each recipe releases on its own line, keyed by the LIBRARY's version, not this repository's:
+# `host-natives-<recipe>-<version>` (`host-natives/build.sh release-tag <recipe>`), a prerelease never
+# marked latest, so the CLI installers, the install action and `/releases/latest` never see it. A
+# push to main publishes every recipe whose tag is not out yet and skips the rest, so an unchanged
+# recipe is never republished, and a compose-ai-tools release builds none of this. Publishing then
+# opens a PR adding the builds to `host-natives/index.json`, which is what `compose-preview launch`
+# reads. See docs/RELEASING.md, "The host-natives binaries".
 
 on:
   pull_request:
@@ -24,11 +27,6 @@ on:
       - 'gradle/libs.versions.toml'
       - '.github/workflows/host-natives.yml'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish host-natives-v<host-natives/VERSION> once every platform verifies
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -38,6 +36,21 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # `index.json` is what `compose-preview launch` reads at run time, from main: every archive it
+  # names must download, match its sha256 and carry the library it says it does.
+  index:
+    name: Index
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the index tooling
+        run: python3 host-natives/test_index.py -v
+      - name: Check every build in the index
+        run: python3 host-natives/index.py check --online
+
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
@@ -110,27 +123,29 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          mkdir -p "host-natives/build/$PLATFORM"
-          tar -xzf host-natives/build/dist/host-natives-"$PLATFORM"-*.tar.gz -C "host-natives/build/$PLATFORM"
-          cat "host-natives/build/$PLATFORM/host-natives.properties"
+          dir="host-natives/build/graphics-path/$PLATFORM"
+          mkdir -p "$dir"
+          tar -xzf host-natives/build/dist/host-natives-graphics-path-*-"$PLATFORM".tar.gz -C "$dir"
+          cat "$dir/host-natives.properties"
 
       - name: Verify against Robolectric
         env:
           PLATFORM: ${{ matrix.platform }}
-        run: ./gradlew -p host-natives/verify verifyHostNatives -PhostNativesDir="$PWD/host-natives/build/$PLATFORM"
+        run: ./gradlew -p host-natives/verify verifyHostNatives -PhostNativesDir="$PWD/host-natives/build/graphics-path/$PLATFORM"
 
   publish:
     name: Publish
     needs: verify
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -138,30 +153,68 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish the prerelease
+      # One release per recipe and library version. A tag that exists is skipped, never replaced:
+      # consumers cache builds by sha256, and an unchanged recipe has nothing new to say.
+      - name: Publish new recipe versions
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          version="$(tr -d '[:space:]' < host-natives/VERSION)"
-          tag="host-natives-v$version"
-          # A published version's assets never change: consumers pin it and cache by it.
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::$tag already exists. Bump host-natives/VERSION to publish new binaries."
-            exit 1
+          set -euo pipefail
+          mkdir -p published
+          for recipe in $(host-natives/build.sh recipes); do
+            tag="$(host-natives/build.sh release-tag "$recipe")"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "$tag is already published; skipping $recipe"
+              continue
+            fi
+            version="$(sed -n 's/^version=//p' "host-natives/$recipe/recipe.properties")"
+            library="$(sed -n 's/^library=//p' "host-natives/$recipe/recipe.properties")"
+            commit="$(sed -n 's/^commit=//p' "host-natives/$recipe/recipe.properties")"
+            repository="$(sed -n 's/^repository=//p' "host-natives/$recipe/recipe.properties")"
+            files=(dist/host-natives-"$recipe"-"$version"-*.tar.gz)
+            rm -rf sums && mkdir sums
+            (cd dist && sha256sum "${files[@]#dist/}" > ../sums/SHA256SUMS && cat ../sums/SHA256SUMS)
+            {
+              echo "Host build of \`lib$library\` from $repository@$commit, built and verified by \`host-natives.yml\` at $GITHUB_SHA, for $recipe $version."
+              echo
+              echo "Not a compose-ai-tools release. \`compose-preview launch\` finds it through \`host-natives/index.json\` once its index PR merges; see docs/RELEASING.md."
+            } > notes.md
+            gh release create "$tag" "${files[@]}" sums/SHA256SUMS \
+              --target "$GITHUB_SHA" \
+              --title "host-natives $recipe $version" \
+              --notes-file notes.md \
+              --prerelease \
+              --latest=false
+            cp "${files[@]}" published/
+          done
+
+      # Publishing ships nothing by itself: launch finds builds through index.json on main. So add
+      # the new releases to it, as a PR to review like any other index change.
+      - name: Open the index pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 host-natives/index.py add-release --dist published | tee added.txt
+          if [ -z "$(git status --porcelain host-natives/index.json)" ]; then
+            echo "index.json is up to date"
+            exit 0
           fi
-          (cd dist && sha256sum ./*.tar.gz | sed 's# \./# #' > SHA256SUMS && cat SHA256SUMS)
-          commit="$(sed -n 's/^commit=//p' host-natives/graphics-path/upstream.properties)"
+          # agent/ is the house branch prefix, and it is CI-enforced: see AGENTS.md.
+          branch="agent/host-natives-index-${GITHUB_SHA::8}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add host-natives/index.json
+          git commit -q -m "chore: add new host-natives releases to the index"
+          git push -u origin "$branch"
           {
-            echo "Host native libraries for the simulator, built and verified by \`host-natives.yml\` at $GITHUB_SHA."
+            echo "Adds the host-natives builds just published to \`host-natives/index.json\`, which \`compose-preview launch\` reads from main:"
             echo
-            echo "- \`libandroidx.graphics.path\`: AndroidX graphics-path's native sources at androidx/androidx@$commit, for linux-x86_64 and macOS (universal arm64 + x86_64). Verified with graphics-path 1.0.1 on API 34, 35 and 36."
+            sed 's/^/- /' added.txt
             echo
-            echo "Not a compose-ai-tools release. Consumers pin \`$version\`; see docs/RELEASING.md."
-          } > notes.md
-          gh release create "$tag" dist/*.tar.gz dist/SHA256SUMS \
-            --target "$GITHUB_SHA" \
-            --title "host-natives $version" \
-            --notes-file notes.md \
-            --prerelease \
-            --latest=false
+            echo "Opened by the publish job of \`host-natives.yml\`."
+          } > body.md
+          gh pr create --title "chore: add new host-natives releases to the index" \
+            --body-file body.md --base main --head "$branch"

@@ -53,8 +53,9 @@ then copy the results to the offline machine.
 
 `compose-preview provision` does that run for you: it fetches the render daemons, Skiko's native
 library and the `android-all-instrumented` jars matching the daemon's own Robolectric
-(`--android-sdk <n>[,<n>]`, default 35), plus the server, MCP server and XR composite with
-`--server`, `--mcp`, `--xr` or `--all`, and prints the environment to set (`--json` for a script).
+(`--android-sdk <n>[,<n>]`, default 35), plus the server, MCP server, XR composite and the
+simulator's host native libraries with `--server`, `--mcp`, `--xr`, `--host-natives` or `--all`,
+and prints the environment to set (`--json` for a script).
 
 ### One cache root
 

@@ -659,7 +659,9 @@ internal class LiveReload(
         ZipFile(apk).use { source ->
           for (entry in source.entries()) {
             if (entry.isDirectory || fromLinked(entry.name)) continue
-            if (entry.name.startsWith("META-INF/")) continue
+            // The old signature no longer matches; AndroidX's `.version` markers are kept, since
+            // HostNativesProvision picks the host libraries of a restarted app by them.
+            if (entry.name.startsWith("META-INF/") && !entry.name.endsWith(".version")) continue
             copy(source, entry)
           }
         }
