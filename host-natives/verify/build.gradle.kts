@@ -25,7 +25,7 @@ val graphicsPathAars =
   }
 
 dependencies {
-  aar("androidx.test:monitor:1.7.2@aar")
+  aar("androidx.test:monitor:1.8.0@aar")
   testImplementation(libs.robolectric)
   testImplementation(libs.junit)
   // graphics-path 1.1.0 converts conics with androidx.collection's FloatFloatPair.
