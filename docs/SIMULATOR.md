@@ -1962,8 +1962,12 @@ What does not, or not yet:
 - **Native code.** `.so` files are built for Android (bionic). `System.loadLibrary` throws
   `UnsatisfiedLinkError`; the simulator names the library and, on the control channel, sends an
   `error` event with `kind` `native` instead of exiting with no message. `Build.SUPPORTED_ABIS`
-  leads with the host ABI, and `nativeLibraryDir` is a real directory. JVM stand-ins for
-  individual AndroidX native libraries are not wired up.
+  leads with the host ABI, and `nativeLibraryDir` is a real directory. One exception: an APK
+  carrying AndroidX graphics-path 1.0.1's `libandroidx.graphics.path` (every stable Compose UI up
+  to 1.12.x pins it), launched at `--sdk 34` or higher on Linux x86_64 or macOS, gets a host build
+  of that library on `java.library.path`, fetched once from this repository's `host-natives`
+  release line (`compose-preview provision --host-natives` to fetch it ahead of an offline run).
+  Other JVM stand-ins for individual AndroidX native libraries are not wired up.
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any

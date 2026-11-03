@@ -241,43 +241,44 @@ internal class LaunchCommand(private val args: List<String>) {
     }
     val options =
       Options(
-        sdk =
-          (args.flagValue("--sdk")?.toIntOrNull() ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
-            AndroidBundleLaunch.MIN_SDK,
-            AndroidBundleLaunch.MAX_SDK,
-          ),
-        qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
-        formFactor = formFactor.id,
-        launchActivity = launchActivity,
-        device = device,
-        network = network,
-        playServices = playServices,
-        fontScale = args.flagValue("--font-scale"),
-        fingerprint = args.flagValue("--fingerprint"),
-        maxHeap =
-          args.flagValue("--max-heap")?.also {
-            if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
-          } ?: defaultMaxHeap(physicalMemoryBytes()),
-        headless = headless,
-        // With --adb this process drives the simulator's channel, client or not.
-        control = control != null || adb,
-        installProviders = "--no-providers" !in args,
-        showAgent = "--hide-agent" !in args,
-        displays = args.flagValuesAll("--display"),
-        // A device with nothing started on it shows its system UI.
-        launcher =
-          apk == null ||
-            adb ||
-            "--launcher" in args ||
-            args.flagValuesAll("--widget").isNotEmpty() ||
-            args.flagValuesAll("--tile").isNotEmpty(),
-        noLaunch = apk == null || adb,
-        widgets = args.flagValuesAll("--widget"),
-        tiles = args.flagValuesAll("--tile"),
-        jvmOptions =
-          System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
-            ?: emptyList(),
-      )
+          sdk =
+            (args.flagValue("--sdk")?.toIntOrNull() ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
+              AndroidBundleLaunch.MIN_SDK,
+              AndroidBundleLaunch.MAX_SDK,
+            ),
+          qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
+          formFactor = formFactor.id,
+          launchActivity = launchActivity,
+          device = device,
+          network = network,
+          playServices = playServices,
+          fontScale = args.flagValue("--font-scale"),
+          fingerprint = args.flagValue("--fingerprint"),
+          maxHeap =
+            args.flagValue("--max-heap")?.also {
+              if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
+            } ?: defaultMaxHeap(physicalMemoryBytes()),
+          headless = headless,
+          // With --adb this process drives the simulator's channel, client or not.
+          control = control != null || adb,
+          installProviders = "--no-providers" !in args,
+          showAgent = "--hide-agent" !in args,
+          displays = args.flagValuesAll("--display"),
+          // A device with nothing started on it shows its system UI.
+          launcher =
+            apk == null ||
+              adb ||
+              "--launcher" in args ||
+              args.flagValuesAll("--widget").isNotEmpty() ||
+              args.flagValuesAll("--tile").isNotEmpty(),
+          noLaunch = apk == null || adb,
+          widgets = args.flagValuesAll("--widget"),
+          tiles = args.flagValuesAll("--tile"),
+          jvmOptions =
+            System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
+              ?: emptyList(),
+        )
+        .let { it.copy(libraryPath = hostLibraryPath(apk, it.sdk)) }
     val extraJars = args.flagValuesAll("--jar").map { File(it) }
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
@@ -847,6 +848,12 @@ internal class LaunchCommand(private val args: List<String>) {
     val tiles: List<String> = emptyList(),
     /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
     val jvmOptions: List<String> = emptyList(),
+    /**
+     * The simulator JVM's `java.library.path`, when set: host builds of the APK's native libraries
+     * ([HostNativesProvision]) ahead of the JVM's own. Before [jvmOptions], so a user's own
+     * `-Djava.library.path` wins.
+     */
+    val libraryPath: List<String> = emptyList(),
     /** Further system properties: a restarted simulator's data to restore, its launch time. */
     val properties: Map<String, String> = emptyMap(),
     /**
@@ -855,6 +862,17 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val noLaunch: Boolean = false,
   )
+
+  /**
+   * The simulator's `java.library.path` for [apk] at [sdk]: the host builds of the native libraries
+   * it carries ([HostNativesProvision]) ahead of the JVM's default, or empty (the JVM's default)
+   * when it needs none or they could not be provisioned.
+   */
+  private fun hostLibraryPath(apk: File?, sdk: Int): List<String> {
+    if (apk == null || !HostNativesProvision.wanted(apk, sdk)) return emptyList()
+    val dir = HostNativesProvision.ensureCached(HOST_NATIVES_VERSION) ?: return emptyList()
+    return withJvmLibraryPath(dir, System.getProperty("java.library.path"))
+  }
 
   private fun convert(
     java: SimulatorJava.Java,
@@ -1154,6 +1172,10 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
 
+    /** [dir] ahead of the JVM's default `java.library.path` ([default], possibly empty). */
+    fun withJvmLibraryPath(dir: File, default: String?): List<String> =
+      listOf(dir.path) + default.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -1168,6 +1190,9 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       addAll(SIMULATOR_JVM_ARGS)
+      if (options.libraryPath.isNotEmpty()) {
+        add("-Djava.library.path=${options.libraryPath.joinToString(File.pathSeparator)}")
+      }
       addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
       // The host jar is also the simulator's agent: it lets a reload redefine changed classes in

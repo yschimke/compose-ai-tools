@@ -418,6 +418,46 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `host natives lead java library path, and a user's own setting wins`() {
+    val libraryPath =
+      LaunchCommand.withJvmLibraryPath(
+        File("/cache/host-natives/1.0.0/linux-x86_64"),
+        listOf("/usr/lib64", "", "/lib").joinToString(File.pathSeparator),
+      )
+    assertEquals(
+      listOf(File("/cache/host-natives/1.0.0/linux-x86_64").path, "/usr/lib64", "/lib"),
+      libraryPath,
+    )
+    fun command(libraryPath: List<String>, jvmOptions: List<String> = emptyList()) =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          LaunchCommand.Options(
+            sdk = 35,
+            qualifiers = LaunchCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            jvmOptions = jvmOptions,
+            libraryPath = libraryPath,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue(command(emptyList()).none { it.startsWith("-Djava.library.path=") })
+    val withUser = command(libraryPath, jvmOptions = listOf("-Djava.library.path=/mine"))
+    val ours =
+      withUser.indexOf("-Djava.library.path=${libraryPath.joinToString(File.pathSeparator)}")
+    assertTrue(ours >= 0, withUser.toString())
+    // The JVM takes the last -D, so the user's own must come after.
+    assertTrue(withUser.indexOf("-Djava.library.path=/mine") > ours)
+  }
+
+  @Test
   fun `a device preset becomes a system property`() {
     val command =
       LaunchCommand.simulatorCommand(

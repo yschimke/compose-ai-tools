@@ -1157,6 +1157,15 @@ jobs:
         run: python3 .github/ci/check_xr_composite_pin.py
       - name: Check the renderer pin resolves on Maven Central
         run: python3 .github/ci/check_xr_renderer_pin.py
+      # The same failure mode for the `host-natives` pin: `compose-preview launch` fetches the
+      # graphics-path host library from this repository's `host-natives-v<pin>` prerelease, and a
+      # missing one is a silent skip that leaves apps failing with UnsatisfiedLinkError.
+      - name: Run host-natives pin gate tests
+        run: python3 .github/ci/test_check_host_natives_pin.py -v
+      - name: Check the host-natives pin resolves to a complete release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/ci/check_host_natives_pin.py
 
   # The wire between this CLI and the preview server it launches, checked against the real server.
   #

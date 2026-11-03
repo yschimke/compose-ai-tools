@@ -567,6 +567,7 @@ compose-preview provision --all --json       # + preview server, MCP server, XR 
 | `--android` | Android daemon sidecar, `android-all-instrumented` per `--android-sdk` level (default 35) | `preview-daemon/<v>/`, `robolectric-deps/` |
 | `--server`, `--mcp` | the preview server, the MCP server | `preview-server/<v>/`, `preview-mcp/<v>/` |
 | `--xr` | the XR compositor | `xr-composite/` |
+| `--host-natives` | host builds of APK native libraries for `launch` | `host-natives/<v>/` |
 
 It prints the cache root, each provisioned path, and the environment that
 points a later run at them: `COMPOSE_PREVIEW_OFFLINE=1`,

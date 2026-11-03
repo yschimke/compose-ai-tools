@@ -328,6 +328,12 @@ platform matrix per release and a re-download per CLI upgrade. They have their o
   the install action skips prereleases, and `/releases/latest` excludes them, so nothing that picks
   a compose-ai-tools release can pick this one. A version that exists is never republished; bump
   `VERSION` to publish new binaries.
+- **Consuming** is by the `host-natives` pin in `gradle/libs.versions.toml`, baked into the CLI as
+  `HOST_NATIVES_VERSION`: `compose-preview launch` fetches `host-natives-v<pin>` into
+  `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives/<pin>/<platform>` (`HostNativesProvision`).
+  So publishing does not ship anything by itself: move the pin after the release exists. The `XR
+  Composite Pin` CI job runs `check_host_natives_pin.py`, which fails a PR whose pin names no
+  release, or one missing a platform tarball or `SHA256SUMS`.
 
 The sources are AndroidX's, unchanged, fetched at the commit
 [`upstream.properties`](../host-natives/graphics-path/upstream.properties) names and checked against
