@@ -303,6 +303,38 @@ compose-preview-xr.
 
 **Changing the compositor itself** happens in compose-preview-xr: land the change there with a conventional-commit subject, merge its release PR (which builds the three platforms, attaches them, and fails loudly if any is missing), then do step 1 above. Its `AGENTS.md` has the detail, including the contract-drift gate that keeps its generated headers matching this repository's schemas.
 
+### The `host-natives` binaries
+
+Host (desktop) builds of native libraries that APKs carry only for Android, which the simulator
+loads in their place ([#6342](https://github.com/yschimke/compose-ai-tools/issues/6342)). Today
+that is `libandroidx.graphics.path`: androidx.graphics:graphics-path 1.0.1, which every stable
+Compose UI up to 1.12.x pins, calls `System.loadLibrary` unconditionally, so a Compose app cannot
+start a `Path.iterator()` without it. 1.1.0 needs no binary on API 34 and newer.
+
+They are **not part of this repository's release**, for the reason the `xr-composite` binaries left
+it: their sources change rarely, and republishing unchanged binaries on every release costs a
+platform matrix per release and a re-download per CLI upgrade. They have their own version line,
+[`host-natives/VERSION`](../host-natives/VERSION), and their own workflow,
+[`host-natives.yml`](../.github/workflows/host-natives.yml):
+
+- **Every change** under `host-natives/`, and every catalog change (a Robolectric bump changes the
+  native runtime the libraries run against), builds `linux-x86_64` on Ubuntu and one universal
+  arm64 + x86_64 dylib on macOS, then verifies each on its own architecture — Ubuntu,
+  `macos-latest` and `macos-15-intel` — under Robolectric at API 34, 35 and 36. The verification is
+  the standalone build in `host-natives/verify`, which the root build does not include.
+- **Publishing** is a manual dispatch with `publish` ticked, from `main`. It attaches
+  `host-natives-<platform>-<version>.tar.gz` and `SHA256SUMS` to a `host-natives-v<version>`
+  **prerelease that is never marked latest**: the bootstrap installer matches `v<X.Y.Z>` tags only,
+  the install action skips prereleases, and `/releases/latest` excludes them, so nothing that picks
+  a compose-ai-tools release can pick this one. A version that exists is never republished; bump
+  `VERSION` to publish new binaries.
+
+The sources are AndroidX's, unchanged, fetched at the commit
+[`upstream.properties`](../host-natives/graphics-path/upstream.properties) names and checked against
+`sources.sha256`. The only additions are two headers in `graphics-path/host/` that supply what
+bionic and the NDK's libc++ provide implicitly. Linux arm64 is not built, because Robolectric
+publishes no Linux arm64 native runtime for the simulator to run on.
+
 > **Editing this file while a release PR is open?** release-please branches its
 > version-bump PR from whatever `main` was when it opened, and `docs/RELEASING.md`
 > carries `x-release-please-version` blocks, so merging a stale release PR reverts
