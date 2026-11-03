@@ -329,6 +329,7 @@
       ]
     },
     {
+      "library": "zstd-jni",
       "libraryPattern": "zstd-jni-(.+)",
       "artifact": "com.github.luben:zstd-jni",
       "android": {

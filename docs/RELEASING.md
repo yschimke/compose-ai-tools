@@ -369,7 +369,11 @@ PR lands once those checks pass.
 
 **Adding a library:**
 - If it has an upstream host build, add an index entry with:
-  - `library` (the Android load name) or `libraryPattern` (a regex whose one group is the version);
+  - `library`, the Android load name. It is always required, because every released CLI reads the
+    same file and fails on the whole index without it. Add `libraryPattern`, a regex whose one group
+    is the version, when the name carries the version; it takes precedence. Any new field must be
+    optional for the same reason. `HostNativesProvisionTest` parses the index with the first
+    released CLI's model to catch this;
   - `artifact`;
   - an `android` block, naming the Android artifact the watcher reads build IDs from;
   - an `upstream` block: the repository, the JVM artifact, `since`, the library's path in the jar

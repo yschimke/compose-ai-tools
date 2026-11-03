@@ -336,7 +336,8 @@ class BuildIds(unittest.TestCase):
 
 
 class Patterns(unittest.TestCase):
-    library = {"libraryPattern": "zstd-jni-(.+)", "artifact": "com.github.luben:zstd-jni"}
+    library = {"library": "zstd-jni", "libraryPattern": "zstd-jni-(.+)",
+               "artifact": "com.github.luben:zstd-jni"}
 
     def test_a_pattern_matches_versioned_names(self):
         self.assertEqual(index.matches(self.library, "zstd-jni-1.5.7-9").group(1), "1.5.7-9")
@@ -353,7 +354,7 @@ class Patterns(unittest.TestCase):
             fetch_versions=lambda r, a: ["1.5.7-8", "1.5.7-10", "1.5.8-rc1"],
             fetch_bytes=lambda url: jar(f"linux/amd64/libzstd-jni-{url.split('/')[-2]}.so"),
         )
-        self.assertEqual(added, ["zstd-jni-(.+) 1.5.7-10 (linux-x86_64)"])
+        self.assertEqual(added, ["zstd-jni 1.5.7-10 (linux-x86_64)"])
         self.assertEqual(
             idx["libraries"][0]["builds"][0]["platforms"]["linux-x86_64"]["entry"],
             "linux/amd64/libzstd-jni-1.5.7-10.so",

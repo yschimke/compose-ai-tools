@@ -86,13 +86,13 @@ def version_key(version: str) -> tuple:
 
 def matches(library: dict, name: str) -> re.Match | None:
     """Whether a load name is [library]'s; for a pattern, the match carries the version."""
-    if "library" in library:
-        return re.fullmatch(re.escape(library["library"]), name)
-    return re.fullmatch(library["libraryPattern"], name)
+    if "libraryPattern" in library:
+        return re.fullmatch(library["libraryPattern"], name)
+    return re.fullmatch(re.escape(library["library"]), name)
 
 
 def label(library: dict) -> str:
-    return library.get("library") or library.get("libraryPattern", "?")
+    return library.get("library", "?")
 
 
 def elf_build_id(elf: bytes) -> str | None:
@@ -146,8 +146,12 @@ def validate(index: dict) -> list[str]:
     for library in index.get("libraries", []):
         name = label(library)
         where = f"library {name!r}"
-        if ("library" in library) == ("libraryPattern" in library) or name in seen:
-            errors.append(f"{where}: needs exactly one of library and libraryPattern, unique")
+        # Every entry keeps a plain `library`, even one matched by `libraryPattern`: CLIs released
+        # before patterns existed read this same file and fail on the whole index without it. Such
+        # a CLI matches `library` alone, so for a pattern entry it names no real file and is
+        # skipped. The same holds for any field added later: optional, or older CLIs break.
+        if not isinstance(library.get("library"), str) or not library["library"] or name in seen:
+            errors.append(f"{where}: needs a unique `library` (older CLIs require it)")
         seen.add(name)
         if "libraryPattern" in library:
             try:

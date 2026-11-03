@@ -47,8 +47,11 @@ object HostNativesProvision {
 
   @Serializable
   internal data class Library(
-    /** The name the app passes to `System.loadLibrary`; or, instead, [libraryPattern]. */
-    val library: String? = null,
+    /**
+     * The name the app passes to `System.loadLibrary`. Required even with [libraryPattern], which
+     * takes precedence: CLIs from before patterns parse the same index and need it.
+     */
+    val library: String,
     /** A regex over load names whose one group is the version (zstd-jni names its library so). */
     val libraryPattern: String? = null,
     /** `group:name` of the Android artifact; an AndroidX one dates the APK by its marker. */
@@ -65,7 +68,7 @@ object HostNativesProvision {
       get() = "META-INF/${artifact.replace(':', '_')}.version"
 
     val label: String
-      get() = library ?: libraryPattern ?: artifact
+      get() = library
 
     private val regex: Regex? by lazy { libraryPattern?.let(::Regex) }
 
@@ -74,9 +77,9 @@ object HostNativesProvision {
      * ("" when the name carries none).
      */
     fun match(loadName: String): String? =
-      when {
-        library != null -> "".takeIf { loadName == library }
-        else -> regex?.matchEntire(loadName)?.groupValues?.getOrNull(1)
+      when (val pattern = regex) {
+        null -> "".takeIf { loadName == library }
+        else -> pattern.matchEntire(loadName)?.groupValues?.getOrNull(1)
       }
   }
 
@@ -542,8 +545,8 @@ object HostNativesProvision {
 
   /** The load name a build's [entry] provides: the library's, else its file's (a pattern's). */
   internal fun loadNameOf(library: Library, entry: Entry): String =
-    library.library
-      ?: entry.entry.substringAfterLast('/').removePrefix("lib").substringBeforeLast('.')
+    if (library.libraryPattern == null) library.library
+    else entry.entry.substringAfterLast('/').removePrefix("lib").substringBeforeLast('.')
 
   /**
    * For `provision --host-natives`: a fresh index, and for this host either what each of [apks]

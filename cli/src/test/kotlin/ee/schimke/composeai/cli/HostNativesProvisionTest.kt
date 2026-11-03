@@ -137,6 +137,7 @@ class HostNativesProvisionTest {
       )
     val zstd =
       HostNativesProvision.Library(
+        library = "zstd-jni",
         libraryPattern = "zstd-jni-(.+)",
         artifact = "com.github.luben:zstd-jni",
         builds = listOf(Build("1.5.7-9", linux("z1")), Build("1.5.7-25", linux("z2"))),
@@ -344,6 +345,40 @@ class HostNativesProvisionTest {
       listOf(HostNativesProvision.DEFAULT_INDEX_URL, "https://example.com/other.json"),
       fetched,
     )
+  }
+
+  /**
+   * The index model as the first CLI to read `index.json` shipped it (#6412), frozen. Every CLI
+   * since fetches the same file from `main`, so a field it requires, or a type it cannot read,
+   * breaks the whole index for it, not just the new entry: a later field must be optional.
+   */
+  @kotlinx.serialization.Serializable
+  private data class V1Index(val schema: String, val libraries: List<V1Library>)
+
+  @kotlinx.serialization.Serializable
+  private data class V1Library(
+    val library: String,
+    val artifact: String,
+    val minSdk: Int = 0,
+    val fixedIn: String? = null,
+    val builds: List<V1Build> = emptyList(),
+  )
+
+  @kotlinx.serialization.Serializable
+  private data class V1Build(val version: String, val platforms: Map<String, V1Entry>)
+
+  @kotlinx.serialization.Serializable
+  private data class V1Entry(val url: String, val sha256: String, val entry: String)
+
+  @Test
+  fun `the checked-in index stays readable by the first released CLI`() {
+    var dir = File("").absoluteFile
+    while (!File(dir, "host-natives/index.json").isFile) dir = dir.parentFile ?: return
+    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    val v1 =
+      json.decodeFromString(V1Index.serializer(), File(dir, "host-natives/index.json").readText())
+    assertEquals(HostNativesProvision.SCHEMA, v1.schema)
+    assertTrue(v1.libraries.any { it.library == "sqliteJni" && it.builds.isNotEmpty() })
   }
 
   @Test
