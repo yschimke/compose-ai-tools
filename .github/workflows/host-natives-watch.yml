@@ -1,0 +1,75 @@
+name: Host Natives Watch
+
+# Keeps `host-natives/index.json` current with the upstream host builds it tracks: each library with
+# an `upstream` block (sqlite-bundled-jvm, ink-nativeloader-jvm, ...) gets every new stable version
+# on its Maven repository, hashed and checked to carry the library, in a PR for review. Libraries
+# built here move by publishing a new `host-natives-v<VERSION>` instead (`host-natives.yml`).
+#
+# `compose-preview launch` reads the index from main at run time, so merging that PR is the whole
+# release: no CLI or plugin release is involved.
+
+on:
+  schedule:
+    # Weekly; AndroidX publishes on Wednesdays.
+    - cron: "17 6 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: host-natives-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Add new upstream versions
+        id: watch
+        run: |
+          set -euo pipefail
+          python3 host-natives/index.py watch | tee added.txt
+          if [ -z "$(git status --porcelain host-natives/index.json)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the result
+        if: steps.watch.outputs.changed == 'true'
+        run: python3 host-natives/index.py check --online
+
+      - name: Open a pull request
+        if: steps.watch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # agent/ is the house branch prefix, and it is CI-enforced: see AGENTS.md.
+          branch="agent/host-natives-watch-$(date -u +%Y%m%d)"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; leaving it for review"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add host-natives/index.json
+          git commit -q -m "chore: add new upstream host-natives versions"
+          git push -u origin "$branch"
+          {
+            echo "New upstream host builds for \`host-natives/index.json\`, found by \`host-natives/index.py watch\` and checked online (each archive downloads, matches its sha256 and carries the library):"
+            echo
+            sed 's/^/- /' added.txt
+            echo
+            echo "\`compose-preview launch\` reads the index from main, so merging this is what ships them."
+          } > body.md
+          gh pr create --title "chore: add new upstream host-natives versions" --body-file body.md \
+            --base main --head "$branch"

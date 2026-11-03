@@ -1,21 +1,23 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.HostNativesProvision.Build
+import ee.schimke.composeai.cli.HostNativesProvision.Entry
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** [HostNativesProvision], with the fetch seam faked: no network. */
 class HostNativesProvisionTest {
   private val tmp = Files.createTempDirectory("host-natives-test-").toFile()
-  private val env: (String) -> String? = { if (it == "XDG_CACHE_HOME") tmp.absolutePath else null }
+  private val cache = File(tmp, "cache")
+  private val env: (String) -> String? = { if (it == "XDG_CACHE_HOME") cache.path else null }
 
   @AfterTest
   fun cleanup() {
@@ -23,32 +25,99 @@ class HostNativesProvisionTest {
   }
 
   @Test
-  fun `platform token maps host-natives yml's build matrix`() {
+  fun `platform tokens name os and architecture`() {
     assertEquals("linux-x86_64", HostNativesProvision.platformToken("Linux", "amd64"))
-    assertEquals("linux-x86_64", HostNativesProvision.platformToken("Linux", "x86_64"))
-    // One universal dylib serves both Mac architectures.
-    assertEquals("macos-universal", HostNativesProvision.platformToken("Mac OS X", "aarch64"))
-    assertEquals("macos-universal", HostNativesProvision.platformToken("Mac OS X", "x86_64"))
-    assertNull(HostNativesProvision.platformToken("Linux", "aarch64"))
-    assertNull(HostNativesProvision.platformToken("Windows 11", "amd64"))
+    assertEquals("linux-arm64", HostNativesProvision.platformToken("Linux", "aarch64"))
+    assertEquals("macos-arm64", HostNativesProvision.platformToken("Mac OS X", "aarch64"))
+    assertEquals("macos-x86_64", HostNativesProvision.platformToken("Mac OS X", "x86_64"))
+    assertEquals("windows-x86_64", HostNativesProvision.platformToken("Windows 11", "amd64"))
+    assertNull(HostNativesProvision.platformToken("Linux", "riscv64"))
+    assertEquals("libsqliteJni.dylib", HostNativesProvision.fileName("sqliteJni", "macos-arm64"))
+    assertEquals("sqliteJni.dll", HostNativesProvision.fileName("sqliteJni", "windows-x86_64"))
   }
+
+  private fun build(version: String) = Build(version, emptyMap())
 
   @Test
-  fun `asset url is the host-natives prerelease of this repository`() {
-    // Spelled out: this literal is the contract with host-natives.yml's publish job.
-    assertEquals(
-      "https://github.com/yschimke/compose-ai-tools/releases/download/" +
-        "host-natives-v1.0.0/host-natives-macos-universal-1.0.0.tar.gz",
-      HostNativesProvision.assetUrl("1.0.0", "macos-universal"),
-    )
-    assertEquals(
-      File("/home/u/.cache/composeai/host-natives/1.0.0/linux-x86_64"),
-      HostNativesProvision.cacheDir("1.0.0", "linux-x86_64", env = { null }, userHome = "/home/u"),
-    )
+  fun `the exact version wins, else the nearest older, else the nearest newer`() {
+    val builds = listOf(build("2.5.0"), build("2.6.2"), build("2.7.1"))
+    assertEquals("2.6.2", HostNativesProvision.chooseBuild(builds, "2.6.2")?.version)
+    assertEquals("2.7.1", HostNativesProvision.chooseBuild(builds, "2.8.0-alpha03")?.version)
+    assertEquals("2.6.2", HostNativesProvision.chooseBuild(builds, "2.7.0")?.version)
+    assertEquals("2.5.0", HostNativesProvision.chooseBuild(builds, "2.4.0")?.version)
+    assertEquals("2.7.1", HostNativesProvision.chooseBuild(builds, null)?.version)
+    assertNull(HostNativesProvision.chooseBuild(emptyList(), "1.0.0"))
   }
 
-  private fun apk(vararg entries: Pair<String, String>): File {
-    val file = File(tmp, "app-${entries.size}-${System.nanoTime()}.apk")
+  private val index =
+    HostNativesProvision.Index(
+      HostNativesProvision.SCHEMA,
+      listOf(
+        HostNativesProvision.Library(
+          library = "androidx.graphics.path",
+          artifact = "androidx.graphics:graphics-path",
+          minSdk = 34,
+          fixedIn = "1.1.0",
+          builds =
+            listOf(
+              Build(
+                "1.0.1",
+                mapOf("linux-x86_64" to Entry("https://x/gp.tar.gz", "a".repeat(64), "lib.so")),
+              )
+            ),
+        ),
+        HostNativesProvision.Library(
+          library = "sqliteJni",
+          artifact = "androidx.sqlite:sqlite-bundled",
+          builds =
+            listOf(
+              Build(
+                "2.6.2",
+                mapOf("linux-x86_64" to Entry("https://x/s.jar", "b".repeat(64), "n/lib.so")),
+              ),
+              Build(
+                "2.7.1",
+                mapOf("macos-arm64" to Entry("https://x/s2.jar", "c".repeat(64), "n/lib.dylib")),
+              ),
+            ),
+        ),
+      ),
+    )
+
+  private fun natives(libraries: Set<String>, versions: Map<String, String> = emptyMap()) =
+    HostNativesProvision.ApkNatives(libraries, versions)
+
+  @Test
+  fun `plan matches carried libraries, honours minSdk and fixedIn, and picks per platform`() {
+    val logs = mutableListOf<String>()
+    val apk =
+      natives(
+        setOf("androidx.graphics.path", "sqliteJni", "other"),
+        mapOf(
+          "META-INF/androidx.graphics_graphics-path.version" to "1.0.1",
+          "META-INF/androidx.sqlite_sqlite-bundled.version" to "2.7.1",
+        ),
+      )
+    val plan = HostNativesProvision.plan(apk, 35, index, "linux-x86_64") { logs += it }
+    assertEquals(listOf("1.0.1", "2.6.2"), plan.map { it.build.version })
+    // 2.7.1 has no Linux build, so the nearest that does, said out loud.
+    assertTrue(logs.single().contains("using 2.6.2's"), logs.toString())
+    // Below graphics-path's minSdk only sqlite remains.
+    assertEquals(
+      listOf("sqliteJni"),
+      HostNativesProvision.plan(apk, 33, index, "linux-x86_64").map { it.library.library },
+    )
+    // graphics-path 1.1.0 loads nothing off Android.
+    val fixed =
+      natives(
+        setOf("androidx.graphics.path"),
+        mapOf("META-INF/androidx.graphics_graphics-path.version" to "1.1.0"),
+      )
+    assertEquals(emptyList(), HostNativesProvision.plan(fixed, 35, index, "linux-x86_64"))
+  }
+
+  private fun zip(file: File, vararg entries: Pair<String, String>): File {
+    file.parentFile.mkdirs()
     ZipOutputStream(file.outputStream()).use { zip ->
       for ((name, content) in entries) {
         zip.putNextEntry(ZipEntry(name))
@@ -59,112 +128,123 @@ class HostNativesProvisionTest {
     return file
   }
 
-  @Test
-  fun `an APK carrying graphics-path 1_0_1 needs the host build at API 34 and up`() {
-    val app =
-      apk(
-        "lib/arm64-v8a/libandroidx.graphics.path.so" to "",
-        HostNativesProvision.GRAPHICS_PATH_VERSION_FILE to "1.0.1\n",
-      )
-    assertEquals(setOf("androidx.graphics.path"), HostNativesProvision.neededBy(app))
-    assertTrue(HostNativesProvision.wanted(app, 34))
-    assertTrue(HostNativesProvision.wanted(app, 36))
-    // Below 34 graphics-path reaches the Skia-layout code the host build does not serve.
-    assertFalse(HostNativesProvision.wanted(app, 33))
-  }
-
-  @Test
-  fun `an unverified graphics-path version, or none carried, needs nothing`() {
-    val newer =
-      apk(
-        "lib/x86_64/libandroidx.graphics.path.so" to "",
-        HostNativesProvision.GRAPHICS_PATH_VERSION_FILE to "1.1.0",
-      )
-    assertEquals(emptySet(), HostNativesProvision.neededBy(newer))
-    assertEquals(emptySet(), HostNativesProvision.neededBy(apk("lib/x86_64/libother.so" to "")))
-    // No version marker: the library is still the only build that loads at all.
-    assertEquals(
-      setOf("androidx.graphics.path"),
-      HostNativesProvision.neededBy(apk("lib/x86_64/libandroidx.graphics.path.so" to "")),
-    )
-    assertEquals(emptySet(), HostNativesProvision.neededBy(File(tmp, "missing.apk")))
-  }
-
-  private fun makeTarball(dest: File, withLibrary: Boolean = true) {
-    val staging = File(tmp, "stage-${System.nanoTime()}").apply { mkdirs() }
-    File(staging, HostNativesProvision.PROPERTIES)
-      .writeText(
-        "version=1.0.0\nplatform=linux-x86_64\ngraphics-path.library=libandroidx.graphics.path.so\n"
-      )
-    if (withLibrary) File(staging, "libandroidx.graphics.path.so").writeText("elf")
-    val p =
-      ProcessBuilder("tar", "-czf", dest.absolutePath, "-C", staging.absolutePath, ".")
-        .redirectErrorStream(true)
-        .start()
-    check(p.waitFor() == 0) { "tar pack failed" }
-  }
-
-  @Test
-  fun `ensureCached unpacks once and then serves the cache`() {
-    val urls = mutableListOf<String>()
-    val fetcher = HostNativesProvision.Fetcher { url, dest ->
-      urls += url
-      makeTarball(dest)
+  private fun sha256(file: File) =
+    MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") {
+      "%02x".format(it)
     }
-    fun provision() =
-      HostNativesProvision.ensureCached(
-        "1.0.0",
+
+  @Test
+  fun `libraryDirs fetches the index and the build, renames it, and caches both`() {
+    val jar = zip(File(tmp, "served/sqlite.jar"), "natives/linux_x64/libsqliteJni.so" to "elf")
+    val indexJson =
+      """
+      {"schema": "${HostNativesProvision.SCHEMA}", "libraries": [
+        {"library": "sqliteJni", "artifact": "androidx.sqlite:sqlite-bundled",
+         "upstream": {"ignored": true},
+         "builds": [{"version": "2.6.2", "platforms": {"linux-x86_64": {
+           "url": "https://maven/sqlite.jar", "sha256": "${sha256(jar)}",
+           "entry": "natives/linux_x64/libsqliteJni.so"}}}]}]}
+      """
+    val fetched = mutableListOf<String>()
+    val fetcher = HostNativesProvision.Fetcher { url, dest ->
+      fetched += url
+      if (url.endsWith("index.json")) dest.writeText(indexJson) else jar.copyTo(dest, true)
+    }
+    val apk =
+      zip(
+        File(tmp, "app.apk"),
+        "lib/arm64-v8a/libsqliteJni.so" to "",
+        "META-INF/androidx.sqlite_sqlite-bundled.version" to "2.6.2",
+      )
+    fun dirs() =
+      HostNativesProvision.libraryDirs(
+        apk,
+        35,
         fetcher,
         env = env,
         log = {},
         noNetwork = false,
         platform = "linux-x86_64",
       )
-    val dir = provision()
-    assertEquals(File(tmp, "composeai/host-natives/1.0.0/linux-x86_64"), dir)
-    assertTrue(File(dir, "libandroidx.graphics.path.so").isFile)
-    assertEquals(dir, provision())
-    assertEquals(1, urls.size)
-  }
-
-  @Test
-  fun `an incomplete tarball or a failed fetch skips`() {
-    val logs = mutableListOf<String>()
-    assertNull(
-      HostNativesProvision.ensureCached(
-        "1.0.0",
-        { _, dest -> makeTarball(dest, withLibrary = false) },
-        env = env,
-        log = { logs += it },
-        noNetwork = false,
-        platform = "linux-x86_64",
-      )
-    )
-    assertNull(
-      HostNativesProvision.ensureCached(
-        "1.0.0",
-        { _, _ -> error("HTTP 404") },
-        env = env,
-        log = { logs += it },
-        noNetwork = false,
-        platform = "linux-x86_64",
-      )
-    )
-    assertTrue(logs.last().contains("HTTP 404"), logs.toString())
-    assertFalse(File(tmp, "composeai/host-natives/1.0.0/linux-x86_64").exists())
-  }
-
-  @Test
-  fun `the network switch refuses an uncached copy`() {
-    assertFailsWith<NetworkDisabledException> {
-      HostNativesProvision.ensureCached(
-        "1.0.0",
-        { _, _ -> error("must not fetch") },
+    val first = dirs()
+    assertTrue(File(first.single(), "libsqliteJni.so").isFile, first.toString())
+    assertEquals(first, dirs())
+    assertEquals(2, fetched.size, "the index and the jar, once each: $fetched")
+    // Offline from here on still works, from the cache.
+    assertEquals(
+      first,
+      HostNativesProvision.libraryDirs(
+        apk,
+        35,
+        { _, _ -> error("offline") },
         env = env,
         log = {},
         noNetwork = true,
         platform = "linux-x86_64",
+      ),
+    )
+  }
+
+  @Test
+  fun `a hash mismatch, an APK without natives, and no index all skip`() {
+    val jar = zip(File(tmp, "served/x.jar"), "lib.so" to "elf")
+    val logs = mutableListOf<String>()
+    val choice =
+      HostNativesProvision.Choice(
+        index.libraries[1],
+        index.libraries[1].builds[0],
+        Entry("https://x/x.jar", "0".repeat(64), "lib.so"),
+        "2.6.2",
       )
-    }
+    assertNull(
+      HostNativesProvision.ensureFile(
+        cache,
+        choice,
+        "linux-x86_64",
+        { _, dest -> jar.copyTo(dest, true) },
+        noNetwork = false,
+      ) {
+        logs += it
+      }
+    )
+    assertTrue(logs.single().contains("the index says"), logs.toString())
+
+    var fetches = 0
+    val plain = zip(File(tmp, "plain.apk"), "classes.dex" to "")
+    assertEquals(
+      emptyList(),
+      HostNativesProvision.libraryDirs(
+        plain,
+        35,
+        { _, _ -> fetches++ },
+        env = env,
+        log = {},
+        noNetwork = false,
+        platform = "linux-x86_64",
+      ),
+    )
+    assertEquals(0, fetches, "an APK with no native code needs no index")
+
+    val native = zip(File(tmp, "native.apk"), "lib/x86_64/libsqliteJni.so" to "")
+    assertEquals(
+      emptyList(),
+      HostNativesProvision.libraryDirs(
+        native,
+        35,
+        { _, _ -> error("HTTP 404") },
+        env = env,
+        log = {},
+        noNetwork = false,
+        platform = "linux-x86_64",
+      ),
+    )
+  }
+
+  @Test
+  fun `the checked-in index parses`() {
+    var dir = File("").absoluteFile
+    while (!File(dir, "host-natives/index.json").isFile) dir = dir.parentFile ?: return
+    val parsed = HostNativesProvision.parseIndex(File(dir, "host-natives/index.json").readText())
+    assertTrue(parsed.libraries.any { it.library == "androidx.graphics.path" })
   }
 }

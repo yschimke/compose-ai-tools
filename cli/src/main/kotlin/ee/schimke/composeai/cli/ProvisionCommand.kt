@@ -149,13 +149,7 @@ internal class ProvisionCommand(
     if (Part.HOST_NATIVES in parts) {
       attempt(Part.HOST_NATIVES, "host-natives") {
         val dir = steps.hostNatives() ?: error("could not provision host-natives (see above)")
-        ProvisionedItem(
-          "host_natives",
-          "host-natives",
-          ok = true,
-          path = dir.absolutePath,
-          version = HOST_NATIVES_VERSION,
-        )
+        ProvisionedItem("host_natives", "host-natives", ok = true, path = dir.absolutePath)
       }
     }
 
@@ -267,7 +261,8 @@ internal class ProvisionCommand(
         --server       the preview server (serve, browse, ui-builder)
         --mcp          the MCP server (mcp serve)
         --xr           the XR compositor (XR previews)
-        --host-natives host builds of APK native libraries (launch, API 34+)
+        --host-natives host builds of APK native libraries for launch: the index and
+                       every build it lists for this host
         --all          every part above
         --android-sdk  API levels to fetch android-all for (repeatable or comma-separated);
                        a Gradle module renders on its compileSdk, a Bazel target on its own
@@ -361,7 +356,7 @@ internal interface ProvisionSteps {
 
     override fun xr(): File? = XrCompositeProvision.ensureCached(XR_COMPOSITE_VERSION)
 
-    override fun hostNatives(): File? = HostNativesProvision.ensureCached(HOST_NATIVES_VERSION)
+    override fun hostNatives(): File? = HostNativesProvision.provisionAll()
 
     override fun cacheRoot(): File = DaemonSidecarProvision.defaultCacheRoot().parentFile
   }

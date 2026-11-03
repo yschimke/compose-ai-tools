@@ -328,12 +328,27 @@ platform matrix per release and a re-download per CLI upgrade. They have their o
   the install action skips prereleases, and `/releases/latest` excludes them, so nothing that picks
   a compose-ai-tools release can pick this one. A version that exists is never republished; bump
   `VERSION` to publish new binaries.
-- **Consuming** is by the `host-natives` pin in `gradle/libs.versions.toml`, baked into the CLI as
-  `HOST_NATIVES_VERSION`: `compose-preview launch` fetches `host-natives-v<pin>` into
-  `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives/<pin>/<platform>` (`HostNativesProvision`).
-  So publishing does not ship anything by itself: move the pin after the release exists. The `XR
-  Composite Pin` CI job runs `check_host_natives_pin.py`, which fails a PR whose pin names no
-  release, or one missing a platform tarball or `SHA256SUMS`.
+- **Consuming** is through [`host-natives/index.json`](../host-natives/index.json), which
+  `compose-preview launch` reads from `main` at run time (`HostNativesProvision`). The CLI bundles
+  no binaries and no versions, so no CLI release is involved. The index maps each library to its
+  builds, either this line's tarballs or a library's own upstream JVM artifact on Maven, each
+  with a URL, a sha256 and the library's path inside the archive. The launch takes the build at the
+  APK's AndroidX version, or the nearest one when there is no exact match.
+- **Keeping it current** is [`host-natives/index.py`](../host-natives/index.py):
+  - The publish job runs `add-release` and opens a PR adding the new tarballs to the index.
+    Publishing ships nothing until that PR merges.
+  - [`host-natives-watch.yml`](../.github/workflows/host-natives-watch.yml) runs `watch` weekly.
+    For every library with an `upstream` block it adds each new stable version and opens a PR.
+  - The `Index` job of `host-natives.yml` checks every change: each archive downloads, matches its
+    sha256 and carries the library.
+
+  Those PRs are opened with `GITHUB_TOKEN`, so CI does not start on them by itself; push to the
+  branch or re-run from the Actions tab.
+- **Adding a library** takes one entry in the index. If it has an upstream host build, add an
+  `upstream` block (repository, JVM artifact, `since`, and the library's path for each platform),
+  then run `index.py watch`. If it has none, add a recipe beside `graphics-path/` and its own
+  verification, build it on this line, and point the entry's `release.property` at the key
+  `build.sh` writes.
 
 The sources are AndroidX's, unchanged, fetched at the commit
 [`upstream.properties`](../host-natives/graphics-path/upstream.properties) names and checked against

@@ -87,6 +87,7 @@ version=$version
 platform=$platform
 graphics-path.commit=$commit
 graphics-path.library=$(basename "$lib")
+graphics-path.version=$(prop verified)
 EOF
 cat >"$out/NOTICE" <<EOF
 lib$library is built from AndroidX's graphics-path native sources, unchanged:

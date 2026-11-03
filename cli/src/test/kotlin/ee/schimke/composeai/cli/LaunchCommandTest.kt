@@ -421,11 +421,11 @@ class LaunchCommandTest {
   fun `host natives lead java library path, and a user's own setting wins`() {
     val libraryPath =
       LaunchCommand.withJvmLibraryPath(
-        File("/cache/host-natives/1.0.0/linux-x86_64"),
+        listOf(File("/cache/host-natives/files/ab/linux-x86_64")),
         listOf("/usr/lib64", "", "/lib").joinToString(File.pathSeparator),
       )
     assertEquals(
-      listOf(File("/cache/host-natives/1.0.0/linux-x86_64").path, "/usr/lib64", "/lib"),
+      listOf(File("/cache/host-natives/files/ab/linux-x86_64").path, "/usr/lib64", "/lib"),
       libraryPath,
     )
     fun command(libraryPath: List<String>, jvmOptions: List<String> = emptyList()) =

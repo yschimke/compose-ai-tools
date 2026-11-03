@@ -591,8 +591,6 @@ val generateCliVersionResource =
     // installed CLI can't read the catalog; the plugin bakes the same value. See
     // `XrCompositeProvision`.
     val xrCompositeVersion = libs.versions.xr.composite.get()
-    // The `host-natives` release `HostNativesProvision` fetches; a catalog pin, as above.
-    val hostNativesVersion = libs.versions.host.natives.get()
     // The version of this repository's Maven artifacts the CLI asks Gradle for (auto-injected
     // plugin, `doctor` recommendations). Separate from `cliVersion` because a release may not
     // publish to Central; CI sets MAVEN_LINE_VERSION to the last published version. `takeIf {
@@ -628,7 +626,6 @@ val generateCliVersionResource =
           .orEmpty()
     inputs.property("version", cliVersion)
     inputs.property("xrCompositeVersion", xrCompositeVersion)
-    inputs.property("hostNativesVersion", hostNativesVersion)
     inputs.property("mavenLineVersion", mavenLineVersion)
     inputs.property("previewDaemonVersion", previewDaemonVersion)
     inputs.property("releaseEpochSeconds", releaseEpochSeconds)
@@ -639,7 +636,6 @@ val generateCliVersionResource =
       file.writeText(
         "version=$cliVersion\n" +
           "xrCompositeVersion=$xrCompositeVersion\n" +
-          "hostNativesVersion=$hostNativesVersion\n" +
           "mavenLineVersion=$mavenLineVersion\n" +
           "previewDaemonVersion=$previewDaemonVersion\n" +
           "releaseEpochSeconds=$releaseEpochSeconds\n"

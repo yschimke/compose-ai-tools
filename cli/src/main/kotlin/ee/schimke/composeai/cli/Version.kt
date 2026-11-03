@@ -18,13 +18,6 @@ internal val BUNDLE_VERSION: String by lazy { cliVersionProperty("version") }
 internal val XR_COMPOSITE_VERSION: String by lazy { cliVersionProperty("xrCompositeVersion") }
 
 /**
- * Release of this repository's `host-natives` line ([HostNativesProvision]), the
- * `host-natives-v<version>` prerelease: the `host-natives` catalog pin, not [BUNDLE_VERSION].
- * `check_host_natives_pin.py` verifies the pinned release and its tarballs exist.
- */
-internal val HOST_NATIVES_VERSION: String by lazy { cliVersionProperty("hostNativesVersion") }
-
-/**
  * Version of this repository's Maven artifacts the CLI resolves: the auto-injected plugin and the
  * coordinate `doctor` recommends. Not [BUNDLE_VERSION], because a release may skip publishing to
  * Central, and injecting an unpublished version would break every consumer. Baked from the

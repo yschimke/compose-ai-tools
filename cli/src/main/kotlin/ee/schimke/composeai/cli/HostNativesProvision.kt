@@ -7,68 +7,93 @@ import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.util.Properties
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipFile
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
- * Provisions the host (desktop) builds of native libraries that APKs carry only for Android, which
- * `compose-preview launch` puts on the simulator JVM's `java.library.path` in place of the APK's
- * `lib/<abi>/` libraries (#6342, #6411). They are published from this repository on their own
- * release line, `host-natives-v<version>` (`host-natives.yml`; `docs/RELEASING.md`, "The
- * host-natives binaries"), and the version fetched is the `host-natives` catalog pin
- * ([HOST_NATIVES_VERSION]).
+ * Host (desktop) builds of the native libraries an APK carries only for Android, which `launch`
+ * puts on the simulator JVM's `java.library.path` in place of the APK's `lib/<abi>/` copies
+ * (#6342, #6411).
  *
- * Today that is one library, AndroidX graphics-path's `libandroidx.graphics.path`: graphics-path
- * 1.0.1, which every stable Compose UI up to 1.12.x pins, loads it unconditionally, so a Compose
- * app fails at its first `Path.iterator()` without it.
+ * Nothing is bundled and no version is baked in. The CLI reads an index at run time
+ * (`host-natives/index.json` on this repository's `main`, or [INDEX_ENV]) that maps each library to
+ * its host builds. A build is an archive per platform, either a `host-natives-v<n>` release from
+ * `host-natives.yml` or a library's own JVM artifact on Maven, with its sha256 and the library's
+ * path inside it. `host-natives/index.py` maintains the index, and scheduled workflows add new
+ * versions to it. See `docs/RELEASING.md`, "The host-natives binaries".
  *
- * Shaped like [XrCompositeProvision]: one tarball per platform, unpacked into a per-version cache
- * through a staging directory and an atomic move; any failure logs and skips, so the launch keeps
- * today's clear `UnsatisfiedLinkError`; under [NetworkPolicy]'s switch an uncached copy refuses.
+ * The build chosen for an APK is the one at its exact AndroidX version when the index has it, and
+ * otherwise the nearest, which may well work and is better than the certain failure without one.
+ * Every skip or failure logs one line, and the launch carries on with the APK's
+ * `UnsatisfiedLinkError` as before.
  */
 object HostNativesProvision {
-  /** The properties file every tarball carries, naming its version, platform and libraries. */
-  internal const val PROPERTIES = "host-natives.properties"
+  /** Overrides the index location: an `https://` URL or a local file. */
+  const val INDEX_ENV = "COMPOSE_PREVIEW_HOST_NATIVES_INDEX"
+
+  internal const val DEFAULT_INDEX_URL =
+    "https://raw.githubusercontent.com/$REPO/main/host-natives/index.json"
+
+  /** How long a fetched index is used before it is fetched again. */
+  internal const val INDEX_MAX_AGE_MS = 24L * 60 * 60 * 1000
+
+  internal const val SCHEMA = "compose-preview-host-natives/v1"
+
+  @Serializable internal data class Index(val schema: String, val libraries: List<Library>)
+
+  @Serializable
+  internal data class Library(
+    /** The name the app passes to `System.loadLibrary`. */
+    val library: String,
+    /** `group:name` of the Android artifact, whose `META-INF/<group>_<name>.version` dates it. */
+    val artifact: String,
+    /** The lowest simulated API level a build serves. */
+    val minSdk: Int = 0,
+    /** The first version that no longer loads the library off Android, so needs none. */
+    val fixedIn: String? = null,
+    val builds: List<Build> = emptyList(),
+  ) {
+    val versionMarker: String
+      get() = "META-INF/${artifact.replace(':', '_')}.version"
+  }
+
+  @Serializable internal data class Build(val version: String, val platforms: Map<String, Entry>)
+
+  @Serializable internal data class Entry(val url: String, val sha256: String, val entry: String)
+
+  /** One library to provide: [build]'s [entry], chosen for an APK at [apkVersion]. */
+  internal data class Choice(
+    val library: Library,
+    val build: Build,
+    val entry: Entry,
+    val apkVersion: String?,
+  ) {
+    val exact: Boolean
+      get() = apkVersion == build.version
+  }
 
   /**
-   * The libraries the published tarballs provide, keyed by the name the APK's code passes to
-   * `System.loadLibrary`, each with the properties key naming its file in the tarball.
-   */
-  internal val LIBRARIES = mapOf("androidx.graphics.path" to "graphics-path.library")
-
-  /**
-   * graphics-path versions the host build is verified against (`host-natives/verify`). A wrong
-   * version is worse than none — it loads, then fails at a random JNI call — so an APK naming any
-   * other version gets nothing. 1.1.0 and later load the library only on Dalvik and need none.
-   */
-  internal val GRAPHICS_PATH_VERSIONS = setOf("1.0.1")
-
-  /** AndroidX's version marker for graphics-path in an APK. */
-  internal const val GRAPHICS_PATH_VERSION_FILE = "META-INF/androidx.graphics_graphics-path.version"
-
-  /**
-   * The lowest simulated API level the host build serves. Below API 34, graphics-path walks paths
-   * with code tied to Skia's `SkPathRef` layout, while the host build's stand-in `api-level.h`
-   * reports 34; those launches keep the `UnsatisfiedLinkError`.
-   */
-  internal const val MIN_SDK = 34
-
-  /**
-   * Platform token from `os.name` / `os.arch`, matching `host-natives.yml`'s build matrix:
-   * - linux + x86_64/amd64 → `linux-x86_64`
-   * - mac, any architecture → `macos-universal` (one arm64 + x86_64 dylib)
-   *
-   * Null for anything else, Linux arm64 included: Robolectric publishes no native runtime there for
-   * the simulator to run on. Pure for testing.
+   * Platform token from `os.name` / `os.arch`, as the index keys builds. Null for a host no build
+   * can target. Pure for testing.
    */
   internal fun platformToken(osName: String, osArch: String): String? {
     val os = osName.lowercase()
-    val arch = osArch.lowercase()
+    val arch =
+      when (osArch.lowercase()) {
+        "x86_64",
+        "amd64" -> "x86_64"
+        "aarch64",
+        "arm64" -> "arm64"
+        else -> return null
+      }
     return when {
-      os.contains("linux") && (arch == "x86_64" || arch == "amd64") -> "linux-x86_64"
-      os.contains("mac") || os.contains("darwin") -> "macos-universal"
+      os.contains("linux") -> "linux-$arch"
+      os.contains("mac") || os.contains("darwin") -> "macos-$arch"
+      os.contains("windows") && arch == "x86_64" -> "windows-x86_64"
       else -> null
     }
   }
@@ -76,88 +101,100 @@ object HostNativesProvision {
   internal fun currentPlatformToken(): String? =
     platformToken(System.getProperty("os.name") ?: "", System.getProperty("os.arch") ?: "")
 
-  /** Release asset filename, `host-natives-<platform>-<version>.tar.gz`, as `build.sh` packs it. */
-  internal fun assetName(version: String, platform: String): String =
-    "host-natives-$platform-$version.tar.gz"
-
-  /** Download URL: the `host-natives-v<version>` prerelease of [REPO], not a `v<version>` tag. */
-  internal fun assetUrl(version: String, platform: String): String =
-    "https://github.com/$REPO/releases/download/host-natives-v$version/" +
-      assetName(version, platform)
+  /** `System.mapLibraryName` for [platform]: what the app's `loadLibrary(name)` looks for. */
+  internal fun fileName(library: String, platform: String): String =
+    when {
+      platform.startsWith("macos") -> "lib$library.dylib"
+      platform.startsWith("windows") -> "$library.dll"
+      else -> "lib$library.so"
+    }
 
   /**
-   * `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives/<version>/<platform>`. [env]/[userHome] are
-   * injectable for tests.
+   * The build of [builds] for an APK at [version]: the exact one, else the newest older one, else
+   * the oldest newer one; the newest when the version is unknown. Null when there are none.
    */
-  internal fun cacheDir(
-    version: String,
+  internal fun chooseBuild(builds: List<Build>, version: String?): Build? {
+    if (builds.isEmpty()) return null
+    val sorted = builds.sortedWith { a, b -> compareSemver(a.version, b.version) }
+    if (version == null) return sorted.last()
+    sorted
+      .firstOrNull { it.version == version }
+      ?.let {
+        return it
+      }
+    return sorted.lastOrNull { compareSemver(it.version, version) < 0 }
+      ?: sorted.firstOrNull { compareSemver(it.version, version) > 0 }
+  }
+
+  /** The native library names an APK carries, and the AndroidX version markers it has. */
+  internal data class ApkNatives(val libraries: Set<String>, val versions: Map<String, String>)
+
+  internal fun readApk(apk: File): ApkNatives? = runCatching {
+    ZipFile(apk).use { zip ->
+      val names = zip.entries().asSequence().map { it.name }.toList()
+      val libraries =
+        names
+          .filter { it.startsWith("lib/") && it.endsWith(".so") }
+          .map { it.substringAfterLast('/').removePrefix("lib").removeSuffix(".so") }
+          .toSet()
+      val versions =
+        names
+          .filter { it.startsWith("META-INF/") && it.endsWith(".version") }
+          .associateWith { name ->
+            zip.getInputStream(zip.getEntry(name)).use { it.readBytes().decodeToString().trim() }
+          }
+      ApkNatives(libraries, versions)
+    }
+  }
+    .getOrNull()
+
+  /**
+   * What [apk] at [sdk] gets on [platform] from [index]: one [Choice] per library it carries that
+   * the index has a build of. Pure for testing, and logs each inexact match.
+   */
+  internal fun plan(
+    apk: ApkNatives,
+    sdk: Int,
+    index: Index,
     platform: String,
+    log: (String) -> Unit = {},
+  ): List<Choice> =
+    index.libraries.mapNotNull { library ->
+      if (library.library !in apk.libraries || sdk < library.minSdk) return@mapNotNull null
+      val version = apk.versions[library.versionMarker]
+      if (version != null && library.fixedIn != null) {
+        if (compareSemver(version, library.fixedIn) >= 0) return@mapNotNull null
+      }
+      val build =
+        chooseBuild(library.builds.filter { platform in it.platforms }, version)
+          ?: return@mapNotNull null
+      Choice(library, build, build.platforms.getValue(platform), version).also {
+        if (!it.exact) {
+          log(
+            "host-natives: no ${library.library} build for ${library.artifact} " +
+              "${version ?: "(version unknown)"} on $platform; using ${build.version}'s, which " +
+              "may not match"
+          )
+        }
+      }
+    }
+
+  /** `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives`. */
+  internal fun cacheRoot(
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
   ): File {
     val xdg = env("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
     val base = if (xdg != null) File(xdg) else File(userHome, ".cache")
-    return File(base, "composeai/host-natives/$version/$platform")
+    return File(base, "composeai/host-natives")
   }
-
-  /**
-   * Whether [dir] holds a complete layout: [PROPERTIES] and every library it names for [LIBRARIES].
-   * A partial extraction is re-provisioned rather than trusted forever.
-   */
-  internal fun isComplete(dir: File): Boolean {
-    val file = File(dir, PROPERTIES)
-    if (!file.isFile) return false
-    val properties = Properties().apply { file.inputStream().use { load(it) } }
-    return LIBRARIES.values.all { key ->
-      val name = properties.getProperty(key)?.trim()
-      !name.isNullOrEmpty() && File(dir, name).isFile
-    }
-  }
-
-  /**
-   * Which of [LIBRARIES] [apk] needs a host build of: those it carries under `lib/<abi>/`, at a
-   * verified version. graphics-path's version comes from AndroidX's `META-INF` marker; an APK
-   * without one (stripped by its build) still gets the library, since a 1.1.0+ APK never loads it
-   * off Dalvik, and anything else fails the same way without it. Empty when the APK cannot be read.
-   */
-  internal fun neededBy(apk: File): Set<String> = runCatching {
-    ZipFile(apk).use { zip ->
-      val carried =
-        zip
-          .entries()
-          .asSequence()
-          .map { it.name }
-          .filter { it.startsWith("lib/") && it.endsWith(".so") }
-          .map { it.substringAfterLast('/').removePrefix("lib").removeSuffix(".so") }
-          .toSet()
-      val graphicsPathVersion =
-        zip.getEntry(GRAPHICS_PATH_VERSION_FILE)?.let { entry ->
-          zip.getInputStream(entry).use { it.readBytes().decodeToString().trim() }
-        }
-      LIBRARIES.keys
-        .filter { it in carried }
-        .filter { name ->
-          name != "androidx.graphics.path" ||
-            graphicsPathVersion == null ||
-            graphicsPathVersion in GRAPHICS_PATH_VERSIONS
-        }
-        .toSet()
-    }
-  }
-    .getOrDefault(emptySet())
-
-  /** Whether a launch of [apk] at [sdk] should get the host builds. */
-  internal fun wanted(apk: File, sdk: Int): Boolean = sdk >= MIN_SDK && neededBy(apk).isNotEmpty()
 
   /** Fetch seam for tests. [fetchTo] downloads [url], throwing on non-2xx or network errors. */
   fun interface Fetcher {
     fun fetchTo(url: String, dest: File)
   }
 
-  /** Default fetcher: Ktor over OkHttp (follows redirects), streaming the body to disk. */
   internal val defaultFetcher = Fetcher { url, dest ->
-    // A backstop; [ensureCached] refuses first, naming the directory to pre-provision.
-    NetworkPolicy.require("Downloading $url", "Pre-provision the file it names.")
     ktorOkHttpClient().use { client ->
       runBlocking {
         client.prepareGet(url).execute { response ->
@@ -168,16 +205,177 @@ object HostNativesProvision {
     }
   }
 
+  private val json = Json { ignoreUnknownKeys = true }
+
+  internal fun parseIndex(text: String): Index =
+    json.decodeFromString(Index.serializer(), text).also {
+      require(it.schema == SCHEMA) { "unknown index schema ${it.schema}" }
+    }
+
   /**
-   * Ensure the cache holds the [version] + host-platform libraries, fetching when absent. Returns
-   * the directory to put on `java.library.path`, or null (with a one-line note) on any skip or
-   * failure. Under [NetworkPolicy]'s switch ([noNetwork]) an uncached copy throws
-   * [NetworkDisabledException].
-   *
-   * @param version the pinned `host-natives` release ([HOST_NATIVES_VERSION]), not the CLI's.
+   * The index: [INDEX_ENV]'s file as is; otherwise the cached copy while it is younger than
+   * [INDEX_MAX_AGE_MS] (or [refresh] is false and the network is off), else a fresh fetch, falling
+   * back to a stale copy. Null, with a note, when there is none.
    */
-  fun ensureCached(
-    version: String,
+  internal fun loadIndex(
+    root: File,
+    fetcher: Fetcher,
+    env: (String) -> String?,
+    noNetwork: Boolean,
+    log: (String) -> Unit,
+    now: Long = System.currentTimeMillis(),
+    refresh: Boolean = false,
+  ): Index? {
+    val location = env(INDEX_ENV)?.takeIf { it.isNotBlank() } ?: DEFAULT_INDEX_URL
+    if (!location.startsWith("https://")) {
+      return runCatching { parseIndex(File(location).readText()) }
+        .onFailure { log("host-natives: could not read the index $location (${it.message})") }
+        .getOrNull()
+    }
+    val cached = File(root, "index.json")
+    val fresh = cached.isFile && now - cached.lastModified() < INDEX_MAX_AGE_MS
+    if ((fresh && !refresh) || (noNetwork && cached.isFile)) {
+      runCatching { parseIndex(cached.readText()) }
+        .getOrNull()
+        ?.let {
+          return it
+        }
+    }
+    if (noNetwork) {
+      log(
+        "host-natives: the network is off and no index is cached; skipping. Pre-provision with " +
+          "`compose-preview provision --host-natives`."
+      )
+      return null
+    }
+    val tmp = File(root, ".index-${UUID.randomUUID()}.json")
+    return try {
+      root.mkdirs()
+      fetcher.fetchTo(location, tmp)
+      val index = parseIndex(tmp.readText())
+      Files.move(tmp.toPath(), cached.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      index
+    } catch (e: Exception) {
+      val stale = runCatching { parseIndex(cached.readText()) }.getOrNull()
+      log(
+        "host-natives: could not fetch the index $location (${e.message})" +
+          if (stale != null) "; using the cached copy" else "; skipping"
+      )
+      stale
+    } finally {
+      tmp.delete()
+    }
+  }
+
+  /**
+   * The directory holding [choice]'s library under its load name, downloading and checking it when
+   * absent. `<root>/files/<sha256>/<platform>/<file>`, so builds never collide. Null, with a note,
+   * on any failure.
+   */
+  internal fun ensureFile(
+    root: File,
+    choice: Choice,
+    platform: String,
+    fetcher: Fetcher,
+    noNetwork: Boolean,
+    log: (String) -> Unit,
+  ): File? {
+    val name = choice.library.library
+    val dir = File(root, "files/${choice.entry.sha256}/$platform")
+    val target = File(dir, fileName(name, platform))
+    if (target.isFile) return dir
+    val url = choice.entry.url
+    if (noNetwork) {
+      log(
+        "host-natives: the network is off and $name ${choice.build.version} is not cached; " +
+          "skipping. Pre-provision with `compose-preview provision --host-natives`."
+      )
+      return null
+    }
+    val tmp = File(root, ".dl-${UUID.randomUUID()}")
+    val stage = File(root, ".stage-${UUID.randomUUID()}")
+    return try {
+      root.mkdirs()
+      fetcher.fetchTo(url, tmp)
+      val sha = sha256(tmp)
+      check(sha == choice.entry.sha256) { "sha256 $sha, the index says ${choice.entry.sha256}" }
+      val extracted = extract(tmp, url, choice.entry.entry, stage)
+      dir.mkdirs()
+      try {
+        Files.move(extracted.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+      } catch (_: Exception) {
+        Files.move(extracted.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      }
+      log("host-natives: provisioned $name ${choice.build.version} for $platform into $dir")
+      dir
+    } catch (e: Exception) {
+      log("host-natives: could not provision $name from $url (${e.message}); skipping")
+      null
+    } finally {
+      tmp.delete()
+      stage.deleteRecursively()
+    }
+  }
+
+  private fun sha256(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+      val buffer = ByteArray(1 shl 16)
+      while (true) {
+        val n = input.read(buffer)
+        if (n < 0) break
+        digest.update(buffer, 0, n)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+  }
+
+  /** Extracts [entry] of the archive [file] (a `.tar.gz`, or a zip/jar) into [stage]. */
+  internal fun extract(file: File, url: String, entry: String, stage: File): File {
+    stage.mkdirs()
+    if (url.endsWith(".tar.gz") || url.endsWith(".tgz")) {
+      XrCompositeProvision.unpackTarGz(file, stage)
+      return File(stage, entry).takeIf { it.isFile } ?: error("$url has no $entry")
+    }
+    val out = File(stage, entry.substringAfterLast('/'))
+    ZipFile(file).use { zip ->
+      val zipEntry = zip.getEntry(entry) ?: error("$url has no $entry")
+      zip.getInputStream(zipEntry).use { input -> out.outputStream().use { input.copyTo(it) } }
+    }
+    return out
+  }
+
+  /**
+   * The directories to put on the simulator's `java.library.path` for [apk] at [sdk]: one per
+   * library it carries that the index has a build of. Empty when there are none or nothing could be
+   * provisioned.
+   */
+  fun libraryDirs(
+    apk: File,
+    sdk: Int,
+    fetcher: Fetcher = defaultFetcher,
+    env: (String) -> String? = System::getenv,
+    userHome: String = System.getProperty("user.home") ?: ".",
+    log: (String) -> Unit = { System.err.println(it) },
+    noNetwork: Boolean = NetworkPolicy.disabled,
+    platform: String? = currentPlatformToken(),
+  ): List<File> {
+    val natives = readApk(apk) ?: return emptyList()
+    // An APK with no native code needs no index, so no network.
+    if (natives.libraries.isEmpty() || platform == null) return emptyList()
+    val root = cacheRoot(env, userHome)
+    val index = loadIndex(root, fetcher, env, noNetwork, log) ?: return emptyList()
+    return plan(natives, sdk, index, platform, log).mapNotNull { choice ->
+      ensureFile(root, choice, platform, fetcher, noNetwork, log)
+    }
+  }
+
+  /**
+   * For `provision --host-natives`: a fresh index, and every build it lists for this host, so a
+   * later offline launch finds whichever one its APK needs. The cache root, or null when the index
+   * could not be fetched or a build failed.
+   */
+  fun provisionAll(
     fetcher: Fetcher = defaultFetcher,
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
@@ -186,50 +384,19 @@ object HostNativesProvision {
     platform: String? = currentPlatformToken(),
   ): File? {
     if (platform == null) {
-      log(
-        "host-natives: no published build for this platform " +
-          "(${System.getProperty("os.name")}/${System.getProperty("os.arch")}); skipping"
-      )
+      log("host-natives: no host builds target this platform; nothing to provision")
       return null
     }
-    val dir = cacheDir(version, platform, env, userHome)
-    if (isComplete(dir)) return dir
-
-    val url = assetUrl(version, platform)
-    NetworkPolicy.require(
-      "Fetching the host-natives $version libraries for the simulator",
-      "Pre-provision them: `compose-preview provision --host-natives`, or unpack $url into " +
-        dir.absolutePath,
-      disabled = noNetwork,
-    )
-    val parent = dir.parentFile
-    val tmp = File(parent, ".${dir.name}.dl-${UUID.randomUUID()}.tar.gz")
-    val stage = File(parent, ".${dir.name}.stage-${UUID.randomUUID()}")
-    return try {
-      parent?.mkdirs()
-      fetcher.fetchTo(url, tmp)
-      stage.deleteRecursively()
-      XrCompositeProvision.unpackTarGz(tmp, stage)
-      if (!isComplete(stage)) {
-        log("host-natives: tarball $url unpacked but a library is missing; skipping")
-        return null
+    val root = cacheRoot(env, userHome)
+    val index = loadIndex(root, fetcher, env, noNetwork, log, refresh = true) ?: return null
+    var ok = true
+    for (library in index.libraries) {
+      for (build in library.builds) {
+        val entry = build.platforms[platform] ?: continue
+        val choice = Choice(library, build, entry, build.version)
+        if (ensureFile(root, choice, platform, fetcher, noNetwork, log) == null) ok = false
       }
-      dir.deleteRecursively()
-      try {
-        Files.move(stage.toPath(), dir.toPath(), StandardCopyOption.ATOMIC_MOVE)
-      } catch (_: Exception) {
-        Files.move(stage.toPath(), dir.toPath())
-      }
-      log("host-natives: provisioned $version/$platform into $dir")
-      dir
-    } catch (e: NetworkDisabledException) {
-      throw e
-    } catch (e: Exception) {
-      log("host-natives: could not provision from $url (${e.message}); skipping")
-      null
-    } finally {
-      tmp.delete()
-      stage.deleteRecursively()
     }
+    return root.takeIf { ok }
   }
 }

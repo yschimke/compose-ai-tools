@@ -869,9 +869,10 @@ internal class LaunchCommand(private val args: List<String>) {
    * when it needs none or they could not be provisioned.
    */
   private fun hostLibraryPath(apk: File?, sdk: Int): List<String> {
-    if (apk == null || !HostNativesProvision.wanted(apk, sdk)) return emptyList()
-    val dir = HostNativesProvision.ensureCached(HOST_NATIVES_VERSION) ?: return emptyList()
-    return withJvmLibraryPath(dir, System.getProperty("java.library.path"))
+    if (apk == null) return emptyList()
+    val dirs = HostNativesProvision.libraryDirs(apk, sdk)
+    if (dirs.isEmpty()) return emptyList()
+    return withJvmLibraryPath(dirs, System.getProperty("java.library.path"))
   }
 
   private fun convert(
@@ -1172,9 +1173,9 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
 
-    /** [dir] ahead of the JVM's default `java.library.path` ([default], possibly empty). */
-    fun withJvmLibraryPath(dir: File, default: String?): List<String> =
-      listOf(dir.path) + default.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+    /** [dirs] ahead of the JVM's default `java.library.path` ([default], possibly empty). */
+    fun withJvmLibraryPath(dirs: List<File>, default: String?): List<String> =
+      dirs.map { it.path } + default.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
 
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
