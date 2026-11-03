@@ -34,10 +34,12 @@ Standard library only, so every workflow can run it with a bare `python3`.
 from __future__ import annotations
 
 import argparse
+import base64
 import concurrent.futures
 import hashlib
 import io
 import json
+import os
 import re
 import struct
 import sys
@@ -117,9 +119,53 @@ def validate(index: dict) -> list[str]:
     return errors
 
 
+# Public Maven hosts and the path each has on the private cache that coo.ee/env sandboxes configure
+# (COO_MAVEN_URL, COO_MAVEN_USER, COO_MAVEN_TOKEN; the same routing as its Gradle init script).
+# Only fetching goes through the cache: the index always records the public URL, which is what
+# every user's CLI downloads.
+CACHE_PATHS = {
+    "https://dl.google.com/dl/android/maven2/": "google",
+    "https://maven.google.com/": "google",
+    "https://repo1.maven.org/maven2/": "central",
+    "https://repo.maven.apache.org/maven2/": "central",
+}
+
+
+def via_cache(url: str, env=os.environ) -> tuple[str, dict[str, str]] | None:
+    """[url] on the private Maven cache, with its auth header, or None when it is not configured or
+    does not serve that host."""
+    base = env.get("COO_MAVEN_URL", "").strip().rstrip("/")
+    user = env.get("COO_MAVEN_USER", "").strip()
+    token = env.get("COO_MAVEN_TOKEN", "").strip()
+    if not (base and user and token):
+        return None
+    for prefix, path in CACHE_PATHS.items():
+        if url.startswith(prefix):
+            auth = base64.b64encode(f"{user}:{token}".encode()).decode()
+            return f"{base}/{path}/{url[len(prefix):]}", {"Authorization": f"Basic {auth}"}
+    return None
+
+
+def _open(url: str, headers: dict[str, str], timeout: int):
+    """Opens [url] through the cache when there is one, falling back to the public host on any
+    failure but a 404, which the public host would answer the same way."""
+    headers = {"User-Agent": "compose-preview-host-natives", **headers}
+    cached = via_cache(url)
+    if cached:
+        cache_url, auth = cached
+        try:
+            req = urllib.request.Request(cache_url, headers={**headers, **auth})
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+    return urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout)
+
+
 def fetch(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "compose-preview-host-natives"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with _open(url, {}, 120) as resp:
         return resp.read()
 
 
@@ -384,12 +430,16 @@ NATIVE_RE = re.compile(r"\.(so|dylib|dll|jnilib)$")
 
 
 def fetch_range(url: str, spec: str) -> bytes | None:
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "compose-preview-host-natives", "Range": f"bytes={spec}"}
-    )
+    """Bytes [spec] (`-n` for the last n, or `a-b`) of [url]; None when it 404s. A server that
+    ignores Range (the private cache does) answers 200 with the whole file: the tail of that is the
+    whole file, which `zip_names_from` reads as is, and `a-b` is sliced out of it."""
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.read()
+        with _open(url, {"Range": f"bytes={spec}"}, 120) as resp:
+            data = resp.read()
+            if resp.status == 206 or spec.startswith("-"):
+                return data
+            start, end = (int(n) for n in spec.split("-"))
+            return data[start : end + 1]
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None

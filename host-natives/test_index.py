@@ -12,6 +12,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import index
 
@@ -248,6 +249,46 @@ class Survey(unittest.TestCase):
         self.assertEqual(row["host"]["artifact"], "androidx.sqlite:sqlite-bundled-jvm")
         text = index.render_survey(rows, index.load())
         self.assertIn("| `androidx.sqlite:sqlite-bundled-android` | 2.7.1 | `sqliteJni` |", text)
+
+
+class Cache(unittest.TestCase):
+    env = {"COO_MAVEN_URL": "https://cache.example/", "COO_MAVEN_USER": "u", "COO_MAVEN_TOKEN": "t"}
+
+    def test_routes_public_maven_hosts_only_when_fully_configured(self):
+        url, headers = index.via_cache(
+            "https://dl.google.com/dl/android/maven2/androidx/x/maven-metadata.xml", self.env
+        )
+        self.assertEqual(url, "https://cache.example/google/androidx/x/maven-metadata.xml")
+        self.assertTrue(headers["Authorization"].startswith("Basic "))
+        self.assertEqual(
+            index.via_cache("https://repo1.maven.org/maven2/a/b.jar", self.env)[0],
+            "https://cache.example/central/a/b.jar",
+        )
+        self.assertIsNone(index.via_cache("https://github.com/x/releases/a.tar.gz", self.env))
+        self.assertIsNone(
+            index.via_cache("https://repo1.maven.org/maven2/a/b.jar", {"COO_MAVEN_URL": "x"})
+        )
+
+    def test_a_server_ignoring_range_still_answers(self):
+        class Whole:
+            status = 200
+
+            def __init__(self, data):
+                self.data = data
+
+            def read(self):
+                return self.data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        data = bytes(range(100))
+        with mock.patch.object(index, "_open", return_value=Whole(data)):
+            self.assertEqual(index.fetch_range("https://x/a.jar", "10-19"), data[10:20])
+            self.assertEqual(index.fetch_range("https://x/a.jar", "-5"), data)
 
 
 if __name__ == "__main__":
