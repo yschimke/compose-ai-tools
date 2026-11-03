@@ -31,7 +31,13 @@
               "sha256": "2115362aac21a11d0ae6d1e7237646f94aef1b416efb9c313396ec761ebc37f7",
               "entry": "libandroidx.graphics.path.dylib"
             }
-          }
+          },
+          "androidBuildIds": [
+            "56b3f97a7efb05fc89674cf68f6c27847a93860b",
+            "a7846ae06d6bf6cf63fa7c5e056b5de493c71567",
+            "f3e82b0a78f4c567cca77fe6c132199d806987d1",
+            "fa98a997cdd9b43f190a4bd20f3dad441b4062f0"
+          ]
         }
       ]
     },
