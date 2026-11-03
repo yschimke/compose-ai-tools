@@ -361,7 +361,9 @@ object HostNativesProvision {
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
     log: (String) -> Unit = { System.err.println(it) },
-    noNetwork: Boolean = NetworkPolicy.disabled,
+    // `offline`, not `disabled`: the softer COMPOSE_PREVIEW_OFFLINE=1 that `provision` prints
+    // must also keep a launch to its cache (a stale index included) rather than fetch.
+    noNetwork: Boolean = NetworkPolicy.offline,
     platform: String? = currentPlatformToken(),
   ): List<File> {
     val natives = readApk(apk) ?: return emptyList()
