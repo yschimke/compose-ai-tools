@@ -13,6 +13,28 @@ import kotlin.test.assertTrue
 class DiscoveryFailureReportingTest {
 
   @Test
+  fun `module discovery failure matches a path with or without a leading colon`() {
+    val failure =
+      ProjectDiscoveryFailure(":wear:compose:remote:samples", "Dependency verification failed")
+    assertEquals(
+      failure,
+      moduleDiscoveryFailure(listOf(failure), "wear:compose:remote:samples"),
+    )
+    assertEquals(null, moduleDiscoveryFailure(listOf(failure), ":other"))
+  }
+
+  @Test
+  fun `dependency verification guidance names the trust entry`() {
+    val guidance =
+      dependencyVerificationGuidance(
+        "Dependency verification failed for ee.schimke.composeai:preview:2.0 " +
+          "(verification-metadata.xml)"
+      )
+    assertTrue(guidance != null && "ee.schimke.composeai" in guidance, "got $guidance")
+    assertEquals(null, dependencyVerificationGuidance("Cannot resolve external dependency"))
+  }
+
+  @Test
   fun `no output when there are no failures`() {
     val lines = mutableListOf<String>()
     printDiscoveryFailures(emptyList(), err = { lines += it })

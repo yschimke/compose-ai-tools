@@ -225,8 +225,10 @@ abstract class Command(
 
   /**
    * Extensions requested via `--with-extension` (repeatable, comma-separated, or `=`-form),
-   * forwarded as `-PcomposePreview.activeExtensions=<list>`. The plugin ignores it today (opt-in
-   * data products are daemon-only); it is the record of what the invocation requested.
+   * forwarded as `-PcomposePreview.activeExtensions=<list>`. The plugin ignores the property
+   * (opt-in data products are daemon-only). The CLI treats the list as what this invocation asked
+   * for: `a11y` runs the same short-lived daemon pass as `compose-preview a11y`, and extension
+   * sidecars from any other invocation are not attached.
    */
   protected val requestedExtensions: List<String> =
     (args.flagValuesAll("--with-extension") + args.flagValuesAll("--with"))
@@ -244,6 +246,10 @@ abstract class Command(
 
   /** Extensions a command always wants (e.g. `A11yCommand` returns `["a11y"]`). */
   protected open fun implicitExtensions(): List<String> = emptyList()
+
+  /** Extensions this invocation is actually producing or reading. */
+  protected fun activeExtensionIds(): Set<String> =
+    (implicitExtensions() + requestedExtensions).filter { it.isNotEmpty() }.toSet()
 
   /**
    * `-PcomposePreview.activeExtensions=<list>` for the union of [implicitExtensions] and
@@ -337,7 +343,8 @@ abstract class Command(
               injectArgs +
                 variantGradleArgs() +
                 gradleWriteLocksArgs() +
-                NetworkPolicy.gradleArguments(),
+                NetworkPolicy.gradleArguments() +
+                args.flagValuesAll("--gradle-arg"),
           )
           .apply { failureAdvice = ::buildFailureAdvice }
       }
@@ -367,6 +374,16 @@ abstract class Command(
           System.err.println("Gradle ${it.operation} failed: ${it.message}")
           it.detail?.let { detail -> System.err.println("Caused by: $detail") }
           printModelAccessAdvice(it)
+          exitProcess(1)
+        }
+        val discoveryFailure = moduleDiscoveryFailure(gradle.lastDiscoveryFailures, explicitModule)
+        if (discoveryFailure != null) {
+          System.err.println(
+            "Module '$explicitModule' failed to configure during discovery, so its previews " +
+              "are unavailable."
+          )
+          System.err.println(discoveryFailure.message)
+          dependencyVerificationGuidance(discoveryFailure.message)?.let { System.err.println(it) }
           exitProcess(1)
         }
         System.err.println(
@@ -625,6 +642,7 @@ abstract class Command(
         gradleArguments = gradleArguments,
         scopeToPreviewRequest = true,
       )
+    produceRequestedA11yData(raw.modules)
     val manifests = readAllManifests(raw.modules)
     val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests, raw.renderedIds)
     return RenderModulesOutcome(
@@ -666,11 +684,20 @@ abstract class Command(
   protected val extensionRenderers: Map<String, ExtensionReportRenderer> =
     builtInExtensionReporters().mapValues { (_, factory) -> factory() }
 
-  /** Load every extension's sidecar JSON; later [annotateExtensions] calls are lookups. */
+  /**
+   * Load sidecars for extensions this invocation asked for. A leftover `accessibility.json` from an
+   * earlier `a11y` run is not part of a plain `show` (#6341).
+   */
   private fun loadExtensionReports(manifests: List<Pair<PreviewModule, PreviewManifest>>) {
-    for (renderer in extensionRenderers.values) {
+    for (renderer in activeExtensionRenderers()) {
       renderer.load(manifests, verbose)
     }
+  }
+
+  private fun activeExtensionRenderers(): List<ExtensionReportRenderer> {
+    val ids = activeExtensionIds()
+    if (ids.isEmpty()) return emptyList()
+    return ids.mapNotNull { extensionRenderers[it] }
   }
 
   /**
@@ -679,10 +706,26 @@ abstract class Command(
    */
   private fun annotateExtensions(result: PreviewResult, module: PreviewModule): PreviewResult {
     var enriched = result
-    for (renderer in extensionRenderers.values) {
+    for (renderer in activeExtensionRenderers()) {
       enriched = renderer.annotate(enriched, module)
     }
     return enriched
+  }
+
+  /**
+   * When this invocation asked for `a11y`, run the same daemon pass [A11yCommand] does, before
+   * [buildResults] reads `accessibility.json`. `show` warns on stderr and keeps going when ATF is
+   * unavailable; the `a11y` command still fails that case itself.
+   */
+  protected fun produceRequestedA11yData(modules: List<PreviewModule>) {
+    if ("a11y" !in activeExtensionIds() || modules.isEmpty()) return
+    val discovered = PreviewResultBuilder.readAllManifests(modules)
+    object : A11yCommand(args) {
+        fun produce() {
+          produceAdditionalDataProducts(dataProductRequests(discovered))
+        }
+      }
+      .produce()
   }
 
   /**
@@ -1037,6 +1080,13 @@ internal fun printDiscoveryFailures(
     err(it)
     return
   }
+  failures
+    .firstNotNullOfOrNull { dependencyVerificationGuidance(it.message) }
+    ?.let { guidance ->
+      err(guidance)
+      val matching = failures.count { dependencyVerificationGuidance(it.message) != null }
+      if (matching * 2 >= failures.size) return
+    }
   err(
     "${failures.size} project(s) failed to configure during discovery and were skipped — " +
       "their previews are not listed. This is the usual cause of an empty discovery when the " +
@@ -1051,6 +1101,28 @@ internal fun printDiscoveryFailures(
  * after [GradleConnection.runBuildAction]'s timeout) rather than one that failed. A cancellation
  * says nothing about the project: its build script was never evaluated.
  */
+/** The discovery failure for [module], matching Gradle paths with or without a leading `:`. */
+internal fun moduleDiscoveryFailure(
+  failures: List<ProjectDiscoveryFailure>,
+  module: String,
+): ProjectDiscoveryFailure? {
+  val wanted = module.trim().removePrefix(":")
+  return failures.firstOrNull { it.path.trim().removePrefix(":") == wanted }
+}
+
+/**
+ * Guidance when Gradle dependency verification rejected an injected `ee.schimke.composeai`
+ * artifact. The init script cannot flip `dependencyVerificationMode`; that is read earlier.
+ */
+internal fun dependencyVerificationGuidance(message: String): String? {
+  val lower = message.lowercase()
+  if ("dependency verification" !in lower && "verification-metadata" !in lower) return null
+  return "Gradle dependency verification rejected an artifact while this module was configured. " +
+    "compose-preview injects ee.schimke.composeai artifacts; add " +
+    "`<trust group=\"ee.schimke.composeai\"/>` to verification-metadata.xml. " +
+    "An init script cannot change dependencyVerificationMode — Gradle reads it earlier."
+}
+
 internal fun isDiscoveryCancellationFailure(message: String): Boolean =
   message.contains("Build cancelled", ignoreCase = true) ||
     message.contains("BuildCancelledException")
@@ -1830,6 +1902,7 @@ class RenderCommand(args: List<String>) : Command(args) {
 
       if (bundle) reportBundles(modules)
 
+      produceRequestedA11yData(modules)
       val manifests = readAllManifests(modules)
       val all = buildResults(manifests, scope.renderedIds)
       // `render` ignores `--changed-only`; use a follow-up `show --changed-only`.

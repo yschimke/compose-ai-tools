@@ -330,14 +330,20 @@ final class Navigator {
       try {
         startActivity(intent, requestCode, forResult == null ? null : forResult.options);
       } catch (RuntimeException e) {
+        UnsatisfiedLinkError link = NativeCode.find(e);
+        String message = link == null ? String.valueOf(e) : NativeCode.explain(link);
         protocol.event(
             "error",
             new Protocol.Json()
-                .put("kind", "startActivity")
+                .put("kind", link == null ? "startActivity" : "native")
                 .put("intent", Intents.toJson(intent))
-                .put("message", String.valueOf(e))
+                .put("message", message)
                 .put("answer", requestCode >= 0 ? "RESULT_CANCELED" : null)
                 .object());
+        if (link != null) {
+          System.err.println(message);
+          System.exit(1);
+        }
         // A device throws ActivityNotFoundException at the call; Robolectric records the start
         // and returns. A caller waiting for a result hears it was cancelled rather than nothing.
         if (requester != null && requestCode >= 0 && stack.contains(requester)) {

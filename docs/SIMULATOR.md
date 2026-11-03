@@ -1959,7 +1959,11 @@ MeshCore run too. Renders are in
 
 What does not, or not yet:
 
-- **Native code.** `.so` files are built for Android; anything that needs its own JNI fails.
+- **Native code.** `.so` files are built for Android (bionic). `System.loadLibrary` throws
+  `UnsatisfiedLinkError`; the simulator names the library and, on the control channel, sends an
+  `error` event with `kind` `native` instead of exiting with no message. `Build.SUPPORTED_ABIS`
+  leads with the host ABI, and `nativeLibraryDir` is a real directory. JVM stand-ins for
+  individual AndroidX native libraries are not wired up.
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any

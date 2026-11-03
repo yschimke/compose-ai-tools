@@ -194,6 +194,9 @@ private val briefResourceJson = Json {
 class ShowResourcesCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
+  /** The Gradle arguments [run] passes to the resource render task. Visible for tests. */
+  internal fun resourceRenderGradleArguments(): List<String> = gradleArgsWithForce()
+
   override fun run() {
     // Only Android modules (with an `AndroidManifest.xml`) have the resource task, even with an
     // explicit `--module`; a friendly message beats a "task not found" trace.
@@ -202,6 +205,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
         silenceStdout = jsonOutput,
         moduleFilter = { isAndroidModule(it) },
         taskFor = { ":${it.gradlePath}:composePreviewRenderAndroidResources" },
+        gradleArguments = gradleArgsWithForce(),
       )
     if (outcome.modules.isEmpty()) {
       if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))

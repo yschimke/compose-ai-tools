@@ -22,6 +22,7 @@ import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLauncher
@@ -592,7 +593,22 @@ internal object AndroidPreviewSupport {
       if (registered) return@onVariants
       if (!extension.enabled.get()) return@onVariants
       val target = extension.variant.get()
-      if (!kmpAndroid && !variantMatchesTarget(variant.name, target)) return@onVariants
+      val matches = kmpAndroid || variantMatchesTarget(variant.name, target)
+      // A release-only library (AndroidX) has no `debug` variant. When the requested build type
+      // matches nothing and exactly one variant exists, use it (#5946). Configurations for every
+      // variant already exist: AGP creates them all before the first `onVariants` callback.
+      val fallback =
+        if (!matches && !kmpAndroid) {
+          soleVariantFallback(mainRuntimeVariantNames(project.configurations.names), target)
+        } else {
+          null
+        }
+      if (!matches && variant.name != fallback) return@onVariants
+      if (!matches && fallback != null) {
+        project.logger.info(
+          "compose-preview: ${project.path} has no '$target' variant; using '${variant.name}'."
+        )
+      }
       if (kmpAndroid && !kmpAndroidWantsRobolectric(project, extension, variant)) {
         registered = true
         kmpAndroidFallback?.invoke()
@@ -632,15 +648,6 @@ internal object AndroidPreviewSupport {
     }
   }
 
-  /**
-   * Matches an AGP variant name against the requested target:
-   * 1. **Exact match.** A flavored target (`demoDebug`) matches only itself, so `paidDebug` doesn't
-   *    match `minApi23PaidDebug`.
-   * 2. **Build-type suffix.** A bare build type (no uppercase, e.g. `debug`) also matches
-   *    `demoDebug` etc., so the default works on flavored apps (#1546).
-   *
-   * One-directional: `demoDebug` never matches a flavorless `debug`.
-   */
   /**
    * Whether a KMP-Android module takes the Robolectric lane: the consumer must opt in
    * ([PreviewExtension.kmpAndroidRobolectric]) and AGP must have a host-test compilation. Opting in
@@ -714,6 +721,47 @@ internal object AndroidPreviewSupport {
       unitTestName = (variant as? HasUnitTest)?.unitTest?.name,
     )
 
+  /**
+   * Variant names behind main `*RuntimeClasspath` configurations, skipping unit-test, android-test,
+   * screenshot-test and test-fixtures classpaths.
+   */
+  internal fun mainRuntimeVariantNames(configurationNames: Iterable<String>): List<String> =
+    configurationNames
+      .mapNotNull { name ->
+        if (!name.endsWith("RuntimeClasspath")) return@mapNotNull null
+        val variant = name.removeSuffix("RuntimeClasspath")
+        if (variant.isEmpty()) return@mapNotNull null
+        if (
+          variant.endsWith("UnitTest") ||
+            variant.endsWith("AndroidTest") ||
+            variant.endsWith("ScreenshotTest") ||
+            variant.endsWith("TestFixtures")
+        ) {
+          return@mapNotNull null
+        }
+        variant
+      }
+      .distinct()
+
+  /**
+   * When [target] is a bare build type and no variant matches it, the only remaining variant, or
+   * null when there isn't exactly one (or [target] is an explicit flavored name).
+   */
+  internal fun soleVariantFallback(variantNames: Collection<String>, target: String): String? {
+    if (target.isEmpty() || target.any { it.isUpperCase() }) return null
+    if (variantNames.any { variantMatchesTarget(it, target) }) return null
+    return variantNames.distinct().singleOrNull()
+  }
+
+  /**
+   * Matches an AGP variant name against the requested target:
+   * 1. **Exact match.** A flavored target (`demoDebug`) matches only itself, so `paidDebug` doesn't
+   *    match `minApi23PaidDebug`.
+   * 2. **Build-type suffix.** A bare build type (no uppercase, e.g. `debug`) also matches
+   *    `demoDebug` etc., so the default works on flavored apps (#1546).
+   *
+   * One-directional: `demoDebug` never matches a flavorless `debug`.
+   */
   internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
     if (variantName == target) return true
     if (target.isEmpty()) return false
@@ -748,6 +796,9 @@ internal object AndroidPreviewSupport {
         "Walk res/drawable* and res/mipmap*, parse AndroidManifest.xml, " +
           "write build/compose-previews/resources.json"
       resSources?.let { this.resSourceRoots.from(it) }
+      // KMP / extra `androidResources.srcDir` roots land on `sources.resources`, not `sources.res`.
+      // Without them a shared branding directory is invisible to discovery (#6388).
+      variant.sources.resources?.all?.let { this.resSourceRoots.from(it) }
       this.mergedManifest.set(mergedManifest)
       moduleName.set(project.name)
       variantName.set(variant.name)
@@ -2216,6 +2267,21 @@ internal object AndroidPreviewSupport {
       }
       val resourcesRendersOutputDir = rendersDir
       val resourcesRendersSubtree = previewOutputDir.map { it.dir("renders/resources") }
+      val androidUnitTestResourceInputs =
+        project.files().apply {
+          unitTestConfigDir?.let { from(it) }
+          from(
+            project.layout.buildDirectory.dir(
+              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest"
+            )
+          )
+          from(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
+        }
+      val resourceSourceInputs =
+        project.files().apply {
+          variant.sources.res?.all?.let { from(it) }
+          variant.sources.resources?.all?.let { from(it) }
+        }
 
       project.tasks.register("composePreviewRenderAndroidResources", Test::class.java) {
         group = "compose preview"
@@ -2257,6 +2323,24 @@ internal object AndroidPreviewSupport {
         // `resource-render-errors.json` would lose diagnostics on a partial run.
 
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
+
+        // Robolectric reads the merged unit-test resource APK by path from test_config.properties.
+        // `dependsOn` the producer does not fingerprint those bytes, so an edit to a referenced
+        // vector (adaptive-icon XML unchanged, or a root outside `sources.res`) left this task
+        // UP-TO-DATE and the PNG stale (#6388). Same files the bundle task tracks, plus the res
+        // roots themselves and resources.json.
+        inputs
+          .files(androidUnitTestResourceInputs)
+          .withPropertyName("androidUnitTestResources")
+          .withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs
+          .files(resourceSourceInputs)
+          .withPropertyName("resourceSourceRoots")
+          .withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs
+          .file(previewOutputDir.map { it.file("resources.json") })
+          .withPropertyName("resourcesManifest")
+          .withPathSensitivity(PathSensitivity.NONE)
 
         // Same #1243 guard.
         doFirst {

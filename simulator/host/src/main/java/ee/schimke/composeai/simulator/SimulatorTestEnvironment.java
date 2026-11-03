@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import java.io.File;
 import javax.inject.Inject;
 import javax.inject.Named;
 import org.robolectric.android.internal.AndroidTestEnvironment;
@@ -81,6 +82,41 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
    * robolectric}, and apps compare against it to skip real work in tests and previews: MeshCore's
    * watch then uses canned preview data instead of its phone.
    */
+  /**
+   * {@code Build.SUPPORTED_ABIS} otherwise stays Robolectric's {@code armeabi-v7a} only, which
+   * misleads libraries that pick a {@code .so} from that list (#6342). The host ABI comes first.
+   */
+  static void hostAbis() {
+    ShadowBuild.setSupportedAbis(new String[] {hostAbi(), "armeabi-v7a"});
+  }
+
+  static String hostAbi() {
+    String arch = System.getProperty("os.arch", "");
+    if ("aarch64".equals(arch) || "arm64".equals(arch)) return "arm64-v8a";
+    if (arch.contains("64")) return "x86_64";
+    if (arch.contains("86")) return "x86";
+    return "arm64-v8a";
+  }
+
+  /**
+   * {@code ApplicationInfo.nativeLibraryDir} is null for an APK loaded this way. SoLoader and
+   * ReLinker look their libraries up by that path; give them a real directory.
+   */
+  static void nativeLibraryDir(Application app) {
+    if (app.getApplicationInfo().nativeLibraryDir != null
+        && !app.getApplicationInfo().nativeLibraryDir.isEmpty()) {
+      return;
+    }
+    File parent =
+        app.getApplicationInfo().dataDir != null
+            ? new File(app.getApplicationInfo().dataDir)
+            : app.getFilesDir().getParentFile();
+    if (parent == null) return;
+    File lib = new File(parent, "lib");
+    lib.mkdirs();
+    app.getApplicationInfo().nativeLibraryDir = lib.getAbsolutePath();
+  }
+
   static void fingerprint() {
     String value = System.getProperty(FINGERPRINT_PROPERTY);
     if (value != null && !value.isEmpty()) ShadowBuild.setFingerprint(value);
@@ -111,6 +147,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       if (app.getApplicationInfo().processName == null) {
         app.getApplicationInfo().processName = app.getPackageName();
       }
+      hostAbis();
+      nativeLibraryDir(app);
       Logcat.install();
       // The device's /sdcard, shared with its other apps (--app), before anything opens a file.
       DevicePeers.shareStorage();

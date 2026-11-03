@@ -158,9 +158,29 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
       project.configurations.names.firstOrNull { name ->
         name.endsWith("RuntimeClasspath") &&
           AndroidPreviewSupport.variantMatchesTarget(name.removeSuffix("RuntimeClasspath"), target)
-      } ?: return target
-    return match.removeSuffix("RuntimeClasspath")
+      }
+    if (match != null) return match.removeSuffix("RuntimeClasspath")
+    if (isClassicAndroid(project)) {
+      AndroidPreviewSupport.soleVariantFallback(
+          AndroidPreviewSupport.mainRuntimeVariantNames(project.configurations.names),
+          target,
+        )
+        ?.let {
+          return it
+        }
+    }
+    return target
   }
+
+  /** Application / library / test / dynamic-feature. KMP-Android keeps its own naming. */
+  private fun isClassicAndroid(project: Project): Boolean =
+    listOf(
+        "com.android.application",
+        "com.android.library",
+        "com.android.test",
+        "com.android.dynamic-feature",
+      )
+      .any { project.pluginManager.hasPlugin(it) }
 
   /**
    * Android signals for [CompatRules.checkUndeclaredPreviewTooling], or `(null, null)` for

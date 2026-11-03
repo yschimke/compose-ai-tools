@@ -28,6 +28,7 @@ internal object CliFlagValidation {
       "--permutations",
       "--missing-renders",
       "--no-auto-inject",
+      "--gradle-arg",
     )
 
   // `--id-file` selects for report commands (the `apply` action's a11y pipeline); `bundle pack` has
@@ -556,6 +557,7 @@ internal object CliFlagValidation {
           "--ui-builder-actor",
           "--verbose",
           "-v",
+          "--gradle-arg",
         ),
       "update" to setOf("--dry-run", "--no-modify-path"),
       "provision" to
