@@ -64,8 +64,13 @@ esac
 
 : "${JAVA_HOME:?JAVA_HOME must point at a JDK (for jni.h)}"
 
-selected=("$@")
-[[ ${#selected[@]} -gt 0 ]] || mapfile -t selected < <(recipes)
+# No mapfile: macOS ships bash 3.2.
+if [[ $# -gt 0 ]]; then
+  selected=("$@")
+else
+  selected=()
+  while read -r recipe; do selected+=("$recipe"); done < <(recipes)
+fi
 rm -rf "$build/dist"
 mkdir -p "$build/dist"
 

@@ -232,7 +232,8 @@ object HostNativesProvision {
         .onFailure { log("host-natives: could not read the index $location (${it.message})") }
         .getOrNull()
     }
-    val cached = File(root, "index.json")
+    // Keyed by source, so switching INDEX_ENV never serves another index's cached copy.
+    val cached = File(root, "index-${sha256(location.toByteArray()).take(16)}.json")
     val fresh = cached.isFile && now - cached.lastModified() < INDEX_MAX_AGE_MS
     if ((fresh && !refresh) || (noNetwork && cached.isFile)) {
       runCatching { parseIndex(cached.readText()) }
@@ -316,6 +317,9 @@ object HostNativesProvision {
       stage.deleteRecursively()
     }
   }
+
+  private fun sha256(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
   private fun sha256(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")

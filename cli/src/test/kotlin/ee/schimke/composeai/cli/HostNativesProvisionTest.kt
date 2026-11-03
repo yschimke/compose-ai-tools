@@ -241,6 +241,31 @@ class HostNativesProvisionTest {
   }
 
   @Test
+  fun `each index source has its own cache`() {
+    val fetched = mutableListOf<String>()
+    val fetcher = HostNativesProvision.Fetcher { url, dest ->
+      fetched += url
+      dest.writeText("""{"schema": "${HostNativesProvision.SCHEMA}", "libraries": []}""")
+    }
+    fun load(url: String?) =
+      HostNativesProvision.loadIndex(
+        cache,
+        fetcher,
+        env = { if (it == HostNativesProvision.INDEX_ENV) url else null },
+        noNetwork = false,
+        log = {},
+      )
+    load(null)
+    load("https://example.com/other.json")
+    load(null)
+    load("https://example.com/other.json")
+    assertEquals(
+      listOf(HostNativesProvision.DEFAULT_INDEX_URL, "https://example.com/other.json"),
+      fetched,
+    )
+  }
+
+  @Test
   fun `the checked-in index parses`() {
     var dir = File("").absoluteFile
     while (!File(dir, "host-natives/index.json").isFile) dir = dir.parentFile ?: return
