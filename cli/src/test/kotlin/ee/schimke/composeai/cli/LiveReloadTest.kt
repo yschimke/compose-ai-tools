@@ -82,6 +82,42 @@ class LiveReloadTest {
     return file
   }
 
+  @Test
+  fun `a resource merge drops the signature but keeps AndroidX version markers`() =
+    fixture { root ->
+      val apk =
+        zip(
+          File(root, "app.apk"),
+          mapOf(
+            "resources.arsc" to "old",
+            "classes.dex" to "dex",
+            "lib/arm64-v8a/libsqliteJni.so" to "elf",
+            "META-INF/CERT.SF" to "sig",
+            "META-INF/androidx.sqlite_sqlite-bundled.version" to "2.6.2",
+          ),
+        )
+      val linked = zip(File(root, "linked.apk"), mapOf("resources.arsc" to "new"))
+      val out = File(root, "merged.apk")
+      LiveReload.mergeResources(apk, linked, out)
+      val names = ZipFile(out).use { zip -> zip.entries().asSequence().map { it.name }.toSet() }
+      assertEquals(
+        setOf(
+          "resources.arsc",
+          "classes.dex",
+          "lib/arm64-v8a/libsqliteJni.so",
+          "META-INF/androidx.sqlite_sqlite-bundled.version",
+        ),
+        names,
+      )
+      // So the restarted app keeps its exact host-library match.
+      assertEquals(
+        "2.6.2",
+        HostNativesProvision.readApk(out)
+          ?.versions
+          ?.get("META-INF/androidx.sqlite_sqlite-bundled.version"),
+      )
+    }
+
   private val ok = LiveReload.Build(ok = true, ms = 1, tasks = emptyList(), errors = emptyList())
 
   private fun live(project: File, work: File, builds: MutableList<List<String>> = mutableListOf()) =
