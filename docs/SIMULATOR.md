@@ -1963,7 +1963,8 @@ What does not, or not yet:
   `UnsatisfiedLinkError`; the simulator names the library and, on the control channel, sends an
   `error` event with `kind` `native` instead of exiting with no message. `Build.SUPPORTED_ABIS`
   leads with the host ABI, and `nativeLibraryDir` is a real directory. JVM stand-ins for
-  individual AndroidX native libraries are not wired up.
+  individual AndroidX native libraries are not wired up. Which common libraries are affected, and
+  the plan for each: [`design/SIMULATOR_NATIVE_LIBRARIES.md`](design/SIMULATOR_NATIVE_LIBRARIES.md).
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
