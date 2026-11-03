@@ -47,34 +47,71 @@ object HostNativesProvision {
 
   @Serializable
   internal data class Library(
-    /** The name the app passes to `System.loadLibrary`. */
+    /**
+     * The name the app passes to `System.loadLibrary`. Required even with [libraryPattern], which
+     * takes precedence: CLIs from before patterns parse the same index and need it.
+     */
     val library: String,
-    /** `group:name` of the Android artifact, whose `META-INF/<group>_<name>.version` dates it. */
+    /** A regex over load names whose one group is the version (zstd-jni names its library so). */
+    val libraryPattern: String? = null,
+    /** `group:name` of the Android artifact; an AndroidX one dates the APK by its marker. */
     val artifact: String,
     /** The lowest simulated API level a build serves. */
     val minSdk: Int = 0,
     /** The first version that no longer loads the library off Android, so needs none. */
     val fixedIn: String? = null,
+    /** System properties the library needs to find its build; `{dir}` is the build's directory. */
+    val properties: Map<String, String> = emptyMap(),
     val builds: List<Build> = emptyList(),
   ) {
     val versionMarker: String
       get() = "META-INF/${artifact.replace(':', '_')}.version"
+
+    val label: String
+      get() = library
+
+    private val regex: Regex? by lazy { libraryPattern?.let(::Regex) }
+
+    /**
+     * Whether [loadName] is this library's: null when not; otherwise the version its name carries
+     * ("" when the name carries none).
+     */
+    fun match(loadName: String): String? =
+      when (val pattern = regex) {
+        null -> "".takeIf { loadName == library }
+        else -> pattern.matchEntire(loadName)?.groupValues?.getOrNull(1)
+      }
   }
 
-  @Serializable internal data class Build(val version: String, val platforms: Map<String, Entry>)
+  @Serializable
+  internal data class Build(
+    val version: String,
+    val platforms: Map<String, Entry>,
+    /** GNU build IDs of this version's Android libraries, every ABI: they name it exactly. */
+    val androidBuildIds: List<String> = emptyList(),
+  )
 
   @Serializable internal data class Entry(val url: String, val sha256: String, val entry: String)
 
-  /** One library to provide: [build]'s [entry], chosen for an APK at [apkVersion]. */
+  /** How a [Choice] was matched to the APK, best first. */
+  internal enum class Match {
+    /** The APK's library has one of the build's Android build IDs: the same binary. */
+    BUILD_ID,
+    /** The APK's version (marker or library name) is the build's. */
+    VERSION,
+    /** The nearest version, or the newest when the APK's is unknown: may not match. */
+    NEAREST,
+  }
+
+  /** One library to provide: [build]'s [entry] for the APK library named [loadName]. */
   internal data class Choice(
     val library: Library,
+    val loadName: String,
     val build: Build,
     val entry: Entry,
     val apkVersion: String?,
-  ) {
-    val exact: Boolean
-      get() = apkVersion == build.version
-  }
+    val match: Match,
+  )
 
   /**
    * Platform token from `os.name` / `os.arch`, as the index keys builds. Null for a host no build
@@ -115,42 +152,149 @@ object HostNativesProvision {
    */
   internal fun chooseBuild(builds: List<Build>, version: String?): Build? {
     if (builds.isEmpty()) return null
-    val sorted = builds.sortedWith { a, b -> compareSemver(a.version, b.version) }
+    val sorted = builds.sortedWith { a, b -> compareVersions(a.version, b.version) }
     if (version == null) return sorted.last()
     sorted
       .firstOrNull { it.version == version }
       ?.let {
         return it
       }
-    return sorted.lastOrNull { compareSemver(it.version, version) < 0 }
-      ?: sorted.firstOrNull { compareSemver(it.version, version) > 0 }
+    return sorted.lastOrNull { compareVersions(it.version, version) < 0 }
+      ?: sorted.firstOrNull { compareVersions(it.version, version) > 0 }
   }
 
-  /** The native library names an APK carries, and the AndroidX version markers it has. */
-  internal data class ApkNatives(val libraries: Set<String>, val versions: Map<String, String>)
+  /**
+   * Orders `1.2.3[-suffix]`: a pre-release suffix (`-alpha03`, `-rc01`) before its release, a
+   * numeric one (zstd-jni's `1.5.7-9`) after it, suffixes part by part with numbers as numbers.
+   * Mirrors `host-natives/index.py`'s `version_key`.
+   */
+  internal fun compareVersions(a: String, b: String): Int {
+    fun key(v: String): Triple<List<Int>, Int, List<String>> {
+      val head = v.substringBefore('-')
+      val suffix = v.substringAfter('-', "")
+      val nums =
+        head
+          .split('.')
+          .map { it.toIntOrNull() ?: 0 }
+          .let { it + List(4 - it.size.coerceAtMost(4)) { 0 } }
+      val rank =
+        when {
+          suffix.isEmpty() -> 1
+          suffix.first().isDigit() -> 2
+          else -> 0
+        }
+      return Triple(nums, rank, suffix.split('.', '-').filter { it.isNotEmpty() })
+    }
+    val (an, ar, ap) = key(a)
+    val (bn, br, bp) = key(b)
+    for (i in 0 until maxOf(an.size, bn.size)) {
+      val c = an.getOrElse(i) { 0 }.compareTo(bn.getOrElse(i) { 0 })
+      if (c != 0) return c
+    }
+    if (ar != br) return ar.compareTo(br)
+    for (i in 0 until maxOf(ap.size, bp.size)) {
+      val x = ap.getOrNull(i) ?: return -1
+      val y = bp.getOrNull(i) ?: return 1
+      val xn = x.toIntOrNull()
+      val yn = y.toIntOrNull()
+      val c =
+        when {
+          xn != null && yn != null -> xn.compareTo(yn)
+          xn != null -> -1
+          yn != null -> 1
+          else -> x.compareTo(y)
+        }
+      if (c != 0) return c
+    }
+    return 0
+  }
+
+  /**
+   * What an APK carries: its native libraries by load name, each with the GNU build IDs of its
+   * copies (one per ABI), and its AndroidX version markers.
+   */
+  internal data class ApkNatives(
+    val buildIds: Map<String, Set<String>>,
+    val versions: Map<String, String>,
+  ) {
+    val libraries: Set<String>
+      get() = buildIds.keys
+  }
+
+  /** How much of a library is read for its build ID: its notes sit just after the headers. */
+  private const val ELF_PREFIX_BYTES = 256 * 1024
 
   internal fun readApk(apk: File): ApkNatives? = runCatching {
     ZipFile(apk).use { zip ->
-      val names = zip.entries().asSequence().map { it.name }.toList()
-      val libraries =
-        names
-          .filter { it.startsWith("lib/") && it.endsWith(".so") }
-          .map { it.substringAfterLast('/').removePrefix("lib").removeSuffix(".so") }
-          .toSet()
+      val entries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
+      val buildIds = mutableMapOf<String, MutableSet<String>>()
+      for (entry in entries) {
+        val name = entry.name
+        if (!name.startsWith("lib/") || !name.endsWith(".so")) continue
+        val load = name.substringAfterLast('/').removePrefix("lib").removeSuffix(".so")
+        val ids = buildIds.getOrPut(load) { mutableSetOf() }
+        val prefix = zip.getInputStream(entry).use { it.readNBytes(ELF_PREFIX_BYTES) }
+        elfBuildId(prefix)?.let(ids::add)
+      }
       val versions =
-        names
-          .filter { it.startsWith("META-INF/") && it.endsWith(".version") }
-          .associateWith { name ->
-            zip.getInputStream(zip.getEntry(name)).use { it.readBytes().decodeToString().trim() }
+        entries
+          .filter { it.name.startsWith("META-INF/") && it.name.endsWith(".version") }
+          .associate { entry ->
+            entry.name to zip.getInputStream(entry).use { it.readBytes().decodeToString().trim() }
           }
-      ApkNatives(libraries, versions)
+      ApkNatives(buildIds, versions)
     }
   }
     .getOrNull()
 
+  /** The GNU build ID (`NT_GNU_BUILD_ID` in a `PT_NOTE`) of an ELF file's first bytes, or null. */
+  internal fun elfBuildId(elf: ByteArray): String? {
+    if (elf.size < 64 || elf[0] != 0x7f.toByte() || elf[1] != 'E'.code.toByte()) return null
+    val is64 = elf[4] == 2.toByte()
+    val order =
+      if (elf[5] == 1.toByte()) java.nio.ByteOrder.LITTLE_ENDIAN else java.nio.ByteOrder.BIG_ENDIAN
+    val buffer = java.nio.ByteBuffer.wrap(elf).order(order)
+    fun word(at: Int): Long = buffer.getInt(at).toLong() and 0xffffffffL
+    fun addr(at: Int): Long = if (is64) buffer.getLong(at) else word(at)
+    return runCatching {
+      val phoff = addr(if (is64) 0x20 else 0x1C).toInt()
+      val phentsize = buffer.getShort(if (is64) 0x36 else 0x2A).toInt() and 0xffff
+      val phnum = buffer.getShort(if (is64) 0x38 else 0x2C).toInt() and 0xffff
+      for (i in 0 until phnum) {
+        val header = phoff + i * phentsize
+        if (word(header) != 4L) continue // PT_NOTE
+        val offset = addr(header + if (is64) 8 else 4).toInt()
+        val size = addr(header + if (is64) 32 else 16).toInt()
+        var pos = offset
+        val end = minOf(offset + size, elf.size)
+        while (pos + 12 <= end) {
+          val nameSize = word(pos).toInt()
+          val descSize = word(pos + 4).toInt()
+          val type = word(pos + 8)
+          val desc = pos + 12 + ((nameSize + 3) and 3.inv())
+          if (
+            type == 3L &&
+              nameSize >= 3 &&
+              String(elf, pos + 12, 3, Charsets.US_ASCII) == "GNU" &&
+              desc + descSize <= elf.size
+          ) {
+            return@runCatching elf.copyOfRange(desc, desc + descSize).joinToString("") {
+              "%02x".format(it)
+            }
+          }
+          pos = desc + ((descSize + 3) and 3.inv())
+        }
+      }
+      null
+    }
+      .getOrNull()
+  }
+
   /**
    * What [apk] at [sdk] gets on [platform] from [index]: one [Choice] per library it carries that
-   * the index has a build of. Pure for testing, and logs each inexact match.
+   * the index has a build of. The build is the one sharing a build ID with the APK's copy; else the
+   * one at the APK's version (its AndroidX marker, or the version in the library's name); else the
+   * nearest, or the newest when the version is unknown, logged as possibly not matching. Pure.
    */
   internal fun plan(
     apk: ApkNatives,
@@ -159,23 +303,31 @@ object HostNativesProvision {
     platform: String,
     log: (String) -> Unit = {},
   ): List<Choice> =
-    index.libraries.mapNotNull { library ->
-      if (library.library !in apk.libraries || sdk < library.minSdk) return@mapNotNull null
-      val version = apk.versions[library.versionMarker]
-      if (version != null && library.fixedIn != null) {
-        if (compareSemver(version, library.fixedIn) >= 0) return@mapNotNull null
-      }
-      val build =
-        chooseBuild(library.builds.filter { platform in it.platforms }, version)
-          ?: return@mapNotNull null
-      Choice(library, build, build.platforms.getValue(platform), version).also {
-        if (!it.exact) {
+    index.libraries.flatMap { library ->
+      if (sdk < library.minSdk) return@flatMap emptyList()
+      apk.buildIds.mapNotNull { (loadName, ids) ->
+        val named = library.match(loadName) ?: return@mapNotNull null
+        val version = apk.versions[library.versionMarker] ?: named.ifEmpty { null }
+        if (version != null && library.fixedIn != null) {
+          if (compareVersions(version, library.fixedIn) >= 0) return@mapNotNull null
+        }
+        val candidates = library.builds.filter { platform in it.platforms }
+        val byId = candidates.firstOrNull { build -> build.androidBuildIds.any { it in ids } }
+        val build = byId ?: chooseBuild(candidates, version) ?: return@mapNotNull null
+        val match =
+          when {
+            byId != null -> Match.BUILD_ID
+            version == build.version -> Match.VERSION
+            else -> Match.NEAREST
+          }
+        if (match == Match.NEAREST) {
           log(
-            "host-natives: no ${library.library} build for ${library.artifact} " +
+            "host-natives: no $loadName build for ${library.artifact} " +
               "${version ?: "(version unknown)"} on $platform; using ${build.version}'s, which " +
               "may not match"
           )
         }
+        Choice(library, loadName, build, build.platforms.getValue(platform), version, match)
       }
     }
 
@@ -281,7 +433,7 @@ object HostNativesProvision {
     noNetwork: Boolean,
     log: (String) -> Unit,
   ): File? {
-    val name = choice.library.library
+    val name = choice.loadName
     val dir = File(root, "files/${choice.entry.sha256}/$platform")
     val target = File(dir, fileName(name, platform))
     if (target.isFile) return dir
@@ -349,12 +501,20 @@ object HostNativesProvision {
     return out
   }
 
+  /** What a launch adds for an APK: library directories, and the libraries' system properties. */
+  data class Resolution(val dirs: List<File>, val properties: Map<String, String>) {
+    companion object {
+      val NONE = Resolution(emptyList(), emptyMap())
+    }
+  }
+
   /**
-   * The directories to put on the simulator's `java.library.path` for [apk] at [sdk]: one per
-   * library it carries that the index has a build of. Empty when there are none or nothing could be
+   * The host builds for [apk] at [sdk]: one directory per library it carries that the index has a
+   * build of, for the simulator's `java.library.path`, and the system properties those libraries
+   * declare (`{dir}` filled in). [Resolution.NONE] when there are none or nothing could be
    * provisioned.
    */
-  fun libraryDirs(
+  fun resolve(
     apk: File,
     sdk: Int,
     fetcher: Fetcher = defaultFetcher,
@@ -365,23 +525,37 @@ object HostNativesProvision {
     // must also keep a launch to its cache (a stale index included) rather than fetch.
     noNetwork: Boolean = NetworkPolicy.offline,
     platform: String? = currentPlatformToken(),
-  ): List<File> {
-    val natives = readApk(apk) ?: return emptyList()
+  ): Resolution {
+    val natives = readApk(apk) ?: return Resolution.NONE
     // An APK with no native code needs no index, so no network.
-    if (natives.libraries.isEmpty() || platform == null) return emptyList()
+    if (natives.libraries.isEmpty() || platform == null) return Resolution.NONE
     val root = cacheRoot(env, userHome)
-    val index = loadIndex(root, fetcher, env, noNetwork, log) ?: return emptyList()
-    return plan(natives, sdk, index, platform, log).mapNotNull { choice ->
-      ensureFile(root, choice, platform, fetcher, noNetwork, log)
+    val index = loadIndex(root, fetcher, env, noNetwork, log) ?: return Resolution.NONE
+    val dirs = mutableListOf<File>()
+    val properties = linkedMapOf<String, String>()
+    for (choice in plan(natives, sdk, index, platform, log)) {
+      val dir = ensureFile(root, choice, platform, fetcher, noNetwork, log) ?: continue
+      if (dir !in dirs) dirs += dir
+      for ((key, value) in choice.library.properties) {
+        properties[key] = value.replace("{dir}", dir.absolutePath)
+      }
     }
+    return Resolution(dirs, properties)
   }
 
+  /** The load name a build's [entry] provides: the library's, else its file's (a pattern's). */
+  internal fun loadNameOf(library: Library, entry: Entry): String =
+    if (library.libraryPattern == null) library.library
+    else entry.entry.substringAfterLast('/').removePrefix("lib").substringBeforeLast('.')
+
   /**
-   * For `provision --host-natives`: a fresh index, and every build it lists for this host, so a
-   * later offline launch finds whichever one its APK needs. The cache root, or null when the index
-   * could not be fetched or a build failed.
+   * For `provision --host-natives`: a fresh index, and for this host either what each of [apks]
+   * needs (at every API level a launch could use) or, with none named, each library's newest build,
+   * so a later offline launch finds its libraries. The cache root, or null when the index could not
+   * be fetched or a build failed.
    */
   fun provisionAll(
+    apks: List<File> = emptyList(),
     fetcher: Fetcher = defaultFetcher,
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
@@ -395,13 +569,24 @@ object HostNativesProvision {
     }
     val root = cacheRoot(env, userHome)
     val index = loadIndex(root, fetcher, env, noNetwork, log, refresh = true) ?: return null
-    var ok = true
-    for (library in index.libraries) {
-      for (build in library.builds) {
-        val entry = build.platforms[platform] ?: continue
-        val choice = Choice(library, build, entry, build.version)
-        if (ensureFile(root, choice, platform, fetcher, noNetwork, log) == null) ok = false
+    val choices =
+      if (apks.isNotEmpty()) {
+        apks.flatMap { apk ->
+          val natives = readApk(apk) ?: error("cannot read $apk")
+          plan(natives, Int.MAX_VALUE, index, platform, log)
+        }
+      } else {
+        index.libraries.mapNotNull { library ->
+          val build =
+            chooseBuild(library.builds.filter { platform in it.platforms }, null)
+              ?: return@mapNotNull null
+          val entry = build.platforms.getValue(platform)
+          Choice(library, loadNameOf(library, entry), build, entry, build.version, Match.VERSION)
+        }
       }
+    var ok = true
+    for (choice in choices.distinctBy { it.entry.sha256 to it.loadName }) {
+      if (ensureFile(root, choice, platform, fetcher, noNetwork, log) == null) ok = false
     }
     return root.takeIf { ok }
   }

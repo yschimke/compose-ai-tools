@@ -84,7 +84,7 @@ class ProvisionCommandTest {
       return null
     }
 
-    override fun hostNatives(): File? {
+    override fun hostNatives(apks: List<File>): File? {
       maybeFail("host-natives")
       return File(cache, "host-natives/1.0.0/linux-x86_64")
     }

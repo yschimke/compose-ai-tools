@@ -111,6 +111,10 @@ class Watch(unittest.TestCase):
 class AddRelease(unittest.TestCase):
     def test_records_both_mac_architectures_from_the_universal_tarball(self):
         idx = copy.deepcopy(index.load())
+        # Independent of what the checked-in index already lists for graphics-path.
+        for library in idx["libraries"]:
+            if library.get("release", {}).get("recipe") == "graphics-path":
+                library["builds"] = []
         with tempfile.TemporaryDirectory() as tmp:
             dist = Path(tmp)
             props = (
@@ -289,6 +293,78 @@ class Cache(unittest.TestCase):
         with mock.patch.object(index, "_open", return_value=Whole(data)):
             self.assertEqual(index.fetch_range("https://x/a.jar", "10-19"), data[10:20])
             self.assertEqual(index.fetch_range("https://x/a.jar", "-5"), data)
+
+
+def elf_with_build_id(build_id: bytes) -> bytes:
+    """A minimal little-endian ELF64 whose one PT_NOTE holds an NT_GNU_BUILD_ID."""
+    note = struct.pack("<III", 4, len(build_id), 3) + b"GNU\0" + build_id
+    elf = bytearray(120 + len(note))
+    elf[0:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<Q", elf, 0x20, 64)
+    struct.pack_into("<HH", elf, 0x36, 56, 1)
+    struct.pack_into("<IIQQQQQQ", elf, 64, 4, 0, 120, 0, 0, len(note), len(note), 4)
+    elf[120:] = note
+    return bytes(elf)
+
+
+class BuildIds(unittest.TestCase):
+    def test_reads_the_gnu_build_id(self):
+        self.assertEqual(index.elf_build_id(elf_with_build_id(b"\xde\xad\xbe\xef")), "deadbeef")
+        self.assertIsNone(index.elf_build_id(b"not an elf" * 10))
+
+    def test_backfill_records_ids_once_including_none(self):
+        idx = {
+            "schema": index.SCHEMA,
+            "libraries": [{
+                "library": "conscrypt_jni",
+                "artifact": "org.conscrypt:conscrypt-android",
+                "android": {"repository": "https://m", "artifact": "org.conscrypt:conscrypt-android"},
+                "builds": [{"version": "2.8.0", "platforms": {}},
+                           {"version": "2.7.0", "platforms": {}, "androidBuildIds": []}],
+            }],
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as z:
+            z.writestr("jni/arm64-v8a/libother.so", elf_with_build_id(b"\xff\xff\xff\xff"))
+            z.writestr("jni/arm64-v8a/libconscrypt_jni.so", elf_with_build_id(b"\x01\x02\x03\x04"))
+        archive = buffer.getvalue()
+        fetched = []
+        index.backfill_build_ids(idx, fetch_bytes=lambda url: fetched.append(url) or archive)
+        builds = idx["libraries"][0]["builds"]
+        self.assertEqual(builds[0]["androidBuildIds"], ["01020304"])
+        self.assertEqual(len(fetched), 1, "2.7.0 is already recorded, as having none")
+
+
+class Patterns(unittest.TestCase):
+    library = {"library": "zstd-jni", "libraryPattern": "zstd-jni-(.+)",
+               "artifact": "com.github.luben:zstd-jni"}
+
+    def test_a_pattern_matches_versioned_names(self):
+        self.assertEqual(index.matches(self.library, "zstd-jni-1.5.7-9").group(1), "1.5.7-9")
+        self.assertIsNone(index.matches(self.library, "zstd"))
+        self.assertEqual(index.validate({"schema": index.SCHEMA, "libraries": [self.library]}), [])
+
+    def test_watch_fills_the_version_into_entries_and_honours_stable(self):
+        idx = {"schema": index.SCHEMA, "libraries": [dict(self.library, builds=[], upstream={
+            "repository": "https://m", "artifact": "com.github.luben:zstd-jni",
+            "since": "1.5.7-9", "stable": r"^\d+\.\d+\.\d+-\d+$",
+            "entries": {"linux-x86_64": "linux/amd64/libzstd-jni-{version}.so"}})]}
+        added = index.watch(
+            idx,
+            fetch_versions=lambda r, a: ["1.5.7-8", "1.5.7-10", "1.5.8-rc1"],
+            fetch_bytes=lambda url: jar(f"linux/amd64/libzstd-jni-{url.split('/')[-2]}.so"),
+        )
+        self.assertEqual(added, ["zstd-jni 1.5.7-10 (linux-x86_64)"])
+        self.assertEqual(
+            idx["libraries"][0]["builds"][0]["platforms"]["linux-x86_64"]["entry"],
+            "linux/amd64/libzstd-jni-1.5.7-10.so",
+        )
+
+    def test_numeric_suffixes_sort_after_their_release(self):
+        self.assertEqual(
+            sorted(["1.5.7-10", "1.5.7", "1.5.7-9", "1.5.7-rc1"], key=index.version_key),
+            ["1.5.7-rc1", "1.5.7", "1.5.7-9", "1.5.7-10"],
+        )
 
 
 if __name__ == "__main__":

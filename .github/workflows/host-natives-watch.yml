@@ -20,6 +20,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -84,5 +85,16 @@ jobs:
             fi
             echo "\`compose-preview launch\` reads the index from main, so merging this is what ships them."
           } > body.md
-          gh pr create --title "chore: update the host-natives index and AndroidX survey" --body-file body.md \
-            --base main --head "$branch"
+          url="$(gh pr create --title "chore: update the host-natives index and AndroidX survey" \
+            --body-file body.md --base main --head "$branch")"
+          # GitHub starts no workflow for a PR opened with GITHUB_TOKEN, so its required checks would
+          # never report and auto-merge would wait forever. Dispatch them on the PR's branch, as
+          # release-please.yml does for the release PR: each reports its check on the branch head.
+          number="${url##*/}"
+          gh workflow run ci.yml --ref "$branch"
+          gh workflow run pr-title.yml --ref "$branch" -f pr="$number"
+          gh workflow run no-agent-attribution.yml --ref "$branch" -f pr="$number"
+          gh workflow run host-natives.yml --ref "$branch"
+          # Lands once those checks pass: every archive it adds was checked online (its sha256 and the
+          # library inside it), and nothing ships until it merges.
+          gh pr merge "$number" --auto --squash
