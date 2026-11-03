@@ -100,9 +100,10 @@ for recipe in "${selected[@]}"; do
 
   # A Linux library loads only on a glibc at least as new as every symbol version it needs, and a
   # compiler versions symbols as new as the glibc it builds against: built on Ubuntu 26.04 it
-  # needed sqrtf@GLIBC_2.43 and loaded nowhere older. host-natives.yml builds Linux in Debian 11.
+  # needed sqrtf@GLIBC_2.43 and loaded nowhere older. host-natives.yml builds Linux in PyPA's
+  # manylinux_2_28 image.
   if [[ "$platform" == linux-* ]]; then
-    floor="${HOST_NATIVES_GLIBC_FLOOR:-2.31}"
+    floor="${HOST_NATIVES_GLIBC_FLOOR:-2.28}"
     needs="$(objdump -T "$lib" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)"
     if [[ "$(printf '%s\n%s\n' "$needs" "$floor" | sort -V | tail -1)" != "$floor" ]]; then
       echo "host-natives: $lib needs glibc $needs, newer than the $floor floor; build it on an older glibc" >&2

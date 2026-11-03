@@ -56,7 +56,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # Linux builds against an old glibc, so the library loads on any host from that one on:
     # ubuntu-latest's own glibc versions symbols as new as itself (sqrtf@GLIBC_2.43 from Ubuntu
-    # 26.04), and a library built there loads nowhere older. build.sh enforces the floor.
+    # 26.04), and a library built there loads nowhere older. manylinux_2_28 is PyPA's maintained
+    # image for exactly this (glibc 2.28, a current gcc-toolset, binutils and curl preinstalled);
+    # Debian 11, tried first, has had its security archive retired. build.sh enforces the floor.
     container: ${{ matrix.container }}
     timeout-minutes: 15
     strategy:
@@ -65,18 +67,12 @@ jobs:
         include:
           - runner: ubuntu-latest
             platform: linux-x86_64
-            container: debian:bullseye # glibc 2.31
+            container: quay.io/pypa/manylinux_2_28_x86_64
           # One universal (arm64 + x86_64) dylib, built with Apple's toolchain.
           - runner: macos-latest
             platform: macos-universal
             container: ''
     steps:
-      - name: Install the build tools (Linux container)
-        if: matrix.container != ''
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends g++ binutils curl ca-certificates
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
