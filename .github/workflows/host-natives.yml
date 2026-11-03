@@ -1,0 +1,167 @@
+name: Host Natives
+
+# Builds the host (desktop) native libraries the simulator loads in place of an APK's Android-only
+# ones, on real Linux and macOS runners, and verifies each against Robolectric's native runtime on
+# the architecture it targets. Today that is androidx.graphics:graphics-path's.
+#
+# Publishing is its own line, apart from release.yml: dispatching this workflow with `publish`
+# attaches the archives to a `host-natives-v<host-natives/VERSION>` prerelease that is never marked
+# latest, so the CLI installers, the install action and `/releases/latest` never see it. A
+# compose-ai-tools release does not rebuild these binaries, and a change here cuts no release. See
+# docs/RELEASING.md, "The host-natives binaries".
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'host-natives/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/host-natives.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'host-natives/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/host-natives.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish host-natives-v<host-natives/VERSION> once every platform verifies
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+          # One universal (arm64 + x86_64) dylib, built with Apple's toolchain.
+          - runner: macos-latest
+            platform: macos-universal
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # For <jni.h>.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build
+        run: host-natives/build.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-natives-${{ matrix.platform }}
+          path: host-natives/build/dist/*.tar.gz
+          if-no-files-found: error
+
+  verify:
+    name: Verify ${{ matrix.platform }} on ${{ matrix.runner }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+          # Each slice of the universal dylib, on its own architecture.
+          - runner: macos-latest
+            platform: macos-universal
+          - runner: macos-15-intel
+            platform: macos-universal
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: host-natives-${{ matrix.platform }}
+          path: host-natives/build/dist
+
+      - name: Unpack
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          mkdir -p "host-natives/build/$PLATFORM"
+          tar -xzf host-natives/build/dist/host-natives-"$PLATFORM"-*.tar.gz -C "host-natives/build/$PLATFORM"
+          cat "host-natives/build/$PLATFORM/host-natives.properties"
+
+      - name: Verify against Robolectric
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: ./gradlew -p host-natives/verify verifyHostNatives -PhostNativesDir="$PWD/host-natives/build/$PLATFORM"
+
+  publish:
+    name: Publish
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: host-natives-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="$(tr -d '[:space:]' < host-natives/VERSION)"
+          tag="host-natives-v$version"
+          # A published version's assets never change: consumers pin it and cache by it.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::$tag already exists. Bump host-natives/VERSION to publish new binaries."
+            exit 1
+          fi
+          (cd dist && sha256sum ./*.tar.gz | sed 's# \./# #' > SHA256SUMS && cat SHA256SUMS)
+          commit="$(sed -n 's/^commit=//p' host-natives/graphics-path/upstream.properties)"
+          {
+            echo "Host native libraries for the simulator, built and verified by \`host-natives.yml\` at $GITHUB_SHA."
+            echo
+            echo "- \`libandroidx.graphics.path\`: AndroidX graphics-path's native sources at androidx/androidx@$commit, for linux-x86_64 and macOS (universal arm64 + x86_64). Verified with graphics-path 1.0.1 on API 34, 35 and 36."
+            echo
+            echo "Not a compose-ai-tools release. Consumers pin \`$version\`; see docs/RELEASING.md."
+          } > notes.md
+          gh release create "$tag" dist/*.tar.gz dist/SHA256SUMS \
+            --target "$GITHUB_SHA" \
+            --title "host-natives $version" \
+            --notes-file notes.md \
+            --prerelease \
+            --latest=false
