@@ -187,7 +187,7 @@ jobs:
       - name: Install Mesa
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libegl-mesa0 libgl1-mesa-dri
+          sudo apt-get install -y -q --no-install-recommends libegl1 libgles2 libgl1 libegl-mesa0 libgl1-mesa-dri
 
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
