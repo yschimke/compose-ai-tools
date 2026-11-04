@@ -52,7 +52,7 @@ dependencies {
   implementation("androidx.ink:ink-strokes:1.0.0")
   implementation("androidx.ink:ink-brush:1.0.0")
   implementation("androidx.ink:ink-geometry:1.0.0")
-  implementation("com.github.luben:zstd-jni:1.5.7-24@aar")
+  implementation("com.github.luben:zstd-jni:1.5.7-25@aar")
   implementation("net.java.dev.jna:jna:5.19.1@aar")
   implementation("org.conscrypt:conscrypt-android:2.8.0")
   implementation("org.signal:libsignal-android:0.86.5")
