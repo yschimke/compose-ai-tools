@@ -299,7 +299,7 @@ jobs:
           packages: ${{ inputs.android-packages }}
       - name: Set up Gradle
         if: inputs.setup != 'local'
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: true
       - name: Set up the build (the repository's own action)
@@ -387,7 +387,7 @@ jobs:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
           BASH_DEFAULT_TIMEOUT_MS: '1200000'
           BASH_MAX_TIMEOUT_MS: '2400000'
-        uses: anthropics/claude-code-action@8041f1d17e0e7d2f2cfe35002962e9f26237c0bb # v1.0.263
+        uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264
         with:
           # Exactly one credential, chosen by the gate: the subscription token,
           # or the API key (billed to the API organization's credits).
