@@ -1120,7 +1120,18 @@
       "release": {
         "recipe": "filament"
       },
-      "builds": []
+      "builds": [
+        {
+          "version": "1.77.3",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://github.com/yschimke/compose-ai-tools/releases/download/host-natives-filament-1.77.3/host-natives-filament-1.77.3-linux-x86_64.tar.gz",
+              "sha256": "12f6702184e68d574b7945434b5be30d848f2205a96f18e92796f49cb2728b14",
+              "entry": "libfilament-jni.so"
+            }
+          }
+        }
+      ]
     }
   ]
 }
