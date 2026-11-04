@@ -266,6 +266,48 @@ class HostNativesProvisionTest {
   }
 
   @Test
+  fun `the files a library needs beside it are extracted into its directory`() {
+    val staged = File(tmp, "staged").apply { mkdirs() }
+    for (name in listOf("libfilament-jni.dylib", "libEGL.dylib", "libGLESv2.dylib")) {
+      File(staged, name).writeText(name)
+    }
+    val tarball = File(tmp, "served/filament.tar.gz").apply { parentFile.mkdirs() }
+    val tar =
+      ProcessBuilder("tar", "-czf", tarball.absolutePath, "-C", staged.absolutePath, ".")
+        .redirectErrorStream(true)
+        .start()
+    assertEquals(0, tar.waitFor(), tar.inputStream.bufferedReader().readText())
+    val indexJson =
+      """
+      {"schema": "${HostNativesProvision.SCHEMA}", "libraries": [
+        {"library": "filament-jni", "artifact": "com.google.android.filament:filament-android",
+         "builds": [{"version": "1.77.3", "platforms": {"macos-arm64": {
+           "url": "https://x/filament.tar.gz", "sha256": "${sha256(tarball)}",
+           "entry": "libfilament-jni.dylib", "files": ["libEGL.dylib", "libGLESv2.dylib"]}}}]}]}
+      """
+    val fetcher = HostNativesProvision.Fetcher { url, dest ->
+      if (url.endsWith("index.json")) dest.writeText(indexJson) else tarball.copyTo(dest, true)
+    }
+    val apk = zip(File(tmp, "filament.apk"), "lib/arm64-v8a/libfilament-jni.so" to "")
+    val resolution =
+      HostNativesProvision.resolve(
+        apk,
+        35,
+        fetcher,
+        env = env,
+        log = {},
+        noNetwork = false,
+        platform = "macos-arm64",
+      )
+    val dir = resolution.dirs.single()
+    assertEquals(
+      listOf("libEGL.dylib", "libGLESv2.dylib", "libfilament-jni.dylib"),
+      dir.list()!!.sorted(),
+    )
+    assertEquals("libEGL.dylib", File(dir, "libEGL.dylib").readText())
+  }
+
+  @Test
   fun `a hash mismatch, an APK without natives, and no index all skip`() {
     val jar = zip(File(tmp, "served/x.jar"), "lib.so" to "elf")
     val logs = mutableListOf<String>()

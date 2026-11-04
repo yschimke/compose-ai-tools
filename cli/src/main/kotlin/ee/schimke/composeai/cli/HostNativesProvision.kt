@@ -91,7 +91,18 @@ object HostNativesProvision {
     val androidBuildIds: List<String> = emptyList(),
   )
 
-  @Serializable internal data class Entry(val url: String, val sha256: String, val entry: String)
+  /**
+   * One platform's archive: its [url] and [sha256], the library at [entry], and [files] the library
+   * needs beside it (filament-jni's ANGLE `libEGL`/`libGLESv2` on macOS), extracted into the same
+   * directory under their own names. Only from a `.tar.gz`.
+   */
+  @Serializable
+  internal data class Entry(
+    val url: String,
+    val sha256: String,
+    val entry: String,
+    val files: List<String> = emptyList(),
+  )
 
   /** How a [Choice] was matched to the APK, best first. */
   internal enum class Match {
@@ -454,6 +465,15 @@ object HostNativesProvision {
       check(sha == choice.entry.sha256) { "sha256 $sha, the index says ${choice.entry.sha256}" }
       val extracted = extract(tmp, url, choice.entry.entry, stage)
       dir.mkdirs()
+      // The files beside it first: the library itself arriving is what marks the build provisioned.
+      for (name in choice.entry.files) {
+        val file = File(stage, name).takeIf { it.isFile } ?: error("$url has no $name")
+        Files.move(
+          file.toPath(),
+          File(dir, name.substringAfterLast('/')).toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+        )
+      }
       try {
         Files.move(extracted.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
       } catch (_: Exception) {

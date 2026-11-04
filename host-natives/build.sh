@@ -132,6 +132,13 @@ for recipe in "${selected[@]}"; do
     echo "host-natives: $lib needs glibc $needs (floor $floor)" >&2
   fi
 
+  # Files the library needs beside it, which the recipe names in .host-natives-extra (filament-jni's
+  # ANGLE on macOS); index.py records them as the entry's `files`.
+  extra=""
+  if [[ -f "$out/.host-natives-extra" ]]; then
+    extra="$(cat "$out/.host-natives-extra")"
+    rm "$out/.host-natives-extra"
+  fi
   cat >"$out/host-natives.properties" <<PROPS
 recipe=$recipe
 tag=$tag
@@ -140,6 +147,7 @@ library=$(prop "$recipe" library)
 artifact=$(prop "$recipe" artifact)
 version=$version
 file=$(basename "$lib")
+extra=$extra
 commit=$commit
 PROPS
   {

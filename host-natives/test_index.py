@@ -142,6 +142,61 @@ class AddRelease(unittest.TestCase):
         self.assertIn("libandroidx.graphics.path.dylib", index.archive_names(data, "x.tar.gz"))
 
 
+    def test_records_the_files_a_library_needs_beside_it(self):
+        idx = copy.deepcopy(index.load())
+        for library in idx["libraries"]:
+            if library.get("release", {}).get("recipe") == "filament":
+                library["builds"] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            props = (
+                "recipe=filament\ntag=host-natives-filament-1.77.3-r3\n"
+                "platform=macos-universal\nlibrary=filament-jni\n"
+                "artifact=com.google.android.filament:filament-android\nversion=1.77.3\n"
+                "file=libfilament-jni.dylib\nextra=libEGL.dylib libGLESv2.dylib\n"
+            )
+            data = tarball(
+                {
+                    "host-natives.properties": props,
+                    "libfilament-jni.dylib": "x",
+                    "libEGL.dylib": "x",
+                    "libGLESv2.dylib": "x",
+                }
+            )
+            (dist / "host-natives-filament-1.77.3-macos-universal.tar.gz").write_bytes(data)
+            index.add_release(idx, dist)
+        library = next(l for l in idx["libraries"] if l["library"] == "filament-jni")
+        for platform in ("macos-arm64", "macos-x86_64"):
+            entry = library["builds"][0]["platforms"][platform]
+            self.assertEqual(entry["entry"], "libfilament-jni.dylib")
+            self.assertEqual(entry["files"], ["libEGL.dylib", "libGLESv2.dylib"])
+        self.assertEqual(index.validate(idx), [])
+
+    def test_files_only_come_out_of_a_tarball(self):
+        idx = {
+            "schema": index.SCHEMA,
+            "libraries": [
+                {
+                    "library": "x",
+                    "artifact": "a:b",
+                    "builds": [
+                        {
+                            "version": "1.0.0",
+                            "platforms": {
+                                "linux-x86_64": {
+                                    "url": "https://example.com/x.jar",
+                                    "sha256": "0" * 64,
+                                    "entry": "libx.so",
+                                    "files": ["liby.so"],
+                                }
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        self.assertEqual(len(index.validate(idx)), 1, index.validate(idx))
+
 def class_file(name: str, methods: list[tuple[int, str, str]]) -> bytes:
     """A minimal class file: [name] with [methods] as (access flags, name, descriptor)."""
     pool = [b""]

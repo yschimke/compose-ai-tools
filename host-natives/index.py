@@ -181,6 +181,13 @@ def validate(index: dict) -> list[str]:
                     errors.append(f"{at}: sha256 must be 64 lowercase hex digits")
                 if not entry.get("entry"):
                     errors.append(f"{at}: entry (the library's path in the archive) is required")
+                # Files the library needs beside it (filament-jni's ANGLE on macOS), extracted
+                # into the same directory. Optional: a CLI that predates it extracts only `entry`.
+                files = entry.get("files", [])
+                if not isinstance(files, list) or not all(isinstance(f, str) and f for f in files):
+                    errors.append(f"{at}: files must be a list of paths in the archive")
+                elif files and not entry.get("url", "").endswith((".tar.gz", ".tgz")):
+                    errors.append(f"{at}: files are only extracted from a .tar.gz")
     return errors
 
 
@@ -266,8 +273,10 @@ def check_online(index: dict) -> list[str]:
                 sha, names = result
                 if sha != entry["sha256"]:
                     errors.append(f"{at}: sha256 of {url} does not match")
-                elif entry["entry"] not in names:
-                    errors.append(f"{at}: {url} has no {entry['entry']}")
+                else:
+                    for name in [entry["entry"], *entry.get("files", [])]:
+                        if name not in names:
+                            errors.append(f"{at}: {url} has no {name}")
     return errors
 
 
@@ -401,7 +410,10 @@ def add_release(index: dict, dist: Path) -> list[str]:
         build.pop("sameAs", None)
         sha = hashlib.sha256(data).hexdigest()
         for platform in RELEASE_PLATFORMS[properties["platform"]]:
-            build["platforms"][platform] = {"url": url, "sha256": sha, "entry": properties["file"]}
+            built = {"url": url, "sha256": sha, "entry": properties["file"]}
+            if properties.get("extra", "").split():
+                built["files"] = properties["extra"].split()
+            build["platforms"][platform] = built
             added.append(f"{label(library)} {version} {platform} from {properties['tag']}")
     return added
 

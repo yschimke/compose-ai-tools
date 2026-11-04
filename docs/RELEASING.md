@@ -395,7 +395,9 @@ for the release PR, and enables squash auto-merge.
 
   Add its verification, a build entry in `host-natives.yml`'s matrix, and give the index entry
   `"release": {"recipe": "<recipe>"}`. `platforms=` in `recipe.properties` limits a recipe to some
-  platforms (`filament` is `linux-x86_64` only). Linux arm64 is not built, because Robolectric
+  platforms. A recipe that ships files beside its library (filament-jni's ANGLE on macOS) lists
+  them in `$out/.host-natives-extra`; they become the index entry's `files`. Linux arm64 is not
+  built, because Robolectric
   publishes no Linux arm64 native runtime for the simulator to run on.
 
 > **Editing this file while a release PR is open?** release-please branches its

@@ -1,26 +1,28 @@
 diff --git a/libs/utils/src/Log.cpp b/libs/utils/src/Log.cpp
-index 7e626c10..d307c68a 100644
+index 7e626c10..8574b82b 100644
 --- a/libs/utils/src/Log.cpp
 +++ b/libs/utils/src/Log.cpp
-@@ -34,6 +34,13 @@
+@@ -34,6 +34,15 @@
  
  #include <mutex>
  
 +#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 +// compose-ai-tools host-natives: where filament-jni runs inside an Android simulator, it defines
-+// this to send the line to android.util.Log, as __android_log_write does on a device. Weak, so
-+// everything else that links libutils (matc, the samples) keeps writing to stdout/stderr.
-+extern "C" __attribute__((weak)) bool filament_host_log(int priority, char const* message);
++// this to send the line to android.util.Log, as __android_log_write does on a device. This weak
++// default declines, so everything else that links libutils (matc, the samples) keeps writing to
++// stdout/stderr. A weak definition rather than a weak reference: Mach-O cannot link an undefined
++// weak symbol that nothing provides.
++extern "C" __attribute__((weak)) bool filament_host_log(int, char const*) { return false; }
 +#endif
 +
  namespace utils {
  namespace io {
  
-@@ -88,6 +95,10 @@ ostream& LogStream::flush() noexcept {
+@@ -88,6 +97,10 @@ ostream& LogStream::flush() noexcept {
              break;
      }
  #else  // not ANDROID or EMSCRIPTEN
-+    if (filament_host_log && filament_host_log(int(mPriority), str)) {
++    if (filament_host_log(int(mPriority), str)) {
 +        buf.reset();
 +        return *this;
 +    }

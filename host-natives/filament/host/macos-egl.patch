@@ -1,0 +1,67 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 02c889f8..bf3f28cb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -213,6 +213,12 @@ if (NOT FILAMENT_OSMESA_PATH STREQUAL "")
+     set(FILAMENT_SUPPORTS_OSMESA TRUE CACHE BOOL "Enable OSMesa (headless GL context) for Filament" FORCE)
+ endif()
+ 
++# compose-ai-tools host-natives: headless EGL on macOS too, over ANGLE (OpenGL ES on Metal), for
++# filament-jni in the Android simulator. Its apps ship materials for OpenGL ES only.
++if (APPLE AND NOT IOS AND FILAMENT_SUPPORTS_EGL_ON_LINUX)
++    add_definitions(-DFILAMENT_SUPPORTS_EGL_ON_LINUX)
++endif()
++
+ if (LINUX)
+     if (FILAMENT_SUPPORTS_WAYLAND)
+         add_definitions(-DFILAMENT_SUPPORTS_WAYLAND)
+diff --git a/filament/backend/CMakeLists.txt b/filament/backend/CMakeLists.txt
+index e18f9bd2..cb66ed71 100644
+--- a/filament/backend/CMakeLists.txt
++++ b/filament/backend/CMakeLists.txt
+@@ -132,7 +132,9 @@ if (FILAMENT_SUPPORTS_OPENGL AND NOT FILAMENT_USE_EXTERNAL_GLES3)
+         list(APPEND SRCS src/opengl/platforms/PlatformCocoaTouchGL.mm)
+         list(APPEND SRCS src/opengl/platforms/CocoaTouchExternalImage.mm)
+     elseif (APPLE)
+-        if (FILAMENT_SUPPORTS_OSMESA)
++        if (FILAMENT_SUPPORTS_EGL_ON_LINUX)
++            list(APPEND SRCS src/opengl/platforms/PlatformEGLHeadless.cpp)
++        elseif (FILAMENT_SUPPORTS_OSMESA)
+             list(APPEND SRCS src/opengl/platforms/PlatformOSMesa.cpp)
+         else()
+             list(APPEND SRCS src/opengl/platforms/PlatformCocoaGL.mm)
+diff --git a/filament/backend/src/PlatformFactory.cpp b/filament/backend/src/PlatformFactory.cpp
+index 309f2990..a057f513 100644
+--- a/filament/backend/src/PlatformFactory.cpp
++++ b/filament/backend/src/PlatformFactory.cpp
+@@ -45,7 +45,9 @@
+     #elif defined(FILAMENT_IOS)
+         #include "backend/platforms/PlatformCocoaTouchGL.h"
+     #elif defined(__APPLE__)
+-        #if defined(FILAMENT_SUPPORTS_OSMESA)
++        #if defined(FILAMENT_SUPPORTS_EGL_ON_LINUX)
++            #include "backend/platforms/PlatformEGLHeadless.h"
++        #elif defined(FILAMENT_SUPPORTS_OSMESA)
+             #include <backend/platforms/PlatformOSMesa.h>
+         #else
+             #include <backend/platforms/PlatformCocoaGL.h>
+@@ -107,7 +109,7 @@ Platform* PlatformFactory::create(Backend* backend) noexcept {
+         *backend = Backend::OPENGL;
+ #elif defined(__ANDROID__)
+         *backend = Backend::OPENGL;
+-#elif defined(FILAMENT_IOS) || defined(__APPLE__)
++#elif defined(FILAMENT_IOS) || (defined(__APPLE__) && !defined(FILAMENT_SUPPORTS_EGL_ON_LINUX))
+         *backend = Backend::METAL;
+ #elif defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+         *backend = Backend::VULKAN;
+@@ -170,7 +172,9 @@ Platform* PlatformFactory::create(Backend* backend) noexcept {
+         #elif defined(FILAMENT_IOS)
+             return new PlatformCocoaTouchGL();
+         #elif defined(__APPLE__)
+-            #if defined(FILAMENT_SUPPORTS_OSMESA)
++            #if defined(FILAMENT_SUPPORTS_EGL_ON_LINUX)
++                return new PlatformEGLHeadless();
++            #elif defined(FILAMENT_SUPPORTS_OSMESA)
+                 return new PlatformOSMesa();
+             #else
+                 return new PlatformCocoaGL();
