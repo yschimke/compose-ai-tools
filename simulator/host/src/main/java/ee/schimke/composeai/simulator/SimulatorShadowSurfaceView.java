@@ -94,9 +94,19 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
         view, SurfaceView.class, "dispatchDraw", ClassParameter.from(Canvas.class, canvas));
   }
 
+  /**
+   * Clears the view's own rectangle, not the whole clip: under a parent with {@code
+   * clipChildren=false} the clip reaches past the view, and clearing it would erase window content
+   * around the surface.
+   */
   private void clear(Canvas canvas) {
     if (holder != null && holder.surfaceShown() && !holder.onTop()) {
+      int save = canvas.save();
+      int x = view.getScrollX();
+      int y = view.getScrollY();
+      canvas.clipRect(x, y, x + view.getWidth(), y + view.getHeight());
       canvas.drawColor(0, PorterDuff.Mode.CLEAR);
+      canvas.restoreToCount(save);
     }
   }
 
@@ -205,7 +215,9 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
 
     /** Creates, replaces or destroys the surface to match the view: shown, laid out, sized. */
     private void update() {
-      boolean wanted = view.isAttachedToWindow() && view.isShown() && bufferWidth() > 0;
+      // A collapsed view (zero width or height) has no surface: ImageReader takes neither.
+      boolean wanted =
+          view.isAttachedToWindow() && view.isShown() && bufferWidth() > 0 && bufferHeight() > 0;
       if (!wanted) {
         destroy();
         return;
