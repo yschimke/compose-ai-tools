@@ -67,10 +67,7 @@ public class FilamentTest {
 
     SwapChain swapChain = engine.createSwapChain(reader.getSurface());
     Renderer renderer = engine.createRenderer();
-    Renderer.ClearOptions clear = new Renderer.ClearOptions();
-    clear.clear = true;
-    clear.clearColor = new float[] {1, 0, 0, 1};
-    renderer.setClearOptions(clear);
+    renderer.setClearOptions(new Renderer.ClearOptions(1, 0, 0, 1, 0, true, false));
 
     Scene scene = engine.createScene();
     scene.setSkybox(new Skybox.Builder().color(0, 0, 1, 1).build(engine));

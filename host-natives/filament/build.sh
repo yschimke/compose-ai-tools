@@ -5,7 +5,8 @@
 # Two parts:
 #  1. Filament itself, with CMake, as a headless renderer: the OpenGL backend on EGL
 #     (PlatformEGLHeadless), no X11, Wayland or Vulkan, no samples or tests. At run time it needs
-#     only libEGL.so.1 and libGL.so.1 (glvnd, with Mesa's drivers or a GPU vendor's).
+#     only libEGL.so.1, libGLESv2.so.2 and libGL.so.1 (glvnd, with Mesa's drivers or a GPU
+#     vendor's; bluegl loads libGL.so.1 itself).
 #  2. The JNI layer from android/filament-android, compiled for the host and linked against (1).
 #     Its sources are Filament's, unchanged, except:
 #       - nativewindow/Android.cpp is replaced by host/HostSurface.cpp: a Surface gets a headless
@@ -35,6 +36,15 @@ cc="${CC:-clang}"
 build="$out/../filament-cmake"
 
 # 1. Filament.
+# Its own materials (default material, skybox, post-processing) are compiled for desktop on Linux,
+# but on EGL the backend runs OpenGL ES, where Filament takes the mobile shader model and refuses
+# them ("not built for mobile"). Android apps' .filamat files are mobile too, so the built-in ones
+# are compiled for both (`matc -p all`).
+sed -i 's/set(MATC_TARGET desktop)/set(MATC_TARGET all)/' "$src/CMakeLists.txt"
+grep -q 'set(MATC_TARGET all)' "$src/CMakeLists.txt" || {
+  echo "host-natives: Filament's CMakeLists.txt no longer sets MATC_TARGET desktop" >&2
+  exit 1
+}
 # USE_STATIC_LIBCXX=OFF: Filament's Linux default links LLVM's libc++, which manylinux_2_28 does
 # not package; libstdc++ is linked statically into filament-jni below instead. Filament annotates
 # its mutexes for clang's thread-safety analysis, which only libc++'s std::mutex supports: with
@@ -59,7 +69,7 @@ libraries=(
 ninja -C "$build" -j "$jobs" "${libraries[@]}" >&2
 archives=()
 for library in "${libraries[@]}"; do
-  archive="$(find "$build" -name "lib$library.a" -print -quit)"
+  archive="$(find "$build/" -name "lib$library.a" -print -quit)"
   [[ -n "$archive" ]] || { echo "host-natives: no lib$library.a in $build" >&2; exit 1; }
   archives+=("$archive")
 done
@@ -107,6 +117,9 @@ for file in "$jni"/*.cpp; do
   sources+=("$file")
 done
 sources+=("$common/CallbackUtils.cpp" "$common/NioUtils.cpp" "$common/JniUtils.cpp")
+# The JavaVM handle the JNI layer and its callbacks use; Filament builds it into the backend only
+# for Android.
+sources+=("$src/filament/backend/src/VirtualMachineEnv.cpp")
 sources+=("$here/host/HostSurface.cpp" "$here/host/HostTextureHelper.cpp")
 
 pids=()
@@ -134,20 +147,23 @@ for file in "${sources[@]}"; do
 done
 
 lib="$out/libfilament-jni.so"
+# -z noexecstack: Filament's material blobs are assembled (.S) without a .note.GNU-stack, which
+# would mark the library as needing an executable stack, and glibc 2.41+ refuses to dlopen that.
 # shellcheck disable=SC2086 # LDFLAGS is a list of flags.
 "$cxx" ${LDFLAGS:-} -shared -o "$lib" "${objs[@]}" \
   -Wl,--start-group "${archives[@]}" -Wl,--end-group \
   -Wl,--version-script="$src/android/filament-android/libfilament-jni.map" \
   -Wl,--exclude-libs,ALL -Wl,-z,defs \
+  -Wl,-z,noexecstack \
   -static-libstdc++ -static-libgcc \
-  -lEGL -ldl -lpthread -lm >&2
+  -lEGL -lGLESv2 -ldl -lpthread -lm >&2
 
 # Strong undefined symbols only (`U`): weak ones (`w`), such as __gmon_start__ and the
 # _ITM_*TMCloneTable hooks every shared library's startup code names, are optional.
 undefined="$(nm -D --undefined-only "$lib" | awk '$1 == "U" { print $2 }' | grep -v -E '@(GLIBC|GCC)_' || true)"
-if [[ "$undefined" != "$(printf '%s\n' "$undefined" | grep -E '^egl' || true)" ]]; then
-  echo "host-natives: $lib needs symbols other than glibc's and EGL's:" >&2
-  echo "$undefined" | grep -v -E '^egl' >&2
+if [[ "$undefined" != "$(printf '%s\n' "$undefined" | grep -E '^(egl|gl)[A-Z]' || true)" ]]; then
+  echo "host-natives: $lib needs symbols other than glibc's, EGL's and GLES's:" >&2
+  echo "$undefined" | grep -v -E '^(egl|gl)[A-Z]' >&2
   exit 1
 fi
 
