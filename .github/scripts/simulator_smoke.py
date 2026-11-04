@@ -289,8 +289,16 @@ def main() -> int:
         print(f"::error::simulator smoke ({args.check}): the control channel's stdout carried "
               f"{len(sim.not_json)} line(s) that are not JSON, e.g. {sim.not_json[0]!r}")
         return 1
+    if exit_code != 0:
+        # Closing stdin ends the simulator cleanly (exit 0); anything else is a crash on the way
+        # out, or a hang that close() had to kill.
+        tail = "\n".join(sim.log().splitlines()[-60:])
+        print(f"::error::simulator smoke ({args.check}): the checks passed, but the simulator "
+              f"exited {exit_code} when stdin closed, not 0")
+        print(f"--- simulator stderr (last 60 lines of {stderr_path}) ---\n{tail}")
+        return 1
     print(summary)
-    print(f"ok: {args.check}; the simulator exited {exit_code} when stdin closed")
+    print(f"ok: {args.check}; the simulator exited 0 when stdin closed")
     return 0
 
 
