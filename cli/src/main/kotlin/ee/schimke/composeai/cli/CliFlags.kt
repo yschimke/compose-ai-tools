@@ -34,6 +34,8 @@ internal object CliFlags {
       "--function",
       // `provision`, `bundle render`
       "--android-sdk",
+      // `provision --host-natives`
+      "--apk",
       // `bundle render` (Android bundles)
       "--android-jar",
       "--clock-packages",

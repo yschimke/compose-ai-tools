@@ -305,35 +305,94 @@ compose-preview-xr.
 
 ### The `host-natives` binaries
 
-Host (desktop) builds of native libraries that APKs carry only for Android, which the simulator
-loads in their place ([#6342](https://github.com/yschimke/compose-ai-tools/issues/6342)). Today
-that is `libandroidx.graphics.path`: androidx.graphics:graphics-path 1.0.1, which every stable
-Compose UI up to 1.12.x pins, calls `System.loadLibrary` unconditionally, so a Compose app cannot
-start a `Path.iterator()` without it. 1.1.0 needs no binary on API 34 and newer.
+Host (desktop) builds of native libraries that APKs carry only for Android, which
+`compose-preview launch` puts on the simulator's `java.library.path` in their place
+([#6342](https://github.com/yschimke/compose-ai-tools/issues/6342),
+[#6411](https://github.com/yschimke/compose-ai-tools/issues/6411)). They are **not part of this
+repository's release** and are **not bundled in the CLI**. A compose-ai-tools release builds none
+of them, and the CLI carries no versions of them.
 
-They are **not part of this repository's release**, for the reason the `xr-composite` binaries left
-it: their sources change rarely, and republishing unchanged binaries on every release costs a
-platform matrix per release and a re-download per CLI upgrade. They have their own version line,
-[`host-natives/VERSION`](../host-natives/VERSION), and their own workflow,
-[`host-natives.yml`](../.github/workflows/host-natives.yml):
+- **Consuming:** [`host-natives/index.json`](../host-natives/index.json), which `launch` reads from
+  `main` at run time (`HostNativesProvision`). It maps each library's load name to its builds. Each
+  build gives, per platform, an archive URL, its sha256 and the library's path inside it. The host
+  library is saved under the name the APK's code loads, so a desktop build named differently
+  (libsignal's `signal_jni_<arch>`) still loads.
+  The launch picks a build in this order:
+  1. the one whose Android libraries share a **GNU build ID** with the APK's copy. It survives
+     symbol stripping and identifies the exact binary, with no version information needed.
+  2. the one at the APK's version: its AndroidX `META-INF/*.version` marker, or the version in the
+     library's name (zstd-jni's `libzstd-jni-<version>.so`, matched by `libraryPattern`).
+  3. the nearest version, or the newest when the version is unknown, with a warning that it may not
+     match.
 
-- **Every change** under `host-natives/`, and every catalog change (a Robolectric bump changes the
-  native runtime the libraries run against), builds `linux-x86_64` on Ubuntu and one universal
-  arm64 + x86_64 dylib on macOS, then verifies each on its own architecture — Ubuntu,
-  `macos-latest` and `macos-15-intel` — under Robolectric at API 34, 35 and 36. The verification is
-  the standalone build in `host-natives/verify`, which the root build does not include.
-- **Publishing** is a manual dispatch with `publish` ticked, from `main`. It attaches
-  `host-natives-<platform>-<version>.tar.gz` and `SHA256SUMS` to a `host-natives-v<version>`
-  **prerelease that is never marked latest**: the bootstrap installer matches `v<X.Y.Z>` tags only,
-  the install action skips prereleases, and `/releases/latest` excludes them, so nothing that picks
-  a compose-ai-tools release can pick this one. A version that exists is never republished; bump
-  `VERSION` to publish new binaries.
+  An entry can also set system properties the library needs to find its build (`properties`, with
+  `{dir}` for the build's directory; JNA's `jna.boot.library.path`). Builds come from two places:
+  - **Upstream host builds:** the library's own JVM artifact on Maven at the same version, recorded
+    under an `upstream` block: AndroidX sqlite-bundled and Ink, zstd-jni, JNA and libsignal
+    (`libsignal-client`) today. Conscrypt needs none: the simulator never loads the APK's
+    `org.conscrypt` classes, and Robolectric's own desktop Conscrypt serves the app instead.
+  - **Built here:** a recipe, `host-natives/<recipe>/`, for a library with no upstream host build
+    (graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins and which loads its
+    library unconditionally).
+- **Releases follow the library's version, not this repository's.** Each recipe releases as
+  `host-natives-<recipe>-<library version>`, a prerelease never marked latest. Nothing that picks a
+  compose-ai-tools release (the bootstrap installer, the install action, `/releases/latest`) can
+  pick it.
+  - [`host-natives.yml`](../.github/workflows/host-natives.yml) builds every recipe on each change:
+    `linux-x86_64` on Ubuntu, and one universal arm64 + x86_64 library on macOS. It verifies each
+    build on its own architecture (Ubuntu, `macos-latest`, `macos-15-intel`) under Robolectric at
+    API 34, 35 and 36, in the standalone `host-natives/verify` build.
+  - On `main`, it publishes **only the recipes whose tag does not exist yet**. An unchanged recipe
+    is skipped, never republished.
+  - A recipe's `version` changes only when the library's native API or implementation does. A
+    build fix for the same version bumps `revision`, which releases as `...-r<revision>`.
+  - Publishing then opens a PR adding the builds to the index. A release ships nothing until that PR
+    merges.
+- **New library versions:** [`host-natives-watch.yml`](../.github/workflows/host-natives-watch.yml)
+  runs [`host-natives/index.py`](../host-natives/index.py) weekly and opens one PR:
+  - `watch` adds each new stable upstream host build.
+  - For a built-here library, `watch` adds each new version whose **native API** (the `native`
+    methods in its AAR's classes) matches the build it would fall back to, pointing at that build
+    (`sameAs`). A version whose API changed is reported instead, as needing a recipe bump.
+  - The native-API check only compares the Java side of the JNI surface. A change confined to the
+    C++ implementation still needs a person to bump the recipe.
+- **The AndroidX menu:** the same job regenerates
+  [`host-natives/ANDROIDX.md`](../host-natives/ANDROIDX.md). It lists every AndroidX artifact whose
+  AAR ships `jni/*.so`, any upstream `-jvm`/`-desktop` host build of it, and whether the index has
+  it. That table is the list of candidates for the next entry.
+- **Checks:** the `Index` job validates every index change online. Each archive must download, match
+  its sha256 and carry the library.
 
-The sources are AndroidX's, unchanged, fetched at the commit
-[`upstream.properties`](../host-natives/graphics-path/upstream.properties) names and checked against
-`sources.sha256`. The only additions are two headers in `graphics-path/host/` that supply what
-bionic and the NDK's libc++ provide implicitly. Linux arm64 is not built, because Robolectric
-publishes no Linux arm64 native runtime for the simulator to run on.
+The PRs these jobs open use `GITHUB_TOKEN`, so GitHub starts no workflow for them. Each job
+therefore dispatches `ci.yml`, `pr-title.yml`, `no-agent-attribution.yml` and `host-natives.yml` on
+the PR's branch, as `release-please.yml` does for the release PR, and enables squash auto-merge. The
+PR lands once those checks pass.
+
+**Adding a library:**
+- If it has an upstream host build, add an index entry with:
+  - `library`, the Android load name. It is always required, because every released CLI reads the
+    same file and fails on the whole index without it. Add `libraryPattern`, a regex whose one group
+    is the version, when the name carries the version; it takes precedence. Any new field must be
+    optional for the same reason. `HostNativesProvisionTest` parses the index with the first
+    released CLI's model to catch this;
+  - `artifact`;
+  - an `android` block, naming the Android artifact the watcher reads build IDs from;
+  - an `upstream` block: the repository, the JVM artifact, `since`, the library's path in the jar
+    for each platform (`{version}` is filled in), and `stable` when its stable versions are not
+    plain `X.Y.Z`;
+  - `properties`, if the library needs any.
+
+  Then run `index.py watch`. Before adding one, check that the Android and desktop classes declare
+  the same `native` methods, as `index.native_api` reads them. ONNX Runtime's Android classes
+  declare nine (telemetry) that its desktop build does not, so it is left out.
+- Otherwise, add a recipe directory beside `graphics-path/`, containing:
+  - `recipe.properties`;
+  - `sources.sha256`, pinning every source file;
+  - `NOTICE`;
+  - `build.sh <src> <out> <platform>`.
+
+  Add its verification, and give the index entry `"release": {"recipe": "<recipe>"}`. Linux arm64 is
+  not built, because Robolectric publishes no Linux arm64 native runtime for the simulator to run on.
 
 > **Editing this file while a release PR is open?** release-please branches its
 > version-bump PR from whatever `main` was when it opened, and `docs/RELEASING.md`

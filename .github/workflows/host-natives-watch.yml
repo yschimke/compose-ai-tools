@@ -1,0 +1,100 @@
+name: Host Natives Watch
+
+# Keeps `host-natives/index.json` and the AndroidX menu current, in one PR for review:
+#
+# - Upstream host builds (an `upstream` block: sqlite-bundled-jvm, ink-nativeloader-jvm, ...) get
+#   every new stable version on their Maven repository, hashed and checked to carry the library.
+# - Libraries built here (a `release.recipe`) get each new stable version whose native API matches
+#   their existing build, reusing it. One whose API changed is listed in the PR as needing a recipe
+#   bump, which `host-natives.yml` then releases as `host-natives-<recipe>-<version>`.
+# - `host-natives/ANDROIDX.md` is regenerated: every AndroidX artifact shipping native libraries,
+#   its upstream host build if any, and whether the index has it.
+#
+# `compose-preview launch` reads the index from main at run time, so merging that PR is the whole
+# release: no CLI or plugin release is involved.
+
+on:
+  schedule:
+    # Weekly; AndroidX publishes on Wednesdays.
+    - cron: "17 6 * * 4"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: host-natives-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Add new versions and survey AndroidX
+        id: watch
+        run: |
+          set -euo pipefail
+          python3 host-natives/index.py watch | tee added.txt
+          python3 host-natives/index.py survey
+          # A built-here library whose native API changed is not added; surface it even when
+          # nothing else changed and no PR opens.
+          grep '^needs a rebuild' added.txt | sed 's/^/::warning::/' || true
+          if [ -z "$(git status --porcelain host-natives/index.json host-natives/ANDROIDX.md)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the result
+        if: steps.watch.outputs.changed == 'true'
+        run: python3 host-natives/index.py check --online
+
+      - name: Open a pull request
+        if: steps.watch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # agent/ is the house branch prefix, and it is CI-enforced: see AGENTS.md.
+          branch="agent/host-natives-watch-$(date -u +%Y%m%d)"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; leaving it for review"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add host-natives/index.json host-natives/ANDROIDX.md
+          git commit -q -m "chore: update the host-natives index and AndroidX survey"
+          git push -u origin "$branch"
+          {
+            echo "Found by \`host-natives/index.py watch\` and \`survey\`, and checked online (each archive downloads, matches its sha256 and carries the library):"
+            echo
+            if [ -s added.txt ]; then sed 's/^/- /' added.txt; else echo "- No index changes."; fi
+            echo
+            if ! git diff --quiet HEAD~1 -- host-natives/ANDROIDX.md; then
+              echo "\`host-natives/ANDROIDX.md\`, the AndroidX menu, changed: see the diff."
+              echo
+            fi
+            echo "\`compose-preview launch\` reads the index from main, so merging this is what ships them."
+          } > body.md
+          url="$(gh pr create --title "chore: update the host-natives index and AndroidX survey" \
+            --body-file body.md --base main --head "$branch")"
+          # GitHub starts no workflow for a PR opened with GITHUB_TOKEN, so its required checks would
+          # never report and auto-merge would wait forever. Dispatch them on the PR's branch, as
+          # release-please.yml does for the release PR: each reports its check on the branch head.
+          number="${url##*/}"
+          gh workflow run ci.yml --ref "$branch"
+          gh workflow run pr-title.yml --ref "$branch" -f pr="$number"
+          gh workflow run no-agent-attribution.yml --ref "$branch" -f pr="$number"
+          gh workflow run host-natives.yml --ref "$branch"
+          # Lands once those checks pass: every archive it adds was checked online (its sha256 and the
+          # library inside it), and nothing ships until it merges.
+          gh pr merge "$number" --auto --squash

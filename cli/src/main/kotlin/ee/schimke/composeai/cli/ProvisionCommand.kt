@@ -8,9 +8,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * `compose-preview provision [--desktop] [--android] [--server] [--mcp] [--xr] [--all]
- * [--android-sdk <n>] [--json]`: fetch now everything a render would otherwise fetch on first use,
- * so the machine (or a copy of its cache) renders with `COMPOSE_PREVIEW_OFFLINE=1` and no network.
+ * `compose-preview provision [--desktop] [--android] [--server] [--mcp] [--xr] [--host-natives]
+ * [--all] [--android-sdk <n>] [--json]`: fetch now everything a render would otherwise fetch on
+ * first use, so the machine (or a copy of its cache) renders with `COMPOSE_PREVIEW_OFFLINE=1` and
+ * no network.
  *
  * Each part goes through the provisioner a render uses, so there is one fetch per thing and no
  * second copy of where it lives:
@@ -21,6 +22,8 @@ import kotlinx.serialization.json.Json
  *   [AndroidBundleLaunch.DEFAULT_SDK]), into the directory [ROBOLECTRIC_DEPS_DIR_ENV] names.
  * - `--server` / `--mcp`: the preview server and the MCP server ([ServerDistributionProvision]).
  * - `--xr`: the XR compositor ([XrCompositeProvision]).
+ * - `--host-natives`: host builds of APK native libraries for `launch` ([HostNativesProvision]):
+ *   what each `--apk` needs, or each library's newest build.
  *
  * With no part named, `--desktop --android`. Exits 1 when any part could not be provisioned.
  */
@@ -36,6 +39,7 @@ internal class ProvisionCommand(
     SERVER("--server"),
     MCP("--mcp"),
     XR("--xr"),
+    HOST_NATIVES("--host-natives"),
   }
 
   fun run() {
@@ -143,6 +147,15 @@ internal class ProvisionCommand(
       }
     }
 
+    if (Part.HOST_NATIVES in parts) {
+      attempt(Part.HOST_NATIVES, "host-natives") {
+        val dir =
+          steps.hostNatives(args.flagValuesAll("--apk").map(::File))
+            ?: error("could not provision host-natives (see above)")
+        ProvisionedItem("host_natives", "host-natives", ok = true, path = dir.absolutePath)
+      }
+    }
+
     val cacheRoot = steps.cacheRoot()
     val ok = items.isNotEmpty() && items.all { it.ok }
     if (ok) env["COMPOSE_PREVIEW_OFFLINE"] = "1"
@@ -237,7 +250,8 @@ internal class ProvisionCommand(
 
     internal val USAGE =
       """
-      compose-preview provision [--desktop] [--android] [--server] [--mcp] [--xr] [--all]
+      compose-preview provision [--desktop] [--android] [--server] [--mcp] [--xr]
+                                [--host-natives [--apk <app.apk>]…] [--all]
                                 [--android-sdk <n>[,<n>…]] [--json]
 
       Fetch everything a render would otherwise download on first use into
@@ -251,6 +265,8 @@ internal class ProvisionCommand(
         --server       the preview server (serve, browse, ui-builder)
         --mcp          the MCP server (mcp serve)
         --xr           the XR compositor (XR previews)
+        --host-natives host builds of APK native libraries for launch: the index, and what
+                       each --apk (repeatable) needs, or else each library's newest build
         --all          every part above
         --android-sdk  API levels to fetch android-all for (repeatable or comma-separated);
                        a Gradle module renders on its compileSdk, a Bazel target on its own
@@ -300,6 +316,9 @@ internal interface ProvisionSteps {
 
   fun xr(): File?
 
+  /** Host builds of APK native libraries: for [apks], or each library's newest when empty. */
+  fun hostNatives(apks: List<File>): File?
+
   /** `${XDG_CACHE_HOME:-~/.cache}/composeai`. */
   fun cacheRoot(): File
 
@@ -341,6 +360,8 @@ internal interface ProvisionSteps {
       ServerDistributionProvision.ensure(distribution)
 
     override fun xr(): File? = XrCompositeProvision.ensureCached(XR_COMPOSITE_VERSION)
+
+    override fun hostNatives(apks: List<File>): File? = HostNativesProvision.provisionAll(apks)
 
     override fun cacheRoot(): File = DaemonSidecarProvision.defaultCacheRoot().parentFile
   }

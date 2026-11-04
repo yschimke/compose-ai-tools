@@ -319,6 +319,8 @@ include(":samples:cmp-android-robolectric")
 include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
+// Exercises every native library `host-natives/index.json` serves, for `compose-preview launch`.
+include(":samples:host-natives")
 
 // The one `data/…` module still here: the shared-element transition model is consumed by the render
 // matrix, not a daemon. docs/build-scripts/SETTINGS.md#flat-data-paths

@@ -567,6 +567,8 @@ internal object CliFlagValidation {
           "--server",
           "--mcp",
           "--xr",
+          "--host-natives",
+          "--apk",
           "--all",
           "--android-sdk",
           "--json",

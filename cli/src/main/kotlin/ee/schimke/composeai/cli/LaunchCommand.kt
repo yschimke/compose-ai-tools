@@ -282,16 +282,32 @@ internal class LaunchCommand(private val args: List<String>) {
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
     }
-    fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> =
-      simulatorCommand(
+    // Per APK, since --adb installs and --pair launch APKs other than the first. Memoised by path,
+    // size and modification time: a restart of the same APK does not re-read it, while a rebuild
+    // or update written over the same path (live reload, `update`) does.
+    val hostNatives = ConcurrentHashMap<String, HostNatives>()
+    fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> {
+      val natives =
+        hostNatives.computeIfAbsent(
+          "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
+        ) {
+          hostNatives(launch.apk, options)
+        }
+      return simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
         apk = launch.apk,
         classes = launch.classes + extraJars,
-        options = options.copy(properties = options.properties + launch.properties),
+        options =
+          options.copy(
+            // The libraries' own properties first, so a launch's (or the user's) win.
+            properties = natives.properties + options.properties + launch.properties,
+            libraryPath = natives.libraryPath,
+          ),
         robolectricProperties = robolectricProperties,
         robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
       )
+    }
 
     /** The APK (and its converted classes) under every live-reload overlay. */
     val bases = ConcurrentHashMap<SimulatorSupervisor, Conversion>()
@@ -847,6 +863,12 @@ internal class LaunchCommand(private val args: List<String>) {
     val tiles: List<String> = emptyList(),
     /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
     val jvmOptions: List<String> = emptyList(),
+    /**
+     * The simulator JVM's `java.library.path`, when set: host builds of the APK's native libraries
+     * ([HostNativesProvision]) ahead of the JVM's own. Before [jvmOptions], so a user's own
+     * `-Djava.library.path` wins.
+     */
+    val libraryPath: List<String> = emptyList(),
     /** Further system properties: a restarted simulator's data to restore, its launch time. */
     val properties: Map<String, String> = emptyMap(),
     /**
@@ -855,6 +877,27 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val noLaunch: Boolean = false,
   )
+
+  /** What [hostNatives] adds to a simulator's command line. */
+  data class HostNatives(val libraryPath: List<String>, val properties: Map<String, String>)
+
+  /**
+   * The simulator's `java.library.path` and system properties for [apk] under [options]: the host
+   * builds of the native libraries it carries ([HostNativesProvision]) ahead of the JVM's default,
+   * or nothing when it needs none or they could not be provisioned.
+   */
+  private fun hostNatives(apk: File, options: Options): HostNatives {
+    // A user's own library path wins anyway (it comes later on the command line): fetch nothing.
+    if (options.jvmOptions.any { it.startsWith("-Djava.library.path=") }) {
+      return HostNatives(emptyList(), emptyMap())
+    }
+    val resolved = HostNativesProvision.resolve(apk, options.sdk)
+    if (resolved.dirs.isEmpty()) return HostNatives(emptyList(), emptyMap())
+    return HostNatives(
+      withJvmLibraryPath(resolved.dirs, System.getProperty("java.library.path")),
+      resolved.properties,
+    )
+  }
 
   private fun convert(
     java: SimulatorJava.Java,
@@ -1154,6 +1197,10 @@ internal class LaunchCommand(private val args: List<String>) {
      */
     val PLAY_SERVICES_STATES = listOf("installed", "none", "outdated", "disabled", "invalid")
 
+    /** [dirs] ahead of the JVM's default `java.library.path` ([default], possibly empty). */
+    fun withJvmLibraryPath(dirs: List<File>, default: String?): List<String> =
+      dirs.map { it.path } + default.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+
     /** The launched JVM's command line. Pure, for tests. */
     fun simulatorCommand(
       java: File,
@@ -1168,6 +1215,9 @@ internal class LaunchCommand(private val args: List<String>) {
       addAll(robolectricJvmArgs)
       options.maxHeap?.let { add("-Xmx$it") }
       addAll(SIMULATOR_JVM_ARGS)
+      if (options.libraryPath.isNotEmpty()) {
+        add("-Djava.library.path=${options.libraryPath.joinToString(File.pathSeparator)}")
+      }
       addAll(options.jvmOptions)
       add("--enable-native-access=ALL-UNNAMED")
       // The host jar is also the simulator's agent: it lets a reload redefine changed classes in
