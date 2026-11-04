@@ -45,6 +45,9 @@ grep -q 'set(MATC_TARGET all)' "$src/CMakeLists.txt" || {
   echo "host-natives: Filament's CMakeLists.txt no longer sets MATC_TARGET desktop" >&2
   exit 1
 }
+# CMAKE_POSITION_INDEPENDENT_CODE: everything goes into a shared library, and Filament adds -fPIC to
+# C++ only (its C dependencies, zstd among them, would not be PIC where clang does not default to
+# PIE, as in manylinux).
 # USE_STATIC_LIBCXX=OFF: Filament's Linux default links LLVM's libc++, which manylinux_2_28 does
 # not package; libstdc++ is linked statically into filament-jni below instead. Filament annotates
 # its mutexes for clang's thread-safety analysis, which only libc++'s std::mutex supports: with
@@ -55,6 +58,7 @@ cxxflags+=" -Wno-error=thread-safety"
 cmake -G Ninja -S "$src" -B "$build" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_FLAGS="$cxxflags" -DCMAKE_C_FLAGS="${CFLAGS:-}" \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCMAKE_C_COMPILER="$cc" -DCMAKE_CXX_COMPILER="$cxx" \
   -DUSE_STATIC_LIBCXX=OFF \
   -DFILAMENT_SUPPORTS_EGL_ON_LINUX=ON \

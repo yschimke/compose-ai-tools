@@ -93,9 +93,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Filament builds with clang (its supported compiler) against gcc-toolset-14's libstdc++,
-      # which manylinux_2_28 puts on PATH but clang does not find by itself; CMake and Ninja come
-      # from PyPI, as manylinux's own tools do. The EGL headers are glvnd's.
+      # Filament builds with clang (its supported compiler) against the gcc-toolset libstdc++ that
+      # manylinux_2_28 puts on PATH, which clang does not find by itself; CMake and Ninja come from
+      # PyPI, as manylinux's own tools do. The EGL headers are glvnd's.
       - name: Install the Filament toolchain
         if: matrix.recipe == 'filament'
         run: |
@@ -105,7 +105,9 @@ jobs:
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
           # Unused while compiling (it matters when linking), which spirv-cross's -Werror rejects.
-          toolchain="--gcc-toolchain=/opt/rh/gcc-toolset-14/root/usr -Wno-unused-command-line-argument"
+          gcc_root="$(dirname "$(dirname "$(command -v gcc)")")"
+          echo "gcc-toolset at $gcc_root ($(gcc -dumpversion))"
+          toolchain="--gcc-toolchain=$gcc_root -Wno-unused-command-line-argument"
           echo "CFLAGS=$toolchain" >> "$GITHUB_ENV"
           echo "CXXFLAGS=$toolchain" >> "$GITHUB_ENV"
           echo "LDFLAGS=$toolchain" >> "$GITHUB_ENV"
