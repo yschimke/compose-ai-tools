@@ -1976,7 +1976,9 @@ What does not, or not yet:
   downloads that build once into `${XDG_CACHE_HOME:-~/.cache}/composeai/host-natives` and puts it
   on the simulator's `java.library.path`. `COMPOSE_PREVIEW_HOST_NATIVES_INDEX` points at another
   index (a URL or a file). Ahead of an offline run, `compose-preview provision --host-natives`
-  fetches the index and either what each `--apk` needs or each library's newest build.
+  fetches the index and either what each `--apk` needs or each library's newest build. Which common
+  libraries are affected, and the plan for the rest:
+  [`design/SIMULATOR_NATIVE_LIBRARIES.md`](design/SIMULATOR_NATIVE_LIBRARIES.md).
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
