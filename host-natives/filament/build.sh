@@ -38,8 +38,10 @@ build="$out/../filament-cmake"
 # USE_STATIC_LIBCXX=OFF: Filament's Linux default links LLVM's libc++, which manylinux_2_28 does
 # not package; libstdc++ is linked statically into filament-jni below instead. Filament annotates
 # its mutexes for clang's thread-safety analysis, which only libc++'s std::mutex supports: with
-# libstdc++ those annotations are errors, so the analysis is off (it checks nothing at run time).
+# libstdc++ the annotations are errors under Filament's -Werror. -Wno-error (not -Wno-...) because
+# backend/ turns -Wthread-safety back on after these flags; the analysis checks nothing at run time.
 cxxflags="${CXXFLAGS:-} -Wno-thread-safety-attributes -Wno-thread-safety-analysis"
+cxxflags+=" -Wno-error=thread-safety"
 cmake -G Ninja -S "$src" -B "$build" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_FLAGS="$cxxflags" -DCMAKE_C_FLAGS="${CFLAGS:-}" \
