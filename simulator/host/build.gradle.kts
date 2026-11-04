@@ -323,3 +323,56 @@ tasks.named<Jar>("jar") {
     )
   }
 }
+
+// Shadows exercised inside a real Robolectric sandbox, with native graphics: the unit tests above
+// run on plain JUnit against android.jar stubs and cannot draw. Its own suite, so the full
+// Robolectric graph (and the android-all runtime it downloads) stays off the `test` class path.
+// API 34: the newest Robolectric SDK that runs on this module's Java 17 toolchain.
+@Suppress("UnstableApiUsage")
+testing {
+  suites {
+    register<JvmTestSuite>("robolectricTest") {
+      useJUnit(libs.versions.junit)
+      dependencies {
+        // The compiled classes alone: the module's `META-INF/services` swap in the simulator's
+        // sandbox class loader and config, which want the `org.robolectric:simulator` runtime.
+        // These tests run a stock Robolectric sandbox with just the shadow under test added.
+        implementation(files(sourceSets.main.map { it.output.classesDirs }))
+        implementation(libs.robolectric)
+        // As on an Android module's unit-test class path: the runner reads `@Config` defaults that
+        // name framework classes before the sandbox (which loads android-all) exists.
+        implementation(files(androidJar))
+      }
+      targets.all { testTask.configure { systemProperty("robolectric.logging", "stderr") } }
+    }
+  }
+}
+
+// Robolectric's AAR dependencies (androidx.test's monitor, Espresso's idling resource), which a
+// plain Java module resolves but cannot load: their `classes.jar` instead. Resolved from the same
+// Robolectric graph, so their versions follow the Robolectric pin.
+val robolectricTestAars =
+  configurations.create("robolectricTestAars") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
+dependencies { "robolectricTestAars"(libs.robolectric) }
+
+val unpackRobolectricTestJars =
+  tasks.register<UnpackAarClasses>("unpackRobolectricTestJars") {
+    aars.from(robolectricTestAars.filter { it.name.endsWith(".aar") })
+    jars.set(layout.buildDirectory.dir("robolectric-test-jars"))
+  }
+
+dependencies {
+  "robolectricTestRuntimeOnly"(
+    files(
+        unpackRobolectricTestJars.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() }
+      )
+      .builtBy(unpackRobolectricTestJars)
+  )
+}
+
+// Through `test`, which is what CI runs per affected module (`check` would leave it unrun there).
+tasks.named("test") { dependsOn(testing.suites.named("robolectricTest")) }
