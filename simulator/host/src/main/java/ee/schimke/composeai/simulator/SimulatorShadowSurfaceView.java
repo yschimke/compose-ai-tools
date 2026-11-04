@@ -2,6 +2,7 @@ package ee.schimke.composeai.simulator;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
@@ -134,16 +135,23 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
    */
   static void drawFrames(
       Canvas canvas, View root, int left, int top, List<Frame> frames, boolean onTop) {
-    int[] rootAt = new int[2];
-    root.getLocationInWindow(rootAt);
-    int[] at = new int[2];
+    // Window coordinates of the root's own origin, which the window bitmap starts at.
+    float[] rootAt = {0, 0};
+    Matrix rootMatrix = new Matrix();
+    root.transformMatrixToGlobal(rootMatrix);
+    rootMatrix.mapPoints(rootAt);
     for (Frame frame : frames) {
       if (frame.onTop() != onTop) continue;
-      frame.view().getLocationInWindow(at);
-      int x = left + at[0] - rootAt[0];
-      int y = top + at[1] - rootAt[1];
-      Rect dst = new Rect(x, y, x + frame.view().getWidth(), y + frame.view().getHeight());
+      // The whole view-to-window transform, so a scaled, rotated or translated view (or parent)
+      // places its frame where its hole is, not at its layout size.
+      Matrix matrix = new Matrix();
+      frame.view().transformMatrixToGlobal(matrix);
+      int save = canvas.save();
+      canvas.translate(left - rootAt[0], top - rootAt[1]);
+      canvas.concat(matrix);
+      Rect dst = new Rect(0, 0, frame.view().getWidth(), frame.view().getHeight());
       canvas.drawBitmap(frame.bitmap(), null, dst, null);
+      canvas.restoreToCount(save);
     }
   }
 
