@@ -3,8 +3,10 @@ package ee.schimke.composeai.simulator;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.media.Image;
@@ -21,11 +23,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowSurfaceView;
+import org.robolectric.shadows.ShadowViewRootImpl;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
@@ -114,8 +118,12 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
   /** Every holder with a surface now, for {@link Displays}. */
   private static final Set<Holder> LIVE = new CopyOnWriteArraySet<>();
 
-  /** A surface to draw into a window: its view, its last frame and where it goes. */
-  record Frame(View view, Bitmap bitmap, boolean onTop) {}
+  /**
+   * A surface to draw into a window: its view, its last frame and where it goes. The bitmap is the
+   * holder's front buffer, which the next frame overwrites in place: read it only while holding
+   * {@code lock}.
+   */
+  record Frame(View view, Bitmap bitmap, boolean onTop, Object lock) {}
 
   /** The frames of the surfaces in the window whose root is [root], in drawing order. */
   static List<Frame> frames(View root) {
@@ -123,7 +131,7 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
     for (Holder holder : LIVE) {
       if (holder.view.getRootView() != root || !holder.view.isShown()) continue;
       Bitmap bitmap = holder.frame();
-      if (bitmap != null) frames.add(new Frame(holder.view, bitmap, holder.onTop()));
+      if (bitmap != null) frames.add(new Frame(holder.view, bitmap, holder.onTop(), holder));
     }
     return Collections.unmodifiableList(frames);
   }
@@ -150,7 +158,9 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
       canvas.translate(left - rootAt[0], top - rootAt[1]);
       canvas.concat(matrix);
       Rect dst = new Rect(0, 0, frame.view().getWidth(), frame.view().getHeight());
-      canvas.drawBitmap(frame.bitmap(), null, dst, null);
+      synchronized (frame.lock()) {
+        canvas.drawBitmap(frame.bitmap(), null, dst, null);
+      }
       canvas.restoreToCount(save);
     }
   }
@@ -172,13 +182,18 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
     private boolean creating;
 
     // The surface while one exists: its size, the reader behind getSurface(), the bitmap
-    // lockCanvas() draws into, and the last frame either one posted.
+    // lockCanvas() draws into, and the last frame either one posted. `frame` is one front buffer,
+    // allocated on the first post and overwritten in place by each later one (under this
+    // holder's lock, which compositing takes too), so a surface drawing every frame allocates
+    // nothing per frame.
     private int width;
     private int height;
     private ImageReader reader;
     private Bitmap canvasBitmap;
     private Bitmap frame;
+    private Canvas frameCanvas;
     private Canvas locked;
+    private final AtomicBoolean screenUpdatePending = new AtomicBoolean();
 
     Holder(SurfaceView view) {
       this.view = view;
@@ -271,6 +286,7 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
       old.close();
       synchronized (this) {
         frame = null;
+        frameCanvas = null;
       }
       canvasBitmap = null;
       view.invalidate();
@@ -284,24 +300,60 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
 
     private void readBack(ImageReader from) {
       if (from != reader) return;
-      Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
       try (Image image = from.acquireNextImage()) {
         if (image == null) return;
-        // The same copy Robolectric's PixelCopy makes of a window's surface.
-        bitmap.copyPixelsFromBuffer(image.getPlanes()[0].getBuffer());
+        synchronized (this) {
+          // The same copy Robolectric's PixelCopy makes of a window's surface.
+          frontBuffer().copyPixelsFromBuffer(image.getPlanes()[0].getBuffer());
+        }
       }
-      publish(bitmap);
+      screenChanged();
     }
 
-    private void publish(Bitmap bitmap) {
-      synchronized (this) {
-        frame = bitmap;
+    /** The front buffer, made on the first post at the surface's size. Hold this holder's lock. */
+    private Bitmap frontBuffer() {
+      if (frame == null) {
+        frame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        frameCanvas = new Canvas(frame);
       }
-      view.postInvalidate();
+      return frame;
+    }
+
+    /**
+     * Tells the screen a frame changed, without redrawing the window: the window's pixels are the
+     * same (the view's hole does not move), only what shows through it is new. The main screen is
+     * captured from Robolectric's global on-draw listeners, so those are called directly, at most
+     * once per turn of the main looper however many frames arrive; secondary displays repaint on
+     * their own cycle. If those listeners cannot be reached, the view is invalidated instead,
+     * which redraws the window and so reaches them too.
+     */
+    private void screenChanged() {
+      if (!screenUpdatePending.compareAndSet(false, true)) return;
+      main.post(
+          () -> {
+            screenUpdatePending.set(false);
+            List<ViewTreeObserver.OnDrawListener> listeners = globalDrawListeners();
+            if (listeners == null) {
+              view.invalidate();
+              return;
+            }
+            for (ViewTreeObserver.OnDrawListener listener : new ArrayList<>(listeners)) {
+              listener.onDraw();
+            }
+          });
     }
 
     synchronized Bitmap frame() {
       return frame;
+    }
+
+    /** Robolectric's global on-draw listeners, or null where it keeps none (or elsewhere). */
+    private static List<ViewTreeObserver.OnDrawListener> globalDrawListeners() {
+      try {
+        return ReflectionHelpers.getStaticField(ShadowViewRootImpl.class, "globalDrawListeners");
+      } catch (RuntimeException e) {
+        return null;
+      }
     }
 
     @Override
@@ -365,9 +417,14 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
 
     @Override
     public void unlockCanvasAndPost(Canvas canvas) {
-      if (canvas != locked || canvasBitmap == null) return;
+      Bitmap back = canvasBitmap;
+      if (canvas != locked || back == null) return;
       locked = null;
-      publish(canvasBitmap.copy(Bitmap.Config.ARGB_8888, false));
+      synchronized (this) {
+        frontBuffer();
+        frameCanvas.drawBitmap(back, 0, 0, COPY);
+      }
+      screenChanged();
     }
 
     @Override
@@ -385,5 +442,14 @@ public class SimulatorShadowSurfaceView extends ShadowSurfaceView {
     }
 
     private Surface noSurface;
+
+    /** Replaces the front buffer's pixels outright, alpha included. */
+    private static final Paint COPY = copyPaint();
+
+    private static Paint copyPaint() {
+      Paint paint = new Paint();
+      paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
+      return paint;
+    }
   }
 }
