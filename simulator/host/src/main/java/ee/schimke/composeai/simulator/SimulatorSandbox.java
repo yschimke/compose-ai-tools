@@ -83,6 +83,8 @@ final class SimulatorSandbox {
                 SimulatorShadowActivityClient.class,
                 SimulatorShadowAppWidgetManager.class,
                 SimulatorShadowAppWidgetHostView.class,
+                // SurfaceView with a surface its app can draw into, shown on screen.
+                SimulatorShadowSurfaceView.class,
                 SimulatorShadowRemoteViewsAdapter.class,
                 SimulatorShadowCompanionDeviceManager.class,
                 SimulatorShadowTextToSpeech.class,

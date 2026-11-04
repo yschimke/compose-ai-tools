@@ -321,6 +321,8 @@ include(":samples:desktop-daemon-bench")
 include(":samples:remotecompose")
 // Exercises every native library `host-natives/index.json` serves, for `compose-preview launch`.
 include(":samples:host-natives")
+// A SurfaceView drawn with lockCanvas, for the simulator's SurfaceView surfaces (#6428).
+include(":samples:surface-view")
 
 // The one `data/…` module still here: the shared-element transition model is consumed by the render
 // matrix, not a daemon. docs/build-scripts/SETTINGS.md#flat-data-paths

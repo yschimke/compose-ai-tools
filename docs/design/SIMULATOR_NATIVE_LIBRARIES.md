@@ -350,11 +350,12 @@ A host library loads, but these apps then need something the simulator does not 
 
 - **Surfaces and GL.** Robolectric only shapes the API: `ShadowSurfaceView`'s holder returns `null`
   from `getSurface()` and `lockCanvas()`, `ShadowTextureView` returns a stub texture layer,
-  `ShadowGLSurfaceView` starts no GL thread, and there is no EGL or GLES. Under native graphics,
-  `ShadowNativeSurface` does give a `Surface` made from a `SurfaceTexture` a software
-  `lockCanvas`, but nothing composites it into the window. Filament needs an EGL or Vulkan context on
-  a window surface, so it needs a simulator `SurfaceView` that hands out a real `Surface` composited
-  into its area, and then an EGL stand-in over Mesa or the host GPU. The XR compositor already runs
+  `ShadowGLSurfaceView` starts no GL thread, and there is no EGL or GLES. The simulator now gives a
+  `SurfaceView` a real surface (`SimulatorShadowSurfaceView`): an `ImageReader` behind
+  `getSurface()`, read back once per frame it posts, and composited under or over its window.
+  Filament still needs an EGL context for that surface: a host build with a headless swap chain at
+  the view's size, posting into it, and GL over Mesa or the host GPU
+  ([#6428](https://github.com/yschimke/compose-ai-tools/issues/6428)). The XR compositor already runs
   Filament on Mesa here.
 - **Unity.** The game's own code is ARM machine code (`libil2cpp.so`); no host build can stand in
   for it.
