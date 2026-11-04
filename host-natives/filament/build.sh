@@ -17,7 +17,7 @@
 #       - common/CallbackUtils.{h,cpp}: their `#ifdef __ANDROID__` (posting callbacks to an
 #         android.os.Handler, plain JNI) is widened to the host, where apps pass Handlers too.
 #
-# Linux only for now: Filament's macOS headless path is Metal or CGL, not EGL.
+# macOS (macos-universal) is build-macos.sh: the same layer on ANGLE, as macOS has no OpenGL ES.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -26,9 +26,8 @@ out="$2"
 platform="$3"
 jobs="${HOST_NATIVES_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
-if [[ "$platform" != linux-* ]]; then
-  echo "host-natives: filament is built for Linux only" >&2
-  exit 1
+if [[ "$platform" == macos-* ]]; then
+  exec "$here/build-macos.sh" "$src" "$out"
 fi
 
 cxx="${CXX:-clang++}"

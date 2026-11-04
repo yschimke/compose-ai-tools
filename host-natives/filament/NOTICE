@@ -6,3 +6,7 @@ are compose-ai-tools', under the same licence; HostTextureHelper.cpp carries Fil
 Bitmap.Config mapping from TextureHelper.cpp.
 
 Filament links third-party code into this library; their licences are in licenses/.
+
+The macOS build ships ANGLE (libEGL.dylib, libGLESv2.dylib) beside the library, built from
+https://github.com/google/angle at the commit in recipe.properties: Copyright The ANGLE Project
+Authors, BSD-style licence, in licenses/angle.txt.

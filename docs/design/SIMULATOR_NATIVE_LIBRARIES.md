@@ -361,8 +361,11 @@ A host library loads, but these apps then need something the simulator does not 
   reaches the screen the way any `SurfaceView` frame does. An sRGB swap chain
   (`CONFIG_SRGB_COLORSPACE`, which apps ask for at feature level 0) gets a linear pbuffer, since Mesa
   refuses an sRGB one, and the read-back frame is sRGB-encoded instead. The GPU (or llvmpipe) renders; the one
-  readback per frame is the cost. Linux only so far: macOS needs Filament's Metal or CGL headless
-  path instead of EGL.
+  readback per frame is the cost. On macOS, which has no OpenGL ES (and an Android app's materials
+  are OpenGL ES only, the shader model being fixed when Filament is built), the same layer runs on
+  ANGLE, OpenGL ES over Metal: built from source at a pinned commit, and shipped beside the
+  library as the index entry's `files` (`libEGL.dylib`, `libGLESv2.dylib`), which a CLI extracts
+  into the same directory.
 - **Unity.** The game's own code is ARM machine code (`libil2cpp.so`); no host build can stand in
   for it.
 - **Godot.** Nobody publishes a desktop `libgodot_android.so`: its JNI layer depends on Android
