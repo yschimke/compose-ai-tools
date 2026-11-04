@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.85.0](https://github.com/yschimke/compose-ai-tools/compare/v2.84.0...v2.85.0) (2026-11-04)
+
+
+### Features
+
+* add a host-natives recipe for Filament's filament-jni ([#6434](https://github.com/yschimke/compose-ai-tools/issues/6434)) ([05db9bd](https://github.com/yschimke/compose-ai-tools/commit/05db9bd86eb242f969717001e13f1cee88af3a33))
+* give a SurfaceView a surface in the simulator ([#6429](https://github.com/yschimke/compose-ai-tools/issues/6429)) ([27967aa](https://github.com/yschimke/compose-ai-tools/commit/27967aa8a9858abd2990b2fe4e0832d950b24a86))
+* load host builds of APK native libraries in compose-preview launch from a run-time index ([#6412](https://github.com/yschimke/compose-ai-tools/issues/6412)) ([29d191b](https://github.com/yschimke/compose-ai-tools/commit/29d191b0fa211f693fc97ff044db787c66ebc80f))
+* serve zstd-jni, JNA, Conscrypt and libsignal host libraries, matched by build ID ([#6415](https://github.com/yschimke/compose-ai-tools/issues/6415)) ([70221c6](https://github.com/yschimke/compose-ai-tools/commit/70221c6373577d6564eed5d976d2651cf0094b20))
+
+
+### Bug Fixes
+
+* composite SurfaceView frames through the view's full transform ([#6430](https://github.com/yschimke/compose-ai-tools/issues/6430)) ([ad8faa6](https://github.com/yschimke/compose-ai-tools/commit/ad8faa69ee0caf1e2c70c80357fac5d81d5f0e6a))
+* **deps:** update dependency androidx.sqlite:sqlite-bundled to v2.7.1 ([#6423](https://github.com/yschimke/compose-ai-tools/issues/6423)) ([9aa9e70](https://github.com/yschimke/compose-ai-tools/commit/9aa9e704b32f8afea6b14c64b2196dde1fed5e26))
+* **deps:** update dependency androidx.test:monitor to v1.8.0 ([#6408](https://github.com/yschimke/compose-ai-tools/issues/6408)) ([05a2000](https://github.com/yschimke/compose-ai-tools/commit/05a20003bddf1cce00214e6107c6b1f37e32e632))
+* **deps:** update dependency com.github.luben:zstd-jni to v1.5.7-25 ([#6432](https://github.com/yschimke/compose-ai-tools/issues/6432)) ([5c8f573](https://github.com/yschimke/compose-ai-tools/commit/5c8f573212967a8403496eae14bba7178be26fed))
+* **deps:** update dependency io.modelcontextprotocol:kotlin-sdk-server to v0.16.0 ([#6413](https://github.com/yschimke/compose-ai-tools/issues/6413)) ([f2d0ce8](https://github.com/yschimke/compose-ai-tools/commit/f2d0ce8e54bddf9b7483e7cf6928f7debe0f5d3f))
+* **deps:** update dependency net.java.dev.jna:jna to v5.19.1 ([#6424](https://github.com/yschimke/compose-ai-tools/issues/6424)) ([2f15074](https://github.com/yschimke/compose-ai-tools/commit/2f150740797849a630edbd7f84c159c978eda33c))
+* **deps:** update dependency org.robolectric:android-all to v17 ([#6409](https://github.com/yschimke/compose-ai-tools/issues/6409)) ([b8b5082](https://github.com/yschimke/compose-ai-tools/commit/b8b5082148f163285be11f269ca79914269cc194))
+* **deps:** update metro to v1.5.0 ([#6407](https://github.com/yschimke/compose-ai-tools/issues/6407)) ([2ea7114](https://github.com/yschimke/compose-ai-tools/commit/2ea7114980cbe7698b04c365250ac39539f51c11))
+* keep the simulator control channel JSON only when native code prints ([#6443](https://github.com/yschimke/compose-ai-tools/issues/6443)) ([9ad62e9](https://github.com/yschimke/compose-ai-tools/commit/9ad62e97c17b7f0e2083ae6447c11437b4b0ce29))
+* load JNA and graphics-path in the simulator, with a sample app exercising every host native ([#6422](https://github.com/yschimke/compose-ai-tools/issues/6422)) ([cda4613](https://github.com/yschimke/compose-ai-tools/commit/cda46133f9e6da7b915a8c71fcf4b493b7ef5dec))
+* refresh stale resource previews and honor AndroidX-shaped projects ([#6402](https://github.com/yschimke/compose-ai-tools/issues/6402)) ([f132a41](https://github.com/yschimke/compose-ai-tools/commit/f132a41cdfd7d2b32a3315e20688c276b839f6c4))
+* render Filament's sRGB swap chains in the simulator ([#6436](https://github.com/yschimke/compose-ai-tools/issues/6436)) ([030c6d4](https://github.com/yschimke/compose-ai-tools/commit/030c6d44022787a00f98939f806981dd797437d3))
+* report a startup native-library failure on the control channel ([#6427](https://github.com/yschimke/compose-ai-tools/issues/6427)) ([da53825](https://github.com/yschimke/compose-ai-tools/commit/da5382521f0a6f62e0b2a3cbbbc6144563cd5c06))
+* send filament-jni's native log to logcat, not the control channel ([#6438](https://github.com/yschimke/compose-ai-tools/issues/6438)) ([6cc5a2d](https://github.com/yschimke/compose-ai-tools/commit/6cc5a2d8c81318c07b0a1d7d782ca84c7ffc3b57))
+
+
+### Performance Improvements
+
+* update the screen for a SurfaceView frame without redrawing its window ([#6433](https://github.com/yschimke/compose-ai-tools/issues/6433)) ([532127f](https://github.com/yschimke/compose-ai-tools/commit/532127fe62842c9b2f2efa34b677719a542759a2))
+
 ## [2.84.0](https://github.com/yschimke/compose-ai-tools/compare/v2.83.0...v2.84.0) (2026-11-01)
 
 
