@@ -561,7 +561,14 @@ final class Displays {
       Bitmap window =
           Bitmap.createBitmap(root.view.getWidth(), root.view.getHeight(), Bitmap.Config.ARGB_8888);
       draw(window, root);
+      // A SurfaceView's surface goes under its window (or over it, set on top).
+      List<SimulatorShadowSurfaceView.Frame> surfaces =
+          SimulatorShadowSurfaceView.frames(root.view);
+      SimulatorShadowSurfaceView.drawFrames(
+          canvas, root.view, root.location.x, root.location.y, surfaces, false);
       canvas.drawBitmap(window, root.location.x, root.location.y, paint);
+      SimulatorShadowSurfaceView.drawFrames(
+          canvas, root.view, root.location.x, root.location.y, surfaces, true);
       window.recycle();
     }
     return screen;

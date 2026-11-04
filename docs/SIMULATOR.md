@@ -1983,7 +1983,13 @@ What does not, or not yet:
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
   unregistered client.
-- **GPU content.** No `SurfaceView` / `TextureView` producer, video, camera or GL.
+- **GPU content.** No `TextureView` producer, video, camera or GL. A `SurfaceView` does get a
+  surface: its holder runs `surfaceCreated`, `surfaceChanged` and `surfaceDestroyed` as the view is
+  attached, laid out, shown and hidden. What the app draws, with `holder.lockCanvas()` or a hardware
+  canvas on `holder.getSurface()`, shows under the window through the hole the view punches, or
+  over it with `setZOrderOnTop`. A resize replaces the surface rather than resizing it, and a
+  software `lockCanvas` straight on `holder.getSurface()` draws nothing.
+  `samples/surface-view` shows both ways in.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am kill`, `am force-stop` and `pm clear` are partial:
