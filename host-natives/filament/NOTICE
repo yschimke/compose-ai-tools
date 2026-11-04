@@ -1,0 +1,8 @@
+Filament: Copyright The Android Open Source Project and the Filament authors. Licensed under the
+Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+host/HostSurface.cpp and host/HostTextureHelper.cpp (the host stand-ins compiled into this library)
+are compose-ai-tools', under the same licence; HostTextureHelper.cpp carries Filament's
+Bitmap.Config mapping from TextureHelper.cpp.
+
+Filament links third-party code into this library; their licences are in licenses/.

@@ -1989,7 +1989,10 @@ What does not, or not yet:
   canvas on `holder.getSurface()`, shows under the window through the hole the view punches, or
   over it with `setZOrderOnTop`. A resize replaces the surface rather than resizing it, and a
   software `lockCanvas` straight on `holder.getSurface()` draws nothing.
-  `samples/surface-view` shows both ways in.
+  `samples/surface-view` shows both ways in. Filament renders into one on Linux once its host
+  library, `host-natives/filament`, is in the index: the OpenGL backend on headless EGL (Mesa's
+  software drivers will do; the host needs `libEGL.so.1`, `libGLESv2.so.2` and `libGL.so.1`), each
+  frame read back onto the surface.
 - **Bindings across processes.** An app's binding to its own service connects; one to another
   package's (Play services) does not.
 - **Process and task model.** One process, one task (so `am kill`, `am force-stop` and `pm clear` are partial:

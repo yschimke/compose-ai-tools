@@ -24,6 +24,27 @@ val mavenCache =
 
 val aar = configurations.create("aar") { isTransitive = false }
 
+// The Filament release host-natives/filament builds filament-jni from: its Java classes have to
+// match that library's native methods exactly.
+val filamentVersion =
+  rootDir
+    .resolve("../filament/recipe.properties")
+    .readLines()
+    .first { it.startsWith("version=") }
+    .removePrefix("version=")
+val filamentAar =
+  configurations.create("filamentAar") {
+    isTransitive = false
+    dependencies.add(
+      project.dependencies.create(
+        "com.google.android.filament:filament-android:$filamentVersion@aar"
+      )
+    )
+  }
+val filamentDir: File =
+  (findProperty("filamentDir") as String?)?.let(::File)
+    ?: rootDir.resolve("../build/filament/linux-x86_64")
+
 val graphicsPathAars =
   graphicsPathVersions.mapValues { (name, version) ->
     configurations.create("graphicsPath${name.replaceFirstChar(Char::uppercase)}") {
@@ -64,11 +85,13 @@ fun aarClasses(name: String, from: Configuration): FileCollection {
 }
 
 val monitorClasses = aarClasses("monitor", aar)
+val filamentClasses = aarClasses("filament", filamentAar)
 val graphicsPathClasses = graphicsPathAars.mapValues { (name, conf) -> aarClasses(name, conf) }
 
 dependencies {
   testImplementation(monitorClasses)
   testCompileOnly(graphicsPathClasses.getValue("pinnedByCompose"))
+  testCompileOnly(filamentClasses)
 }
 
 tasks.test { enabled = false }
@@ -97,6 +120,7 @@ fun verification(name: String, graphicsPath: String, libraryDir: Provider<File>,
       systemProperty("robolectric.dependency.repo.username", user)
       systemProperty("robolectric.dependency.repo.password", token)
     }
+    filter { excludeTestsMatching("*FilamentTest") }
     systemProperty("hostNatives.expect", expect)
     systemProperty("hostNatives.graphicsPath", graphicsPathVersions.getValue(graphicsPath))
     testLogging {
@@ -126,6 +150,38 @@ val withoutLibrary =
   )
 val latestStable =
   verification("verifyLatestStable", "latestStable", emptyLibraryDir.map { it.asFile }, "segments")
+
+// host-natives/filament: an Engine on headless EGL rendering onto a Surface. Needs libEGL and
+// libGL (Mesa's software drivers will do) on the machine.
+tasks.register<Test>("verifyFilament") {
+  group = "verification"
+  description = "Checks the filament-jni build in -PfilamentDir against Robolectric."
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath + filamentClasses
+  filter { includeTestsMatching("*FilamentTest") }
+  jvmArgs(
+    "--add-opens=java.base/java.nio=ALL-UNNAMED",
+    "--add-opens=java.base/java.io=ALL-UNNAMED",
+    "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+  )
+  inputs.dir(filamentDir).withPropertyName("filamentDir")
+  doFirst {
+    check(filamentDir.resolve("host-natives.properties").isFile) {
+      "no host-natives filament build in $filamentDir; run host-natives/build.sh filament first"
+    }
+    systemProperty("java.library.path", filamentDir.absolutePath)
+  }
+  mavenCache?.let { (url, user, token) ->
+    systemProperty("robolectric.dependency.repo.url", "${url.trimEnd('/')}/central")
+    systemProperty("robolectric.dependency.repo.username", user)
+    systemProperty("robolectric.dependency.repo.password", token)
+  }
+  testLogging {
+    events("passed", "failed")
+    showStandardStreams = true
+    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+  }
+}
 
 tasks.register("verifyHostNatives") {
   group = "verification"

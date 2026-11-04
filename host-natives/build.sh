@@ -9,6 +9,11 @@
 # from, and where its sources are), `sources.sha256` (every source file, checked before anything is
 # compiled), `NOTICE` (its licence, copied into the tarball) and `build.sh <src> <out> <platform>`,
 # which compiles and prints the library's path.
+#
+# A recipe whose sources are a whole repository (Filament's) sets `fetch=git` instead of listing
+# them: the repository is cloned at `commit`, and the clone's HEAD has to be that commit, which is
+# what pins its contents. `platforms=` limits a recipe to some platforms (default: all); on the
+# others it is skipped.
 # Each recipe releases on its own, as `host-natives-<recipe>-<version>` (`-r<revision>` past 1):
 # `release-tag` prints that tag, and host-natives.yml publishes only the recipes whose tag is not
 # out yet, so nothing is republished while a recipe is unchanged.
@@ -75,6 +80,11 @@ rm -rf "$build/dist"
 mkdir -p "$build/dist"
 
 for recipe in "${selected[@]}"; do
+  platforms="$(prop "$recipe" platforms)"
+  if [[ -n "$platforms" && ",$platforms," != *",$platform,"* ]]; then
+    echo "host-natives: $recipe is not built for $platform (platforms=$platforms)" >&2
+    continue
+  fi
   repository="$(prop "$recipe" repository)"
   commit="$(prop "$recipe" commit)"
   upstream_path="$(prop "$recipe" path)"
@@ -85,15 +95,25 @@ for recipe in "${selected[@]}"; do
   rm -rf "$src" "$out"
   mkdir -p "$src" "$out"
 
-  while read -r _ file; do
-    mkdir -p "$src/$(dirname "$file")"
-    curl -fsSL --retry 4 -o "$src/$file" \
-      "https://raw.githubusercontent.com/$repository/$commit/$upstream_path/$file"
-  done <"$here/$recipe/sources.sha256"
-  if command -v sha256sum >/dev/null; then
-    (cd "$src" && sha256sum --quiet -c "$here/$recipe/sources.sha256")
+  if [[ "$(prop "$recipe" fetch)" == git ]]; then
+    git -C "$src" init -q
+    git -C "$src" fetch -q --depth 1 "https://github.com/$repository" "$commit"
+    git -C "$src" checkout -q FETCH_HEAD
+    if [[ "$(git -C "$src" rev-parse HEAD)" != "$commit" ]]; then
+      echo "host-natives: $repository fetched $(git -C "$src" rev-parse HEAD), not $commit" >&2
+      exit 1
+    fi
   else
-    (cd "$src" && shasum -a 256 --quiet -c "$here/$recipe/sources.sha256")
+    while read -r _ file; do
+      mkdir -p "$src/$(dirname "$file")"
+      curl -fsSL --retry 4 -o "$src/$file" \
+        "https://raw.githubusercontent.com/$repository/$commit/$upstream_path/$file"
+    done <"$here/$recipe/sources.sha256"
+    if command -v sha256sum >/dev/null; then
+      (cd "$src" && sha256sum --quiet -c "$here/$recipe/sources.sha256")
+    else
+      (cd "$src" && shasum -a 256 --quiet -c "$here/$recipe/sources.sha256")
+    fi
   fi
 
   lib="$("$here/$recipe/build.sh" "$src" "$out" "$platform")"

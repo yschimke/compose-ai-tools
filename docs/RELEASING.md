@@ -388,12 +388,15 @@ for the release PR, and enables squash auto-merge.
   declare nine (telemetry) that its desktop build does not, so it is left out.
 - Otherwise, add a recipe directory beside `graphics-path/`, containing:
   - `recipe.properties`;
-  - `sources.sha256`, pinning every source file;
+  - `sources.sha256`, pinning every source file, or `fetch=git` for a recipe that builds a whole
+    repository (Filament's): it is cloned at `commit`, which pins it;
   - `NOTICE`;
   - `build.sh <src> <out> <platform>`.
 
-  Add its verification, and give the index entry `"release": {"recipe": "<recipe>"}`. Linux arm64 is
-  not built, because Robolectric publishes no Linux arm64 native runtime for the simulator to run on.
+  Add its verification, a build entry in `host-natives.yml`'s matrix, and give the index entry
+  `"release": {"recipe": "<recipe>"}`. `platforms=` in `recipe.properties` limits a recipe to some
+  platforms (`filament` is `linux-x86_64` only). Linux arm64 is not built, because Robolectric
+  publishes no Linux arm64 native runtime for the simulator to run on.
 
 > **Editing this file while a release PR is open?** release-please branches its
 > version-bump PR from whatever `main` was when it opened, and `docs/RELEASING.md`
