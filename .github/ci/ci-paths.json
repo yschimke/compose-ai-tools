@@ -86,6 +86,14 @@
       "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/**",
       "screen/generator/src/commonMain/kotlin/ee/schimke/composeai/discovery/UiBuilderPolicy.kt",
       "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/UiBuilderTemplateLookup.kt"
+    ],
+    "simulator_smoke": [
+      "simulator/**",
+      "cli/**",
+      "samples/surface-view/**",
+      "samples/host-natives/**",
+      "host-natives/index.json",
+      ".github/scripts/simulator_smoke.py"
     ]
   }
 }

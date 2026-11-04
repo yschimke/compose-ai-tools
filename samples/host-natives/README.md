@@ -25,11 +25,15 @@ Run it in the simulator, headless, and read the results:
 ```
 ./gradlew :samples:host-natives:assembleDebug
 compose-preview launch samples/host-natives/build/outputs/apk/debug/host-natives-debug.apk \
-  --headless --control stdio --sdk 35 | grep HostNatives
+  --headless --control stdio --sdk 35 2>&1 | grep HostNatives
 ```
 
 `--sdk 34` or higher: graphics-path's host build serves API 34 and up. Without `--control stdio`
 a headless launch has nothing to drive it; with it, keep stdin open (`sleep 600 | …`) until `DONE`.
+
+The results are logcat, on stderr (stdout is the control channel's JSON). CI runs this check, and
+`samples/surface-view`'s, on every change to the simulator or the CLI: the `Simulator smoke` job
+(`.github/scripts/simulator_smoke.py`).
 
 To try an index other than the one on `main` (a build of your own, say), set
 `COMPOSE_PREVIEW_HOST_NATIVES_INDEX` to its path or URL.

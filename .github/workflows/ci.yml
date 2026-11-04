@@ -88,6 +88,7 @@ jobs:
       functional_tests: ${{ steps.scope.outputs.functional_tests }}
       build_samples: ${{ steps.scope.outputs.build_samples }}
       build_cli: ${{ steps.scope.outputs.build_cli }}
+      simulator_smoke: ${{ steps.scope.outputs.simulator_smoke }}
       actions_tests: ${{ steps.scope.outputs.actions_tests }}
       design_artifacts: ${{ steps.scope.outputs.design_artifacts }}
     steps:
@@ -602,6 +603,58 @@ jobs:
           # repo. Without this it silently skips the external reader.
           COMPOSE_PREVIEW_CONTRACTS_ROOT: ${{ github.workspace }}/.compose-preview-contracts
         run: ./gradlew :cli:build :bundle-viewer:build
+
+  # `compose-preview launch` end to end: the simulator runs a sample APK headless and is driven
+  # over the control channel, as an agent drives it (.github/scripts/simulator_smoke.py). The unit
+  # suites cover the simulator's parts; this is the only check that the CLI, the simulator, its
+  # shadows and the host-native index work together on a real APK.
+  #   - samples/surface-view: both SurfaceViews composite onto the screenshot (the simulator's own
+  #     surface support, #6429).
+  #   - samples/host-natives: every library host-natives/index.json serves loads and works, from
+  #     the index on main, downloaded the way a user's launch downloads it.
+  # Both also check the control channel's stdout carries only JSON (#6443).
+  simulator-smoke:
+    name: Simulator smoke
+    needs: changes
+    if: ${{ needs.changes.outputs.simulator_smoke == 'true' && !(startsWith(github.head_ref || github.ref_name, 'release-please--') && (github.event.pull_request.user.login || github.actor) == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The simulator needs Java 21; the build stays on the shared setup's 17, installed second so
+      # it is the JAVA_HOME the Gradle steps see. JAVA_HOME_21_X64 names the 21.
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      - name: Build the CLI and the sample APKs
+        run: ./gradlew :cli:installDist :samples:surface-view:assembleDebug :samples:host-natives:assembleDebug
+      - name: SurfaceView sample
+        run: >-
+          python3 .github/scripts/simulator_smoke.py
+          --cli cli/build/install/compose-preview/bin/compose-preview
+          --apk samples/surface-view/build/outputs/apk/debug/surface-view-debug.apk
+          --check surface-view --java "$JAVA_HOME_21_X64" --out build/simulator-smoke
+      - name: Host natives sample
+        run: >-
+          python3 .github/scripts/simulator_smoke.py
+          --cli cli/build/install/compose-preview/bin/compose-preview
+          --apk samples/host-natives/build/outputs/apk/debug/host-natives-debug.apk
+          --check host-natives --java "$JAVA_HOME_21_X64" --out build/simulator-smoke
+      - name: Upload the screenshot and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simulator-smoke
+          path: build/simulator-smoke
+          if-no-files-found: ignore
 
   # Cross-repository gate for the native XR service client: fetch the PINNED compositor release
   # and exercise this repository's JVM client against the artifact users actually provision.
