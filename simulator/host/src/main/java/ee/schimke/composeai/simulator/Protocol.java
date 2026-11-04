@@ -56,12 +56,45 @@ final class Protocol {
    */
   static void startupError(String kind, String message) {
     if (!"stdio".equals(System.getProperty(CONTROL_PROPERTY))) return;
-    JSONObject line =
-        new Json().put("event", "error").put("kind", kind).put("message", message).object();
     PrintStream stream =
         new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
-    stream.println(line);
+    stream.println(startupErrorLine(kind, message));
     stream.flush();
+  }
+
+  /**
+   * The line {@link #startupError} prints, built without {@code org.json}: it runs from {@code
+   * LaunchMain}'s own catch, outside the sandbox, where {@code org.json} is {@code android.jar}'s
+   * stub and every constructor throws "Stub!". That turned an app's {@code UnsatisfiedLinkError}
+   * into an unrelated crash with no {@code error} event.
+   */
+  static String startupErrorLine(String kind, String message) {
+    return "{\"event\":\"error\",\"kind\":"
+        + quote(kind)
+        + ",\"message\":"
+        + quote(message)
+        + "}";
+  }
+
+  /** [value] as a JSON string literal, or {@code null}. */
+  static String quote(String value) {
+    if (value == null) return "null";
+    StringBuilder out = new StringBuilder(value.length() + 2).append('"');
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      switch (c) {
+        case '"' -> out.append("\\\"");
+        case '\\' -> out.append("\\\\");
+        case '\n' -> out.append("\\n");
+        case '\r' -> out.append("\\r");
+        case '\t' -> out.append("\\t");
+        default -> {
+          if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+          else out.append(c);
+        }
+      }
+    }
+    return out.append('"').toString();
   }
 
   void event(String name, JSONObject body) {
