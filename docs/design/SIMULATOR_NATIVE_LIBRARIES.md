@@ -358,7 +358,9 @@ A host library loads, but these apps then need something the simulator does not 
   Filament's sources with the OpenGL backend on headless EGL (Mesa's software drivers, or the host
   GPU's). `Engine.createSwapChain(surface)` gets a readable headless swap chain at the surface's size;
   each frame is read back as it ends and drawn onto the `Surface` with `lockHardwareCanvas()`, so it
-  reaches the screen the way any `SurfaceView` frame does. The GPU (or llvmpipe) renders; the one
+  reaches the screen the way any `SurfaceView` frame does. An sRGB swap chain
+  (`CONFIG_SRGB_COLORSPACE`, which apps ask for at feature level 0) gets a linear pbuffer, since Mesa
+  refuses an sRGB one, and the read-back frame is sRGB-encoded instead. The GPU (or llvmpipe) renders; the one
   readback per frame is the cost. Linux only so far: macOS needs Filament's Metal or CGL headless
   path instead of EGL.
 - **Unity.** The game's own code is ARM machine code (`libil2cpp.so`); no host build can stand in

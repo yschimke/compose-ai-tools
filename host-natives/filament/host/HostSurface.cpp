@@ -14,6 +14,11 @@
  * Filament.cpp, Engine.cpp and Renderer.cpp are compiled unchanged: build.sh renames the JNI entry
  * points defined below (-D<name>=filament_upstream_<name>), and these call the originals.
  *
+ * An sRGB swap chain (CONFIG_SRGB_COLORSPACE, which apps request at feature level 0, where nothing
+ * else encodes to sRGB) gets a linear pbuffer instead: Mesa refuses EGL_GL_COLORSPACE_KHR on a
+ * pbuffer, which leaves the swap chain without a surface and takes the app down. The encoding the
+ * surface would have done is applied to each frame as it is read back.
+ *
  * JNI_OnLoad also installs Filament's AndroidPlatform. Platform.get() picks it from java.vendor,
  * which under Robolectric is the host JDK's, so it would otherwise settle on UnknownPlatform and
  * reject every Surface ("Invalid surface").
@@ -28,6 +33,8 @@
 
 #include "private/backend/VirtualMachineEnv.h"
 
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -53,7 +60,22 @@ struct HostSurface {
     jobject bitmap = nullptr;   // global ref: android.graphics.Bitmap, width x height ARGB_8888
     uint32_t width = 0;
     uint32_t height = 0;
+    bool srgb = false;  // encode each frame to sRGB as it is read back (see the top of the file)
 };
+
+/** Linear to sRGB, per 8-bit channel value: the transfer function an sRGB surface applies. */
+const std::array<uint8_t, 256>& srgbEncode() {
+    static const std::array<uint8_t, 256> table = [] {
+        std::array<uint8_t, 256> t{};
+        for (int i = 0; i < 256; i++) {
+            double const c = i / 255.0;
+            double const s = c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1.0 / 2.4) - 0.055;
+            t[i] = (uint8_t) std::lround(std::fmin(std::fmax(s, 0.0), 1.0) * 255.0);
+        }
+        return t;
+    }();
+    return table;
+}
 
 struct Java {
     jclass surface;
@@ -180,6 +202,15 @@ struct Frame {
 void post(void* pixels, size_t size, void* user) {
     auto* frame = static_cast<Frame*>(user);
     HostSurface& host = *frame->host;
+    if (host.srgb) {
+        auto const& encode = srgbEncode();
+        auto* p = static_cast<uint8_t*>(pixels);
+        for (size_t i = 0; i + 3 < size; i += 4) {  // RGBA: alpha stays linear
+            p[i] = encode[p[i]];
+            p[i + 1] = encode[p[i + 1]];
+            p[i + 2] = encode[p[i + 2]];
+        }
+    }
     JNIEnv* env = VirtualMachineEnv::get().getEnvironment();
     if (env->CallBooleanMethod(host.surface, gJava.isValid) && cleared(env)) {
         jobject buffer = env->NewDirectByteBuffer(pixels, (jlong) size);
@@ -247,8 +278,12 @@ Java_com_google_android_filament_Engine_nCreateSwapChain(JNIEnv* env, jclass kla
     }
     auto host = makeHostSurface(env, surface, width, height);
     if (!host) return 0;
-    SwapChain* swapChain = engine->createSwapChain(width, height,
-            (uint64_t) flags | SwapChain::CONFIG_READABLE);
+    uint64_t chainFlags = (uint64_t) flags | SwapChain::CONFIG_READABLE;
+    if (chainFlags & SwapChain::CONFIG_SRGB_COLORSPACE) {
+        host->srgb = true;
+        chainFlags &= ~SwapChain::CONFIG_SRGB_COLORSPACE;
+    }
+    SwapChain* swapChain = engine->createSwapChain(width, height, chainFlags);
     if (!swapChain) return 0;
     std::lock_guard<std::mutex> lock(gLock);
     gSurfaces[swapChain] = std::move(host);
