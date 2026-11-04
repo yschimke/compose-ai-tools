@@ -41,6 +41,9 @@ build="$out/../filament-cmake"
 # them ("not built for mobile"). Android apps' .filamat files are mobile too, so the built-in ones
 # are compiled for both (`matc -p all`).
 sed -i 's/set(MATC_TARGET desktop)/set(MATC_TARGET all)/' "$src/CMakeLists.txt"
+# Filament's native log prints to stdout off Android, which the simulator's control channel owns;
+# this adds a weak hook filament-jni fills in to send it to android.util.Log (host/HostSurface.cpp).
+git -C "$src" apply "$here/host/utils-log.patch"
 grep -q 'set(MATC_TARGET all)' "$src/CMakeLists.txt" || {
   echo "host-natives: Filament's CMakeLists.txt no longer sets MATC_TARGET desktop" >&2
   exit 1
