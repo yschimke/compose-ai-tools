@@ -1115,7 +1115,8 @@
       "library": "filament-jni",
       "artifact": "com.google.android.filament:filament-android",
       "android": {
-        "artifact": "com.google.android.filament:filament-android"
+        "artifact": "com.google.android.filament:filament-android",
+        "repository": "https://repo1.maven.org/maven2"
       },
       "release": {
         "recipe": "filament"
@@ -1129,7 +1130,13 @@
               "sha256": "2199f6836f01acce2b7987a82e48e7c0b4e398130acd7ea7a0aa04d31f4ac2ae",
               "entry": "libfilament-jni.so"
             }
-          }
+          },
+          "androidBuildIds": [
+            "407c4e26cd1db079e74022203889791a5fa6aadb",
+            "e5ec34dcff8aa11938017f77d6339a813057ed78",
+            "e7639d98b573796ca46729f8eb1d94f86d2ddea4",
+            "fc2d7f424052f88b44e43eff8e0e292df566e2ca"
+          ]
         }
       ]
     }
