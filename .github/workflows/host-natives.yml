@@ -227,11 +227,12 @@ jobs:
           } > body.md
           url="$(gh pr create --title "chore: add new host-natives releases to the index" \
             --body-file body.md --base main --head "$branch")"
-          # GitHub starts no workflow for a PR opened with GITHUB_TOKEN, so its required checks would
-          # never report and auto-merge would wait forever. Dispatch them on the PR's branch, as
-          # release-please.yml does for the release PR: each reports its check on the branch head.
+          # GitHub holds the `pull_request` runs of a PR opened with GITHUB_TOKEN for approval
+          # (they end `action_required`), so its required checks would never report. Dispatch them
+          # on the PR's branch, as release-please.yml does for the release PR: each reports its
+          # check on the branch head. release_pr_checks leaves out ci.yml's nightly drift jobs.
           number="${url##*/}"
-          gh workflow run ci.yml --ref "$branch"
+          gh workflow run ci.yml --ref "$branch" -f release_pr_checks=true
           gh workflow run pr-title.yml --ref "$branch" -f pr="$number"
           gh workflow run no-agent-attribution.yml --ref "$branch" -f pr="$number"
           gh workflow run host-natives.yml --ref "$branch"
