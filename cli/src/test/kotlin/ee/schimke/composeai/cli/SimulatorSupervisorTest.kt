@@ -211,4 +211,39 @@ class SimulatorSupervisorTest {
     assertNull(unsettled["settle"], "settle: false answers at ready")
     supervisor.close()
   }
+
+  @Test
+  fun `stdout that is not the protocol goes to the log, not the control channel`() {
+    // A native library in the simulator printing to file descriptor 1, as Filament's logger does.
+    val script =
+      """
+      echo 'FEngine resolved backend: OpenGL'
+      echo '{"event":"ready","apk":"a.apk"}'
+      echo 'Feature level: 3'
+      while IFS= read -r line; do :; done
+      """
+        .trimIndent()
+    val emitted = LinkedBlockingQueue<String>()
+    val logged = LinkedBlockingQueue<String>()
+    val supervisor =
+      SimulatorSupervisor(
+        device = null,
+        initial = SimulatorSupervisor.Launch(File("a.apk"), emptyList()),
+        command = { listOf("bash", "-c", script) },
+        emit = emitted::add,
+        log = logged::add,
+        control = true,
+      )
+    supervisor.start()
+
+    val ready = emitted.poll(20, TimeUnit.SECONDS) ?: error("no ready")
+    assertEquals(
+      "ready",
+      Json.parseToJsonElement(ready).jsonObject["event"]?.jsonPrimitive?.content,
+    )
+    assertEquals("FEngine resolved backend: OpenGL", logged.poll(20, TimeUnit.SECONDS))
+    assertEquals("Feature level: 3", logged.poll(20, TimeUnit.SECONDS))
+    assertNull(emitted.poll(500, TimeUnit.MILLISECONDS))
+    supervisor.close()
+  }
 }
