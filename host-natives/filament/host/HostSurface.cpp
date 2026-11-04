@@ -19,6 +19,10 @@
  * pbuffer, which leaves the swap chain without a surface and takes the app down. The encoding the
  * surface would have done is applied to each frame as it is read back.
  *
+ * Filament's native log (utils::slog) goes to android.util.Log under the tag "Filament", as it goes
+ * to logcat on a device, through the hook utils-log.patch adds (filament_host_log). Off a device it
+ * would print to stdout, which the simulator's control channel owns.
+ *
  * JNI_OnLoad also installs Filament's AndroidPlatform. Platform.get() picks it from java.vendor,
  * which under Robolectric is the host JDK's, so it would otherwise settle on UnknownPlatform and
  * reject every Surface ("Invalid surface").
@@ -40,6 +44,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 
 using namespace filament;
@@ -94,6 +99,8 @@ struct Java {
     jmethodID copyPixelsFromBuffer;
     jmethodID recycle;
     jobject argb8888;  // global ref: Bitmap.Config.ARGB_8888
+    jclass log;
+    jmethodID println;
 };
 
 Java gJava{};
@@ -141,6 +148,9 @@ void loadJava(JNIEnv* env) {
     gJava.copyPixelsFromBuffer = env->GetMethodID(gJava.bitmap, "copyPixelsFromBuffer",
             "(Ljava/nio/Buffer;)V");
     gJava.recycle = env->GetMethodID(gJava.bitmap, "recycle", "()V");
+    gJava.log = globalClass(env, "android/util/Log");
+    gJava.println = env->GetStaticMethodID(gJava.log, "println",
+            "(ILjava/lang/String;Ljava/lang/String;)I");
     jclass config = env->FindClass("android/graphics/Bitmap$Config");
     jfieldID argb = env->GetStaticFieldID(config, "ARGB_8888", "Landroid/graphics/Bitmap$Config;");
     jobject value = env->GetStaticObjectField(config, argb);
@@ -237,6 +247,41 @@ void post(void* pixels, size_t size, void* user) {
 }  // namespace
 
 extern "C" {
+
+/**
+ * utils::slog's sink (utils-log.patch): one flushed line at Filament's LogStream priority (debug,
+ * error, warning, info, verbose). False until the Java side is loaded, and Filament prints it
+ * itself, to stderr or stdout.
+ */
+bool filament_host_log(int priority, char const* message) {
+    if (!gJava.println || !VirtualMachineEnv::hasVirtualMachine()) return false;
+    int android;
+    switch (priority) {
+        case 0: android = 3; break;  // DEBUG
+        case 1: android = 6; break;  // ERROR
+        case 2: android = 5; break;  // WARN
+        case 3: android = 4; break;  // INFO
+        default: return true;        // VERBOSE: Filament's release builds drop it too
+    }
+    std::string text(message);
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+    if (text.empty()) return true;
+    // NewStringUTF wants modified UTF-8; Filament's lines are ASCII, so anything else is replaced.
+    for (char& c : text) {
+        if (static_cast<unsigned char>(c) > 0x7f) c = '?';
+    }
+    JNIEnv* env = VirtualMachineEnv::get().getEnvironment();
+    jstring tag = env->NewStringUTF("Filament");
+    jstring msg = env->NewStringUTF(text.c_str());
+    env->CallStaticIntMethod(gJava.log, gJava.println, (jint) android, tag, msg);
+    env->DeleteLocalRef(tag);
+    env->DeleteLocalRef(msg);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    return true;
+}
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     jint version = filament_upstream_JNI_OnLoad(vm, reserved);
