@@ -104,7 +104,8 @@ jobs:
           pipx install ninja
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
-          toolchain="--gcc-toolchain=/opt/rh/gcc-toolset-14/root/usr"
+          # Unused while compiling (it matters when linking), which spirv-cross's -Werror rejects.
+          toolchain="--gcc-toolchain=/opt/rh/gcc-toolset-14/root/usr -Wno-unused-command-line-argument"
           echo "CFLAGS=$toolchain" >> "$GITHUB_ENV"
           echo "CXXFLAGS=$toolchain" >> "$GITHUB_ENV"
           echo "LDFLAGS=$toolchain" >> "$GITHUB_ENV"

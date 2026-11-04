@@ -142,7 +142,9 @@ lib="$out/libfilament-jni.so"
   -static-libstdc++ -static-libgcc \
   -lEGL -ldl -lpthread -lm >&2
 
-undefined="$(nm -D --undefined-only "$lib" | awk '{ print $2 }' | grep -v -E '@(GLIBC|GCC)_' || true)"
+# Strong undefined symbols only (`U`): weak ones (`w`), such as __gmon_start__ and the
+# _ITM_*TMCloneTable hooks every shared library's startup code names, are optional.
+undefined="$(nm -D --undefined-only "$lib" | awk '$1 == "U" { print $2 }' | grep -v -E '@(GLIBC|GCC)_' || true)"
 if [[ "$undefined" != "$(printf '%s\n' "$undefined" | grep -E '^egl' || true)" ]]; then
   echo "host-natives: $lib needs symbols other than glibc's and EGL's:" >&2
   echo "$undefined" | grep -v -E '^egl' >&2
