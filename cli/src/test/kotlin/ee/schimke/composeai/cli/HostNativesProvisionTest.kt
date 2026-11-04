@@ -305,6 +305,19 @@ class HostNativesProvisionTest {
       dir.list()!!.sorted(),
     )
     assertEquals("libEGL.dylib", File(dir, "libEGL.dylib").readText())
+
+    // A cache holding the library without them (a CLI from before `files`) is filled in.
+    File(dir, "libEGL.dylib").delete()
+    HostNativesProvision.resolve(
+      apk,
+      35,
+      fetcher,
+      env = env,
+      log = {},
+      noNetwork = false,
+      platform = "macos-arm64",
+    )
+    assertEquals("libEGL.dylib", File(dir, "libEGL.dylib").readText())
   }
 
   @Test

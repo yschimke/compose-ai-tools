@@ -447,7 +447,10 @@ object HostNativesProvision {
     val name = choice.loadName
     val dir = File(root, "files/${choice.entry.sha256}/$platform")
     val target = File(dir, fileName(name, platform))
-    if (target.isFile) return dir
+    // The files beside it too: a CLI from before `files` cached the library alone, and that cache
+    // must be filled in rather than accepted.
+    val besides = choice.entry.files.map { File(dir, it.substringAfterLast('/')) }
+    if (target.isFile && besides.all { it.isFile }) return dir
     val url = choice.entry.url
     if (noNetwork) {
       log(
