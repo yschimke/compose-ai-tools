@@ -38,8 +38,14 @@ object HostNativesProvision {
   internal const val DEFAULT_INDEX_URL =
     "https://raw.githubusercontent.com/$REPO/main/host-natives/index.json"
 
-  /** How long a fetched index is used before it is fetched again. */
-  internal const val INDEX_MAX_AGE_MS = 24L * 60 * 60 * 1000
+  /**
+   * How long a fetched index is used before it is fetched again. An hour, not a day: the index is
+   * one ~70 KB file, and it is how a fixed build reaches users (a rebuilt `-rN`, a corrected
+   * entry). At 24 hours, a host that had fetched it just before graphics-path's glibc-2.28 rebuild
+   * kept loading the build that needs GLIBC_2.43 for most of a day. A failed fetch, or the network
+   * off, still falls back to the stale copy, so going offline costs nothing.
+   */
+  internal const val INDEX_MAX_AGE_MS = 60L * 60 * 1000
 
   internal const val SCHEMA = "compose-preview-host-natives/v1"
 

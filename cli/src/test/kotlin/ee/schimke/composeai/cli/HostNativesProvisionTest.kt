@@ -347,6 +347,49 @@ class HostNativesProvisionTest {
     )
   }
 
+  @Test
+  fun `the index is refetched once older than an hour, and a stale copy covers a failed fetch`() {
+    var fetches = 0
+    var failing = false
+    val fetcher = HostNativesProvision.Fetcher { _, dest ->
+      fetches++
+      if (failing) error("HTTP 503")
+      dest.writeText("{\"schema\": \"${HostNativesProvision.SCHEMA}\", \"libraries\": []}")
+    }
+    fun load(now: Long, noNetwork: Boolean = false) =
+      HostNativesProvision.loadIndex(
+        cache,
+        fetcher,
+        env = { null },
+        noNetwork = noNetwork,
+        log = {},
+        now = now,
+      )
+    val fetchedAt = System.currentTimeMillis()
+    assertTrue(load(fetchedAt) != null)
+    assertEquals(1, fetches)
+    // The fetch wrote the cache now; age it from there.
+    val cached = cache.listFiles { f -> f.name.startsWith("index-") }!!.single()
+    cached.setLastModified(fetchedAt)
+
+    val minute = 60_000L
+    assertTrue(load(fetchedAt + 59 * minute) != null)
+    assertEquals(1, fetches, "a copy under an hour old is used as is")
+
+    assertTrue(load(fetchedAt + 61 * minute) != null)
+    assertEquals(2, fetches, "an hour on, the index is fetched again")
+
+    cached.setLastModified(fetchedAt)
+    failing = true
+    assertTrue(load(fetchedAt + 3 * 60 * minute) != null, "a failed fetch falls back to the cache")
+    assertEquals(3, fetches)
+    assertTrue(
+      load(fetchedAt + 3 * 60 * minute, noNetwork = true) != null,
+      "the network off uses the cache",
+    )
+    assertEquals(3, fetches)
+  }
+
   /**
    * The index model as the first CLI to read `index.json` shipped it (#6412), frozen. Every CLI
    * since fetches the same file from `main`, so a field it requires, or a type it cannot read,
