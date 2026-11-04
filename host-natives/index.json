@@ -1110,6 +1110,17 @@
           ]
         }
       ]
+    },
+    {
+      "library": "filament-jni",
+      "artifact": "com.google.android.filament:filament-android",
+      "android": {
+        "artifact": "com.google.android.filament:filament-android"
+      },
+      "release": {
+        "recipe": "filament"
+      },
+      "builds": []
     }
   ]
 }

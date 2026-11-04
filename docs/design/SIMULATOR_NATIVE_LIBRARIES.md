@@ -353,10 +353,14 @@ A host library loads, but these apps then need something the simulator does not 
   `ShadowGLSurfaceView` starts no GL thread, and there is no EGL or GLES. The simulator now gives a
   `SurfaceView` a real surface (`SimulatorShadowSurfaceView`): an `ImageReader` behind
   `getSurface()`, read back once per frame it posts, and composited under or over its window.
-  Filament still needs an EGL context for that surface: a host build with a headless swap chain at
-  the view's size, posting into it, and GL over Mesa or the host GPU
-  ([#6428](https://github.com/yschimke/compose-ai-tools/issues/6428)). The XR compositor already runs
-  Filament on Mesa here.
+  Filament renders into that surface through [`host-natives/filament`](../../host-natives/filament)
+  ([#6428](https://github.com/yschimke/compose-ai-tools/issues/6428)): `filament-jni` built from
+  Filament's sources with the OpenGL backend on headless EGL (Mesa's software drivers, or the host
+  GPU's). `Engine.createSwapChain(surface)` gets a readable headless swap chain at the surface's size;
+  each frame is read back as it ends and drawn onto the `Surface` with `lockHardwareCanvas()`, so it
+  reaches the screen the way any `SurfaceView` frame does. The GPU (or llvmpipe) renders; the one
+  readback per frame is the cost. Linux only so far: macOS needs Filament's Metal or CGL headless
+  path instead of EGL.
 - **Unity.** The game's own code is ARM machine code (`libil2cpp.so`); no host build can stand in
   for it.
 - **Godot.** Nobody publishes a desktop `libgodot_android.so`: its JNI layer depends on Android

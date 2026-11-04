@@ -2,8 +2,8 @@ name: Host Natives
 
 # Builds the host (desktop) native libraries the simulator loads in place of an APK's Android-only
 # ones, on real Linux and macOS runners, and verifies them against Robolectric's native runtime on
-# the architecture each targets. Each library is a recipe, `host-natives/<recipe>/`; today that is
-# androidx.graphics:graphics-path's.
+# the architecture each targets. Each library is a recipe, `host-natives/<recipe>/`: today
+# androidx.graphics:graphics-path's, and Filament's filament-jni (Linux only).
 #
 # Each recipe releases on its own line, keyed by the LIBRARY's version, not this repository's:
 # `host-natives-<recipe>-<version>` (`host-natives/build.sh release-tag <recipe>`), a prerelease never
@@ -52,7 +52,7 @@ jobs:
         run: python3 host-natives/index.py check --online
 
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build ${{ matrix.recipe }} ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     # Linux builds against an old glibc, so the library loads on any host from that one on:
     # ubuntu-latest's own glibc versions symbols as new as itself (sqrtf@GLIBC_2.43 from Ubuntu
@@ -60,18 +60,28 @@ jobs:
     # image for exactly this (glibc 2.28, a current gcc-toolset, binutils and curl preinstalled);
     # Debian 11, tried first, has had its security archive retired. build.sh enforces the floor.
     container: ${{ matrix.container }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - recipe: graphics-path
+            runner: ubuntu-latest
             platform: linux-x86_64
             container: quay.io/pypa/manylinux_2_28_x86_64
+            timeout: 15
           # One universal (arm64 + x86_64) dylib, built with Apple's toolchain.
-          - runner: macos-latest
+          - recipe: graphics-path
+            runner: macos-latest
             platform: macos-universal
             container: ''
+            timeout: 15
+          # All of Filament, from source: most of the time is its material compiler's SPIR-V tools.
+          - recipe: filament
+            runner: ubuntu-latest
+            platform: linux-x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            timeout: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,12 +93,30 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Filament builds with clang (its supported compiler) against gcc-toolset-14's libstdc++,
+      # which manylinux_2_28 puts on PATH but clang does not find by itself; CMake and Ninja come
+      # from PyPI, as manylinux's own tools do. The EGL headers are glvnd's.
+      - name: Install the Filament toolchain
+        if: matrix.recipe == 'filament'
+        run: |
+          dnf install -y -q clang libglvnd-devel
+          pipx install cmake
+          pipx install ninja
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+          toolchain="--gcc-toolchain=/opt/rh/gcc-toolset-14/root/usr"
+          echo "CFLAGS=$toolchain" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=$toolchain" >> "$GITHUB_ENV"
+          echo "LDFLAGS=$toolchain" >> "$GITHUB_ENV"
+
       - name: Build
-        run: host-natives/build.sh
+        env:
+          RECIPE: ${{ matrix.recipe }}
+        run: host-natives/build.sh "$RECIPE"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: host-natives-${{ matrix.platform }}
+          name: host-natives-${{ matrix.platform }}-${{ matrix.recipe }}
           path: host-natives/build/dist/*.tar.gz
           if-no-files-found: error
 
@@ -124,7 +152,7 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: host-natives-${{ matrix.platform }}
+          name: host-natives-${{ matrix.platform }}-graphics-path
           path: host-natives/build/dist
 
       - name: Unpack
@@ -141,9 +169,50 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: ./gradlew -p host-natives/verify verifyHostNatives -PhostNativesDir="$PWD/host-natives/build/graphics-path/$PLATFORM"
 
+  # filament-jni rendering onto a Surface in Robolectric, on Mesa's software OpenGL (llvmpipe):
+  # the runner has no GPU, and that is the setup most hosts running the simulator headless have.
+  verify-filament:
+    name: Verify filament linux-x86_64
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Mesa
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libegl-mesa0 libgl1-mesa-dri
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: host-natives-linux-x86_64-filament
+          path: host-natives/build/dist
+
+      - name: Unpack
+        run: |
+          dir="host-natives/build/filament/linux-x86_64"
+          mkdir -p "$dir"
+          tar -xzf host-natives/build/dist/host-natives-filament-*-linux-x86_64.tar.gz -C "$dir"
+          cat "$dir/host-natives.properties"
+
+      - name: Verify against Robolectric
+        run: ./gradlew -p host-natives/verify verifyFilament -PfilamentDir="$PWD/host-natives/build/filament/linux-x86_64"
+
   publish:
     name: Publish
-    needs: verify
+    needs: [verify, verify-filament]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
