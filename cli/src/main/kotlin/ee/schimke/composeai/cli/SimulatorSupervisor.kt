@@ -449,13 +449,7 @@ internal class SimulatorSupervisor(
       }
       daemon("simulator-err-${device ?: "app"}") {
         process.errorStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
-          lines.forEach { line ->
-            synchronized(stderrTail) {
-              stderrTail.addLast(line)
-              while (stderrTail.size > TAIL_LINES) stderrTail.removeFirst()
-            }
-            if (!standby) log(prefix(line))
-          }
+          lines.forEach(::logLine)
         }
       }
       process.onExit().thenRun {
@@ -476,6 +470,15 @@ internal class SimulatorSupervisor(
       }
     }
 
+    /** One line of the simulator's log: kept for a failure's report, and shown unless held back. */
+    private fun logLine(line: String) {
+      synchronized(stderrTail) {
+        stderrTail.addLast(line)
+        while (stderrTail.size > TAIL_LINES) stderrTail.removeFirst()
+      }
+      if (!standby) log(prefix(line))
+    }
+
     private fun onLine(line: String) {
       if (!control) {
         emit(prefix(line))
@@ -483,7 +486,10 @@ internal class SimulatorSupervisor(
       }
       val json = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
       if (json == null) {
-        emitRaw(line)
+        // Not the simulator's protocol: a native library writing to file descriptor 1 (Filament's
+        // logger, say), which `LaunchMain`'s `System.setOut(System.err)` cannot reach. It is log,
+        // so it goes where the simulator's stderr goes, and the control channel stays JSON only.
+        logLine(line)
         return
       }
       val id = json["id"]?.toString()

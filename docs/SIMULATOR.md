@@ -250,7 +250,8 @@ branch, and spatial UI takes its 2D fallback (an `Orbiter` renders inline at the
 ## The control channel
 
 With `--control stdio`, each line on stdin is one JSON command and each line on stdout is one JSON
-object; everything else the app and Robolectric print goes to stderr. Closing stdin ends the
+object; everything else the app and Robolectric print goes to stderr, and so does anything a native
+library writes to the simulator's stdout (Filament's logger, say). Closing stdin ends the
 simulator.
 
 ```
