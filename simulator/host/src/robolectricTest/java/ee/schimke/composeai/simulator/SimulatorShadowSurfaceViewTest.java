@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.app.Activity;
@@ -24,6 +25,7 @@ import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.shadows.ShadowViewRootImpl;
 
 /**
  * {@link SimulatorShadowSurfaceView} in a real sandbox: the holder's callbacks follow the view,
@@ -116,6 +118,39 @@ public class SimulatorShadowSurfaceViewTest {
     idle();
 
     assertEquals(Color.BLUE, onlyFrame(false).getPixel(100, 50));
+  }
+
+  @Test
+  public void framesReuseOneFrontBuffer() {
+    SurfaceView view = add(200, 100);
+    post(view, Color.RED);
+    Bitmap first = onlyFrame(false);
+    post(view, Color.BLUE);
+    Bitmap second = onlyFrame(false);
+
+    assertSame(first, second);
+    assertEquals(Color.BLUE, second.getPixel(10, 10));
+  }
+
+  @Test
+  public void framesUpdateTheScreenWithoutRedrawingTheWindow() {
+    SurfaceView view = add(200, 100);
+    int[] screenUpdates = {0};
+    int[] windowDraws = {0};
+    ShadowViewRootImpl.internalRegisterGlobalOnDrawListener(() -> screenUpdates[0]++);
+    content.getViewTreeObserver().addOnDrawListener(() -> windowDraws[0]++);
+
+    // Three frames in one turn of the main looper: one screen update, no traversal.
+    for (int color : new int[] {Color.RED, Color.GREEN, Color.BLUE}) {
+      Canvas canvas = view.getHolder().lockCanvas();
+      canvas.drawColor(color);
+      view.getHolder().unlockCanvasAndPost(canvas);
+    }
+    idle();
+
+    assertEquals(1, screenUpdates[0]);
+    assertEquals(0, windowDraws[0]);
+    assertEquals(Color.BLUE, onlyFrame(false).getPixel(10, 10));
   }
 
   @Test
