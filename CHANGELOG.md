@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.86.0](https://github.com/yschimke/compose-ai-tools/compare/v2.85.0...v2.86.0) (2026-11-05)
+
+
+### Features
+
+* build filament-jni for macOS on ANGLE ([#6448](https://github.com/yschimke/compose-ai-tools/issues/6448)) ([998e8ac](https://github.com/yschimke/compose-ai-tools/commit/998e8acef59983c7c501df24febb0bb7c18bc020))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.android.tools.build:gradle to v9.5.0 ([#6440](https://github.com/yschimke/compose-ai-tools/issues/6440)) ([f44b63f](https://github.com/yschimke/compose-ai-tools/commit/f44b63fd33c4a257bc7bb113114c1aa916f5021f))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.23.0 ([#6455](https://github.com/yschimke/compose-ai-tools/issues/6455)) ([b641732](https://github.com/yschimke/compose-ai-tools/commit/b641732239a4bf5bea179859886d829a2056aa7d))
+* **deps:** update ktor to v3.6.1 ([#6453](https://github.com/yschimke/compose-ai-tools/issues/6453)) ([5e7f2ec](https://github.com/yschimke/compose-ai-tools/commit/5e7f2ec1bf51a63d9614219474ed6f8ffd4074fa))
+* **deps:** update metro to v1.5.1 ([#6454](https://github.com/yschimke/compose-ai-tools/issues/6454)) ([2c625f6](https://github.com/yschimke/compose-ai-tools/commit/2c625f694cd554592579fb44fcbbcfde9a791de4))
+* refetch the host-natives index after an hour, not a day ([#6445](https://github.com/yschimke/compose-ai-tools/issues/6445)) ([3891669](https://github.com/yschimke/compose-ai-tools/commit/3891669527f76fc85d023c6d01d35dad152b076d))
+
 ## [2.85.0](https://github.com/yschimke/compose-ai-tools/compare/v2.84.0...v2.85.0) (2026-11-04)
 
 
