@@ -126,9 +126,9 @@ class UnrealizedTasksFunctionalTest {
             debugImplementation("androidx.compose.ui:ui-tooling")
         }
 
-        // Stand-in for AGP 9.5's runfiles task on a variant with unit tests disabled: realizing
-        // it throws, exactly as AGP's creation action does.
-        tasks.register("generateReleaseComposePreviewRunfiles") {
+        // Poison-pill task (alongside AGP 9.5's own generateReleaseComposePreviewRunfiles):
+        // realizing any unrelated task in the project throws.
+        tasks.register("unrelatedBrokenTask") {
             throw GradleException("$REALIZED_MARKER")
         }
         """

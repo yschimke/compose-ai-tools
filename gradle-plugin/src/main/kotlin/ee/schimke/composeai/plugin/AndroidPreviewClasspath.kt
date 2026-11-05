@@ -135,8 +135,11 @@ internal object AndroidPreviewClasspath {
    * ([RenderClasspathDuplicates]).
    *
    * Subtracted by file identity against `testConfig`'s views, so on a version disagreement the
-   * consumer copy is dropped. The views filter by component identity too, since a `jar` view also
-   * returns raw file deps like the generated R.jar, which must be kept. Lazy via
+   * consumer copy is dropped. Includes `android-classes-jar` and `android-java-res` alongside `jar`
+   * and `android-classes`: AGP 9.5 enables `JavaResCompressionTransform` by default on unit-test
+   * classpaths, which emits distinct transformed jars under `android-java-res` that `jar` /
+   * `android-classes` alone do not match. The views filter by component identity too, since a `jar`
+   * view also returns raw file deps like the generated R.jar, which must be kept. Lazy via
    * `FileCollection.minus`.
    *
    * Returns [agpTestClasspath] unchanged without `testConfig` or in legacy-union mode.
@@ -150,18 +153,19 @@ internal object AndroidPreviewClasspath {
     if (testConfig == null || legacyClasspathUnion) return agpTestClasspath
     val moduleArtifacts =
       project.files(
-        testConfig.incoming
-          .artifactView {
-            attributes.attribute(artifactType, "jar")
-            componentFilter { it is ModuleComponentIdentifier || it is ProjectComponentIdentifier }
-          }
-          .files,
-        testConfig.incoming
-          .artifactView {
-            attributes.attribute(artifactType, "android-classes")
-            componentFilter { it is ModuleComponentIdentifier || it is ProjectComponentIdentifier }
-          }
-          .files,
+        listOf("jar", "android-classes", "android-classes-jar", "android-java-res").map { type ->
+          testConfig.incoming
+            .artifactView {
+              attributes.attribute(artifactType, type)
+              // AGP-specific artifact types have no registered transform in plain ProjectBuilder
+              // unit tests; degrade cleanly rather than failing resolution.
+              isLenient = true
+              componentFilter {
+                it is ModuleComponentIdentifier || it is ProjectComponentIdentifier
+              }
+            }
+            .files
+        }
       )
     return agpTestClasspath.minus(moduleArtifacts)
   }
