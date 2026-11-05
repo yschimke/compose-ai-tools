@@ -18,7 +18,7 @@ through `index.json`.
 | `androidx.camera:camera-core` | 1.6.2 | `image_processing_util_jni`, `surface_util_jni` |  |  |
 | `androidx.datastore:datastore-core-android` | 1.3.0 | `datastore_shared_counter` |  |  |
 | `androidx.graphics:graphics-core` | 1.0.4 | `graphics-core` |  |  |
-| `androidx.graphics:graphics-path` | 1.1.0 | `androidx.graphics.path` |  | 0 builds |
+| `androidx.graphics:graphics-path` | 1.1.0 | `androidx.graphics.path` |  | 1 builds |
 | `androidx.ink:ink-nativeloader-android` | 1.0.0 | `ink` | `androidx.ink:ink-nativeloader-jvm` 1.0.0 (1 libraries) | 1 builds |
 | `androidx.sqlite:sqlite-bundled-android` | 2.7.1 | `sqliteJni` | `androidx.sqlite:sqlite-bundled-jvm` 2.7.1 (4 libraries) | 8 builds |
 | `androidx.tracing:tracing-perfetto-binary` | 1.0.1 | `tracing_perfetto` |  |  |
