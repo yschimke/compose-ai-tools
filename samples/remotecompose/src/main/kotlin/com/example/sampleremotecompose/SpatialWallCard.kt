@@ -17,11 +17,11 @@ import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
-import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.state.rsp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 
 // A flat 2D Remote Compose document meant to be projected onto a surface in an XR scene — a wall,
 // a table top — rather than floated as a panel. It paints only inside its rounded card, so the
@@ -48,13 +48,13 @@ fun RemoteWallCard() {
         "Living room".rs,
         color = RemoteColor(Color(0xFF9FB3C8)),
         fontSize = 18.rsp,
-        fontWeight = 500.rf,
+        fontWeight = FontWeight.Medium,
       )
       RemoteText(
         temperature,
         color = RemoteColor(Color.White),
         fontSize = 44.rsp,
-        fontWeight = 600.rf,
+        fontWeight = FontWeight.SemiBold,
       )
       RemoteText(lights, color = RemoteColor(Color(0xFFFFC56B)), fontSize = 20.rsp)
     }
