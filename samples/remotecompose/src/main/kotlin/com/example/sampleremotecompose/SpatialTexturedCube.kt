@@ -10,6 +10,7 @@ import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteCanvas
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
+import androidx.compose.remote.creation.compose.layout.RemoteContentScale
 import androidx.compose.remote.creation.compose.layout.RemoteDrawScope
 import androidx.compose.remote.creation.compose.layout.RemoteOffset
 import androidx.compose.remote.creation.compose.layout.RemoteSize
@@ -43,7 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 
 // A textured cube you interact with, defined wholly in one Remote Compose document. Tapping the
 // cube eases it through a quarter turn; tapping the swatch swaps its texture. Both are document
@@ -223,7 +223,7 @@ private fun RemoteDrawScope.drawTexturedCube(
                     (tile / 2 * TextureSize).toFloat().rf,
                   ),
                 dstSize = RemoteSize(TextureSize.toFloat().rf, TextureSize.toFloat().rf),
-                scaleType = ContentScale.FillBounds,
+                scaleType = RemoteContentScale.FillBounds,
               )
             }
           }

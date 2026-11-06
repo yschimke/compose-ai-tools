@@ -234,7 +234,7 @@ horologist = "0.7.15"
 #    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
-compose-remote = "1.0.0-alpha22"
+compose-remote = "1.0.0-alpha23"
 # `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
 # `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
 # `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
@@ -261,7 +261,7 @@ androidx-core = "1.19.1"
 # `androidx.compose.remote.foundation:foundation`, which used to exist only on the
 # androidx-main snapshot line and now publishes to Google Maven — that is what
 # unblocked the move back to released coordinates.
-wear-compose-remote = "1.0.0-alpha14"
+wear-compose-remote = "1.0.0-alpha15"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:wear-widget` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
@@ -269,7 +269,7 @@ wear-compose-remote = "1.0.0-alpha14"
 # `remote-creation*` itself (alpha21 declares alpha21), so a skewed pin risks exactly
 # the creation/player drift the Remote Compose comment describes — bump it with
 # the two pins above.
-glance-wear = "1.0.0-alpha21"
+glance-wear = "1.0.0-alpha22"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -554,7 +554,7 @@ composeai-preview-daemon = "3.27.2"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.23.0"
+rcplayers = "2.24.0"
 
 [libraries]
 android-emulator-proto = { module = "com.android.tools.emulator:proto", version.ref = "android-emulator-proto" }
