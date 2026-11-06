@@ -304,7 +304,7 @@ maven-publish = "0.37.0"
 # that Google's plugin creates, and renders them via Robolectric without
 # driving Google's own `validate*ScreenshotTest` tasks. Still alpha —
 # re-check compatibility when bumping AGP.
-android-compose-screenshot = "0.0.1-alpha16"
+android-compose-screenshot = "0.0.1-alpha17"
 # Checker Framework qualifier annotations. ATF (`accessibility-test-framework`,
 # pulled in transitively by `roborazzi-accessibility-check`) annotates its
 # nullable getters with `@org.checkerframework.checker.nullness.qual.Nullable`.
