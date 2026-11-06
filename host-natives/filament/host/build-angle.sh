@@ -34,15 +34,22 @@ if [[ ! -d angle/.git ]]; then
   git init -q angle
 fi
 git -C angle fetch -q --depth 1 https://github.com/google/angle "$commit"
-git -C angle checkout -q FETCH_HEAD
+git -C angle checkout -f -q FETCH_HEAD
 if [[ "$(git -C angle rev-parse HEAD)" != "$commit" ]]; then
   echo "host-natives: fetched ANGLE $(git -C angle rev-parse HEAD), not $commit" >&2
   exit 1
 fi
 (cd angle && python3 scripts/bootstrap.py >&2 && gclient sync --no-history --shallow -j8 >&2)
-if [[ -x angle/third_party/depot_tools/ensure_bootstrap ]]; then
-  angle/third_party/depot_tools/ensure_bootstrap >&2
-fi
+# Xcode 26 unbundled MetalToolchain from Xcode.app: `mac_bin_path/metal` is a stub that fails unless
+# MetalToolchain is downloaded and invoked via `xcrun` (backported from upstream ANGLE 8032480).
+xcodebuild -downloadComponent MetalToolchain >&2
+python3 -c '
+p = "angle/src/libANGLE/renderer/metal/BUILD.gn"
+s = open(p).read()
+s = s.replace("mac_bin_path + \"metal\"", "\"xcrun\", \"metal\"")
+s = s.replace("mac_bin_path + \"metallib\"", "\"xcrun\", \"metallib\"")
+open(p, "w").write(s)
+'
 
 for cpu in arm64 x64; do
   (
