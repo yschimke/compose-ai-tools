@@ -150,7 +150,7 @@ internal class DaemonSemanticsFetcher(
     if (unsubmitted.isNotEmpty()) {
       onLog(
         "${unsubmitted.size} preview(s) never submitted after the daemon(s) stopped; first: " +
-          unsubmitted.take(UNSUBMITTED_LOG_LIMIT).joinToString(",")
+          unsubmitted.take(UNSUBMITTED_LOG_LIMIT).joinToString(","),
       )
     }
     val wallMs = (System.nanoTime() - startedAt) / 1_000_000
@@ -255,7 +255,7 @@ internal class DaemonSemanticsFetcher(
                   // A worker that dies mid-run loses only its in-flight renders; the rest of the
                   // queue stays for the others.
                   onLog(
-                    "semantics daemon ${index + 1} failed: ${e.message ?: e.javaClass.simpleName}"
+                    "semantics daemon ${index + 1} failed: ${e.message ?: e.javaClass.simpleName}",
                   )
                   null
                 }
@@ -341,7 +341,7 @@ internal class DaemonSemanticsFetcher(
             onLog(
               "${logPrefix}timed out after $renderTimeout with no render progress; still waiting " +
                 "on: " +
-                inFlight.joinToString(",")
+                inFlight.joinToString(","),
             )
             timings.recordStalled(inFlight.size)
             return

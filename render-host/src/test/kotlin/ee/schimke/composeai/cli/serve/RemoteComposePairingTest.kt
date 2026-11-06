@@ -45,7 +45,7 @@ class RemoteComposePairingTest {
           listOf(
             maven("remote-player-core", "1.0.0-SNAPSHOT"),
             maven("remote-creation", "1.0.0-SNAPSHOT"),
-          )
+          ),
         ),
       sidecar =
         RemoteComposePairing.sidecarMembers(
@@ -53,7 +53,7 @@ class RemoteComposePairingTest {
             "remote-core-1.0.0-alpha18.jar",
             "remote-player-core-1.0.0-alpha18.jar",
             "kotlin-stdlib-2.4.10.jar",
-          )
+          ),
         ),
       system = "meshcore-mobile",
       onLog = { logs += it },
@@ -93,7 +93,7 @@ class RemoteComposePairingTest {
       RemoteComposePairing.linkageDiagnosis(
         "java.lang.NoClassDefFoundError: androidx/compose/remote/player/core/RemoteDocument",
         descriptor,
-      )
+      ),
     )
   }
 
@@ -106,11 +106,11 @@ class RemoteComposePairingTest {
           listOf(
             maven("remote-core", "1.0.0-SNAPSHOT"),
             maven("remote-player-core", "1.0.0-SNAPSHOT"),
-          )
+          ),
         ),
       sidecar =
         RemoteComposePairing.sidecarMembers(
-          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar")
+          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar"),
         ),
       system = "meshcore-mobile",
       onLog = { logs += it },
@@ -121,7 +121,7 @@ class RemoteComposePairingTest {
       RemoteComposePairing.linkageDiagnosis(
         "java.lang.NoSuchFieldError: androidx.compose.remote.core.RemoteClock",
         descriptor,
-      )
+      ),
     )
   }
 
@@ -132,7 +132,7 @@ class RemoteComposePairingTest {
       bundle = RemoteComposePairing.bundleMembers(listOf(maven("remote-core", "1.0.0-alpha18"))),
       sidecar =
         RemoteComposePairing.sidecarMembers(
-          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar")
+          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar"),
         ),
       system = "meshcore-mobile",
       onLog = { logs += it },
@@ -179,7 +179,7 @@ class RemoteComposePairingTest {
       RemoteComposePairing.linkageDiagnosis(
         "java.lang.IllegalStateException: androidx.compose.remote.core.RemoteClock is not ready",
         descriptor,
-      )
+      ),
     )
   }
 
@@ -195,7 +195,7 @@ class RemoteComposePairingTest {
   fun `the wear family travels with the rest`() {
     assertContains(
       RemoteComposePairing.bundleMembers(
-          listOf(maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote"))
+          listOf(maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote")),
         )
         .map { it.artifact },
       "remote-material3",
@@ -210,7 +210,7 @@ class RemoteComposePairingTest {
         RemoteComposePairing.bundleMembers(listOf(maven("remote-creation", "1.0.0-SNAPSHOT"))),
       sidecar =
         RemoteComposePairing.sidecarMembers(
-          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar")
+          sidecar("remote-core-1.0.0-alpha18.jar", "remote-player-core-1.0.0-alpha18.jar"),
         ),
       system = "meshcore-mobile",
       onLog = { logs += it },
@@ -233,14 +233,14 @@ class RemoteComposePairingTest {
     assertTrue(RemoteComposePairing.isFamilyMember(maven("remote-core", "1.0.0-alpha18")))
     assertTrue(
       RemoteComposePairing.isFamilyMember(
-        maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote")
-      )
+        maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote"),
+      ),
     )
     assertTrue(
       RemoteComposePairing.isFamilyMember(
-          maven("material3", "1.10.0", "androidx.compose.material3")
+          maven("material3", "1.10.0", "androidx.compose.material3"),
         )
-        .not()
+        .not(),
     )
   }
 
@@ -362,11 +362,11 @@ class RemoteComposePairingTest {
               maven("remote-core", "1.0.0-alpha18"),
               maven("remote-player-core", "1.0.0-alpha18"),
               maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote"),
-            )
+            ),
           ),
         sidecar =
           RemoteComposePairing.sidecarMembers(
-            sidecar("remote-core-1.0.0-alpha18.jar", "remote-material3-1.0.0-alpha10.jar")
+            sidecar("remote-core-1.0.0-alpha18.jar", "remote-material3-1.0.0-alpha10.jar"),
           ),
       )
 
@@ -386,11 +386,11 @@ class RemoteComposePairingTest {
             listOf(
               maven("remote-creation", "1.0.0-SNAPSHOT"),
               maven("remote-material3", "1.0.0-alpha10", "androidx.wear.compose.remote"),
-            )
+            ),
           ),
         sidecar =
           RemoteComposePairing.sidecarMembers(
-            sidecar("remote-core-1.0.0-alpha18.jar", "remote-material3-1.0.0-alpha10.jar")
+            sidecar("remote-core-1.0.0-alpha18.jar", "remote-material3-1.0.0-alpha10.jar"),
           ),
       )
 
@@ -407,7 +407,7 @@ class RemoteComposePairingTest {
       RemoteComposePairing.linkageDiagnosis(
         "java.lang.NoSuchFieldError: androidx.compose.remote.core.RemoteClock",
         descriptor,
-      )
+      ),
     )
   }
 }

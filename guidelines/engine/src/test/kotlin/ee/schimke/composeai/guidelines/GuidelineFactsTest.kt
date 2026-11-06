@@ -35,7 +35,7 @@ class GuidelineFactsTest {
     val facts =
       GuidelineFacts.of(
         screen(
-          listOf(PreviewNode("stop", "Button", "Stop", 100, 100, 148, 148, listOf("clickable")))
+          listOf(PreviewNode("stop", "Button", "Stop", 100, 100, 148, 148, listOf("clickable"))),
         ),
         "wear",
       )
@@ -111,7 +111,7 @@ class GuidelineFactsTest {
               "or larger.",
             "Play",
           ),
-        )
+        ),
       )
     assertThat(facts.map { it.text })
       .containsExactly(
@@ -123,7 +123,7 @@ class GuidelineFactsTest {
     assertThat(
         GuidelineFacts.fromChecks(listOf(PreviewCheck("TextContrastCheck", "INFO", "ok")))
           .single()
-          .text
+          .text,
       )
       .contains("no errors")
     assertThat(GuidelineFacts.fromChecks(emptyList())).isEmpty()

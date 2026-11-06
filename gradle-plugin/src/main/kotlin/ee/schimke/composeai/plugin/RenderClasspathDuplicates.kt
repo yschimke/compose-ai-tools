@@ -273,7 +273,7 @@ internal object RenderClasspathDuplicates {
       "compose-preview: ${duplicates.size} module(s) are on the $taskPath JVM classpath at more " +
         "than one version. Java loads the FIRST match per class, so a class from the winning jar " +
         "can link against a sibling that only the other version defines (NoSuchFieldError / " +
-        "NoSuchMethodError at an unrelated <clinit>)."
+        "NoSuchMethodError at an unrelated <clinit>).",
     )
     duplicates.forEach { duplicate ->
       appendLine("  ${duplicate.coordinate}  ${duplicate.versions.joinToString(", ")}")
@@ -283,7 +283,7 @@ internal object RenderClasspathDuplicates {
     appendLine(
       "Align the module in your build (a version force, or an exclude on whichever graph " +
         "shouldn't carry it). Set -PcomposePreview.classpathDuplicates=fail to make this an " +
-        "error, or =off to silence it."
+        "error, or =off to silence it.",
     )
   }
 
@@ -296,7 +296,7 @@ internal object RenderClasspathDuplicates {
       "compose-preview: ${skews.size} dependency family/families on the $taskPath JVM classpath " +
         "resolved to more than one version. Each coordinate is at a single version, so ordinary " +
         "conflict resolution sees nothing wrong — but these coordinates ship as one release train " +
-        "and their classes reference each other, so mixing versions link-errors at runtime."
+        "and their classes reference each other, so mixing versions link-errors at runtime.",
     )
     skews.forEach { skew ->
       appendLine("  ${skew.group}  (${skew.why})")
@@ -307,7 +307,7 @@ internal object RenderClasspathDuplicates {
     appendLine(
       "Applying that is your call — these rules act on EVERY configuration in the module, not " +
         "just the render classpath, so check it doesn't move a version your app ships. Set " +
-        "-PcomposePreview.classpathDuplicates=off to silence this."
+        "-PcomposePreview.classpathDuplicates=off to silence this.",
     )
   }
 

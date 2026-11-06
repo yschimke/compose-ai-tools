@@ -60,12 +60,12 @@ public object PlaygroundPreviews {
   private data class Metadata(val params: PreviewParams, val capture: Capture)
 
   private fun previewMetadata(
-    snippet: PlaygroundTokenStore.PlaygroundSnippet
+    snippet: PlaygroundTokenStore.PlaygroundSnippet,
   ): Map<String, Metadata> {
     val classes = snippet.classesDir.toFile()
     if (!classes.exists() || !classes.canRead()) {
       System.err.println(
-        "playground: preview metadata unavailable: compiled output is missing or unreadable: $classes; using default preview parameters for ${snippet.previewIds}"
+        "playground: preview metadata unavailable: compiled output is missing or unreadable: $classes; using default preview parameters for ${snippet.previewIds}",
       )
       return emptyMap()
     }
@@ -131,7 +131,7 @@ public object PlaygroundPreviews {
             val missing = snippet.previewIds.filterNot { it in found }
             if (missing.isNotEmpty()) {
               System.err.println(
-                "playground: preview metadata unavailable: no matching @Preview method in $classes for $missing; using default preview parameters"
+                "playground: preview metadata unavailable: no matching @Preview method in $classes for $missing; using default preview parameters",
               )
             }
           }

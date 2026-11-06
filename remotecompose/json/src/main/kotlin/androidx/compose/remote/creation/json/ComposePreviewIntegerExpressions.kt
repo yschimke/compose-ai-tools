@@ -26,7 +26,7 @@ internal object ComposePreviewIntegerExpressions {
         require(
           name !in current.mIntegerVariables &&
             name !in current.mVariables &&
-            name !in current.mDeferredVariables
+            name !in current.mDeferredVariables,
         ) {
           "duplicate name '$name'"
         }

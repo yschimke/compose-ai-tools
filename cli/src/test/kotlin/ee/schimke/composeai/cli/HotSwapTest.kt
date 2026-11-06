@@ -76,14 +76,14 @@ class HotSwapTest {
       HotSwapCheck.why(
         before,
         classBytes("com/example/UiKt", listOf(greeting.copy(text = "Hi"), onCreate)),
-      )
+      ),
     )
     // An edit above shifts every line below it: not a change.
     assertNull(
       HotSwapCheck.why(
         before,
         classBytes("com/example/UiKt", listOf(greeting.copy(line = 12), onCreate.copy(line = 30))),
-      )
+      ),
     )
 
     val notComposable =
@@ -121,7 +121,7 @@ class HotSwapTest {
   fun `a changed constant restarts, since redefinition keeps the field's old value`() {
     val before = classBytes("com/example/UiKt", listOf(greeting), constant = 3)
     assertNull(
-      HotSwapCheck.why(before, classBytes("com/example/UiKt", listOf(greeting), constant = 3))
+      HotSwapCheck.why(before, classBytes("com/example/UiKt", listOf(greeting), constant = 3)),
     )
     val why =
       HotSwapCheck.why(before, classBytes("com/example/UiKt", listOf(greeting), constant = 4))
@@ -269,18 +269,18 @@ class HotSwapTest {
   fun `only the configuration cache's own refusal turns it off`() {
     assertTrue(
       LiveReload.refusedConfigurationCache(
-        "1 problem was found storing the configuration cache.\nConfiguration cache problems found in this build."
-      )
+        "1 problem was found storing the configuration cache.\nConfiguration cache problems found in this build.",
+      ),
     )
     assertTrue(
       LiveReload.refusedConfigurationCache(
-        "Configuration cache state could not be cached: field `x`"
-      )
+        "Configuration cache state could not be cached: field `x`",
+      ),
     )
     assertFalse(
       LiveReload.refusedConfigurationCache(
-        "e: MainActivity.kt:12 Unresolved reference 'Txt'.\nConfiguration cache entry stored."
-      )
+        "e: MainActivity.kt:12 Unresolved reference 'Txt'.\nConfiguration cache entry stored.",
+      ),
     )
   }
 }

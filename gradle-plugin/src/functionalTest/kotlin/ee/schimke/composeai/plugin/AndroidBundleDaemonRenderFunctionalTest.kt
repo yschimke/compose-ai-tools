@@ -84,7 +84,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
   private fun renderBundle(cli: File, bundle: File, formatsSeen: MutableSet<String>) {
     assertWithMessage(
         "sample bundle missing: ${bundle.path} — did `:samples:…:composePreviewBundle` run? Use " +
-          "`./gradlew functionalTestWithAndroidBundleDaemon`"
+          "`./gradlew functionalTestWithAndroidBundleDaemon`",
       )
       .that(bundle.isFile)
       .isTrue()
@@ -246,7 +246,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
       // The exact failure `composeDaemonClasspath` fixes: a parent-loaded IR replay host that can't
       // see the carried player / tiles-renderer libs trips NoClassDefFoundError at replay time.
       assertWithMessage(
-          "daemon stderr contained NoClassDefFoundError (bundle=${bundle.name}):\n$stderr"
+          "daemon stderr contained NoClassDefFoundError (bundle=${bundle.name}):\n$stderr",
         )
         .that(stderr)
         .doesNotContain("NoClassDefFoundError")
@@ -285,7 +285,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
     val cli = File(cliBinary)
     assertWithMessage(
         "CLI binary $cliBinary missing — did `:cli:installDist` run? Use " +
-          "`./gradlew functionalTestWithAndroidBundleDaemon`"
+          "`./gradlew functionalTestWithAndroidBundleDaemon`",
       )
       .that(cli.isFile)
       .isTrue()

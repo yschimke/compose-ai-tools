@@ -44,7 +44,7 @@ fun HelloTilePreview(context: Context): TilePreviewData = TilePreviewData { requ
             )
           },
         )
-      }
+      },
     )
     .build()
 }
@@ -75,7 +75,7 @@ fun StepsTilePreview(context: Context): TilePreviewData = TilePreviewData { requ
             )
           },
         )
-      }
+      },
     )
     .build()
 }

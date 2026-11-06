@@ -33,7 +33,7 @@ class DaemonBootstrapFunctionalTest {
               }
           }
           """
-            .trimIndent()
+            .trimIndent(),
       )
 
     GradleRunner.create()
@@ -101,7 +101,7 @@ class DaemonBootstrapFunctionalTest {
           """
           kotlin { sourceSets.named("main") { kotlin.srcDir("extra/kotlin") } }
           """
-            .trimIndent()
+            .trimIndent(),
       )
 
     GradleRunner.create()
@@ -112,7 +112,7 @@ class DaemonBootstrapFunctionalTest {
 
     val descriptor =
       kotlinx.serialization.json.Json.parseToJsonElement(
-          File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+          File(projectDir, "build/compose-previews/daemon-launch.json").readText(),
         )
         .jsonObject
     val watch = descriptor["sourceWatch"]!!.jsonObject
@@ -146,7 +146,7 @@ class DaemonBootstrapFunctionalTest {
 
         internal const val EditedAfterDaemonBootstrap = "changed"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -245,7 +245,7 @@ class DaemonBootstrapFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Blue))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val third = runner.build()
     assertThat(third.output).contains("Reusing configuration cache.")
@@ -256,7 +256,7 @@ class DaemonBootstrapFunctionalTest {
 
     val descriptor =
       kotlinx.serialization.json.Json.parseToJsonElement(
-          File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+          File(projectDir, "build/compose-previews/daemon-launch.json").readText(),
         )
         .jsonObject
     assertThat(descriptor["mainClass"]?.jsonPrimitive?.content)
@@ -309,7 +309,7 @@ class DaemonBootstrapFunctionalTest {
         }
         rootProject.name = "daemon-bootstrap-android-test"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "local.properties").writeText("sdk.dir=$androidSdkDir\n")
@@ -346,7 +346,7 @@ class DaemonBootstrapFunctionalTest {
             testImplementation("junit:junit:4.13.2")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties")
@@ -357,7 +357,7 @@ class DaemonBootstrapFunctionalTest {
         org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
         android.useAndroidX=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main").mkdirs()
@@ -385,7 +385,7 @@ class DaemonBootstrapFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -414,7 +414,7 @@ class DaemonBootstrapFunctionalTest {
         rootProject.name = "daemon-bootstrap-test"
         include(":daemon:desktop")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -438,7 +438,7 @@ class DaemonBootstrapFunctionalTest {
         }
         $extraBuildScript
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val daemonDesktopDir = File(projectDir, "daemon/desktop")
@@ -450,7 +450,7 @@ class DaemonBootstrapFunctionalTest {
             java
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties")
@@ -458,7 +458,7 @@ class DaemonBootstrapFunctionalTest {
         """
         org.gradle.configuration-cache=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcDir = File(projectDir, "src/main/kotlin/test")
@@ -483,7 +483,7 @@ class DaemonBootstrapFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

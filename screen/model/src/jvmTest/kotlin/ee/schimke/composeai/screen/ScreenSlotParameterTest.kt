@@ -63,7 +63,7 @@ class ScreenSlotParameterTest {
   fun `a named slot parameter is the lambda's and the body pads by it`() {
     val source =
       emitted(
-        scaffold(column(padded(ScreenValue.SlotParameterRead("contentPadding", paddingValues))))
+        scaffold(column(padded(ScreenValue.SlotParameterRead("contentPadding", paddingValues)))),
       )
     assertTrue(source, "Scaffold {" !in source)
     assertTrue(source, "{ contentPadding ->" in source)
@@ -125,9 +125,9 @@ class ScreenSlotParameterTest {
             ScreenValue.SlotParameterRead(
               "contentPadding",
               "kotlin.collections.List<androidx.compose.foundation.layout.PaddingValues>",
-            )
-          )
-        )
+            ),
+          ),
+        ),
       ),
       "that slot's lambda takes PaddingValues",
     )

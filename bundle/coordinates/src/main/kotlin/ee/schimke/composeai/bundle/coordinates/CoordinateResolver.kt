@@ -92,7 +92,7 @@ public class CoordinateResolver(
         // Mismatched download: warn but keep it.
         warn(
           "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — downloaded copy " +
-            "(${sha256Hex(fetched)}) does not match the bundle's $expected. Rendering with it anyway."
+            "(${sha256Hex(fetched)}) does not match the bundle's $expected. Rendering with it anyway.",
         )
         return Resolution(
           coord,
@@ -111,7 +111,7 @@ public class CoordinateResolver(
         "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — bundle expected " +
           "$expected but no local or remote copy matched (using ${fallback.name}, " +
           "${sha256Hex(fallback)}). Rendering with the local copy anyway; the preview may differ " +
-          "slightly from the original."
+          "slightly from the original.",
       )
       return Resolution(coord, file = fallback, verified = false, mismatch = true)
     }
@@ -120,7 +120,7 @@ public class CoordinateResolver(
         "repository${if (networkEnabled) " or remote repository" else ""}" +
         describeFetchFailures(fetchFailures) +
         "; the preview may fail to render if it needs this dependency. Re-pack with " +
-        "--embed-deps for an offline bundle."
+        "--embed-deps for an offline bundle.",
     )
     return Resolution(coord, file = null, verified = false, mismatch = false)
   }

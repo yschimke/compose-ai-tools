@@ -219,7 +219,7 @@ private fun extractZipBytes(file: Path): ByteArray {
   if (bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) return bytes
   if (!isPngSignature(bytes)) {
     throw IllegalArgumentException(
-      "not a bundle: $file — leading bytes match neither PNG (\\x89PNG…) nor ZIP (PK\\x03\\x04)"
+      "not a bundle: $file — leading bytes match neither PNG (\\x89PNG…) nor ZIP (PK\\x03\\x04)",
     )
   }
   val zipStart = pngLength(bytes)

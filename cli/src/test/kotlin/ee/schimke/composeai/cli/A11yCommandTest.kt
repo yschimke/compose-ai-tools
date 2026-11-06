@@ -135,7 +135,7 @@ class A11yCommandTest {
                 message = "Contrast 3.8:1 below 4.5:1.",
               ),
             ),
-        )
+        ),
       )
 
     val payload = Json.parseToJsonElement(cmd.encodeResponseFor(results)).jsonObject
@@ -250,7 +250,7 @@ class A11yCommandTest {
         previews =
           original.previews.map {
             if (it.id == "ColorSchemeSpecimenPreview") it.copy(includeInA11y = false) else it
-          }
+          },
       )
 
     val request = cmd.requestsFor(listOf(module to annotated)).single()
@@ -434,7 +434,7 @@ class A11yCommandTest {
    */
   private class TestableReportCommand(args: List<String>) : ReportCommand(args, "a11y") {
     fun requestsFor(
-      manifests: List<Pair<PreviewModule, PreviewManifest>>
+      manifests: List<Pair<PreviewModule, PreviewManifest>>,
     ): List<DataProductRequest> = dataProductRequests(manifests)
   }
 
@@ -495,7 +495,7 @@ class A11yCommandTest {
             ExtensionPayload(
               schema = A11Y_PAYLOAD_SCHEMA_V1,
               payload = Json.encodeToJsonElement(AccessibilityEntry.serializer(), entry),
-            )
+            ),
         )
       }
     return PreviewResult(

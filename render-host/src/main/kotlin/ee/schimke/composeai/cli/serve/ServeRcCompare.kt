@@ -330,7 +330,7 @@ public object ServeRcCompare {
                 note =
                   if (cell.rendered && render.isEmpty()) "render was not published" else cell.note,
               )
-            }
+            },
         )
       }
     if (rows.none { row -> row.lanes.values.any { it.render.isNotEmpty() } }) return null

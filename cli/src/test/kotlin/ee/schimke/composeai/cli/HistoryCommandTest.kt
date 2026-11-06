@@ -83,12 +83,12 @@ class HistoryCommandTest {
 
   private fun themePayload(primary: String): JsonElement =
     Json.parseToJsonElement(
-      """{"resolvedTokens":{"colorScheme":{"primary":"$primary"},"typography":{},"shapes":{}},"consumers":[]}"""
+      """{"resolvedTokens":{"colorScheme":{"primary":"$primary"},"typography":{},"shapes":{}},"consumers":[]}""",
     )
 
   private fun semanticsPayload(text: String): JsonElement =
     Json.parseToJsonElement(
-      """{"root":{"nodeId":"1","boundsInRoot":"0,0,100,50","testTag":"greeting","text":"$text"}}"""
+      """{"root":{"nodeId":"1","boundsInRoot":"0,0,100,50","testTag":"greeting","text":"$text"}}""",
     )
 
   @Test
@@ -167,7 +167,7 @@ class HistoryCommandTest {
           "--history-dir",
           historyDir.toString(),
           "--json",
-        )
+        ),
       )
       .run()
     val payload = Json.parseToJsonElement(output()).jsonObject
@@ -209,7 +209,7 @@ class HistoryCommandTest {
           "--history-dir",
           historyDir.toString(),
           "--json",
-        )
+        ),
       )
       .run()
     val payload = Json.parseToJsonElement(output()).jsonObject
@@ -247,7 +247,16 @@ class HistoryCommandTest {
       )
 
     HistoryCommand(
-        listOf("diff", from, to, "--mode", "data", "--history-dir", historyDir.toString(), "--json")
+        listOf(
+          "diff",
+          from,
+          to,
+          "--mode",
+          "data",
+          "--history-dir",
+          historyDir.toString(),
+          "--json",
+        ),
       )
       .run()
     val payload = Json.parseToJsonElement(output()).jsonObject
@@ -290,7 +299,7 @@ class HistoryCommandTest {
           "--history-dir",
           historyDir.toString(),
           "--json",
-        )
+        ),
       )
       .run()
     val payload = Json.parseToJsonElement(output()).jsonObject
@@ -328,7 +337,7 @@ class HistoryCommandTest {
           from,
           to,
           "--json",
-        )
+        ),
       )
       .run()
     val payload = Json.parseToJsonElement(output()).jsonObject

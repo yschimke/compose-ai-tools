@@ -102,7 +102,7 @@ class ScreenSelectionTest {
         original.copy(
           root = root,
           state = listOf(ScreenState("shown", "kotlin.Boolean", ScreenValue.Bool(false))),
-        )
+        ),
       )
     assertTrue(source, "true -> {" in source)
     assertTrue(source, "else -> {}" in source)
@@ -118,8 +118,8 @@ class ScreenSelectionTest {
         root =
           original.root.copy(
             selection =
-              selection.copy(cases = selection.cases + ("first" to ScreenValue.Text("10")))
-          )
+              selection.copy(cases = selection.cases + ("first" to ScreenValue.Text("10"))),
+          ),
       ),
       "which Text is not",
     )
@@ -127,8 +127,8 @@ class ScreenSelectionTest {
       original.copy(
         root =
           original.root.copy(
-            selection = selection.copy(subject = ScreenValue.StateRead("page", "kotlin.String"))
-          )
+            selection = selection.copy(subject = ScreenValue.StateRead("page", "kotlin.String")),
+          ),
       ),
       "declared as a kotlin.Int",
     )
@@ -143,8 +143,8 @@ class ScreenSelectionTest {
         root =
           original.root.copy(
             selection =
-              selection.copy(cases = selection.cases + ("second" to ScreenValue.Whole(10)))
-          )
+              selection.copy(cases = selection.cases + ("second" to ScreenValue.Whole(10))),
+          ),
       ),
       "duplicates 10",
     )
@@ -169,14 +169,14 @@ class ScreenSelectionTest {
       original.copy(
         root =
           original.root.copy(
-            slots = original.root.slots + ("second" to listOf(ScreenNode("missing")))
-          )
+            slots = original.root.slots + ("second" to listOf(ScreenNode("missing"))),
+          ),
       ),
       "no component `missing`",
     )
     refused(
       original.copy(
-        root = original.root.copy(arguments = mapOf("ignored" to ScreenValue.Whole(1)))
+        root = original.root.copy(arguments = mapOf("ignored" to ScreenValue.Whole(1))),
       ),
       "cannot also call a component",
     )
@@ -195,7 +195,7 @@ class ScreenSelectionTest {
               "second" to ScreenValue.Fractional(1.00000000001),
             ),
             "fallback",
-          )
+          ),
       )
     refused(
       original.copy(
@@ -227,10 +227,10 @@ class ScreenSelectionTest {
                         "androidx.compose.foundation.layout.ColumnScope.weight",
                         positional = listOf(ScreenValue.Fractional32(1f)),
                         receiverScopeFqn = "androidx.compose.foundation.layout.ColumnScope",
-                      )
+                      ),
                     ),
                   typeFqn = "androidx.compose.ui.Modifier",
-                ))
+                )),
         )
       }
     val selection = original.root.copy(slots = original.root.slots + ("first" to listOf(text)))
@@ -258,7 +258,7 @@ class ScreenSelectionTest {
         original.copy(
           root = original.root.copy(selection = selection),
           state = listOf(ScreenState("page", "kotlin.String", ScreenValue.Text("ready"))),
-        )
+        ),
       )
     assertTrue(source, "\"\\\"\\\${value}\" ->" in source)
   }

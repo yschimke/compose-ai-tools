@@ -109,7 +109,7 @@ val javaToolchains = extensions.getByType(JavaToolchainService::class.java)
 
 tasks.withType(Test::class.java).configureEach {
   javaLauncher.set(
-    javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(matrixJvmToolchain)) }
+    javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(matrixJvmToolchain)) },
   )
 }
 

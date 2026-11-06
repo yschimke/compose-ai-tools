@@ -174,7 +174,7 @@ class NetworkPolicyTest {
     NetworkPolicy.withOverride(true) {
       assertFailsWith<NetworkDisabledException> {
         ServerDistributionProvision.latestVersion(
-          fetcher = ServerDistributionProvision.Fetcher(refusedFetcher(fetches))
+          fetcher = ServerDistributionProvision.Fetcher(refusedFetcher(fetches)),
         )
       }
     }
@@ -304,7 +304,7 @@ class NetworkPolicyTest {
             .write(
               ("HTTP/1.1 302 Found\r\nLocation: $unroutable/bundle.png\r\n" +
                   "Content-Length: 0\r\nConnection: close\r\n\r\n")
-                .toByteArray()
+                .toByteArray(),
             )
         }
       }
@@ -360,7 +360,7 @@ class NetworkPolicyTest {
       assertRefusal(
         assertFailsWith<NetworkDisabledException> {
           ServeImageUploader(unroutable, token = "t", client = client).upload(image)
-        }
+        },
       )
     }
     assertEquals(0, calls.get())
@@ -373,7 +373,7 @@ class NetworkPolicyTest {
       assertRefusal(
         assertFailsWith<NetworkDisabledException> {
           SharePreviewCommand(listOf("--mechanism", "gist", report.path)).run()
-        }
+        },
       )
     }
   }
@@ -440,7 +440,7 @@ class NetworkPolicyTest {
     val flat =
       File(tmp, "flat.json").apply {
         writeText(
-          """{"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "c", "platform": "wear", "version": 1, $rules}"""
+          """{"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "c", "platform": "wear", "version": 1, $rules}""",
         )
       }
     val loaded = loadGuidelines(flat.path, disabled = true)
@@ -449,7 +449,7 @@ class NetworkPolicyTest {
       File(tmp, "including.json").apply {
         writeText(
           """{"schema": "compose-ui-builder/catalog-guidelines/v1", "catalog": "c", "platform": "wear", "version": 1, $rules,
-             "includes": [{"url": "$unroutable/pack.json", "sha256": "${"0".repeat(64)}"}]}"""
+             "includes": [{"url": "$unroutable/pack.json", "sha256": "${"0".repeat(64)}"}]}""",
         )
       }
     val e =
@@ -469,7 +469,7 @@ class NetworkPolicyTest {
           disabled = true,
           offline = true,
           provisioned = mapOf("desktop render daemon" to true, "preview server" to false),
-        )
+        ),
       )
     assertEquals("env.network-policy", check.id)
     assertEquals("warning", check.status)
@@ -477,7 +477,7 @@ class NetworkPolicyTest {
     assertTrue(check.detail!!.contains("missing: preview server"))
     val offlineOnly =
       assertNotNull(
-        networkPolicyCheck(disabled = false, offline = true, provisioned = mapOf("x" to false))
+        networkPolicyCheck(disabled = false, offline = true, provisioned = mapOf("x" to false)),
       )
     assertEquals("ok", offlineOnly.status)
   }

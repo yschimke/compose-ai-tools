@@ -70,7 +70,7 @@ private fun heroImageResource(): ImageResource =
         .setWidthPx(INLINE_IMAGE_PX)
         .setHeightPx(INLINE_IMAGE_PX)
         .setFormat(IMAGE_FORMAT_ARGB_8888)
-        .build()
+        .build(),
     )
     .build()
 
@@ -91,9 +91,9 @@ private fun imageTile(imageId: String, sizeDp: Float) =
             .setWidth(dp(sizeDp))
             .setHeight(dp(sizeDp))
             .setContentScaleMode(CONTENT_SCALE_MODE_FIT)
-            .build()
+            .build(),
         )
-        .build()
+        .build(),
     )
     .build()
 
@@ -121,7 +121,7 @@ fun DrawableImageTilePreview(context: Context): TilePreviewData =
           DRAWABLE_IMAGE_ID,
           ImageResource.Builder()
             .setAndroidResourceByResId(
-              AndroidImageResourceByResId.Builder().setResourceId(R.drawable.ic_watchface).build()
+              AndroidImageResourceByResId.Builder().setResourceId(R.drawable.ic_watchface).build(),
             )
             .build(),
         )
@@ -142,9 +142,9 @@ fun ScopeImageTilePreview(context: Context): TilePreviewData = TilePreviewData {
         primaryLayout(
           mainSlot = {
             avatarImage(resource = heroImageResource(), width = expand(), height = expand())
-          }
+          },
         )
-      }
+      },
     )
     .build()
 }

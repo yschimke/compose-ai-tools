@@ -98,7 +98,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           manifest.androidResources?.applicationPackage,
         )
       System.err.println(
-        "[bundle-daemon] android carriage: cpEntries=${androidReplayClasspath.size}"
+        "[bundle-daemon] android carriage: cpEntries=${androidReplayClasspath.size}",
       )
     }
 
@@ -109,7 +109,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         "android" -> androidDaemonLaunch()
         else -> {
           System.err.println(
-            "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')."
+            "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop' or 'android').",
           )
           exitProcess(1)
         }
@@ -145,10 +145,10 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
                   .joinToString(File.pathSeparator),
               carriedDeps = libJars + resolvedJars,
               hasIr = hasIr,
-            )
+            ),
           )
           add("ee.schimke.composeai.daemon.DaemonMain")
-        }
+        },
       )
 
     if (verbose) {
@@ -157,17 +157,17 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       System.err.println("[bundle-daemon] classes dir: ${classesDir.absolutePath}")
       System.err.println("[bundle-daemon] embedded lib jars: ${libJars.size}")
       System.err.println(
-        "[bundle-daemon] resolved coordinate jars: ${resolvedJars.size} / ${mavenCoords.size}"
+        "[bundle-daemon] resolved coordinate jars: ${resolvedJars.size} / ${mavenCoords.size}",
       )
       System.err.println("[bundle-daemon] previews.json: ${previewsJson.absolutePath}")
       if (hasIr) {
         System.err.println(
-          "[bundle-daemon] IR previews: ${manifest.intermediateRepresentations.size} → ${irDir?.absolutePath}"
+          "[bundle-daemon] IR previews: ${manifest.intermediateRepresentations.size} → ${irDir?.absolutePath}",
         )
       }
       if (androidReplayClasspath.isNotEmpty()) {
         System.err.println(
-          "[bundle-daemon] android resource carriage: ${androidReplayClasspath.joinToString(", ") { it.name }}"
+          "[bundle-daemon] android resource carriage: ${androidReplayClasspath.joinToString(", ") { it.name }}",
         )
       }
       System.err.println("[bundle-daemon] launching: ${command.joinToString(" ")}")
@@ -189,7 +189,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           } catch (_: Throwable) {
             /* ignore */
           }
-        }
+        },
       )
     val exitCode = proc.waitFor()
     try {
@@ -216,7 +216,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       System.err.println(
         "bundle daemon: no daemon jars found. Looked in `${bundleSidecarSearchDescription("lib-daemon-desktop")}`; " +
           "it is fetched from the compose-preview-daemon release on first use, or set " +
-          "`-Dcomposeai.cli.libDaemonDesktopDir=<dir>/lib-daemon-desktop`."
+          "`-Dcomposeai.cli.libDaemonDesktopDir=<dir>/lib-daemon-desktop`.",
       )
       exitProcess(1)
     }
@@ -225,7 +225,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       System.err.println(
         "bundle daemon: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
           "it is fetched from the compose-preview-daemon release on first use, or set " +
-          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`."
+          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`.",
       )
       exitProcess(1)
     }
@@ -239,7 +239,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     return DaemonLaunch(
       classpath =
         (listOf(skikoNative) + daemonJars + rendererJars).distinct().joinToString(
-          File.pathSeparator
+          File.pathSeparator,
         ) {
           it.absolutePath
         },
@@ -286,7 +286,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           "in the CLI tarball). Fetch `compose-preview-android-daemon-<version>.zip` while online, " +
           "or point at an unpacked copy via " +
           "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
-          "`${bundleSidecarSearchDescription("lib-daemon-android")}`."
+          "`${bundleSidecarSearchDescription("lib-daemon-android")}`.",
       )
       exitProcess(1)
     }
@@ -295,7 +295,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         ?: run {
           System.err.println(
             "bundle daemon: backend=android needs android.jar — set ANDROID_HOME / " +
-              "ANDROID_SDK_ROOT, or run from a project whose local.properties has sdk.dir."
+              "ANDROID_SDK_ROOT, or run from a project whose local.properties has sdk.dir.",
           )
           exitProcess(1)
         }
@@ -351,7 +351,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       Flags:
         -v, --verbose   Print the resolved working dir + classpath sizes before launch.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 

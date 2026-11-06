@@ -51,7 +51,7 @@ class ResourceDiscoveryTest {
         filmstrip = filmstrip,
         filmstripFractions = filmstripFractions,
         sourceRootRelativePath = { "res" },
-      )
+      ),
     )
 
   @Test

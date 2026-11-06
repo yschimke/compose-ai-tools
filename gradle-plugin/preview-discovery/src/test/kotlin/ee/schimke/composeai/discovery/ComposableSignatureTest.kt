@@ -170,7 +170,7 @@ class ComposableSignatureTest {
         .use { scan ->
           PreviewKnobDefaults.enumConstantsOf(
             scan.getClassInfo("ee.schimke.composeai.discovery.KitIconSize")
-              ?: error("enum fixture not found")
+              ?: error("enum fixture not found"),
           )
         }
 

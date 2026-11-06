@@ -171,7 +171,7 @@ internal object McpHostRepair {
           mapOf(
             "command" to JsonPrimitive(newCommand),
             "args" to JsonArray(newArgs.map(::JsonPrimitive)),
-          )
+          ),
       )
     return fixed to describe(where, newCommand, newArgs, problems)
   }
@@ -217,7 +217,7 @@ internal object McpHostRepair {
       JsonObject(server + ("command" to JsonArray((listOf(command) + args).map(::JsonPrimitive))))
     val updated =
       JsonObject(
-        root + ("mcp" to JsonObject(mcp + ("servers" to JsonObject(servers + (SERVER to fixed)))))
+        root + ("mcp" to JsonObject(mcp + ("servers" to JsonObject(servers + (SERVER to fixed))))),
       )
     return McpRepair(encode(updated), listOf(describe("opencode", command, args, problems)))
   }

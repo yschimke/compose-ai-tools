@@ -94,7 +94,7 @@ class AndroidBundleLaunchTest {
     for (body in
       listOf(launch.robolectricPropertiesBody(), launch.appTourRobolectricPropertiesBody())) {
       assertTrue(
-        body.lines().any { it.startsWith("instrumentedPackages=") && "com.example.app." in it }
+        body.lines().any { it.startsWith("instrumentedPackages=") && "com.example.app." in it },
       )
       assertTrue("ShadowConsumerClock" in body, body)
     }

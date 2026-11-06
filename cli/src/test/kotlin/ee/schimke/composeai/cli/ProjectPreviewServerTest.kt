@@ -126,7 +126,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
   }
 
@@ -143,7 +143,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.NeedsConfirmation
+        is ServeUrlTrust.NeedsConfirmation,
     )
   }
 
@@ -164,7 +164,7 @@ class ProjectPreviewServerTest {
         userHome = userHome,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
   }
 
@@ -187,7 +187,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
 
     val fromEnv =
@@ -200,7 +200,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
   }
 
@@ -276,7 +276,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
   }
 
@@ -342,7 +342,7 @@ class ProjectPreviewServerTest {
         userHome = null,
         fileSystem = fs,
       )
-        is ServeUrlTrust.Trusted
+        is ServeUrlTrust.Trusted,
     )
   }
 
@@ -406,7 +406,7 @@ class ProjectPreviewServerTest {
       composePreview.version=1.2.3
       $SERVE_URL_PROPERTY=https://preview.coo.ee
       """
-        .trimIndent()
+        .trimIndent(),
     )
     assertEquals("1.2.3", readGradlePropertiesPin(root, fs))
     assertEquals(

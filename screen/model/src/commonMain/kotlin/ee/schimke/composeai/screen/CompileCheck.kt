@@ -71,7 +71,7 @@ public object CompileCheck {
         confType = target.confType,
         catalog = target.catalog,
         files = listOf(CompileFile(name = SOURCE_FILE_NAME, text = source)),
-      )
+      ),
     )
 
   /**

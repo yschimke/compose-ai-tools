@@ -319,7 +319,7 @@ internal class JevChecker(
                     ask(guidelines, state, round, offered, view, ledger)
                   }
                     .onFailure { state.failure = "the jev checker failed: ${it.message}" }
-                }
+                },
               )
             }
             .forEach { it.get() }
@@ -671,7 +671,7 @@ internal class JevChecker(
         val backoff =
           response.retryAfterMillis
             ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
-              options.retry.maxDelayMillis
+              options.retry.maxDelayMillis,
             )
         // A rate limit holds every worker, and is published before this settlement wakes the
         // workers waiting on it, whether or not this request is asked again.
@@ -739,7 +739,7 @@ internal class JevChecker(
             ledger.tryRetry()
         if (!retry) {
           return stop(
-            failure = failure.problem + if (attempt > 1) " (after $attempt tries)" else ""
+            failure = failure.problem + if (attempt > 1) " (after $attempt tries)" else "",
           )
         }
         when (failure.kind) {
@@ -847,7 +847,7 @@ internal class JevChecker(
                     renderHash = subject.renderHash
                     label = subject.label
                   }
-                  .build()
+                  .build(),
               )
             ranBy = options.ranBy
             recordedAtEpochMillis = clock()
@@ -1459,8 +1459,8 @@ internal object JevRuleRequests {
               JsonPrimitive(
                 "${node.id} | ${node.role ?: "-"} | ${node.label.take(60)} | " +
                   "${node.left},${node.top},${node.right},${node.bottom} | " +
-                  states.joinToString(" ").ifEmpty { "-" }
-              )
+                  states.joinToString(" ").ifEmpty { "-" },
+              ),
             )
           }
         }
@@ -1473,8 +1473,8 @@ internal object JevRuleRequests {
             add(
               JsonPrimitive(
                 "${check.type} ${check.level} on ${check.element?.take(60) ?: "-"}: " +
-                  check.message.take(240)
-              )
+                  check.message.take(240),
+              ),
             )
           }
         }

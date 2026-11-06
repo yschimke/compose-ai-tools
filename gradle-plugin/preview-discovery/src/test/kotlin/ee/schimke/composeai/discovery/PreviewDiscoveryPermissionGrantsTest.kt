@@ -20,7 +20,7 @@ class PreviewDiscoveryPermissionGrantsTest {
   private val owner = "com.example.CameraKt.CameraPermissionGrantedPreview"
 
   private fun parse(
-    vararg entries: String
+    vararg entries: String,
   ): Pair<Map<String, PermissionGrantCaptureState>, List<String>> {
     val warnings = mutableListOf<String>()
     val grants = PreviewDiscovery.parsePermissionGrants(entries.toList(), owner, warnings)

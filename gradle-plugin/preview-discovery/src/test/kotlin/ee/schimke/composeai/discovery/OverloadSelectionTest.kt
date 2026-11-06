@@ -145,11 +145,11 @@ class OverloadSelectionTest {
           )
           .record
           .symbol
-          .descriptor
+          .descriptor,
       )
       .isEqualTo("(b)")
     assertThat(
-        OverloadSelection.choose(listOf(alt(a, 0), alt(b, 1)), emptySet()).record.symbol.descriptor
+        OverloadSelection.choose(listOf(alt(a, 0), alt(b, 1)), emptySet()).record.symbol.descriptor,
       )
       .isEqualTo("(a)")
   }

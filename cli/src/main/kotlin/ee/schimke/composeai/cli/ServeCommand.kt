@@ -63,7 +63,7 @@ class ServeCommand(
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
-            "${t.message ?: t.javaClass.name}"
+            "${t.message ?: t.javaClass.name}",
         )
         System.err.println()
         System.err.println(ServerBinaryDiscovery.installationHint())

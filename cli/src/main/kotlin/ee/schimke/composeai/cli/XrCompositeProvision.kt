@@ -152,7 +152,7 @@ object XrCompositeProvision {
           log(
             "xr-composite: no published binary for this platform " +
               "(${System.getProperty("os.name")}/${System.getProperty("os.arch")}); " +
-              "skipping XR composite provisioning"
+              "skipping XR composite provisioning",
           )
           return null
         }
@@ -180,7 +180,7 @@ object XrCompositeProvision {
       unpackTarGz(tmp, stage)
       if (!isComplete(stage, binaryName)) {
         log(
-          "xr-composite: tarball $url unpacked but layout incomplete (binary or materials/ missing); skipping"
+          "xr-composite: tarball $url unpacked but layout incomplete (binary or materials/ missing); skipping",
         )
         return null
       }

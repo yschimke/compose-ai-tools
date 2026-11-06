@@ -88,7 +88,7 @@ class RemapPolicyPreviewIdsTest {
         policy
           .newBuilder()
           .also { b -> b.declaredBy = listOf(bundleIds.getValue("pkg.Card_Plain")) }
-          .build()
+          .build(),
       )
 
     assertThat(remapPolicyPreviewIds(null, bundleIds)).isNull()

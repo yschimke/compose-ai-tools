@@ -657,7 +657,7 @@ private class AdapterUnionCodec<T : Any>(
               put("fields", codec.editor.getValue("fields"))
             }
           }
-        }
+        },
       ),
     )
   }
@@ -865,7 +865,7 @@ internal constructor(
     val unknown = value.keys - fields.map { it.name }.toSet()
     require(unknown.isEmpty()) { "$typeFqn has no field ${unknown.sorted()}" }
     return construct(
-      AdapterObjectValues(fields.associateWith<AdapterObjectField<*, *>, Any?> { it.read(value) })
+      AdapterObjectValues(fields.associateWith<AdapterObjectField<*, *>, Any?> { it.read(value) }),
     )
   }
 
@@ -1324,7 +1324,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
           parameter.nullable != property.codec.nullable
       ) {
         add(
-          "$id.${property.name}: expected ${property.codec.kotlinType}${if (property.codec.nullable) "?" else ""}, discovered ${parameter.typeFqn}${if (parameter.nullable) "?" else ""}"
+          "$id.${property.name}: expected ${property.codec.kotlinType}${if (property.codec.nullable) "?" else ""}, discovered ${parameter.typeFqn}${if (parameter.nullable) "?" else ""}",
         )
       }
     }
@@ -1486,7 +1486,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         plain + pattern.parameters.map { (parameter, always) -> SlotFill(slot, parameter, always) }
     } +
       listOfNotNull(
-        patterns.otherwise?.let { "$slot otherwise" to plain + SlotFill(slot, it, always = true) }
+        patterns.otherwise?.let { "$slot otherwise" to plain + SlotFill(slot, it, always = true) },
       )
   }
 
@@ -1513,7 +1513,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
               .zip(mismatches)
               .filter { it.second.isEmpty() }
               .joinToString(" and ") { "${it.first?.descriptor}" } +
-            " both take it, so it chooses neither"
+            " both take it, so it chooses neither",
         )
       mismatches.any { it.isEmpty() } -> emptyList()
       mismatches.size == 1 -> mismatches.single()
@@ -1523,7 +1523,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             candidates.zip(mismatches).joinToString("; ") { (overload, reasons) ->
               "${overload?.descriptor}: " +
                 reasons.joinToString(", ") { it.removePrefix(where).removePrefix(": ") }
-            }
+            },
         )
     }
 
@@ -1553,7 +1553,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
         if (parameter?.scopeDslReceiver == null || parameter.lambdaReturnTypeFqn != "kotlin.Unit")
           add(
             "$where: slot ${fill.slot} -> ${fill.parameter} wraps its children in " +
-              "`${target.items.getValue(fill.parameter)}`, but is not a `Scope.() -> Unit` DSL"
+              "`${target.items.getValue(fill.parameter)}`, but is not a `Scope.() -> Unit` DSL",
           )
       } else if (parameter?.composableSlot != true)
         add("$where: slot ${fill.slot} -> ${fill.parameter} is not a composable slot")
@@ -1798,7 +1798,7 @@ open class TypedComponentAdapter<P>(val id: String, val component: ComponentReco
             JsonObject(
               declaredProperties
                 .filter { it.name !in refusedOnExport }
-                .associate { property -> property.name to defaultValue(property) }
+                .associate { property -> property.name to defaultValue(property) },
             ),
           )
         }
@@ -1870,7 +1870,7 @@ object TypedAdapterCatalog {
       }
     }
     require(
-      discovered.components.map { it.canonicalId }.distinct().size == discovered.components.size
+      discovered.components.map { it.canonicalId }.distinct().size == discovered.components.size,
     ) {
       "duplicate discovered component records"
     }

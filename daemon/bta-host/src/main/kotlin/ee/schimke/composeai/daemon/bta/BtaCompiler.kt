@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
  */
 class BtaCompiler(
   /** JARs for the BTA implementation classloader; must contain `kotlin-build-tools-impl`. */
-  private val implClasspath: List<Path>
+  private val implClasspath: List<Path>,
 ) {
 
   private val toolchains: KotlinToolchains by lazy {

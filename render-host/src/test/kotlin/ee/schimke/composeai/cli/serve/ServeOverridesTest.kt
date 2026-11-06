@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 class ServeOverridesTest {
 
   private fun ok(
-    params: Map<String, String>
+    params: Map<String, String>,
   ): ee.schimke.composeai.daemon.protocol.PreviewOverrides {
     val parsed = ServeOverrides.parse(params)
     assertTrue(parsed is OverrideParse.Ok, "expected Ok, got $parsed")
@@ -246,7 +246,7 @@ class ServeOverridesTest {
           "talkBack" to "true",
           "touchOverlay" to "1",
           "themeProvider" to "com.example.BrandDarkThemeCatalog",
-        )
+        ),
       )
     assertEquals(UiMode.DARK, o.uiMode)
     assertEquals("id:pixel_5", o.device)
@@ -387,7 +387,7 @@ class ServeOverridesTest {
           "knob.weight" to "float:1.5",
           "knob.enabled" to "bool:true",
           "knob.tint" to "color:#FF0000",
-        )
+        ),
       )
     val named = o.namedOverrides
     assertNotNull(named)
@@ -586,7 +586,7 @@ class ServeOverridesTest {
           "minHeightPx" to "48",
           "maxWidthPx" to "400",
           "maxHeightPx" to "800",
-        )
+        ),
       )
     assertEquals(120, o.minWidthPx)
     assertEquals(48, o.minHeightPx)
@@ -622,15 +622,15 @@ class ServeOverridesTest {
   fun `a min bound above the max on the same axis is rejected`() {
     assertTrue(
       ServeOverrides.parse(mapOf("minWidthPx" to "500", "maxWidthPx" to "200"))
-        is OverrideParse.Invalid
+        is OverrideParse.Invalid,
     )
     assertTrue(
       ServeOverrides.parse(mapOf("minHeightPx" to "900", "maxHeightPx" to "300"))
-        is OverrideParse.Invalid
+        is OverrideParse.Invalid,
     )
     // Equal bounds are a degenerate-but-valid fixed range.
     assertTrue(
-      ServeOverrides.parse(mapOf("minWidthPx" to "200", "maxWidthPx" to "200")) is OverrideParse.Ok
+      ServeOverrides.parse(mapOf("minWidthPx" to "200", "maxWidthPx" to "200")) is OverrideParse.Ok,
     )
   }
 
@@ -676,7 +676,7 @@ class ServeOverridesTest {
             "rc.gap" to "dp:8",
             "rc.on" to "bool:true",
             "rc.stopColor" to "color:#FF8800",
-          )
+          ),
         )
         .remoteCompose
     assertNotNull(rc)
@@ -880,7 +880,7 @@ class ServeOverridesTest {
               it.playerId = "androidx-view"
               it.documentBase64 = document
             }
-            .build()
+            .build(),
       )
     // Same preview, same player: only the replayed bytes differ, and they are the whole render.
     assertNotEquals(

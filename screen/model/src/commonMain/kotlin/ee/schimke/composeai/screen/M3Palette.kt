@@ -270,7 +270,7 @@ object M3Palette {
                 listOf(
                   ComponentSlot.Builder(name = "content", required = true)
                     .also { b -> b.receiverScope = "$LAYOUT.ColumnScope" }
-                    .build()
+                    .build(),
                 ),
             ),
             record(
@@ -282,7 +282,7 @@ object M3Palette {
                 listOf(
                   ComponentSlot.Builder(name = "content", required = true)
                     .also { b -> b.receiverScope = "$LAYOUT.ColumnScope" }
-                    .build()
+                    .build(),
                 ),
             ),
             // `TopAppBar` is `@ExperimentalMaterial3Api`, an AndroidX-mechanism marker, so the
@@ -322,7 +322,7 @@ object M3Palette {
                 listOf(
                   ComponentSlot.Builder(name = "content", required = true)
                     .also { b -> b.receiverScope = "$LAYOUT.RowScope" }
-                    .build()
+                    .build(),
                 ),
             ),
             record(

@@ -24,13 +24,13 @@ class BundleSignCommandTest {
     val bundle = sampleBundle(root.resolve("sample.png"))
     val trust = root.resolve("trust.json")
     trust.writeText(
-      TrustStore.encode(TrustStore(branches = listOf(TrustedBranch("owner/repo", "main"))))
+      TrustStore.encode(TrustStore(branches = listOf(TrustedBranch("owner/repo", "main")))),
     )
 
     val output = captureStdout {
       KeygenSubcommand(listOf("--output", key.path, "--key-id", "ci-key")).run()
       SignSubcommand(
-          listOf(bundle.path, "--key", key.path, "--key-id", "ci-key", "--producer", "CI")
+          listOf(bundle.path, "--key", key.path, "--key-id", "ci-key", "--producer", "CI"),
         )
         .run()
       VerifySubcommand(listOf(bundle.path, "--trust", trust.path, "--origin", "owner/repo@main"))

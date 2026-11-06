@@ -260,7 +260,7 @@ internal object DesktopNativesCheck {
           append(missing.joinToString("; ") { "${it.soname} (${it.purpose})" })
           append(". Symptom: every preview in the module fails with `UnsatisfiedLinkError: ")
           append(
-            "…/libskiko-linux-x64.so: ${missing.first().soname}: cannot open shared object file`"
+            "…/libskiko-linux-x64.so: ${missing.first().soname}: cannot open shared object file`",
           )
           append(". LD_LIBRARY_PATH as inherited by this process: ")
           append(if (result.ldLibraryPath.isEmpty()) "(unset)" else result.ldLibraryPath.toString())
@@ -271,7 +271,7 @@ internal object DesktopNativesCheck {
               ". Also on this box: LD_LIBRARY_PATH mixes ${result.storeDirsOnPath.size} " +
                 "package-store director(ies) into a system render JVM " +
                 "(${result.storeDirsOnPath.joinToString(", ")}), which is its own failure mode — " +
-                "see docs/DESKTOP_NATIVE_DEPS.md."
+                "see docs/DESKTOP_NATIVE_DEPS.md.",
             )
           }
         },
@@ -291,7 +291,7 @@ internal object DesktopNativesCheck {
               if (!result.loaderReadsSystemCache) {
                 add("# The render JVM ignores system lib dirs — point it at them explicitly:")
                 add(
-                  "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+                  "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}",
                 )
                 add("# …or render on a JDK outside the store (e.g. /usr/lib/jvm/…).")
               }

@@ -64,7 +64,7 @@ class BundleRcPlayerSeedsTest {
         embedded.absolutePath to
           "maven:ee.schimke.composeai:third-party-rc-embedded-player:2.1.1:aar",
         unrelated.absolutePath to "maven:com.example:unrelated:1.0:jar",
-      )
+      ),
     )
     task.pack()
 
@@ -85,7 +85,7 @@ class BundleRcPlayerSeedsTest {
     val task = newBundleTask(tmp.newFolder("out-plain"), rcIr = false)
     task.dependencyJars.from(cmp)
     task.dependencyCoordinates.set(
-      mapOf(cmp.absolutePath to "maven:ee.schimke.composeai:rc-player-compose-android:2.1.1:aar")
+      mapOf(cmp.absolutePath to "maven:ee.schimke.composeai:rc-player-compose-android:2.1.1:aar"),
     )
     task.pack()
 
@@ -108,7 +108,7 @@ class BundleRcPlayerSeedsTest {
               functionName = "sample",
               className = previewClassFqn,
               captures = listOf(Capture(renderOutput = "renders/$stem.png")),
-            )
+            ),
           ),
       )
     val previewsJson =

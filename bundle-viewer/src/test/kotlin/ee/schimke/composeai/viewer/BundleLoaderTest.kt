@@ -59,7 +59,7 @@ class BundleLoaderTest {
               previewId = "test.PreviewsKt.MissingPreview",
               format = "remotecompose",
               path = "ir/test.PreviewsKt.MissingPreview.rc",
-            )
+            ),
           ),
       )
 
@@ -224,7 +224,7 @@ class BundleLoaderTest {
                   id = "test.PreviewsKt.MissingPreview",
                   functionName = "MissingPreview",
                   className = "test.PreviewsKt",
-                )
+                ),
               ),
           ),
         )

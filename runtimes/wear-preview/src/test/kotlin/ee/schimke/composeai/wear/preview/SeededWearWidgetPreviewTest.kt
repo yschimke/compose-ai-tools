@@ -46,7 +46,7 @@ class SeededWearWidgetPreviewTest {
 
   private fun seed(vararg values: Pair<String, RemoteNamedValue>) {
     RemoteComposeController.set(
-      RemoteComposeOverride.Builder().apply { namedValues = mapOf(*values) }.build()
+      RemoteComposeOverride.Builder().apply { namedValues = mapOf(*values) }.build(),
     )
   }
 
@@ -78,7 +78,7 @@ class SeededWearWidgetPreviewTest {
           facade,
           SEEDED_PLAYER_ENTRY_POINT_PARAMETERS,
           SEEDED_PLAYER_ENTRY_POINT,
-        )
+        ),
       )
       .isTrue()
   }

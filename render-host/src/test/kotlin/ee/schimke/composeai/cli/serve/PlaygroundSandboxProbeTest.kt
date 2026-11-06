@@ -216,7 +216,7 @@ class PlaygroundSandboxProbeTest {
         repoAccessGated = false,
         sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT),
         probe = report,
-      ) is PlaygroundPublicGate.Decision.Allow
+      ) is PlaygroundPublicGate.Decision.Allow,
     )
   }
 

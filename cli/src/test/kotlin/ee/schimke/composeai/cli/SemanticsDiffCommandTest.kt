@@ -23,7 +23,7 @@ class SemanticsDiffCommandTest {
         {"nodeId":"2","boundsInRoot":"0,0,20,20","testTag":"label","text":"$childText"}
       ]}}
       """
-        .trimIndent()
+        .trimIndent(),
     )
     return file.absolutePath
   }

@@ -67,7 +67,7 @@ private fun WeatherGlanceContent(
     modifier =
       GlanceModifier.fillMaxSize()
         .background(GlanceFixedColorProvider(ComposeColor(0xFF1A237E)))
-        .padding(12.dp)
+        .padding(12.dp),
   ) {
     Text(
       text = title,

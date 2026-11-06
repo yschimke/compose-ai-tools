@@ -43,7 +43,7 @@ public enum class DependencyPolicyStep(public val id: String) {
     public fun of(id: String): DependencyPolicyStep =
       entries.firstOrNull { it.id == id }
         ?: throw IllegalArgumentException(
-          "Unknown dependency policy '$id' (expected one of ${entries.joinToString { it.id }})"
+          "Unknown dependency policy '$id' (expected one of ${entries.joinToString { it.id }})",
         )
   }
 }
@@ -72,7 +72,7 @@ public class DependencyPolicyRule(
             else -> Regex.escape(it.toString())
           }
         }
-        .joinToString("")
+        .joinToString(""),
     )
 
   public fun matches(group: String, artifact: String): Boolean =
@@ -165,7 +165,7 @@ internal constructor(
             value.map {
               DependencyPolicyStep.of(
                 (it as? JsonPrimitive)?.contentOrNull
-                  ?: throw IllegalArgumentException("$where must list policy names")
+                  ?: throw IllegalArgumentException("$where must list policy names"),
               )
             }
           else -> throw IllegalArgumentException("$where must be a policy name or a list of them")
@@ -183,7 +183,7 @@ internal constructor(
               val rule =
                 element as? JsonObject
                   ?: throw IllegalArgumentException(
-                    "dependencyPolicy rules[$index] is not an object"
+                    "dependencyPolicy rules[$index] is not an object",
                   )
               rule.keys
                 .firstOrNull { it !in setOf("match", "policy", "allowTransformed") }
@@ -198,7 +198,7 @@ internal constructor(
                   chain(
                     rule["policy"]
                       ?: throw IllegalArgumentException(
-                        "dependencyPolicy rules[$index] needs policy"
+                        "dependencyPolicy rules[$index] needs policy",
                       ),
                     "rules[$index].policy",
                   ),

@@ -46,7 +46,7 @@ class BazelKeepDaemonTest {
       original,
       keyFor(
         """{"id":"a","className":"A","functionName":"f","bodyLine":10},""" +
-          """{"id":"b","className":"A","functionName":"g","bodyLine":20}"""
+          """{"id":"b","className":"A","functionName":"g","bodyLine":20}""",
       ),
     )
   }
@@ -176,8 +176,8 @@ class BazelKeepDaemonTest {
               systemProperties = mapOf("composeai.daemon.userClassDirs" to "ui.jar"),
               workingDirectory = root.path,
               manifestPath = "",
-            )
-          )
+            ),
+          ),
         )
       }
     return BazelKeepDaemon.prepare(

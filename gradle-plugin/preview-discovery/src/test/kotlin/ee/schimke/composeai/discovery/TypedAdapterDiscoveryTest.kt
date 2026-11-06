@@ -138,7 +138,7 @@ class TypedAdapterDiscoveryTest {
               "libraryPainted",
               declaring = setOf("label"),
               excluding = setOf("painter"),
-            )
+            ),
           ),
         )
         .components
@@ -184,11 +184,11 @@ class TypedAdapterDiscoveryTest {
                         jvmName = "adapterJvmAlias",
                         confidence = TargetConfidence.HIGH,
                         signatureKnown = true,
-                      )
+                      ),
                     ),
-                )
+                ),
               ),
-          )
+          ),
         )
         .components
         .single()
@@ -214,7 +214,7 @@ class TypedAdapterDiscoveryTest {
           TypedAdapterDiscovery.Callable(
             "ee.schimke.composeai.discovery.AdapterMemberFixture",
             "member",
-          )
+          ),
         ),
       )
     }
@@ -225,12 +225,12 @@ class TypedAdapterDiscoveryTest {
     val owner = "ee.schimke.composeai.discovery.AdapterFactoryFixture"
     val overloads =
       TypedAdapterDiscovery.discoverFactories(
-        listOf(TypedAdapterDiscovery.Callable(owner, "colors"))
+        listOf(TypedAdapterDiscovery.Callable(owner, "colors")),
       )
     assertEquals(2, overloads.size)
     assertTrue(overloads.all { it.callableFqn == "$owner.colors" })
     assertTrue(
-      overloads.all { it.returnTypeFqn == "ee.schimke.composeai.discovery.AdapterFactoryColors" }
+      overloads.all { it.returnTypeFqn == "ee.schimke.composeai.discovery.AdapterFactoryColors" },
     )
     val full = overloads.single { it.parameters.isNotEmpty() }
     assertEquals(listOf("container", "content"), full.parameters.map { it.name })
@@ -246,8 +246,8 @@ class TypedAdapterDiscoveryTest {
             TypedAdapterDiscovery.Callable(
               "ee.schimke.composeai.discovery.AdapterFactoryFixture",
               "spaced",
-            )
-          )
+            ),
+          ),
         )
         .single()
     assertEquals(
@@ -267,8 +267,8 @@ class TypedAdapterDiscoveryTest {
             TypedAdapterDiscovery.Callable(
               "ee.schimke.composeai.discovery.AdapterFactoryFixture",
               "nested",
-            )
-          )
+            ),
+          ),
         )
         .single()
     assertEquals("ee.schimke.composeai.discovery.AdapterFactoryNesting.Both", nested.returnTypeFqn)
@@ -283,8 +283,8 @@ class TypedAdapterDiscoveryTest {
           TypedAdapterDiscovery.Callable(
             "ee.schimke.composeai.discovery.AdapterFactoryFixture",
             "colors",
-          )
-        )
+          ),
+        ),
       )
     assertTrue(colors.all { it.returnSupertypes.isEmpty() })
   }
@@ -297,8 +297,8 @@ class TypedAdapterDiscoveryTest {
           TypedAdapterDiscovery.Callable(
             "ee.schimke.composeai.discovery.AdapterFactoryFixture",
             "colours",
-          )
-        )
+          ),
+        ),
       )
     }
   }
@@ -311,8 +311,8 @@ class TypedAdapterDiscoveryTest {
           TypedAdapterDiscovery.Callable(
             "ee.schimke.composeai.discovery.AdapterFactoryColors",
             "derive",
-          )
-        )
+          ),
+        ),
       )
     }
   }

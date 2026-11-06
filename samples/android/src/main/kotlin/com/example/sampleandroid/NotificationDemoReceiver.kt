@@ -45,7 +45,7 @@ class NotificationDemoReceiver : BroadcastReceiver() {
       ACTION_DONE -> manager.cancel(intent.getIntExtra(EXTRA_ID, 0))
       ACTION_POST_MEDIA -> {
         manager.createNotificationChannel(
-          NotificationChannel(CHANNEL_MEDIA, "Playback", NotificationManager.IMPORTANCE_LOW)
+          NotificationChannel(CHANNEL_MEDIA, "Playback", NotificationManager.IMPORTANCE_LOW),
         )
         manager.notify(ID_MEDIA, media(context, playing = true, track = 0))
       }
@@ -63,10 +63,10 @@ class NotificationDemoReceiver : BroadcastReceiver() {
 
   private fun post(context: Context, manager: NotificationManager) {
     manager.createNotificationChannel(
-      NotificationChannel(CHANNEL_MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH)
+      NotificationChannel(CHANNEL_MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH),
     )
     manager.createNotificationChannel(
-      NotificationChannel(CHANNEL_UPDATES, "Updates", NotificationManager.IMPORTANCE_DEFAULT)
+      NotificationChannel(CHANNEL_UPDATES, "Updates", NotificationManager.IMPORTANCE_DEFAULT),
     )
     manager.notify(ID_DOWNLOAD, download(context))
     manager.notify(ID_PHOTO, photo(context))
@@ -122,8 +122,8 @@ class NotificationDemoReceiver : BroadcastReceiver() {
         Notification.BigTextStyle()
           .bigText(
             "Compose 1.11 is out, the Wear tiles library added a new layout, and the design " +
-              "review for the settings screen moved to Thursday. Expand to read it all here."
-          )
+              "review for the settings screen moved to Thursday. Expand to read it all here.",
+          ),
       )
       .setContentIntent(open(context))
       .addAction(
@@ -132,7 +132,7 @@ class NotificationDemoReceiver : BroadcastReceiver() {
             "Archive",
             broadcast(context, ACTION_DONE, ID_DIGEST),
           )
-          .build()
+          .build(),
       )
       .build()
 
@@ -218,7 +218,7 @@ class NotificationDemoReceiver : BroadcastReceiver() {
       .addAction(control(android.R.drawable.ic_media_previous, "Previous", playing, track - 1, 0))
       .addAction(
         if (playing) control(android.R.drawable.ic_media_pause, "Pause", false, track, 1)
-        else control(android.R.drawable.ic_media_play, "Play", true, track, 1)
+        else control(android.R.drawable.ic_media_play, "Play", true, track, 1),
       )
       .addAction(control(android.R.drawable.ic_media_next, "Next", playing, track + 1, 2))
       .setStyle(Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2))

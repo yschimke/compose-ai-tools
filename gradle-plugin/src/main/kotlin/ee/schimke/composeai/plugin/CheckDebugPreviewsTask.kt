@@ -59,9 +59,9 @@ abstract class CheckDebugPreviewsTask : DefaultTask() {
             "`debugImplementation` deps but NOT `screenshotTestImplementation`. " +
             "Preview-only code is typically authored against the screenshotTest " +
             "closure and will fail to compile or render here. " +
-            "Move these files to `src/screenshotTest/{java,kotlin}/...` instead."
+            "Move these files to `src/screenshotTest/{java,kotlin}/...` instead.",
         )
-      }
+      },
     )
   }
 }

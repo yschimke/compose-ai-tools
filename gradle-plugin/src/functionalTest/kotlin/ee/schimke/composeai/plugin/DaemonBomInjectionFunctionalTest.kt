@@ -46,7 +46,7 @@ class DaemonBomInjectionFunctionalTest {
         }
         rootProject.name = "test-daemon-bom-injection"
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "build.gradle.kts")
       .writeText(
@@ -93,7 +93,7 @@ class DaemonBomInjectionFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     return projectDir
   }

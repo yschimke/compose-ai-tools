@@ -12,14 +12,14 @@ class PreviewThemeShadowingTest {
   fun `installing MaterialTheme is a theme install`() {
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.compose.material3.MaterialThemeKt", "MaterialTheme")
-        )
+          invocation("androidx.compose.material3.MaterialThemeKt", "MaterialTheme"),
+        ),
       )
       .isTrue()
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.wear.compose.material3.MaterialThemeKt", "MaterialTheme")
-        )
+          invocation("androidx.wear.compose.material3.MaterialThemeKt", "MaterialTheme"),
+        ),
       )
       .isTrue()
   }
@@ -31,8 +31,8 @@ class PreviewThemeShadowingTest {
     // theme wrapper produces — missing it would make the check fire on nearly nothing.
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.compose.material3.MaterialThemeKt", "MaterialTheme\$default")
-        )
+          invocation("androidx.compose.material3.MaterialThemeKt", "MaterialTheme\$default"),
+        ),
       )
       .isTrue()
   }
@@ -44,14 +44,14 @@ class PreviewThemeShadowingTest {
     // the check useless.
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.compose.material3.MaterialTheme", "getColorScheme")
-        )
+          invocation("androidx.compose.material3.MaterialTheme", "getColorScheme"),
+        ),
       )
       .isFalse()
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.compose.material3.MaterialTheme", "getTypography")
-        )
+          invocation("androidx.compose.material3.MaterialTheme", "getTypography"),
+        ),
       )
       .isFalse()
   }
@@ -62,8 +62,8 @@ class PreviewThemeShadowingTest {
       .isFalse()
     assertThat(
         PreviewThemeShadowing.isThemeInstall(
-          invocation("androidx.compose.foundation.layout.BoxKt", "Box")
-        )
+          invocation("androidx.compose.foundation.layout.BoxKt", "Box"),
+        ),
       )
       .isFalse()
   }
@@ -91,7 +91,7 @@ class PreviewThemeShadowingTest {
               "dev.example.ComponentCatalogKt",
               "CardPreview",
               listOf("AppThemeFixed", "MaterialTheme"),
-            )
+            ),
           ),
         themeCount = 5,
       )

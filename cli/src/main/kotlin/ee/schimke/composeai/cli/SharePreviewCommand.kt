@@ -104,7 +104,7 @@ class SharePreviewCommand(
     if (usedInlineTokenFlag) {
       System.err.println(
         "--github-token is not a flag, on purpose: an argument is visible in `ps` and in CI logs. " +
-          "Use \$GITHUB_TOKEN / \$GH_TOKEN, --github-token-file <path>, or `gh auth login`."
+          "Use \$GITHUB_TOKEN / \$GH_TOKEN, --github-token-file <path>, or `gh auth login`.",
       )
       exitProcess(64)
     }
@@ -213,7 +213,7 @@ class SharePreviewCommand(
       }
     }
     emit(
-      SharePreviewResponse(mechanism = "gist", url = gistUrl, rawBaseUrl = rawBase, files = files)
+      SharePreviewResponse(mechanism = "gist", url = gistUrl, rawBaseUrl = rawBase, files = files),
     )
   }
 
@@ -256,7 +256,7 @@ class SharePreviewCommand(
     if (url == null) {
       System.err.println(
         "--mechanism serve needs a host: pass --serve-url https://… (or set " +
-          "\$COMPOSE_PREVIEW_SERVE_URL)."
+          "\$COMPOSE_PREVIEW_SERVE_URL).",
       )
       exitProcess(64)
     }
@@ -319,7 +319,7 @@ class SharePreviewCommand(
         // Null when a grant admitted the upload — there was no GitHub credential to have a source.
         credentialSource = credential?.source,
         serveUrlSource = resolvedServeUrl?.source?.display,
-      )
+      ),
     )
   }
 
@@ -360,7 +360,7 @@ class SharePreviewCommand(
             val source = File(positional[0])
             if (File(source, ".git").exists()) {
               System.err.println(
-                "${source.path} contains a `.git` directory — refusing to publish a nested repo."
+                "${source.path} contains a `.git` directory — refusing to publish a nested repo.",
               )
               exitProcess(1)
             }
@@ -387,7 +387,7 @@ class SharePreviewCommand(
             url = null,
             rawBaseUrl = null,
             files = emptyList(),
-          )
+          ),
         )
         return
       }
@@ -419,7 +419,7 @@ class SharePreviewCommand(
           commit = commitSha,
           branch = branch,
           files = files,
-        )
+        ),
       )
     } finally {
       fileSystem.deleteRecursively(tmp)
@@ -467,7 +467,7 @@ class SharePreviewCommand(
       }
       val delaySeconds = attempt * 2 + (0..2).random()
       System.err.println(
-        "push to $remote/$branch lost the race; retry $attempt/$MAX_PUSH_ATTEMPTS in ${delaySeconds}s…"
+        "push to $remote/$branch lost the race; retry $attempt/$MAX_PUSH_ATTEMPTS in ${delaySeconds}s…",
       )
       Thread.sleep(delaySeconds * 1000L)
       attempt++
@@ -502,7 +502,7 @@ class SharePreviewCommand(
     if (collisions.isNotEmpty()) {
       System.err.println(
         "filename collisions: ${collisions.keys.joinToString(", ")}. " +
-          "Rename so each file has a unique basename."
+          "Rename so each file has a unique basename.",
       )
       exitProcess(1)
     }
@@ -536,7 +536,7 @@ class SharePreviewCommand(
       System.err.println(
         "git user.name / user.email not set. Run:\n" +
           "  git config --global user.name 'Your Name'\n" +
-          "  git config --global user.email 'you@example.com'"
+          "  git config --global user.email 'you@example.com'",
       )
       exitProcess(1)
     }
@@ -548,7 +548,7 @@ class SharePreviewCommand(
     if (result.exitCode != 0 || result.stdout.isBlank()) {
       System.err.println(
         "git remote '$remote' not found in this repo. " +
-          "Pass --remote NAME, or run from a checkout that has the remote configured."
+          "Pass --remote NAME, or run from a checkout that has the remote configured.",
       )
       exitProcess(1)
     }
@@ -643,7 +643,7 @@ class SharePreviewCommand(
           response.credentialSource?.let { "authenticated from $it" }
             ?: "authenticated by the agent access grant for this host"
         println(
-          "Uploaded ${response.files.size} image(s) to ${response.rawBaseUrl}$expiry, $admitted"
+          "Uploaded ${response.files.size} image(s) to ${response.rawBaseUrl}$expiry, $admitted",
         )
         response.files.forEach { f -> f.rawUrl?.let { println("  ${f.name}: $it") } }
         response.markdown?.let {
@@ -794,13 +794,13 @@ class SharePreviewCommand(
         else
           MechanismResult.Err(
             "--mechanism serve requested but no host was given: pass --serve-url https://… " +
-              "(or set \$COMPOSE_PREVIEW_SERVE_URL)."
+              "(or set \$COMPOSE_PREVIEW_SERVE_URL).",
           )
       }
       if (mode == Mode.BULK) {
         if (forced == Mechanism.GIST) {
           return MechanismResult.Err(
-            "a directory can't be shared as a gist — drop --mechanism gist or pass a markdown report."
+            "a directory can't be shared as a gist — drop --mechanism gist or pass a markdown report.",
           )
         }
         // A configured host outranks the branch push for a directory too.
@@ -814,7 +814,7 @@ class SharePreviewCommand(
           else
             MechanismResult.Err(
               "--mechanism gist requested but the GitHub CLI isn't installed/authenticated " +
-                "(need `gh` on PATH and `gh auth status` to pass)."
+                "(need `gh` on PATH and `gh auth status` to pass).",
             )
         Mechanism.BRANCH ->
           if (branchAvailable()) MechanismResult.Ok(Mechanism.BRANCH)
@@ -833,7 +833,7 @@ class SharePreviewCommand(
               MechanismResult.Err(
                 "no way to share: point --serve-url at a compose-preview serve host with the " +
                   "image lane on, install + authenticate the GitHub CLI (`gh`) for gists, or " +
-                  "run from a checkout with a pushable remote for the branch mechanism."
+                  "run from a checkout with a pushable remote for the branch mechanism.",
               )
           }
       }
@@ -856,7 +856,7 @@ class SharePreviewCommand(
       }
       if (currentBranch == null) {
         return TargetResult.Err(
-          "couldn't determine the current branch (detached HEAD?). Pass --branch to choose a target."
+          "couldn't determine the current branch (detached HEAD?). Pass --branch to choose a target.",
         )
       }
       if (
@@ -865,13 +865,13 @@ class SharePreviewCommand(
       ) {
         return TargetResult.Err(
           "refusing to snapshot from '$currentBranch': check out a feature/PR branch, or pass " +
-            "--branch to choose an explicit capture branch."
+            "--branch to choose an explicit capture branch.",
         )
       }
       val target = "compose-preview/share/$currentBranch"
       validateBranch(target, allowNonPreview)?.let {
         return TargetResult.Err(
-          "derived target branch '$target' is not a valid ref ($it). Pass --branch explicitly."
+          "derived target branch '$target' is not a valid ref ($it). Pass --branch explicitly.",
         )
       }
       return TargetResult.Ok(target)

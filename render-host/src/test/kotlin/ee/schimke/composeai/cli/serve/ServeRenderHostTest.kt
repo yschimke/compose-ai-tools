@@ -45,7 +45,11 @@ class ServeRenderHostTest {
       session = session,
       previews =
         listOf(
-          ServePreview(previewId, "Red", dataProductKinds = setOf(ServeRenderHost.SCROLL_LONG_KIND))
+          ServePreview(
+            previewId,
+            "Red",
+            dataProductKinds = setOf(ServeRenderHost.SCROLL_LONG_KIND),
+          ),
         ),
       renderTimeoutSeconds = 30,
     )
@@ -226,7 +230,7 @@ class ServeRenderHostTest {
             ComposeFigmaSvgProduct.KIND,
             ComposeFigmaSvgProduct.KIND_LONG,
             ServeRenderHost.SCROLL_EXTENSION_ID,
-          )
+          ),
         ),
         "the host enables the viewport and full-page export products on open",
       )
@@ -522,7 +526,7 @@ class ServeRenderHostTest {
           "consumers": [{"nodeId": "2", "tokens": ["primary", "labelLarge"]}]
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val session =
       FakeRenderSession(

@@ -26,7 +26,7 @@ dependencies {
   // to. The `-embeddable` variant shadows kotlin-stdlib so it can co-exist with the
   // BTA impl classloader's own stdlib without symbol collisions.
   testRuntimeOnly(
-    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}"
+    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
 
   // Compose runtime on the classpath fed to BTA, so `@Composable` and `Composer` resolve in
@@ -61,6 +61,6 @@ tasks.named<Test>("test") {
         "-Dcomposeai.bta.fixtureGradleClassesDir=$fixtureClassesDir",
         "-Dcomposeai.bta.fixtureSourceDir=$fixtureSourceDir",
       )
-    }
+    },
   )
 }

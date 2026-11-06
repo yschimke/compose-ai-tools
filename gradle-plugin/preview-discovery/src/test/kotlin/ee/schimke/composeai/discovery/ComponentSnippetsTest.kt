@@ -82,8 +82,8 @@ class ComponentSnippetsTest {
               parameter("shape", "Shape", hasDefault = true),
               parameter("colors", "ButtonColors", hasDefault = true),
               parameter("content", "RowScope.() -> Unit", composableSlot = true),
-            )
-        )
+            ),
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("Button(onClick = {}, content = {})")
@@ -103,7 +103,7 @@ class ComponentSnippetsTest {
               parameter("text", "String"),
               parameter("modifier", "Modifier", hasDefault = true),
             ),
-        )
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("""Text(text = "")""")
@@ -118,7 +118,7 @@ class ComponentSnippetsTest {
           name = "HorizontalDivider",
           callable = "androidx.compose.material3.HorizontalDivider",
           parameters = listOf(parameter("modifier", "Modifier", hasDefault = true)),
-        )
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("HorizontalDivider()")
@@ -137,7 +137,7 @@ class ComponentSnippetsTest {
               parameter("imageVector", "ImageVector"),
               parameter("contentDescription", "String?", nullable = true),
             ),
-        )
+        ),
       )
 
     assertThat(reason).contains("imageVector: ImageVector")
@@ -169,7 +169,7 @@ class ComponentSnippetsTest {
           name = "AnimatedVisibility",
           callable = "androidx.compose.animation.AnimatedVisibility",
           receiver = "androidx.compose.foundation.layout.ColumnScope",
-        )
+        ),
       )
 
     assertThat(reason).contains("androidx.compose.foundation.layout.ColumnScope")
@@ -184,7 +184,7 @@ class ComponentSnippetsTest {
           name = "Row",
           // No `Kt` facade was unwrapped, so the callable still carries the owner.
           callable = "com.example.Controls.Row",
-        )
+        ),
       )
 
     assertThat(reason).contains("com.example.Controls")
@@ -206,8 +206,9 @@ class ComponentSnippetsTest {
     val snippet =
       emitted(
         record(
-          parameters = listOf(parameter("onCheckedChange", "((Boolean) -> Unit)?", nullable = true))
-        )
+          parameters =
+            listOf(parameter("onCheckedChange", "((Boolean) -> Unit)?", nullable = true)),
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("Button(onCheckedChange = null)")
@@ -232,8 +233,8 @@ class ComponentSnippetsTest {
     // it for the separate reason that `{}` cannot return a `String?`.
     assertThat(
         refusal(
-          record(parameters = listOf(parameter("lookup", "(Int) -> String?", nullable = false)))
-        )
+          record(parameters = listOf(parameter("lookup", "(Int) -> String?", nullable = false))),
+        ),
       )
       .contains("lookup")
   }
@@ -278,8 +279,8 @@ class ComponentSnippetsTest {
               parameter("fraction", "Float"),
               parameter("ratio", "Double"),
               parameter("selected", "Boolean"),
-            )
-        )
+            ),
+        ),
       )
 
     assertThat(snippet.code)
@@ -298,7 +299,7 @@ class ComponentSnippetsTest {
           name = "when",
           callable = "com.example.when",
           parameters = listOf(parameter("is", "String", typeFqn = "kotlin.String")),
-        )
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("`when`(`is` = \"\")")
@@ -314,7 +315,7 @@ class ComponentSnippetsTest {
           name = "Card",
           callable = "androidx.compose.material3.Card",
           parameters = listOf(parameter("value", "String", typeFqn = "kotlin.String")),
-        )
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("Card(value = \"\")")
@@ -326,7 +327,7 @@ class ComponentSnippetsTest {
     // that spelling emits `value = ""` for a type that does not accept it.
     val reason =
       refusal(
-        record(parameters = listOf(parameter("value", "String", typeFqn = "com.example.String")))
+        record(parameters = listOf(parameter("value", "String", typeFqn = "com.example.String"))),
       )
 
     assertThat(reason).contains("value: String")
@@ -363,7 +364,7 @@ class ComponentSnippetsTest {
     // on the wrapper it already has to write.
     val snippet =
       emitted(
-        record(requiredOptIns = listOf("androidx.compose.material3.ExperimentalMaterial3Api"))
+        record(requiredOptIns = listOf("androidx.compose.material3.ExperimentalMaterial3Api")),
       )
 
     assertThat(snippet.code).isEqualTo("Button()")
@@ -380,7 +381,7 @@ class ComponentSnippetsTest {
         "TextFieldState",
         typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
         noArgConstructible = true,
-      )
+      ),
   ) =
     record(
       jvmOwner = "androidx.compose.material3.TextFieldKt",
@@ -427,8 +428,8 @@ class ComponentSnippetsTest {
                 typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
                 noArgConstructible = true,
               ),
-            )
-        )
+            ),
+        ),
       )
 
     assertThat(snippet.imports).hasSize(2)
@@ -453,8 +454,8 @@ class ComponentSnippetsTest {
             "state",
             "TextFieldState",
             typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(reason).contains("state: TextFieldState")
@@ -471,8 +472,8 @@ class ComponentSnippetsTest {
             typeFqn = "androidx.compose.foundation.text.input.TextFieldState",
             nullable = true,
             noArgConstructible = true,
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("TextField(state = null)")
@@ -489,8 +490,8 @@ class ComponentSnippetsTest {
             "Outer.Inner",
             typeFqn = "com.example.Outer.Inner",
             noArgConstructible = true,
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(snippet.code).isEqualTo("TextField(state = Inner())")

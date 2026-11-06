@@ -84,7 +84,7 @@ fun OpacityFocusPreview() {
 @Preview(name = "Focus Traversal", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(
   traverse =
-    [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous, FocusDirection.Next]
+    [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous, FocusDirection.Next],
 )
 @Composable
 fun FocusTraversalPreview() {

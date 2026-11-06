@@ -74,7 +74,7 @@ class MainActivity : Activity() {
           weight(),
         )
         addView(labelled(hardware, "Window label, under the on-top surface"), weight())
-      }
+      },
     )
   }
 
@@ -95,7 +95,7 @@ class MainActivity : Activity() {
           override fun surfaceDestroyed(holder: SurfaceHolder) {
             Log.i(TAG, "$name: surfaceDestroyed")
           }
-        }
+        },
       )
     }
 

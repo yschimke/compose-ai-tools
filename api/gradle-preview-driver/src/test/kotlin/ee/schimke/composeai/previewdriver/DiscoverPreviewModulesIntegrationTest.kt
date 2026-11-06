@@ -41,7 +41,7 @@ class DiscoverPreviewModulesIntegrationTest {
         include(":ui")
         include(":native")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(workspace, "build.gradle.kts").writeText("")
 
@@ -59,7 +59,7 @@ class DiscoverPreviewModulesIntegrationTest {
             throw GradleException("config-time toolchain provisioning blocked")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 

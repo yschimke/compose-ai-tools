@@ -94,9 +94,9 @@ class BazelAndroidAspectTest {
           JsonObject(
               record.filterKeys { it != "BUILD" } +
                 ("BUILD.bazel" to
-                  kotlinx.serialization.json.JsonPrimitive(sha256(build.toByteArray())))
+                  kotlinx.serialization.json.JsonPrimitive(sha256(build.toByteArray()))),
             )
-            .toString()
+            .toString(),
         )
       dir.resolve("link.sh").setExecutable(false)
 
@@ -131,9 +131,9 @@ class BazelAndroidAspectTest {
         JsonObject(
             record +
               ("android.bzl" to
-                kotlinx.serialization.json.JsonPrimitive(sha256(older.toByteArray())))
+                kotlinx.serialization.json.JsonPrimitive(sha256(older.toByteArray()))),
           )
-          .toString()
+          .toString(),
       )
     // A local edit no CLI wrote.
     dir.resolve("link.sh").appendText("# local tweak\n")

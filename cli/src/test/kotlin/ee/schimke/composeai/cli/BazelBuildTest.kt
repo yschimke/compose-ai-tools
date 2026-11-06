@@ -47,8 +47,8 @@ class BazelBuildTest {
               buildJsonObject {
                 put("name", group)
                 put("fileSets", JsonArray(listOf(buildJsonObject { put("id", set) })))
-              }
-            )
+              },
+            ),
           ),
         )
       },
@@ -109,7 +109,7 @@ class BazelBuildTest {
             bazelMetadataFile(remote, "//:app", "compose_preview_metadata")
           }
           .message!!
-          .contains("materialize")
+          .contains("materialize"),
       )
       // Remote-cache URIs resolve through pathPrefix + name when materialized locally.
       val executionRoot = root.resolve("execroot").apply { mkdirs() }
@@ -136,11 +136,11 @@ class BazelBuildTest {
                         put(
                           "pathPrefix",
                           JsonArray(
-                            listOf("bazel-out", "k8-fastbuild", "bin").map { JsonPrimitive(it) }
+                            listOf("bazel-out", "k8-fastbuild", "bin").map { JsonPrimitive(it) },
                           ),
                         )
-                      }
-                    )
+                      },
+                    ),
                   ),
                 )
               },
@@ -156,7 +156,7 @@ class BazelBuildTest {
             bazelMetadataFile(bytestream, "//:app", "compose_preview_metadata", executionRoot)
           }
           .message!!
-          .contains("materialize")
+          .contains("materialize"),
       )
     } finally {
       root.deleteRecursively()
@@ -178,7 +178,7 @@ class BazelBuildTest {
       assertTrue(
         assertFailsWith<IllegalArgumentException> { metadata.resolve(root) }
           .message!!
-          .contains("not materialized")
+          .contains("not materialized"),
       )
       root.resolve("runtime.jar").writeText("")
       assertEquals(
@@ -211,8 +211,8 @@ class BazelBuildTest {
         root.resolve("meta.json").apply {
           writeText(
             bazelJson.encodeToString(
-              BazelArtifacts("//:app", "config", listOf("app.jar"), listOf("app.jar"))
-            )
+              BazelArtifacts("//:app", "config", listOf("app.jar"), listOf("app.jar")),
+            ),
           )
         }
       val calls = mutableListOf<List<String>>()
@@ -228,7 +228,7 @@ class BazelBuildTest {
                 completed("//:app", "set", "internal_metadata"),
                 eventSet("set", listOf(metadata)),
               )
-              .joinToString("\n")
+              .joinToString("\n"),
           )
           ""
         } else root.absolutePath + "\n"
@@ -306,7 +306,7 @@ class BazelBuildTest {
         root,
         listOf("//..."),
         BazelBuildConfig(
-          aspect = "@rules_compose_preview//:android.bzl%compose_preview_android_aspect"
+          aspect = "@rules_compose_preview//:android.bzl%compose_preview_android_aspect",
         ),
         9,
       )
@@ -314,7 +314,7 @@ class BazelBuildTest {
         queries
           .last()
           .single { it.startsWith("(kind(") }
-          .startsWith("(kind('(kt_android_library|android_library)'")
+          .startsWith("(kind('(kt_android_library|android_library)'"),
       )
       build.expandTargets(root, listOf("//..."), BazelBuildConfig(targetKinds = "my_rule"), 9)
       assertTrue(queries.last().single { it.startsWith("(kind(") }.startsWith("(kind('my_rule'"))
@@ -382,13 +382,15 @@ class BazelBuildTest {
       assertTrue(
         queries.contains(
           "kind('(kt_android_library|android_library)', set(\"//app:lib\" \"//app:lib_base\" " +
-            "\"//app:lib_kt\" \"//app:ui\" \"//desktop:ui\"))"
-        )
+            "\"//app:lib_kt\" \"//app:ui\" \"//desktop:ui\"))",
+        ),
       )
       assertTrue(
         queries
           .last()
-          .endsWith("intersect labels(exports, set(\"//app:lib\" \"//app:lib_base\" \"//app:ui\"))")
+          .endsWith(
+            "intersect labels(exports, set(\"//app:lib\" \"//app:lib_base\" \"//app:ui\"))",
+          ),
       )
 
       // No Android target: the JVM selection is unchanged.
@@ -417,14 +419,14 @@ class BazelBuildTest {
       root
         .resolve("MODULE.bazel")
         .appendText(
-          "bazel_dep(name = \"rules_java\", version = \"9.3.0\", repo_name = \"java_rules\")\n"
+          "bazel_dep(name = \"rules_java\", version = \"9.3.0\", repo_name = \"java_rules\")\n",
         )
       assertNull(detectAndroidAspect(root))
       root
         .resolve("MODULE.bazel")
         .writeText(
           "bazel_dep(name = \"rules_android\", version = \"0.7.2\")\n" +
-            "bazel_dep(name = \"rules_java\", version = \"9.3.0\")\n"
+            "bazel_dep(name = \"rules_java\", version = \"9.3.0\")\n",
         )
       assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
       // A WORKSPACE project defines the repositories instead.
@@ -433,7 +435,7 @@ class BazelBuildTest {
         .resolve("WORKSPACE.bazel")
         .writeText(
           "http_archive(\n    name = \"rules_android\",\n    urls = [\"https://example\"],\n)\n" +
-            "local_repository(name = \"rules_java\", path = \"third_party/rules_java\")\n"
+            "local_repository(name = \"rules_java\", path = \"third_party/rules_java\")\n",
         )
       assertEquals(DEFAULT_BAZEL_ANDROID_ASPECT, detectAndroidAspect(root))
       root
@@ -451,7 +453,7 @@ class BazelBuildTest {
         .resolve("MODULE.bazel")
         .writeText(
           "bazel_dep(\n    name = \"rules_compose_preview\",\n    version = \"0.1.0\",\n" +
-            "    repo_name = \"preview_rules\",\n)\n"
+            "    repo_name = \"preview_rules\",\n)\n",
         )
       assertEquals(
         "@preview_rules//:android.bzl%compose_preview_android_aspect",
@@ -477,7 +479,7 @@ class BazelBuildTest {
       fun metadata(target: String, jar: String) =
         root.resolve("$jar.json").apply {
           writeText(
-            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar)))
+            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar))),
           )
         }
       val calls = mutableListOf<List<String>>()
@@ -495,7 +497,7 @@ class BazelBuildTest {
                   completed("//app:jvm_only", "empty"),
                   eventSet("empty"),
                 )
-                .joinToString("\n")
+                .joinToString("\n"),
             )
           ""
         } else root.absolutePath + "\n"
@@ -541,7 +543,7 @@ class BazelBuildTest {
       fun metadata(target: String, jar: String) =
         root.resolve("$jar.json").apply {
           writeText(
-            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar)))
+            bazelJson.encodeToString(BazelArtifacts(target, "config", listOf(jar), listOf(jar))),
           )
         }
       val builds = mutableListOf<List<String>>()
@@ -563,7 +565,7 @@ class BazelBuildTest {
                     completed("//app:ui", "meta"),
                     eventSet("meta", listOf(metadata("//app:ui", "ui.jar"))),
                   ))
-                .joinToString("\n")
+                .joinToString("\n"),
             )
           ""
         } else root.absolutePath + "\n"
@@ -610,8 +612,8 @@ class BazelBuildTest {
         root.resolve("wiring.json").apply {
           writeText(
             bazelJson.encodeToString(
-              BazelArtifacts("//app:wiring", "config", listOf("wiring.jar"), listOf("wiring.jar"))
-            )
+              BazelArtifacts("//app:wiring", "config", listOf("wiring.jar"), listOf("wiring.jar")),
+            ),
           )
         }
       val builds = mutableListOf<List<String>>()
@@ -622,7 +624,7 @@ class BazelBuildTest {
           File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
             .writeText(
               listOf(completed("//app:wiring", "meta"), eventSet("meta", listOf(metadata)))
-                .joinToString("\n")
+                .joinToString("\n"),
             )
           ""
         } else root.absolutePath + "\n"
@@ -691,7 +693,7 @@ class BazelBuildTest {
           "--experimental_builtins_injection_override",
           "-foo",
           "--keep_going",
-        )
+        ),
       ),
     )
   }
@@ -835,7 +837,7 @@ class BazelBuildTest {
       val android =
         ui.copy(
           android =
-            ResolvedAndroidArtifacts("com.example", jar("res.apk"), jar("Manifest.xml"), null, 35)
+            ResolvedAndroidArtifacts("com.example", jar("res.apk"), jar("Manifest.xml"), null, 35),
         )
       assertNull(mergeBazelArtifacts("//app/...", listOf(android, model)))
       assertTrue(bazelMergeBlocker(listOf(android, model))!!.contains("mix Android and JVM"))
@@ -998,8 +1000,8 @@ class BazelBuildTest {
                 "config",
                 listOf("app.jar"),
                 listOf("app.jar"),
-              )
-            )
+              ),
+            ),
           )
         }
       val calls = mutableListOf<List<String>>()
@@ -1010,7 +1012,7 @@ class BazelBuildTest {
           "build" in argv -> {
             File(argv.single { it.startsWith("--build_event_json_file=") }.substringAfter('='))
               .writeText(
-                completed("@canonical+//app:app", "set") + "\n" + eventSet("set", listOf(metadata))
+                completed("@canonical+//app:app", "set") + "\n" + eventSet("set", listOf(metadata)),
               )
             ""
           }

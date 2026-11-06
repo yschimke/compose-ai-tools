@@ -35,8 +35,8 @@ class ServeFigmaSvgWebModeTest {
     // image/svg+xml document stays well-formed (no raw `&` entity starts).
     assertTrue(
       out.contains(
-        "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&amp;display=swap');"
-      )
+        "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&amp;display=swap');",
+      ),
     )
     // The raw (unescaped) separator must not appear — that would be a malformed entity start.
     assertFalse(out.contains("&display=swap"))
@@ -59,7 +59,7 @@ class ServeFigmaSvgWebModeTest {
           WebFontFace("Orbitron", 700, false),
           WebFontFace("Orbitron", 500, false),
           WebFontFace("Orbitron", 500, false), // dup
-        )
+        ),
       )
     // Families alphabetical; spaces → +; weights sorted & de-duplicated.
     assertEquals(
@@ -72,7 +72,7 @@ class ServeFigmaSvgWebModeTest {
   fun `googleFontsImportUrl uses the ital,wght axis when a family has any italic`() {
     val url =
       googleFontsImportUrl(
-        listOf(WebFontFace("Inter", 400, italic = false), WebFontFace("Inter", 700, italic = true))
+        listOf(WebFontFace("Inter", 400, italic = false), WebFontFace("Inter", 700, italic = true)),
       )
     assertEquals(
       "https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;1,700&display=swap",
@@ -87,7 +87,7 @@ class ServeFigmaSvgWebModeTest {
         listOf(
           WebFontFace("Roboto", 599, italic = false),
           WebFontFace("Roboto", 550, italic = true),
-        )
+        ),
       )
     assertEquals(
       "https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,600;1,600&display=swap",
@@ -101,7 +101,7 @@ class ServeFigmaSvgWebModeTest {
     // A mix keeps only the real family.
     val url =
       googleFontsImportUrl(
-        listOf(WebFontFace("monospace", 400, false), WebFontFace("Roboto Mono", 500, false))
+        listOf(WebFontFace("monospace", 400, false), WebFontFace("Roboto Mono", 500, false)),
       )
     assertEquals("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500&display=swap", url)
   }
@@ -116,7 +116,7 @@ class ServeFigmaSvgWebModeTest {
     assertTrue(
       linked.contains(
         "href=\"https://raw.githubusercontent.com/joreilly/Confetti/design-artifacts/" +
-          "confetti-mobile/figma/speakerdetails/ideal__default__dark__compact.figma-raster/232.png\""
+          "confetti-mobile/figma/speakerdetails/ideal__default__dark__compact.figma-raster/232.png\"",
       ),
       linked,
     )
@@ -177,7 +177,7 @@ class ServeFigmaSvgWebModeTest {
     assertTrue(b64 != null, "raster must be inlined: $inlined")
     val decoded =
       javax.imageio.ImageIO.read(
-        java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(b64))
+        java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(b64)),
       )
     assertEquals(1024, decoded.width, "longest edge capped at MAX_INLINE_RASTER_EDGE_PX")
     assertEquals(512, decoded.height)

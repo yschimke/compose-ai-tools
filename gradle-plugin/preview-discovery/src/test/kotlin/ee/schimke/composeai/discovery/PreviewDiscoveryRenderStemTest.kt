@@ -71,7 +71,7 @@ class PreviewDiscoveryRenderStemTest {
   fun `parens, quotes, and other shell-awkward characters all collapse with adjacent runs`() {
     val stems =
       PreviewDiscovery.resolveRenderStems(
-        listOf(preview("com.example.PreviewsKt.Foo_tile light (light)"))
+        listOf(preview("com.example.PreviewsKt.Foo_tile light (light)")),
       )
     assertThat(stems.single().substringBeforeLast('-')).isEqualTo("Foo_tile_light_light")
   }
@@ -86,7 +86,7 @@ class PreviewDiscoveryRenderStemTest {
     val before = PreviewDiscovery.resolveRenderStems(listOf(existing))
     val after =
       PreviewDiscovery.resolveRenderStems(
-        listOf(existing, preview("com.example.b.OtherKt.Chip_Light"))
+        listOf(existing, preview("com.example.b.OtherKt.Chip_Light")),
       )
 
     assertThat(after[0]).isEqualTo(before.single())
@@ -184,7 +184,7 @@ class PreviewDiscoveryRenderStemTest {
     for (stem in stems) {
       assertThat(stem.length)
         .isAtMost(
-          PreviewDiscovery.MAX_READABLE_STEM + 1 + PreviewDiscovery.RENDER_STEM_DIGEST_CHARS
+          PreviewDiscovery.MAX_READABLE_STEM + 1 + PreviewDiscovery.RENDER_STEM_DIGEST_CHARS,
         )
       assertThat(stem).matches(stemShape.pattern)
     }

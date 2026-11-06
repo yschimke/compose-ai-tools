@@ -38,7 +38,7 @@ class ScreenFunctionTest {
               arguments = mapOf("onClick" to read("choose", "kotlin.Function0")),
               slots = mapOf("content" to listOf(text(read("label")))),
             ),
-          )
+          ),
         ),
     )
 
@@ -170,13 +170,15 @@ class ScreenFunctionTest {
     )
     refused(
       doc.copy(
-        root = doc.root.copy(arguments = doc.root.arguments + ("extra" to ScreenValue.Text("lost")))
+        root =
+          doc.root.copy(arguments = doc.root.arguments + ("extra" to ScreenValue.Text("lost"))),
       ),
       "no parameter `extra`",
     )
     refused(
       doc.copy(
-        root = doc.root.copy(arguments = doc.root.arguments + ("choose" to ScreenValue.Text("bad")))
+        root =
+          doc.root.copy(arguments = doc.root.arguments + ("choose" to ScreenValue.Text("bad"))),
       ),
       "supplies `choose` twice",
     )
@@ -186,7 +188,7 @@ class ScreenFunctionTest {
           doc.root.copy(
             handlers = emptyMap(),
             arguments = doc.root.arguments + ("choose" to ScreenValue.Bool(true)),
-          )
+          ),
       ),
       "which Bool is not",
     )
@@ -226,7 +228,7 @@ class ScreenFunctionTest {
         )
     val source =
       emitted(
-        doc.copy(root = doc.root.copy(function = "Forward"), functions = doc.functions + forwarded)
+        doc.copy(root = doc.root.copy(function = "Forward"), functions = doc.functions + forwarded),
       )
     assertTrue(source, "Choice(label = label, choose = choose)" in source)
   }
@@ -277,7 +279,7 @@ class ScreenFunctionTest {
       val candidate =
         doc.copy(
           functions =
-            doc.functions + ScreenFunction(name, emptyList(), text(ScreenValue.Text("extra")))
+            doc.functions + ScreenFunction(name, emptyList(), text(ScreenValue.Text("extra"))),
         )
       assertTrue(
         "Without a preview, $name is available",
@@ -288,7 +290,7 @@ class ScreenFunctionTest {
       assertTrue(
         (result as ScreenGenerator.Result.Refused).reasons.any {
           name in it && "available Kotlin" in it
-        }
+        },
       )
     }
   }
@@ -309,9 +311,9 @@ class ScreenFunctionTest {
                   "example.caption",
                   typeFqn = "kotlin.String",
                   requiredOptIns = listOf("example.ExperimentalCaption"),
-                )
+                ),
               ),
-            )
+            ),
           ),
       )
     val result =
@@ -337,7 +339,7 @@ class ScreenFunctionTest {
             "example.caption",
             typeFqn = "kotlin.String",
             requiredOptIns = listOf("example.ExperimentalCaption"),
-          )
+          ),
         ),
       )
     val result =
@@ -381,7 +383,7 @@ class ScreenFunctionTest {
                   ),
                 slots = mapOf("body" to listOf(text(ScreenValue.Text("Row")))),
               ),
-            )
+            ),
           ),
       )
     refused(doc, "shadow")
@@ -401,8 +403,8 @@ class ScreenFunctionTest {
           listOf(
             doc.functions
               .single()
-              .copy(parameters = listOf(ScreenParameter.Value("kotlin", "kotlin.String")))
-          )
+              .copy(parameters = listOf(ScreenParameter.Value("kotlin", "kotlin.String"))),
+          ),
       ),
       "shadow",
     )
@@ -412,8 +414,8 @@ class ScreenFunctionTest {
           listOf(
             doc.functions
               .single()
-              .copy(parameters = listOf(ScreenParameter.Value("label", "kotlin.String);bad()")))
-          )
+              .copy(parameters = listOf(ScreenParameter.Value("label", "kotlin.String);bad()"))),
+          ),
       ),
       "concrete qualified",
     )

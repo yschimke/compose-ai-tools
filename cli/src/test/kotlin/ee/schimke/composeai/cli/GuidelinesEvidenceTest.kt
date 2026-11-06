@@ -71,7 +71,7 @@ class GuidelinesEvidenceTest {
             ScreenScaffold(scrollState = rememberScrollState()) { Text("Hi") }
           }
           """
-            .trimIndent()
+            .trimIndent(),
         )
       }
     pkg
@@ -85,7 +85,7 @@ class GuidelinesEvidenceTest {
           AppScaffold(timeText = { TimeText() }) { content() }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val source = PreviewSourceReader.readWithCallees(preview, 4)!!
     assertTrue(source.startsWith("@Composable\nfun WearList()"), source)
@@ -112,7 +112,7 @@ class GuidelinesEvidenceTest {
     module.resolve("src/main/kotlin/Stop.kt").apply {
       parentFile.mkdirs()
       writeText(
-        "package x\n\n@Composable\nfun StopButton() {\n  IconButton(Modifier.size(36.dp)) {}\n}\n"
+        "package x\n\n@Composable\nfun StopButton() {\n  IconButton(Modifier.size(36.dp)) {}\n}\n",
       )
     }
     val buildDir = module.resolve("build/compose-previews").apply { mkdirs() }
@@ -128,7 +128,7 @@ class GuidelinesEvidenceTest {
            "params": {"device": "id:wearos_small_round", "widthDp": 192, "heightDp": 192},
            "captures": [{"renderOutput": "renders/StopButton-abc.png"}]}
         ]}
-        """
+        """,
       )
     val a11y =
       buildDir.resolve("accessibility.json").apply {
@@ -140,7 +140,7 @@ class GuidelinesEvidenceTest {
                "boundsInScreen": "10,10,82,82"}
             ]}
           ]}
-          """
+          """,
         )
       }
 
@@ -198,7 +198,7 @@ class GuidelinesEvidenceTest {
       inputs.nodes.getValue("x.StopKt.StopButton").mapIndexedNotNull { i, n -> n.toPreviewNode(i) }
     assertTrue(
       !pixels(GuidelineAnnotator.annotate(picture, staged, listOf(failure)))
-        .contentEquals(pixels(GuidelineAnnotator.annotate(picture, emptyList(), listOf(failure))))
+        .contentEquals(pixels(GuidelineAnnotator.annotate(picture, emptyList(), listOf(failure)))),
     )
   }
 
@@ -221,7 +221,7 @@ class GuidelinesEvidenceTest {
             ]},
             {"previewId": "B", "findings": [], "nodes": []}
           ]}
-          """
+          """,
         )
       }
     val host = HandoffInputs.read(null, dir, a11y, null, null).host
@@ -263,9 +263,9 @@ class GuidelinesEvidenceTest {
                     merged = true,
                     boundsInScreen = "0,0,10,10",
                     ref = "stop",
-                  )
+                  ),
                 )
-              }
+              },
           )
         },
       )
@@ -290,7 +290,7 @@ class GuidelinesEvidenceTest {
       Files.createTempFile("accessibility", ".json").toFile().apply {
         writeText(
           """{"module":"catalog","partial":true,"entries":[
-            {"previewId":"A","findings":[],"nodes":[]},{"previewId":"B","findings":[],"nodes":[]}]}"""
+            {"previewId":"A","findings":[],"nodes":[]},{"previewId":"B","findings":[],"nodes":[]}]}""",
         )
       }
     dropA11yEntries(report, setOf("A"))
@@ -307,7 +307,7 @@ class GuidelinesEvidenceTest {
       dir.resolve("accessibility.json").apply {
         writeText(
           """{"module":"m","entries":[{"previewId":"A","findings":[],"nodes":[
-            {"label":"","ref":"r","states":[],"merged":false,"boundsInScreen":"0,0,4,4"}]}]}"""
+            {"label":"","ref":"r","states":[],"merged":false,"boundsInScreen":"0,0,4,4"}]}]}""",
         )
       }
     val with = HandoffInputs.read(null, dir, a11y, null, null).subjects.single().renderHash
@@ -350,7 +350,7 @@ class GuidelinesEvidenceTest {
            "params": {"device": "id:wearos_small_round", "widthDp": 192, "heightDp": 192},
            "captures": [{"renderOutput": "renders/List-1.png", "scroll": {"mode": "END"}}]}
         ]}
-        """
+        """,
       )
     val a11y =
       dir.resolve("accessibility.json").apply {
@@ -365,7 +365,7 @@ class GuidelinesEvidenceTest {
                "boundsInScreen": "0,0,40,90"}
             ]}
           ]}
-          """
+          """,
         )
       }
 
@@ -422,7 +422,7 @@ class GuidelinesEvidenceTest {
             PreviewDataProduct(
               kind = HandoffInputs.LONG_KIND,
               output = "data/render-scroll-long/List-1_SCROLL_long.png",
-            )
+            ),
           ),
       )
     val plain =
@@ -452,7 +452,7 @@ class GuidelinesEvidenceTest {
           {"id": "x.List", "captures": [{"renderOutput": "renders/List-1.png"}]},
           {"id": "x.Plain", "captures": [{"renderOutput": "renders/Plain-2.png"}]}
         ]}
-        """
+        """,
       )
     val handoff =
       HandoffInputs.read(staged.resolve("previews.json"), null, null, null, null)
@@ -514,7 +514,7 @@ class GuidelinesEvidenceTest {
     // The prompt reads content cut at a long screenshot's end as clipped only without that line.
     assertTrue(
       "unless the screenshot's description says it STOPPED AT ITS SCROLL LIMIT" in
-        PreviewGuidelineRequests.SYSTEM_PROMPT
+        PreviewGuidelineRequests.SYSTEM_PROMPT,
     )
   }
 
@@ -541,7 +541,7 @@ class GuidelinesEvidenceTest {
            "captures": [{"renderOutput": "renders/Wide-3_SCROLL_long.png",
              "scroll": {"mode": "LONG", "maxScrollPx": 4000, "reachedPx": 4000}}]}
         ]}
-        """
+        """,
       )
     val inputs = HandoffInputs.read(dir.resolve("previews.json"), null, null, null, null)
     // The long screenshot a follow-up round serves is described from its data product's limit.
@@ -605,7 +605,7 @@ class GuidelinesEvidenceTest {
            "check": "Is every tap target at least 48dp?",
            "source": "https://developer.android.com/x", "surfaces": ["screen"]}
         ]}
-        """
+        """,
       )
       .guidelines!!
 
@@ -723,7 +723,7 @@ class GuidelinesEvidenceTest {
              "params": {"device": null},
              "captures": [{"renderOutput": "renders/Button-1.png"}]}
           ]}
-          """
+          """,
         )
       }
 
@@ -759,7 +759,7 @@ class GuidelinesEvidenceTest {
           surface = GuidelineSurfaces.WIDGET,
           renderHash = "h-a",
           pictures = listOf(SubjectPicture("device", png(), 8, 8)),
-        )
+        ),
       )
     // guidelines() asks only `screen` rules: a widget is asked nothing, and no request is made.
     val model = FakeModel()

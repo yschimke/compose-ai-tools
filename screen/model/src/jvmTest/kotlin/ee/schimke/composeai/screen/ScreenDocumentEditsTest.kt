@@ -32,10 +32,10 @@ class ScreenDocumentEditsTest {
                               slots = mapOf("content" to listOf(ScreenNode("button"))),
                             ),
                             ScreenNode("text"),
-                          )
+                          ),
                       ),
-                  )
-                )
+                  ),
+                ),
             ),
         ),
     )

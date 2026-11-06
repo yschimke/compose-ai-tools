@@ -107,7 +107,7 @@ private fun BoxScope.SplashIcon(
       modifier =
         Modifier.size(backdropDiameter).clip(CircleShape).background(iconBackground).semantics {
           testTag = SPLASH_ICON_BACKGROUND_TEST_TAG
-        }
+        },
     )
   }
   val scaleModifier =

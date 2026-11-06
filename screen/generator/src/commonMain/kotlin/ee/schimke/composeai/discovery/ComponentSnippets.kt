@@ -34,7 +34,7 @@ object ComponentSnippets {
     // Merged overloads share a canonical id; even a printable signature is ambiguous (`Chip()`).
     if (record.overloadsCollided) {
       return ComponentSnippet.Refused(
-        "overloads collided under this canonical id, so no single call site identifies one"
+        "overloads collided under this canonical id, so no single call site identifies one",
       )
     }
     // The wrapper lives in a new file, where `private`/`protected` declarations aren't reachable.
@@ -44,25 +44,25 @@ object ComponentSnippets {
     // With defaults omitted, a generic function has nothing to infer its type parameters from.
     if (record.hasTypeParameters) {
       return ComponentSnippet.Refused(
-        "declares type parameters that a call omitting defaulted arguments cannot infer"
+        "declares type parameters that a call omitting defaulted arguments cannot infer",
       )
     }
     // Like an extension receiver, a context isn't visible in the printed call but must be in scope.
     if (record.hasContextReceivers) {
       return ComponentSnippet.Refused(
-        "declares a context receiver or parameter, which a generated wrapper cannot supply"
+        "declares a context receiver or parameter, which a generated wrapper cannot supply",
       )
     }
     record.symbol.receiver?.let { receiver ->
       return ComponentSnippet.Refused(
-        "declared on $receiver, so a call site needs that scope around it"
+        "declared on $receiver, so a call site needs that scope around it",
       )
     }
     // `callableFqn` unwraps a top-level `…Kt` facade, so an unwrapped callable proves it is
     // top-level and importable; otherwise it's a member needing an instance.
     if (record.symbol.callable == "${record.symbol.jvmOwner}.${record.symbol.name}") {
       return ComponentSnippet.Refused(
-        "a member of ${record.symbol.jvmOwner}, so a call site needs an instance of it"
+        "a member of ${record.symbol.jvmOwner}, so a call site needs an instance of it",
       )
     }
 
@@ -75,7 +75,7 @@ object ComponentSnippets {
         placeholderFor(parameter)
           ?: return ComponentSnippet.Refused(
             "no placeholder can be written for required parameter " +
-              "`${parameter.name}: ${parameter.type}`"
+              "`${parameter.name}: ${parameter.type}`",
           )
       constructedTypeOf(parameter)?.let(placeholderImports::add)
       factoryCallableOf(parameter)?.let(placeholderImports::add)

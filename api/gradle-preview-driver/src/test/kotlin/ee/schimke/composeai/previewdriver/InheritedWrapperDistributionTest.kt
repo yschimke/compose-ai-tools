@@ -124,7 +124,7 @@ class InheritedWrapperDistributionTest {
     File(repo, "gradle/wrapper/gradle-wrapper.properties")
       .writeText(
         "distributionUrl=https\\://ci:s3cr3t-token@dist.internal/gradle-9.7-bin.zip?sig=abc\n" +
-          "distributionSha256Sum=aaaabbbbccccdddd\n"
+          "distributionSha256Sum=aaaabbbbccccdddd\n",
       )
     val warnings = mutableListOf<String>()
     inheritedWrapperDistribution(
@@ -151,7 +151,7 @@ class InheritedWrapperDistributionTest {
     File(repo, "gradle/wrapper/gradle-wrapper.properties")
       .writeText(
         "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.7-bin.zip\n" +
-          "distributionSha256Sum=aaaabbbbccccdddd\n"
+          "distributionSha256Sum=aaaabbbbccccdddd\n",
       )
   }
 }

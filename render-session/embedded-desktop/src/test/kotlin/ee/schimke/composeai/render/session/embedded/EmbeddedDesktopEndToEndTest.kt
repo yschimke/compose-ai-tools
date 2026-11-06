@@ -20,7 +20,7 @@ class EmbeddedDesktopEndToEndTest {
     if (!descriptor.isFile || !previews.isFile) {
       System.err.println(
         "[EmbeddedDesktopEndToEndTest] skipping — descriptor or previews.json missing " +
-          "(run `:samples:cmp:composePreviewDaemonStart` + `:samples:cmp:composePreviewDiscover`)"
+          "(run `:samples:cmp:composePreviewDaemonStart` + `:samples:cmp:composePreviewDiscover`)",
       )
       return
     }
@@ -30,7 +30,7 @@ class EmbeddedDesktopEndToEndTest {
           descriptorPath = descriptor,
           workspaceRoot = projectRoot(),
           workspaceName = "compose-ai-tools",
-        )
+        ),
       )
       .use { session ->
         assertThat(session.modulePath).isEqualTo(":samples:cmp")
@@ -62,7 +62,7 @@ class EmbeddedDesktopEndToEndTest {
       dir = dir.parentFile
     }
     error(
-      "Could not locate repo root (no settings.gradle.kts ancestor of ${File(".").canonicalFile})"
+      "Could not locate repo root (no settings.gradle.kts ancestor of ${File(".").canonicalFile})",
     )
   }
 }

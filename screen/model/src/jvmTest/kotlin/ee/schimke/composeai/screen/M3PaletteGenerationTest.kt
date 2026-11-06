@@ -61,17 +61,17 @@ class M3PaletteGenerationTest {
                                                     componentId = "text",
                                                     arguments =
                                                       mapOf("text" to ScreenValue.Text("Open")),
-                                                  )
-                                                )
+                                                  ),
+                                                ),
                                             ),
-                                        )
-                                      )
+                                        ),
+                                      ),
                                   ),
-                              )
-                            )
+                              ),
+                            ),
                         ),
-                    )
-                  )
+                    ),
+                  ),
               ),
           ),
       )

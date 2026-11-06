@@ -251,7 +251,7 @@ public class OpenRouterClient(
         }
         stream.completion()?.let { ModelResponse(response.code, it) }
           ?: ModelResponse.noAnswer(
-            "the stream ended before the reply did (no finish_reason, no [DONE])"
+            "the stream ended before the reply did (no finish_reason, no [DONE])",
           )
       }
     } catch (e: IOException) {
@@ -412,7 +412,7 @@ public class OpenRouterClient(
           buildJsonObject {
             put("role", "system")
             put("content", request.systemPrompt)
-          }
+          },
         )
         add(
           buildJsonObject {
@@ -424,7 +424,7 @@ public class OpenRouterClient(
                   buildJsonObject {
                     put("type", "text")
                     put("text", request.userText)
-                  }
+                  },
                 )
                 request.pictures.forEach { picture ->
                   val url = picture.dataUrl ?: return@forEach
@@ -432,12 +432,12 @@ public class OpenRouterClient(
                     buildJsonObject {
                       put("type", "image_url")
                       putJsonObject("image_url") { put("url", url) }
-                    }
+                    },
                   )
                 }
               },
             )
-          }
+          },
         )
       }
       putJsonObject("response_format") {
@@ -494,7 +494,7 @@ public class OpenRouterClient(
           ModelResponse.noAnswer(
             // Not [ModelResponse.timedOut]: nothing was asked yet, so a smaller request would
             // connect no faster.
-            "could not connect within the ${seconds(http.connectTimeoutMillis)} connect timeout"
+            "could not connect within the ${seconds(http.connectTimeoutMillis)} connect timeout",
           )
         e is SocketTimeoutException ->
           ModelResponse.noAnswer(
@@ -509,7 +509,7 @@ public class OpenRouterClient(
           )
         else ->
           ModelResponse.noAnswer(
-            "the connection failed (${e::class.java.simpleName}: ${e.message ?: "no message"})"
+            "the connection failed (${e::class.java.simpleName}: ${e.message ?: "no message"})",
           )
       }
     }
@@ -621,7 +621,7 @@ internal class StreamAssembler {
             }
             put("finish_reason", finishReason)
             choiceError?.let { put("error", it) }
-          }
+          },
         )
       }
     }

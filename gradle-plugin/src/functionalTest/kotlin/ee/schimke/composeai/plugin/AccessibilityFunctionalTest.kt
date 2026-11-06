@@ -47,7 +47,7 @@ class AccessibilityFunctionalTest {
         }
         rootProject.name = "test-a11y-wiring"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -70,7 +70,7 @@ class AccessibilityFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -97,7 +97,7 @@ class AccessibilityFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

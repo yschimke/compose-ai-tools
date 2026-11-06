@@ -58,7 +58,7 @@ internal class GuidelinesKeyCommand(
           System.err.println(USAGE)
           if (args.isEmpty()) 0 else 1
         }
-      }
+      },
     )
   }
 
@@ -99,24 +99,24 @@ internal class GuidelinesKeyCommand(
           put(
             "trustedProjects",
             JsonArray(
-              file?.let(GuidelineCredentials::trustedProjects).orEmpty().map(::JsonPrimitive)
+              file?.let(GuidelineCredentials::trustedProjects).orEmpty().map(::JsonPrimitive),
             ),
           )
         }
-          .toString()
+          .toString(),
       )
     } else if (resolved == null) {
       println("No $label: $envVar is unset and ${describeFile()}.")
       println("Run `compose-preview guidelines key set` to store one.")
     } else {
       println(
-        "${label.replaceFirstChar { it.uppercase() }} ${resolved.masked} from ${resolved.source}."
+        "${label.replaceFirstChar { it.uppercase() }} ${resolved.masked} from ${resolved.source}.",
       )
       if (resolved.stored) {
         val trusted = file?.let(GuidelineCredentials::trustedProjects).orEmpty()
         println(
           if (trusted.isEmpty()) "No project is trusted with it yet."
-          else "Trusted projects:\n" + trusted.joinToString("\n") { "  $it" }
+          else "Trusted projects:\n" + trusted.joinToString("\n") { "  $it" },
         )
       }
     }
@@ -134,7 +134,7 @@ internal class GuidelinesKeyCommand(
       }
     println(
       if (removed) "Removed the $label from ${target.path}."
-      else "No $label stored in ${target.path}."
+      else "No $label stored in ${target.path}.",
     )
     if (env(envVar)?.isNotBlank() == true) {
       println("$envVar is still set in this environment.")
@@ -177,7 +177,7 @@ internal class GuidelinesKeyCommand(
       }
     println(
       if (removed) "${project.canonicalPath} no longer uses the stored keys."
-      else "${project.canonicalPath} was not trusted."
+      else "${project.canonicalPath} was not trusted.",
     )
     return 0
   }
@@ -190,7 +190,7 @@ internal class GuidelinesKeyCommand(
       "guidelines key: no place to keep the key: ${GuidelineCredentials.FILE_ENV} must be an " +
         "absolute path when set, and otherwise XDG_CONFIG_HOME, HOME or user.home must be one. " +
         "Set ${GuidelineCredentials.FILE_ENV} to an absolute path you control, or export " +
-        "${GuidelineCredentials.ENV}."
+        "${GuidelineCredentials.ENV}.",
     )
     return 1
   }
@@ -236,14 +236,14 @@ internal class GuidelinesKeyCommand(
       if (ask == null) {
         System.err.println(
           "guidelines: $path is not trusted with the key stored in ${file.path}. " +
-            "Run `$trustCommand` in a terminal, or set $envVar for this run."
+            "Run `$trustCommand` in a terminal, or set $envVar for this run.",
         )
         return false
       }
       val answer =
         ask(
           "Use your stored model key for $path? Its previews and source are sent to " +
-            "the model's provider and billed to that key. Only say yes for a project you trust. [y/N] "
+            "the model's provider and billed to that key. Only say yes for a project you trust. [y/N] ",
         )
       if (answer?.trim()?.lowercase() !in setOf("y", "yes")) {
         System.err.println("guidelines: not trusted; nothing was sent. Later: `$trustCommand`.")
@@ -253,7 +253,7 @@ internal class GuidelinesKeyCommand(
         GuidelineCredentials.trust(file, project)
       } catch (e: Exception) {
         System.err.println(
-          "guidelines: could not remember trusting $path (${e.message}); using the key this once"
+          "guidelines: could not remember trusting $path (${e.message}); using the key this once",
         )
       }
       return true

@@ -203,7 +203,7 @@ internal sealed interface ShowLinkRequest {
           ?: return Unavailable(
             "compose-preview show --link: unknown surface '$surfaceRaw'; use " +
               "--link (desktop, codex://), --link=mobile (chatgpt://) or --link=web " +
-              "(https://chatgpt.com)."
+              "(https://chatgpt.com).",
           )
       val envPlugin = OpenAiPlugin.fromEnvironment(env)
       val pluginId =

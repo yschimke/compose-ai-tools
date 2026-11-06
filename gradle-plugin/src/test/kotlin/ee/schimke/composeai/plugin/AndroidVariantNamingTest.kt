@@ -29,7 +29,7 @@ class AndroidVariantNamingTest {
     assertThat(naming.unitTestTask).isEqualTo("testDebugUnitTest")
     assertThat(naming.unitTestConfigDir)
       .isEqualTo(
-        "intermediates/unit_test_config_directory/debugUnitTest/generateDebugUnitTestConfig/out"
+        "intermediates/unit_test_config_directory/debugUnitTest/generateDebugUnitTestConfig/out",
       )
   }
 
@@ -59,7 +59,7 @@ class AndroidVariantNamingTest {
     assertThat(naming.unitTestTask).isEqualTo("testAndroidHostTest")
     assertThat(naming.unitTestConfigDir)
       .isEqualTo(
-        "intermediates/unit_test_config_directory/androidHostTest/generateAndroidHostTestConfig/out"
+        "intermediates/unit_test_config_directory/androidHostTest/generateAndroidHostTestConfig/out",
       )
     // The one that agrees with the classic derivation, because KMP names the declarable bucket
     // after the source set and the source set IS the variant here.
@@ -129,7 +129,7 @@ class AndroidVariantNamingTest {
     assertThat(
         AndroidPreviewSupport.kmpAndroidLaneDecision(optedIn = false, hasHostTest = true) {
           warned = true
-        }
+        },
       )
       .isFalse()
     // Not a mistake, so not a warning — this is the default path, not a misconfiguration.

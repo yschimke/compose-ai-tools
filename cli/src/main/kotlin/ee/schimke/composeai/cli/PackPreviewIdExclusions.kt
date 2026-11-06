@@ -155,7 +155,7 @@ internal object PackPreviewIdExclusions {
             "preview(s); ${matches.size - unmatched.size} matched, ${unmatched.size} matched " +
             "nothing (per-pattern lines are listed only for up to $detailLimit patterns)",
           warn = false,
-        )
+        ),
       )
       unmatched.take(detailLimit).forEach { add(ReportLine(it.line, warn = true)) }
       if (unmatched.size > detailLimit) {
@@ -164,7 +164,7 @@ internal object PackPreviewIdExclusions {
             "--exclude-preview-id: … and ${unmatched.size - detailLimit} more pattern(s) " +
               "matched nothing",
             warn = true,
-          )
+          ),
         )
       }
     }

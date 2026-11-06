@@ -117,7 +117,7 @@ class DoctorCommand(
           category = "env",
           status = "ok",
           message = "compose-preview $BUNDLE_VERSION (update check skipped)",
-        )
+        ),
       )
     }
 
@@ -134,9 +134,9 @@ class DoctorCommand(
           detail = "project-scope compatibility checks were skipped",
           remediation =
             DoctorRemediation(
-              summary = "run doctor from a Gradle project root, or pass `--project <dir>`"
+              summary = "run doctor from a Gradle project root, or pass `--project <dir>`",
             ),
-        )
+        ),
       )
     }
 
@@ -164,7 +164,7 @@ class DoctorCommand(
         category = "env",
         status = "ok",
         message = listOf(name, version, arch).filter { it.isNotBlank() }.joinToString(" "),
-      )
+      ),
     )
   }
 
@@ -206,10 +206,10 @@ class DoctorCommand(
           remediation =
             unrunnable?.let {
               DoctorRemediation(
-                summary = "point JAVA_HOME at a JDK the distribution supports, then re-run"
+                summary = "point JAVA_HOME at a JDK the distribution supports, then re-run",
               )
             },
-        )
+        ),
       )
       return
     }
@@ -237,10 +237,10 @@ class DoctorCommand(
                   "unpack the distribution yourself and set ${ServerBinaryDiscovery.ENV}",
               commands =
                 listOf(
-                  "curl -L -o server.tar.gz ${ServerDistributionProvision.assetUrl(requested ?: "<version>")}"
+                  "curl -L -o server.tar.gz ${ServerDistributionProvision.assetUrl(requested ?: "<version>")}",
                 ),
             ),
-      )
+      ),
     )
   }
 
@@ -261,7 +261,7 @@ class DoctorCommand(
           status = "ok",
           message = "CLI JVM Java $version",
           detail = detail,
-        )
+        ),
       )
     } else {
       addCheck(
@@ -278,7 +278,7 @@ class DoctorCommand(
                   "The CLI and renderer target JDK 17 bytecode, so any newer JDK (21, 25, …) works.",
               commands = listOf("sdk install java 17.0.11-tem"),
             ),
-        )
+        ),
       )
     }
   }
@@ -311,7 +311,7 @@ class DoctorCommand(
         status = "ok",
         message = "`java` on PATH → $path",
         detail = summary,
-      )
+      ),
     )
   }
 
@@ -348,7 +348,7 @@ class DoctorCommand(
               summary = "run with a UTF-8 locale (any UTF-8 locale the image has will do)",
               commands = listOf("export LC_ALL=C.UTF-8 LANG=C.UTF-8", "compose-preview doctor"),
             ),
-      )
+      ),
     )
   }
 
@@ -379,12 +379,12 @@ class DoctorCommand(
               "Bootstrap the CLI + skills; put ~/.local/bin on PATH (the agent plugin does that).",
             commands =
               listOf(
-                "curl -fsSL https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh | bash"
+                "curl -fsSL https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh | bash",
               ),
             docs =
               "https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md",
           ),
-      )
+      ),
     )
   }
 
@@ -439,9 +439,9 @@ class DoctorCommand(
             detail = e.message,
             remediation =
               DoctorRemediation(
-                summary = "Ensure the project builds (`./gradlew help`) and the plugin is applied."
+                summary = "Ensure the project builds (`./gradlew help`) and the plugin is applied.",
               ),
-          )
+          ),
         )
         return
       }
@@ -472,7 +472,7 @@ class DoctorCommand(
                   if (raceGuidance != null) listOf("compose-preview pin <previous-version>")
                   else listOf("./gradlew help"),
               ),
-          )
+          ),
         )
         addCheck(
           DoctorCheck(
@@ -480,7 +480,7 @@ class DoctorCommand(
             category = "project",
             status = "skipped",
             message = "plugin application check skipped because Gradle model access failed",
-          )
+          ),
         )
         return
       }
@@ -492,9 +492,9 @@ class DoctorCommand(
           message = "could not fetch plugin Tooling model",
           remediation =
             DoctorRemediation(
-              summary = "Ensure the project builds (`./gradlew help`) and the plugin is applied."
+              summary = "Ensure the project builds (`./gradlew help`) and the plugin is applied.",
             ),
-        )
+        ),
       )
       return
     }
@@ -537,7 +537,7 @@ class DoctorCommand(
                     "compose-preview doctor --timeout ${timeoutSeconds * 2}",
                   ),
               ),
-          )
+          ),
         )
         addCheck(
           DoctorCheck(
@@ -545,7 +545,7 @@ class DoctorCommand(
             category = "project",
             status = "skipped",
             message = "plugin application check skipped because discovery did not complete",
-          )
+          ),
         )
         return
       }
@@ -576,11 +576,11 @@ class DoctorCommand(
                 if (incomplete) listOf("compose-preview doctor --verbose")
                 else
                   listOf(
-                    "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\""
+                    "id(\"ee.schimke.composeai.preview\") version \"$recommendedPluginVersion\"",
                   ),
               docs = "https://github.com/$REPO#usage",
             ),
-        )
+        ),
       )
       return
     }
@@ -594,7 +594,7 @@ class DoctorCommand(
         status = "ok",
         message = "plugin applied in ${model.modules.size} module(s)",
         detail = model.modules.keys.joinToString(", "),
-      )
+      ),
     )
 
     appliedPluginVersion?.let { applied ->
@@ -636,7 +636,7 @@ class DoctorCommand(
                 docs = "https://github.com/$REPO/blob/main/docs/RELEASING.md",
               )
             else null,
-        )
+        ),
       )
     }
 
@@ -662,7 +662,7 @@ class DoctorCommand(
           detail =
             "spawns each module's daemon JVM and confirms `initialize` succeeds. " +
               "Adds ~600ms (Desktop) or 3-10s (Android/Robolectric) per module.",
-        )
+        ),
       )
     }
   }
@@ -693,7 +693,7 @@ class DoctorCommand(
               category = "env",
               status = "warning",
               message = "could not fetch BuildEnvironment from Gradle daemon",
-            )
+            ),
           )
           return
         }
@@ -710,7 +710,7 @@ class DoctorCommand(
         status = "ok",
         message = "Gradle ${daemonGradleVersion} on $majorStr",
         detail = "daemon java.home: ${daemonJavaHome}",
-      )
+      ),
     )
   }
 
@@ -741,7 +741,7 @@ class DoctorCommand(
               "embeddable URL without `gh` or push rights. Uploading needs a GitHub token with " +
               "access to that host's configured repository; the token is never read from a file " +
               "you commit.",
-        )
+        ),
       )
       return
     }
@@ -756,7 +756,7 @@ class DoctorCommand(
           message =
             "preview server URL is unusable: ${ServeImageUploader.redactedUrl(configured.url)}",
           detail = "Source: ${configured.source.display}. $refusal",
-        )
+        ),
       )
       return
     }
@@ -779,7 +779,7 @@ class DoctorCommand(
             "this project names ${ServeImageUploader.redactedUrl(configured.url)}, unconfirmed " +
               "— share-preview won't use it",
           detail = trust.how,
-        )
+        ),
       )
       return
     }
@@ -794,7 +794,7 @@ class DoctorCommand(
             "--mechanism says otherwise. An uploaded image is readable by anyone holding its " +
             "link, so a project whose renders shouldn't leave the building should not name a " +
             "public host here.",
-      )
+      ),
     )
   }
 
@@ -816,7 +816,7 @@ class DoctorCommand(
               commands = listOf("compose-preview pin --cli"),
               docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
             ),
-        )
+        ),
       )
       return
     }
@@ -839,12 +839,12 @@ class DoctorCommand(
             if (skew) {
               append(
                 "The pinned plugin version is what gets injected, but the daemon and renderer " +
-                  "this CLI ships are $BUNDLE_VERSION. "
+                  "this CLI ships are $BUNDLE_VERSION. ",
               )
               if (incompatible) {
                 append(
                   "Those are different major versions — the render/daemon wire format differs " +
-                    "across a major, so they can fail to render or misbehave. "
+                    "across a major, so they can fail to render or misbehave. ",
                 )
               }
               append("Align the CLI with the pin, or re-pin to this CLI.")
@@ -866,7 +866,7 @@ class DoctorCommand(
               docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
             )
           else null,
-      )
+      ),
     )
   }
 
@@ -908,7 +908,7 @@ class DoctorCommand(
               ),
             docs = "https://github.com/$REPO/issues/1544",
           ),
-      )
+      ),
     )
   }
 
@@ -962,8 +962,8 @@ class DoctorCommand(
                   .takeIf { !result.loaderReadsSystemCache && result.storeDirsOnPath.isNotEmpty() },
               "affects ${desktopModules.size} CMP/Desktop module(s): ${desktopModules.keys.joinToString(", ")}",
             )
-            .joinToString(". ")
-      )
+            .joinToString(". "),
+      ),
     )
   }
 
@@ -994,7 +994,7 @@ class DoctorCommand(
         category = "project",
         status = "ok",
         message = "$modulePath — ${parts.joinToString("  ")}",
-      )
+      ),
     )
   }
 
@@ -1033,7 +1033,7 @@ class DoctorCommand(
                 ),
               docs = "https://github.com/$REPO/issues/142",
             ),
-        )
+        ),
       )
     } else {
       addCheck(
@@ -1043,7 +1043,7 @@ class DoctorCommand(
           status = "ok",
           message = "$modulePath — composePreviewRender launcher JDK ${launcherMajor ?: "?"}",
           detail = detail,
-        )
+        ),
       )
     }
   }
@@ -1085,7 +1085,7 @@ class DoctorCommand(
           message = "$modulePath — last composePreviewRender run failed with a known signature",
           detail = "${hint.pattern} — ${hint.hint}",
           remediation = hint.remediation,
-        )
+        ),
       )
     }
   }
@@ -1106,7 +1106,7 @@ class DoctorCommand(
           message = "$modulePath — dependency resolution returned empty for variant '$variant'",
           detail =
             "the plugin was applied but neither ${variant}RuntimeClasspath nor ${variant}UnitTestRuntimeClasspath resolved",
-        )
+        ),
       )
       return
     }
@@ -1118,7 +1118,7 @@ class DoctorCommand(
           category = "deps",
           status = "ok",
           message = "$modulePath — no compatibility issues found",
-        )
+        ),
       )
       return
     }
@@ -1148,7 +1148,7 @@ class DoctorCommand(
           message = "$modulePath — ${finding.message}",
           detail = detail,
           remediation = remediation,
-        )
+        ),
       )
     }
   }
@@ -1172,7 +1172,7 @@ class DoctorCommand(
           category = "env",
           status = "ok",
           message = "compose-bom version(s) look recent enough ($summary)",
-        )
+        ),
       )
       return
     }
@@ -1192,7 +1192,7 @@ class DoctorCommand(
               summary = "Bump the BOM.",
               commands = listOf("compose-bom = \"$floor\""),
             ),
-        )
+        ),
       )
     }
   }
@@ -1300,7 +1300,7 @@ class DoctorCommand(
     val summary = summary()
     println()
     println(
-      "summary: ok=${summary.ok} warning=${summary.warning} error=${summary.error} skipped=${summary.skipped}"
+      "summary: ok=${summary.ok} warning=${summary.warning} error=${summary.error} skipped=${summary.skipped}",
     )
   }
 
@@ -1423,7 +1423,7 @@ class DoctorCommand(
             status = "skipped",
             message = "compose-preview $BUNDLE_VERSION (could not check for updates)",
             detail = "GET $latestUrl: ${e.message ?: e.javaClass.simpleName}",
-          )
+          ),
         )
         return
       }
@@ -1438,7 +1438,7 @@ class DoctorCommand(
           status = "skipped",
           message = "compose-preview $BUNDLE_VERSION (could not parse latest release tag)",
           detail = "redirect target: $resolved",
-        )
+        ),
       )
       return
     }
@@ -1453,7 +1453,7 @@ class DoctorCommand(
             status = "ok",
             message = "compose-preview $BUNDLE_VERSION (latest)",
             detail = if (cmp > 0) "ahead of published latest v$latest" else null,
-          )
+          ),
         )
       else ->
         addCheck(
@@ -1469,7 +1469,7 @@ class DoctorCommand(
                 commands = listOf("compose-preview update"),
                 docs = "https://github.com/$REPO/releases/latest",
               ),
-          )
+          ),
         )
     }
   }
@@ -1489,7 +1489,7 @@ class DoctorCommand(
           inClaudeCloud,
           // Header lookup is case-insensitive at the source; Ktor lowercases nothing, so try both.
           redirectTarget = headers["Location"] ?: headers["location"],
-        )
+        ),
       )
     }
   }
@@ -1655,7 +1655,7 @@ class DoctorCommand(
           // No stable 200 path (font URLs are versioned), but `/` reliably 404s from the real host.
           expected =
             mapOf(
-              404 to "the host only serves versioned font paths, so `/` 404s when egress works"
+              404 to "the host only serves versioned font paths, so `/` 404s when egress works",
             ),
         ),
       )
@@ -1799,7 +1799,7 @@ class DoctorCommand(
           remediation =
             DoctorRemediation(
               summary =
-                "Bump compose-bom to at least 2025.12.00, or enable composePreview.manageDependencies so the plugin raises the render graph and resource pins together."
+                "Bump compose-bom to at least 2025.12.00, or enable composePreview.manageDependencies so the plugin raises the render graph and resource pins together.",
             ),
         ),
         ErrorSignature(

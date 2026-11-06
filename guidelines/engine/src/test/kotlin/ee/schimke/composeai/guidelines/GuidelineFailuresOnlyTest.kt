@@ -38,7 +38,7 @@ class GuidelineFailuresOnlyTest {
              "check": "one primary?", "source": "https://developer.android.com/e", "scope": "set"}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -113,7 +113,7 @@ class GuidelineFailuresOnlyTest {
         reply(
           listOf(verdict("s1", "touch", "fail")),
           listOf(others("s1"), others("s2"), others(null)),
-        )
+        ),
       )
     }
     val run =
@@ -147,7 +147,7 @@ class GuidelineFailuresOnlyTest {
             others("s3", PreviewGuidelineRequests.OTHERS_UNCHECKED),
             others(null),
           ),
-        )
+        ),
       )
     }
     val run =
@@ -222,8 +222,8 @@ class GuidelineFailuresOnlyTest {
         2 * 4 * PreviewGuidelineRequests.VERDICT_TOKENS +
           3 * PreviewGuidelineRequests.OTHERS_TOKENS +
           PreviewGuidelineRequests.reasoningTokenAllowance(
-            OpenRouterClient.DEFAULT_REASONING_EFFORT
-          )
+            OpenRouterClient.DEFAULT_REASONING_EFFORT,
+          ),
       )
     assertThat(body["provider"]!!.jsonObject["require_parameters"].toString()).isEqualTo("true")
   }
@@ -241,7 +241,7 @@ class GuidelineFailuresOnlyTest {
                 buildJsonObject {
                   put("finish_reason", "length")
                   put("message", buildJsonObject { put("content", """{"verdicts":[{"sub""") })
-                }
+                },
               )
             },
           )
@@ -273,7 +273,7 @@ class GuidelineFailuresOnlyTest {
                   "guidance": "Keep it legible at a glance.", "check": "legible?",
                   "source": "https://developer.android.com/$it", "surfaces": ["screen"]}"""
             } +
-            "]}"
+            "]}",
         )
         .guidelines!!
     val subjects = (1..12).map { subject("screen$it", GuidelineSurfaces.SCREEN) }
@@ -295,7 +295,7 @@ class GuidelineFailuresOnlyTest {
     val afterTokens = tokens(after)
     println(
       "bench: 12 screens x 24 rules, one request: every-verdict reply $beforeTokens tokens, " +
-        "failures-only reply $afterTokens tokens (${afterTokens * 100 / beforeTokens}%)"
+        "failures-only reply $afterTokens tokens (${afterTokens * 100 / beforeTokens}%)",
     )
     assertThat(afterTokens).isLessThan(beforeTokens / 5)
 
@@ -318,7 +318,7 @@ class GuidelineFailuresOnlyTest {
       model.requests.map { request -> PreviewGuidelineRequests.replyTokenLimit(request) }
     println(
       "bench: batched, ${model.requests.size} requests of " +
-        "${model.requests.map { it.subjects.size }}; max_tokens per request $perRequest"
+        "${model.requests.map { it.subjects.size }}; max_tokens per request $perRequest",
     )
     assertThat(run.results.flatMap { it.unchecked }).isEmpty()
     assertThat(run.results.sumOf { it.implicitPasses.size }).isEqualTo(12 * 21)

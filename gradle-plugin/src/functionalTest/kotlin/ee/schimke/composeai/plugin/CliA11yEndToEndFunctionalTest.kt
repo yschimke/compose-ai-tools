@@ -61,7 +61,7 @@ class CliA11yEndToEndFunctionalTest {
     val cli = File(cliBinary)
     assertWithMessage(
         "CLI binary $cliBinary missing — did `:cli:installDist` run? Use " +
-          "`./gradlew functionalTestWithAndroid`"
+          "`./gradlew functionalTestWithAndroid`",
       )
       .that(cli.isFile)
       .isTrue()
@@ -71,7 +71,7 @@ class CliA11yEndToEndFunctionalTest {
         ?.firstOrNull()
     assertWithMessage(
         "renderer-android-$pluginVersion.aar in mavenLocal " +
-          "(did `:renderer-android:publishToMavenLocal` run?)"
+          "(did `:renderer-android:publishToMavenLocal` run?)",
       )
       .that(rendererAar)
       .isNotNull()
@@ -143,7 +143,7 @@ class CliA11yEndToEndFunctionalTest {
         rootProject.name = "cli-a11y-e2e"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "local.properties").writeText("sdk.dir=$androidSdkDir\n")
@@ -191,7 +191,7 @@ class CliA11yEndToEndFunctionalTest {
             debugImplementation("androidx.compose.ui:ui-tooling")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties")
@@ -200,7 +200,7 @@ class CliA11yEndToEndFunctionalTest {
         org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
         android.useAndroidX=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // `compose-preview` walks up looking for `gradlew` to identify the project root. A stub is
@@ -232,7 +232,7 @@ class CliA11yEndToEndFunctionalTest {
             Button(onClick = {}, modifier = Modifier.size(20.dp)) {}
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

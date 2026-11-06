@@ -40,7 +40,7 @@ class ServeParameterRowsTest {
       params =
         PreviewParams(
           previewParameterProviderClassName =
-            if (parameterized) "com.example.SwatchProvider" else null
+            if (parameterized) "com.example.SwatchProvider" else null,
         ),
       captures = listOf(Capture(renderOutput = output)),
     )
@@ -129,7 +129,7 @@ class ServeParameterRowsTest {
             listOf(
               Capture(renderOutput = "renders/Foo.png"),
               Capture(renderOutput = "renders/Foo_SCROLL_end.png"),
-            )
+            ),
         )
     touch("Foo_SCROLL_end.png")
     touch("Foo_Crimson.png")

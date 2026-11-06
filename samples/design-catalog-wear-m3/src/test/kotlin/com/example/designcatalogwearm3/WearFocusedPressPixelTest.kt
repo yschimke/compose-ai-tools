@@ -42,7 +42,7 @@ class WearFocusedPressPixelTest {
       listOf(16, 8, 0).map { shift -> abs((a shr shift and 0xFF) - (b shr shift and 0xFF)) }
     assertWithMessage(
         "$aName ${a.hex()} vs $bName ${b.hex()}: per-channel deltas $deltas, " +
-          "need every channel >= $MIN_CHANNEL_DELTA"
+          "need every channel >= $MIN_CHANNEL_DELTA",
       )
       .that(deltas.min())
       .isAtLeast(MIN_CHANNEL_DELTA)

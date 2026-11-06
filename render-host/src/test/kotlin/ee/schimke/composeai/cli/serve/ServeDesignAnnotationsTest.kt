@@ -95,7 +95,7 @@ class ServeDesignAnnotationsTest {
               opacity = 0.5,
               clipsContent = true,
             ),
-        )
+        ),
       )
 
     assertEquals(
@@ -129,9 +129,9 @@ class ServeDesignAnnotationsTest {
                 LayoutInspectorGradient(
                   colors = listOf("#FF6750A4", "#FF625B71"),
                   stops = listOf(0f, 1f),
-                )
-            )
-        )
+                ),
+            ),
+        ),
       )
 
     assertEquals("fill gradient #FF6750A4→#FF625B71", annotation.label)
@@ -154,7 +154,7 @@ class ServeDesignAnnotationsTest {
               backgroundColor = "#FF000000",
               paintBox = LayoutInspectorBounds(left = 4, top = 4, right = 96, bottom = 46),
             ),
-        )
+        ),
       )
 
     assertEquals(AnnotationBounds(x = 4, y = 4, width = 92, height = 42), annotation.bounds)
@@ -182,7 +182,7 @@ class ServeDesignAnnotationsTest {
               backgroundColor = "#FF000000",
               paintBox = LayoutInspectorBounds(left = 0, top = 0, right = 100, bottom = 50),
             ),
-        )
+        ),
       )
 
     assertEquals(AnnotationBounds(x = 0, y = 0, width = 100, height = 50), annotation.bounds)
@@ -207,7 +207,7 @@ class ServeDesignAnnotationsTest {
                 minWidth = "48.0dp",
                 minHeight = "48.0dp",
               ),
-          )
+          ),
         )
         .single()
 
@@ -250,7 +250,7 @@ class ServeDesignAnnotationsTest {
               node(nodeId = "2", bounds = "8,8,100,60"),
               node(nodeId = "3", bounds = "108,8,192,60"),
             ),
-        )
+        ),
       )
 
     assertEquals(listOf("200×100px", "92×52px", "84×52px"), boxes.map { it.label })
@@ -263,7 +263,7 @@ class ServeDesignAnnotationsTest {
         node(
           bounds = "0,0,200,100",
           children = listOf(node(nodeId = "2", bounds = "0,0,200,100")),
-        )
+        ),
       )
 
     assertEquals(1, boxes.size)
@@ -282,9 +282,9 @@ class ServeDesignAnnotationsTest {
                 nodeId = "2",
                 bounds = "0,0,200,100",
                 tokens = ComposeSemanticsTokens(padding = ComposeSemanticsInsets(start = "16.0dp")),
-              )
+              ),
             ),
-        )
+        ),
       )
 
     assertEquals(2, boxes.size)
@@ -302,8 +302,8 @@ class ServeDesignAnnotationsTest {
     val annotation =
       themeOf(
         node(
-          tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000", cornerRadiusPx = "20.0px")
-        )
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000", cornerRadiusPx = "20.0px"),
+        ),
       )
 
     assertTrue(annotation.label.contains("radius 20.0px"))
@@ -432,7 +432,7 @@ class ServeDesignAnnotationsTest {
                   children = listOf(node(nodeId = "4", bounds = "0,0,248,74", typography = title)),
                 ),
               ),
-          )
+          ),
         )
         .filter { it.kind == AnnotationKind.TYPOGRAPHY }
 
@@ -453,7 +453,7 @@ class ServeDesignAnnotationsTest {
                   nodeId = "2",
                   bounds = LayoutInspectorBounds(0, 0, 40, 40),
                   placed = false,
-                )
+                ),
               ),
           ),
         )
@@ -480,7 +480,7 @@ class ServeDesignAnnotationsTest {
                   placed = false,
                   children =
                     listOf(layoutNode(nodeId = "3", bounds = LayoutInspectorBounds(0, 0, 20, 20))),
-                )
+                ),
               ),
           ),
         )
@@ -513,9 +513,9 @@ class ServeDesignAnnotationsTest {
                     colors = listOf("#FF000000", "#FFFFFFFF"),
                     endX = endX,
                     endY = endY,
-                  )
-              )
-          )
+                  ),
+              ),
+          ),
         )
         .detail["backgroundGradient"]
 

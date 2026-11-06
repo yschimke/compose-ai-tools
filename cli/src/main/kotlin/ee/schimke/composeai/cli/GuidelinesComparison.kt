@@ -119,18 +119,18 @@ internal object GuidelinesComparison {
     appendLine("Comparison: $hereLabel (here) vs $thereLabel (there)")
     appendLine(
       "  previews in both: ${rows.map { it.previewId }.distinct().size}" +
-        " (${comparison.onlyHere.size} only here, ${comparison.onlyThere.size} only there)"
+        " (${comparison.onlyHere.size} only here, ${comparison.onlyThere.size} only there)",
     )
     appendLine(
       "  rule verdicts: ${rows.size} — " +
-        Outcome.entries.joinToString(", ") { "${it.label} ${n(it)}" }
+        Outcome.entries.joinToString(", ") { "${it.label} ${n(it)}" },
     )
     val decidedBoth = n(Outcome.AGREE) + n(Outcome.DISAGREE)
     if (decidedBoth > 0) {
       appendLine(
         "  agreement where both decided: " +
           String.format(Locale.ROOT, "%.1f%%", 100.0 * n(Outcome.AGREE) / decidedBoth) +
-          " ($decidedBoth verdicts)"
+          " ($decidedBoth verdicts)",
       )
     }
     val failsThere = rows.count { it.there == GuidelineVerdictV1.FAIL }
@@ -152,13 +152,13 @@ internal object GuidelinesComparison {
             .eachCount()
             .toSortedMap()
             .entries
-            .joinToString { (r, n) -> "$r×$n" }
+            .joinToString { (r, n) -> "$r×$n" },
       )
     }
     if (rows.isNotEmpty()) {
       appendLine(
         "  by rule (agree / disagree / decided here only / decided there only / neither; " +
-          "agreement where both decided; facts handed to jev; rounds; evidence asked for; cost):"
+          "agreement where both decided; facts handed to jev; rounds; evidence asked for; cost):",
       )
       rows
         .groupBy { it.ruleId }
@@ -171,7 +171,7 @@ internal object GuidelinesComparison {
       disagreements.forEach { row ->
         appendLine(
           "    ${row.previewId} ${row.ruleId}: here ${shown(row.here, row.hereConfidence)}, " +
-            "there ${shown(row.there, row.thereConfidence)}"
+            "there ${shown(row.there, row.thereConfidence)}",
         )
       }
     }
@@ -197,10 +197,10 @@ internal object GuidelinesComparison {
         if (facts.isEmpty()) "none"
         else
           facts.entries.sortedByDescending { it.value }.joinToString(", ") { (k, n) -> "$k×$n" } +
-            " (in ${ruleTraces.count { it.facts.isNotEmpty() }} of ${ruleTraces.size})"
+            " (in ${ruleTraces.count { it.facts.isNotEmpty() }} of ${ruleTraces.size})",
     )
     line.append(
-      String.format(Locale.ROOT, "; rounds %.1f", ruleTraces.map { it.round + 1 }.average())
+      String.format(Locale.ROOT, "; rounds %.1f", ruleTraces.map { it.round + 1 }.average()),
     )
     val asked = ruleTraces.flatMap { it.requested }.groupingBy { it }.eachCount()
     if (asked.isNotEmpty()) {

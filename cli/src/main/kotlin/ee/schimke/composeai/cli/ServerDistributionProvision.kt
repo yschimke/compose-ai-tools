@@ -272,7 +272,7 @@ internal object ServerDistributionProvision {
       log(
         "compose-preview: no cached ${distribution.label} under ${cacheRoot.absolutePath}" +
           (requested?.let { " at $it" } ?: "") +
-          ", and offline mode is enabled. Fetch one while online, or point at one you already have."
+          ", and offline mode is enabled. Fetch one while online, or point at one you already have.",
       )
       return null
     }
@@ -283,14 +283,14 @@ internal object ServerDistributionProvision {
         ?: latestVersion(distribution, fetcher, log)
         ?: cached.firstOrNull()?.also {
           log(
-            "compose-preview: could not resolve the newest ${distribution.label}; using the cached $it"
+            "compose-preview: could not resolve the newest ${distribution.label}; using the cached $it",
           )
         }
     if (version == null) {
       log(
         "compose-preview: could not resolve the newest ${distribution.label}, and this machine has " +
           "none cached. Set ${distribution.versionEnv} to a release, or point at one you already " +
-          "have."
+          "have.",
       )
       return null
     }
@@ -315,7 +315,7 @@ internal object ServerDistributionProvision {
           ?: run {
             log(
               "compose-preview: $url unpacked without a bin/$name beside a lib/ directory, so it " +
-                "is not a ${distribution.binary} distribution."
+                "is not a ${distribution.binary} distribution.",
             )
             return null
           }

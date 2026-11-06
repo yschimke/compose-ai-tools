@@ -17,13 +17,13 @@ class RenderMatrixCellNamesTest {
     assertEquals(
       "en--light--1.0x.png",
       RenderMatrixCommand.cellFileName(
-        MatrixCell(locale = "en", uiMode = "light", fontScale = 1.0f)
+        MatrixCell(locale = "en", uiMode = "light", fontScale = 1.0f),
       ),
     )
     assertEquals(
       "ar--dark--1.5x.png",
       RenderMatrixCommand.cellFileName(
-        MatrixCell(locale = "ar", uiMode = "dark", fontScale = 1.5f)
+        MatrixCell(locale = "ar", uiMode = "dark", fontScale = 1.5f),
       ),
     )
   }

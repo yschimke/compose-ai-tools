@@ -112,7 +112,7 @@ class BundleRepackTest {
     // `bundle render --knob --svg` writes <id>.png + <id>.svg; repack maps .svg → .figma.svg.
     val renders =
       rendersDir(
-        mapOf("a.png" to "THEMED-A".toByteArray(), "a.svg" to "THEMED-A-SVG".toByteArray())
+        mapOf("a.png" to "THEMED-A".toByteArray(), "a.svg" to "THEMED-A-SVG".toByteArray()),
       )
     val out = File(tempDir("out"), "themed.png")
 
@@ -134,7 +134,7 @@ class BundleRepackTest {
     val source = polyglot(png(), mapOf("previews/a.png" to "STOCK-A".toByteArray()))
     val renders =
       rendersDir(
-        mapOf("a.png" to "THEMED-A".toByteArray(), "a.svg" to "THEMED-A-SVG".toByteArray())
+        mapOf("a.png" to "THEMED-A".toByteArray(), "a.svg" to "THEMED-A-SVG".toByteArray()),
       )
     val out = File(tempDir("out"), "themed.png")
 

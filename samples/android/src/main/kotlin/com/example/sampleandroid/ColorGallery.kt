@@ -52,7 +52,7 @@ fun NamedColorPaletteSpecimenPreview() {
             "brand/gold" to Color(0xFFFFD700),
             "brand/ink" to Color(0xFF1A1A2E),
             "brand/scrim" to Color(0x80000000),
-          )
+          ),
       )
     }
   }

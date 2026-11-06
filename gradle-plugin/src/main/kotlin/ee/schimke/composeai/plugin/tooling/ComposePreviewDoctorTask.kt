@@ -28,7 +28,7 @@ import org.gradle.work.DisableCachingByDefault
  */
 @DisableCachingByDefault(
   because =
-    "Doctor findings depend on the live configuration resolution, not on a declared input set — caching across a version bump would silently stale-surface fixed issues."
+    "Doctor findings depend on the live configuration resolution, not on a declared input set — caching across a version bump would silently stale-surface fixed issues.",
 )
 abstract class ComposePreviewDoctorTask : DefaultTask() {
 
@@ -152,7 +152,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
       val errors = report.findings.count { it.severity == "error" }
       val warnings = report.findings.count { it.severity == "warning" }
       logger.lifecycle(
-        "  ${report.findings.size} finding(s): $errors error(s), $warnings warning(s)"
+        "  ${report.findings.size} finding(s): $errors error(s), $warnings warning(s)",
       )
     }
     if (report.injectedDependencies.isNotEmpty()) {

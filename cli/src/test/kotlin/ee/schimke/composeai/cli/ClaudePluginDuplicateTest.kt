@@ -121,7 +121,7 @@ class ClaudePluginDuplicateTest {
     assertTrue(ours("""{"command":"/opt/bin/compose-preview","args":["mcp","serve"]}"""))
     assertTrue(ours("""{"command":"$stable","args":["mcp","serve","--project=/w"]}"""))
     assertTrue(
-      ours("""{"command":"C:\\Users\\u\\bin\\compose-preview.bat","args":["mcp","serve"]}""")
+      ours("""{"command":"C:\\Users\\u\\bin\\compose-preview.bat","args":["mcp","serve"]}"""),
     )
 
     assertFalse(ours(cliEntry(command = "/usr/bin/my-wrapper")))
@@ -164,7 +164,7 @@ class ClaudePluginDuplicateTest {
     // Idempotent.
     assertTrue(
       McpHostRepair.repairAll(files, stable, exists, claude = null, claudePluginEnabled = true)
-        .isEmpty()
+        .isEmpty(),
     )
   }
 

@@ -190,23 +190,23 @@ class ServeBundleDaemonTest {
 
     assertTrue(
       ServeBundleDaemon.shouldPrecedeDaemonSidecar(
-        coordinate("androidx.compose.material3", "material3")
-      )
+        coordinate("androidx.compose.material3", "material3"),
+      ),
     )
     assertTrue(
       ServeBundleDaemon.shouldPrecedeDaemonSidecar(
-        coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm")
-      )
+        coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"),
+      ),
     )
     assertTrue(
       ServeBundleDaemon.shouldPrecedeDaemonSidecar(
-        coordinate("org.jetbrains.kotlinx", "kotlinx-io-bytestring-jvm")
+        coordinate("org.jetbrains.kotlinx", "kotlinx-io-bytestring-jvm"),
       ),
       "bundle kotlinx-io must win because the child delegates its packages to the daemon parent",
     )
     assertTrue(
       ServeBundleDaemon.shouldPrecedeDaemonSidecar(
-        coordinate("org.jetbrains.compose.components", "components-resources")
+        coordinate("org.jetbrains.compose.components", "components-resources"),
       ),
       "bundle resource APIs must share the parent-loaded LocalResourceReader with the daemon",
     )
@@ -235,12 +235,12 @@ class ServeBundleDaemonTest {
     )
     assertTrue(
       !ServeBundleDaemon.shouldPrecedeDaemonSidecar(
-        coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm")
+        coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm"),
       ),
       "daemon protocol serializers must remain version-aligned with the sidecar runtime",
     )
     assertTrue(
-      !ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("com.squareup.okhttp3", "okhttp"))
+      !ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("com.squareup.okhttp3", "okhttp")),
     )
   }
 
@@ -248,52 +248,52 @@ class ServeBundleDaemonTest {
   fun `playground shared runtimes overlay daemon sidecar by artifact path`() {
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/cache/org.jetbrains.compose.components/components-resources-desktop/library.jar")
-      )
+        File("/cache/org.jetbrains.compose.components/components-resources-desktop/library.jar"),
+      ),
     )
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/cache/org.jetbrains.kotlinx/kotlinx-io-bytestring-jvm/0.9.1/library.jar")
-      )
+        File("/cache/org.jetbrains.kotlinx/kotlinx-io-bytestring-jvm/0.9.1/library.jar"),
+      ),
     )
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/m2/org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/library.jar")
-      )
+        File("/m2/org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/library.jar"),
+      ),
     )
     // The whole Compose Multiplatform graph, in both cache layouts — not just components-resources.
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/cache/org.jetbrains.compose.material3/material3-desktop/1.10.0-alpha05/lib.jar")
+        File("/cache/org.jetbrains.compose.material3/material3-desktop/1.10.0-alpha05/lib.jar"),
       ),
       "material3-desktop ships androidx.compose.material3, which the child delegates to the parent",
     )
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/m2/org/jetbrains/compose/ui/ui-desktop/1.11.1/ui-desktop-1.11.1.jar")
-      )
+        File("/m2/org/jetbrains/compose/ui/ui-desktop/1.11.1/ui-desktop-1.11.1.jar"),
+      ),
     )
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/cache/org.jetbrains.skiko/skiko-awt/0.9.4.2/skiko-awt-0.9.4.2.jar")
+        File("/cache/org.jetbrains.skiko/skiko-awt/0.9.4.2/skiko-awt-0.9.4.2.jar"),
       ),
       "Skiko carries the parent-delegated org.jetbrains.skia bindings, so it moves with Compose",
     )
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/m2/org/jetbrains/skiko/skiko-awt-runtime-linux-x64/0.9.4.2/native.jar")
+        File("/m2/org/jetbrains/skiko/skiko-awt-runtime-linux-x64/0.9.4.2/native.jar"),
       ),
       "the native runtime artifact must not be split from its bindings",
     )
     assertTrue(
       !ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/work/catalog-kotlinx-io-demo/cache/com.example/unrelated/library.jar")
+        File("/work/catalog-kotlinx-io-demo/cache/com.example/unrelated/library.jar"),
       ),
       "a system or work-root name must not promote unrelated jars to the daemon parent",
     )
     assertTrue(
       !ServeBundleDaemon.jarPrecedesDaemonSidecar(
-        File("/work/org.jetbrains.composure/thing/library.jar")
+        File("/work/org.jetbrains.composure/thing/library.jar"),
       ),
       "a group merely prefixed by org.jetbrains.compose must not be promoted",
     )
@@ -374,13 +374,13 @@ class ServeBundleDaemonTest {
             workspaceRoot = state.workspaceRoot,
             workspaceName = state.workspaceName,
             logSink = { line -> System.err.println("[daemon] $line") },
-          )
+          ),
         )
       } catch (e: Exception) {
         System.err.println(
           "[ServeBundleDaemonTest] skipping live render — daemon failed to open (${e.message}). " +
             "Needs a display (run under xvfb-run + LIBGL_ALWAYS_SOFTWARE=1) and the CLI's " +
-            "installDist sidecars."
+            "installDist sidecars.",
         )
         return
       }
@@ -486,7 +486,7 @@ class ServeBundleDaemonTest {
     if (bundlePath.isNullOrBlank()) {
       System.err.println(
         "[ServeBundleDaemonTest] skipping android dependency compatibility — set " +
-          "-D$ANDROID_COMPATIBILITY_BUNDLE_PATH_PROPERTY=<published android bundle .png>."
+          "-D$ANDROID_COMPATIBILITY_BUNDLE_PATH_PROPERTY=<published android bundle .png>.",
       )
       return
     }
@@ -563,7 +563,7 @@ class ServeBundleDaemonTest {
       System.err.println(
         "[ServeBundleDaemonTest] skipping android per-variant SVG — set " +
           "-D$ANDROID_BUNDLE_PATH_PROPERTY=<wear bundle .png> (from " +
-          "`:samples:design-catalog-wear-m3:composePreviewBundle`)."
+          "`:samples:design-catalog-wear-m3:composePreviewBundle`).",
       )
       return
     }
@@ -580,7 +580,7 @@ class ServeBundleDaemonTest {
       System.err.println(
         "[ServeBundleDaemonTest] skipping android — materialize returned null (see log). Needs the " +
           "lib-daemon-android sidecar (-Dcomposeai.cli.libDaemonAndroidDir=…) + android.jar " +
-          "(ANDROID_HOME/ANDROID_SDK_ROOT)."
+          "(ANDROID_HOME/ANDROID_SDK_ROOT).",
       )
       return
     }
@@ -614,7 +614,7 @@ class ServeBundleDaemonTest {
       } catch (e: Exception) {
         System.err.println(
           "[ServeBundleDaemonTest] skipping android live render — daemon failed to open " +
-            "(${e.message})."
+            "(${e.message}).",
         )
         return
       }
@@ -688,7 +688,7 @@ class ServeBundleDaemonTest {
     if (!bundleFile.isFile) {
       System.err.println(
         "[ServeBundleDaemonTest] skipping ($label) — no bundle at $bundlePath. Pack one via " +
-          "`compose-preview bundle pack --module :samples:design-catalog-m3 -o $bundlePath`."
+          "`compose-preview bundle pack --module :samples:design-catalog-m3 -o $bundlePath`.",
       )
       return null
     }
@@ -701,7 +701,7 @@ class ServeBundleDaemonTest {
       System.err.println(
         "[ServeBundleDaemonTest] skipping ($label) — materialize returned null (see log above); " +
           "likely missing lib-daemon-desktop/lib-renderer sidecars. Run `:cli:installDist` and/or " +
-          "pass -Dcomposeai.cli.appHome=<install-root>."
+          "pass -Dcomposeai.cli.appHome=<install-root>.",
       )
       return null
     }

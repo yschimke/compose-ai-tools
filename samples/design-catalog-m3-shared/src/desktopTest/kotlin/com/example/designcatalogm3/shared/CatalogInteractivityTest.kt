@@ -146,7 +146,7 @@ class CatalogInteractivityTest {
     onBothLanes("shape-morph") {
       onNodeWithText("50%", substring = true).assertExists()
       onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
-        SemanticsActions.SetProgress
+        SemanticsActions.SetProgress,
       ) {
         it(1f)
       }

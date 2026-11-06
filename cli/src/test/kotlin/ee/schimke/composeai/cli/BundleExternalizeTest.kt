@@ -109,7 +109,7 @@ class BundleExternalizeTest {
         mapOf(
           "com/example/CatalogKt.class" to byteArrayOf(0xCA.toByte(), 0xFE.toByte(), 0, 0),
           "fonts/Roboto-Regular.ttf" to font,
-        ) + extraJar
+        ) + extraJar,
       )
     return polyglot(
       cover,

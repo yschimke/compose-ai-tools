@@ -65,7 +65,7 @@ class UiBuilderTemplateLookupTest {
           listOf(root),
           listOf("secrets.json"),
           moduleOwnsPolicy = true,
-        )
+        ),
       )
       .isEmpty()
   }
@@ -103,7 +103,7 @@ class UiBuilderTemplateLookupTest {
           listOf(root),
           listOf("ui-builder", "ui-builder/"),
           moduleOwnsPolicy = true,
-        )
+        ),
       )
       .isEmpty()
   }

@@ -46,7 +46,7 @@ class ChatActivity : ComponentActivity() {
           var draft by remember { mutableStateOf("") }
           Column(
             modifier =
-              Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
+              Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(),
           ) {
             Text(
               "Ada",

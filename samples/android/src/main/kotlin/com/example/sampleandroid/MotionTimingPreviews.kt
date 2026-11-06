@@ -55,7 +55,7 @@ private fun LinearSweep() {
         Modifier.fillMaxWidth()
           .height(6.dp)
           .align(Alignment.CenterStart)
-          .background(Color(0xFF2A4A6A), RoundedCornerShape(3.dp))
+          .background(Color(0xFF2A4A6A), RoundedCornerShape(3.dp)),
     )
     Box(
       modifier =
@@ -63,7 +63,7 @@ private fun LinearSweep() {
           // Track is 220dp minus 32dp padding; the 24dp dot sweeps the remaining 164dp.
           .offset(x = 164.dp * fraction)
           .size(24.dp)
-          .background(Color(0xFF64D2FF), CircleShape)
+          .background(Color(0xFF64D2FF), CircleShape),
     )
   }
 }

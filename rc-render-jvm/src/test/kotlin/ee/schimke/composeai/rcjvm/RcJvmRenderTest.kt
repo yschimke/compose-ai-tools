@@ -75,7 +75,7 @@ class RcJvmRenderTest {
             "short",
             "",
           )
-          .joinToString("\n")
+          .joinToString("\n"),
       )
     assertThat(seeds)
       .containsExactly(

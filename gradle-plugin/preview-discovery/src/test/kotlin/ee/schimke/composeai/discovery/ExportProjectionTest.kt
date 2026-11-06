@@ -148,7 +148,7 @@ class ExportProjectionTest {
             slots =
               mapOf(
                 "label" to
-                  listOf(ScreenNode(text.canonicalId, mapOf("text" to ScreenValue.Text("Start"))))
+                  listOf(ScreenNode(text.canonicalId, mapOf("text" to ScreenValue.Text("Start")))),
               ),
           ),
       )
@@ -179,14 +179,14 @@ class ExportProjectionTest {
           "enabled" to wrapper("bool", false),
           "containerColor" to wrapper("colorToken", "surface"),
           "contentColor" to wrapper("color", "#336699"),
-        )
+        ),
       )
     assertThat(source).contains("FilledTonalButton(")
     assertThat(source).contains("enabled = false")
     assertThat(source)
       .contains(
         "colors = ButtonDefaults.filledTonalButtonColors(containerColor = " +
-          "MaterialTheme.colorScheme.surfaceContainer, contentColor = Color(0xFF336699))"
+          "MaterialTheme.colorScheme.surfaceContainer, contentColor = Color(0xFF336699))",
       )
     assertThat(source).contains("import androidx.wear.compose.material3.ButtonDefaults")
     assertThat(source).contains("Text(text = \"Start\")")
@@ -218,7 +218,7 @@ class ExportProjectionTest {
             "androidx.wear.compose.material3.ButtonDefaults",
             listOf("minimumVerticalListContentPadding"),
             typeFqn = "androidx.compose.ui.unit.Dp",
-          )
+          ),
         ),
     )
 
@@ -232,8 +232,8 @@ class ExportProjectionTest {
                 "androidx.wear.compose.material3.ButtonDefaults",
                 listOf("shape"),
                 typeFqn = "androidx.compose.ui.graphics.Shape",
-              )
-            )
+              ),
+            ),
         ),
       modifier = listOf(listPadding),
     )
@@ -245,8 +245,8 @@ class ExportProjectionTest {
           button.canonicalId,
           common("buttonColors"),
           contexts = mapOf("list-item" to inList),
-        )
-      )
+        ),
+      ),
     )
 
   @Test
@@ -287,13 +287,13 @@ class ExportProjectionTest {
                   ExportProjection.Context(
                     mapOf(
                       "enabled" to
-                        ExportProjection.Value.Property("listEnabled", ExportProjection.Codec.Bool)
+                        ExportProjection.Value.Property("listEnabled", ExportProjection.Codec.Bool),
                     ),
                     listOf(listPadding),
-                  )
+                  ),
               ),
-          )
-        )
+          ),
+        ),
       )
     assertThat(readsInList.properties).containsExactly("listEnabled")
     assertThat(readsInList.qualifiedOwners)
@@ -322,12 +322,12 @@ class ExportProjectionTest {
                           "$scope.minimumVerticalContentPadding",
                           positional = listOf(ScreenValue.Whole(4)),
                           receiverScopeFqn = scope,
-                        )
-                      )
-                  )
+                        ),
+                      ),
+                  ),
               ),
-          )
-        )
+          ),
+        ),
       )
     // Never imported, but the generator still holds `$scope.minimumVerticalContentPadding` to the
     // allowlist, so a host that admitted only imported owners refused the row.
@@ -351,9 +351,9 @@ class ExportProjectionTest {
         target(
           "list-item",
           ExportProjection.Context(
-            mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(true)))
+            mapOf("enabled" to ExportProjection.Value.Fixed(ScreenValue.Bool(true))),
           ),
-        )
+        ),
       )
       .contains("rewrites [enabled]")
     assertThat(
@@ -366,12 +366,12 @@ class ExportProjectionTest {
                   ScreenValue.Reference(
                     "androidx.compose.ui.Modifier",
                     typeFqn = "androidx.compose.ui.Modifier",
-                  )
-                )
+                  ),
+                ),
             ),
             listOf(listPadding),
           ),
-        )
+        ),
       )
       .contains("both writes `modifier` and appends to it")
   }
@@ -396,8 +396,8 @@ class ExportProjectionTest {
               listOf("label", "secondaryLabel"),
               max = 2,
             ),
-          )
-        )
+          ),
+        ),
       ),
       otherwise = "content",
     )
@@ -409,8 +409,8 @@ class ExportProjectionTest {
           button.canonicalId,
           emptyMap(),
           slotPatterns = mapOf("content" to patterns),
-        )
-      )
+        ),
+      ),
     )
 
   private fun assign(patterns: ExportProjection.SlotPatterns, vararg children: Child) =
@@ -463,10 +463,10 @@ class ExportProjectionTest {
                 listOf("appName", "title"),
                 min = 2,
                 rest = "content",
-              )
-            )
-          )
-        )
+              ),
+            ),
+          ),
+        ),
       )
     assertThat(assigned(card, lines("App", "Title", "Body", "More")))
       .containsExactly(
@@ -493,9 +493,9 @@ class ExportProjectionTest {
             listOf(
               ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
               ExportProjection.Matcher.Rest("content"),
-            )
-          )
-        )
+            ),
+          ),
+        ),
       )
     assertThat(assigned(leading, icon, text("a"), text("b")))
       .containsExactly("icon", listOf(icon), "content", listOf(text("a"), text("b")))
@@ -512,8 +512,8 @@ class ExportProjectionTest {
             button.canonicalId,
             emptyMap(),
             slots = mapOf("content" to "label"),
-          )
-        )
+          ),
+        ),
       )
     val result =
       plain.assignSlot(button.canonicalId, "content", listOf(icon), { it.id }, { it.column })
@@ -542,9 +542,9 @@ class ExportProjectionTest {
             listOf(
               ExportProjection.Matcher.Rest("content"),
               ExportProjection.Matcher.Component("wear-m3/icon", "icon"),
-            )
+            ),
           )
-        }
+        },
       )
       .contains("last matcher")
     assertThat(
@@ -553,9 +553,9 @@ class ExportProjectionTest {
             listOf(
               ExportProjection.Matcher.Component("wear-m3/icon", "label"),
               ExportProjection.Matcher.Lines("wear-m3/text", listOf("label")),
-            )
+            ),
           )
-        }
+        },
       )
       .contains("each parameter once")
     assertThat(failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), max = 3) })
@@ -568,7 +568,7 @@ class ExportProjectionTest {
             slots = mapOf("content" to "label"),
             slotPatterns = mapOf("content" to buttonPatterns),
           )
-        }
+        },
       )
       .contains("renamed and recognised")
   }
@@ -581,8 +581,8 @@ class ExportProjectionTest {
           emptyMap(),
           synthesize =
             mapOf("content" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
-        )
-      )
+        ),
+      ),
     )
 
   @Test
@@ -626,8 +626,8 @@ class ExportProjectionTest {
     val list =
       ExportProjection(
         listOf(
-          ExportProjection.Target("catalog/List", emptyMap(), items = mapOf("content" to "item"))
-        )
+          ExportProjection.Target("catalog/List", emptyMap(), items = mapOf("content" to "item")),
+        ),
       )
     assertThat((list.lower(emptyMap()) as ExportProjection.Lowered.Node).items)
       .containsExactly("content", "item")
@@ -671,7 +671,7 @@ class ExportProjectionTest {
       .isEqualTo("containerColor: not written by catalog/OutlinedButton")
     // The seeded empty default and an explicit null are unset, so nothing is dropped.
     assertThat(
-        projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive("")))
+        projection.lower(mapOf("variant" to outlined, "containerColor" to JsonPrimitive(""))),
       )
       .isInstanceOf(ExportProjection.Lowered.Node::class.java)
     assertThat(projection.lower(mapOf("variant" to outlined, "containerColor" to JsonNull)))
@@ -714,7 +714,7 @@ class ExportProjectionTest {
     assertThat(
         failure {
           ExportProjection.Target("r", emptyMap(), itemRoles = mapOf("content" to "list-item"))
-        }
+        },
       )
       .contains("has an item role but no item member")
     assertThat(
@@ -725,7 +725,7 @@ class ExportProjectionTest {
             items = mapOf("content" to "item"),
             itemRoles = mapOf("content" to "row"),
           )
-        }
+        },
       )
       .contains("is not one of")
   }
@@ -739,10 +739,10 @@ class ExportProjectionTest {
             "wear/androidx.wear.compose.material3.IconKt.Icon",
             mapOf(
               "imageVector" to
-                ExportProjection.Value.Property("iconKey", ExportProjection.Codec.MaterialIcon)
+                ExportProjection.Value.Property("iconKey", ExportProjection.Codec.MaterialIcon),
             ),
-          )
-        )
+          ),
+        ),
       )
     val vector =
       ScreenValue.Reference(
@@ -760,7 +760,7 @@ class ExportProjectionTest {
         (projection.lower(mapOf("iconKey" to JsonPrimitive("filled/nope")), null, table::get)
             as ExportProjection.Lowered.Refused)
           .reasons
-          .single()
+          .single(),
       )
       .contains("is not a Material icon key")
     // A host building its allowlist from the owners admits the icons the table writes.
@@ -797,8 +797,8 @@ class ExportProjectionTest {
                   ),
                 ),
               ),
-          )
-        )
+          ),
+        ),
       )
     val sized =
       projection.lower(mapOf("sizeDp" to JsonPrimitive(18))) as ExportProjection.Lowered.Node
@@ -810,7 +810,7 @@ class ExportProjectionTest {
     assertThat(
         (projection.lower(mapOf("x" to JsonPrimitive(2))) as ExportProjection.Lowered.Refused)
           .reasons
-          .single()
+          .single(),
       )
       .contains("only some of which are set")
     assertThat(projection.properties).containsExactly("sizeDp", "x", "y")
@@ -831,17 +831,17 @@ class ExportProjectionTest {
             synthesize =
               mapOf("label" to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to "text"))),
           )
-        }
+        },
       )
       .contains("both filled from a wire slot and synthesized")
     assertThat(
         failure {
           ExportProjection.Matcher.Lines("wear-m3/text", listOf("label", "label"), min = 2)
-        }
+        },
       )
       .contains("distinct parameters")
     assertThat(
-        failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), rest = "label") }
+        failure { ExportProjection.Matcher.Lines("wear-m3/text", listOf("label"), rest = "label") },
       )
       .contains("also a line's parameter")
   }
@@ -856,11 +856,12 @@ class ExportProjectionTest {
             min = 3,
             rest = "content",
           )
-          .parameters
+          .parameters,
       )
       .containsExactly("appName", true, "title", true, "content", true)
     assertThat(
-        ExportProjection.Matcher.Lines("wear-m3/text", listOf("title"), rest = "content").parameters
+        ExportProjection.Matcher.Lines("wear-m3/text", listOf("title"), rest = "content")
+          .parameters,
       )
       .containsExactly("title", true, "content", false)
   }
@@ -942,8 +943,8 @@ class ExportProjectionTest {
                 ),
               ),
           ),
-        )
-      )
+        ),
+      ),
     )
 
   private fun json(text: String) = Json.parseToJsonElement(text)
@@ -975,10 +976,10 @@ class ExportProjectionTest {
           "contacts" to
             json(
               """{"type":"list","values":[$ada,
-                {"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}]}"""
+                {"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}]}""",
             ),
           "profile" to json("""{"type":"object","fields":{"owner":$ada}}"""),
-        )
+        ),
       ) as ExportProjection.Lowered.Node
     // Bo's omitted `unread` and the profile's omitted `tags` and `accent` write their declared
     // defaults: the constructor need not default them.
@@ -988,7 +989,7 @@ class ExportProjectionTest {
           "kotlin.collections.listOf",
           positional = listOf(contact("Ada", 2), contact("Bo", 0)),
           typeFqn = "kotlin.collections.List",
-        )
+        ),
       )
     assertThat(lowered.arguments["profile"])
       .isEqualTo(
@@ -1010,7 +1011,7 @@ class ExportProjectionTest {
                 ),
             ),
           typeFqn = "com.example.Profile",
-        )
+        ),
       )
     assertThat(inboxProjection.qualifiedOwners)
       .containsAtLeast("kotlin.collections", "com.example", "com.example.ProfileDefaults")
@@ -1034,12 +1035,12 @@ class ExportProjectionTest {
     val source = (result as ScreenGenerator.Result.Emitted).source
     assertThat(source)
       .contains(
-        "contacts = listOf(Contact(name = \"Ada\", unread = 2), Contact(name = \"Bo\", unread = 0))"
+        "contacts = listOf(Contact(name = \"Ada\", unread = 2), Contact(name = \"Bo\", unread = 0))",
       )
     assertThat(source)
       .contains(
         "profile = ProfileDefaults.profile(owner = Contact(name = \"Ada\", unread = 2), " +
-          "tags = listOf(), accent = MaterialTheme.colorScheme.primary)"
+          "tags = listOf(), accent = MaterialTheme.colorScheme.primary)",
       )
     assertThat(source).contains("import kotlin.collections.listOf")
     assertThat(source).contains("import com.example.Contact")
@@ -1052,10 +1053,10 @@ class ExportProjectionTest {
           mapOf(
             "contacts" to
               json(
-                """{"type":"list","values":[{"type":"object","fields":{"unread":{"type":"int","value":1}}}]}"""
-              )
-          )
-        )
+                """{"type":"list","values":[{"type":"object","fields":{"unread":{"type":"int","value":1}}}]}""",
+              ),
+          ),
+        ),
       )
       .containsExactly("$at.contacts <- contacts[0].name: required field is missing")
     assertThat(refusals(profile("")))
@@ -1069,10 +1070,10 @@ class ExportProjectionTest {
           mapOf(
             "contacts" to
               json(
-                """{"type":"list","values":[{"type":"object","fields":{"name":{"type":"string","value":3}}}]}"""
-              )
-          )
-        )
+                """{"type":"list","values":[{"type":"object","fields":{"name":{"type":"string","value":3}}}]}""",
+              ),
+          ),
+        ),
       )
       .containsExactly("$at.contacts <- contacts[0].name: expected text")
     assertThat(refusals(profile(""""owner":$ada,"nickname":{"type":"string","value":"x"}""")))
@@ -1096,7 +1097,7 @@ class ExportProjectionTest {
       .containsExactly("$at.profile <- profile.tags[0]: expected a `string` wrapper, found `int`")
     assertThat(tags("""{"value":"x"}"""))
       .containsExactly(
-        "$at.profile <- profile.tags[0]: expected a `string` wrapper, found {\"value\":\"x\"}"
+        "$at.profile <- profile.tags[0]: expected a `string` wrapper, found {\"value\":\"x\"}",
       )
     assertThat(tags("""{"type":"string"}"""))
       .containsExactly("$at.profile <- profile.tags[0]: a `string` wrapper has no value")
@@ -1105,11 +1106,11 @@ class ExportProjectionTest {
     // A field stored under its catalog's own wrapper type is held to that type.
     assertThat(refusals(profile(""""owner":$ada,"accent":{"type":"string","value":"primary"}""")))
       .containsExactly(
-        "$at.profile <- profile.accent: expected a `colorToken` wrapper, found `string`"
+        "$at.profile <- profile.accent: expected a `colorToken` wrapper, found `string`",
       )
     assertThat(refusals(profile(""""owner":{"type":"object","fields":{"name":"Ada"}}""")))
       .containsExactly(
-        "$at.profile <- profile.owner.name: expected a `string` wrapper, found \"Ada\""
+        "$at.profile <- profile.owner.name: expected a `string` wrapper, found \"Ada\"",
       )
     // At the top level a scalar property stays as lenient as it always was.
     assertThat(projection.lower(mapOf("enabled" to JsonPrimitive(false))))
@@ -1126,8 +1127,8 @@ class ExportProjectionTest {
         json(
           """{"property":"contacts","codec":{"list":{"element":{"object":{
             "type":"com.example.Contact","fields":{"name":"text",
-            "unread":{"codec":"whole","default":{"type":"int","value":0}}}}}}}}"""
-        )
+            "unread":{"codec":"whole","default":{"type":"int","value":0}}}}}}}}""",
+        ),
       )
     val accent =
       parameters["profile"]!!
@@ -1143,13 +1144,13 @@ class ExportProjectionTest {
             json(
               """{"targets":[{"record":"$at","parameters":{"contacts":{"property":"contacts",
                 "codec":{"list":{"element":{"object":{"type":"com.example.Contact",
-                "fields":{"name":"text"}}}}}}}}]}"""
-            )
+                "fields":{"name":"text"}}}}}}}}]}""",
+            ),
           )
           .getOrThrow()
           .targets
           .single()
-          .parameters["contacts"]
+          .parameters["contacts"],
       )
       .isEqualTo(
         ExportProjection.Value.Property(
@@ -1161,7 +1162,7 @@ class ExportProjectionTest {
             ),
             "object",
           ),
-        )
+        ),
       )
     // The scalar spellings are unchanged.
     assertThat(ExportProjectionJson.encode(projection).toString()).contains("\"codec\":\"bool\"")

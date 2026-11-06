@@ -64,7 +64,7 @@ public object RenderCli {
           workspaceRoot = parsed.workspaceRoot,
           workspaceName = parsed.workspaceName,
           logSink = { line -> System.err.println("[daemon] $line") },
-        )
+        ),
       )
       .use { session ->
         session
@@ -107,7 +107,7 @@ public object RenderCli {
             if (!finished) {
               System.err.println(
                 "render-cli: timed out after ${parsed.timeoutSeconds}s waiting for: " +
-                  pending.joinToString(",")
+                  pending.joinToString(","),
               )
               return 1
             }
@@ -225,7 +225,7 @@ public object RenderCli {
 
       Exit codes: 0 = success, 1 = any render rejected/failed/timed out, 2 = arg error.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }

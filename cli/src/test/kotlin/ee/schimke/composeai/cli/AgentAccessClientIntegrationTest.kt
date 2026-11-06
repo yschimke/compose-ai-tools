@@ -67,7 +67,7 @@ class AgentAccessClientIntegrationTest {
       File(
         Files.createTempDirectory("auth-store-ro").toFile().also { it.deleteOnExit() },
         "agent-access.json",
-      )
+      ),
     )
 
   /** A credential store on a throwaway path, so a test never touches the caller's real one. */
@@ -170,7 +170,7 @@ class AgentAccessClientIntegrationTest {
         approveUrl = opened.approveUrl,
         label = "left behind",
         expiresAtMillis = System.currentTimeMillis() + opened.expiresInSeconds * 1000,
-      )
+      ),
     )
     // Nothing to show yet — and, importantly, nothing lost.
     AuthCommand(listOf("status", "--server", c.origin), store).run()
@@ -198,7 +198,7 @@ class AgentAccessClientIntegrationTest {
         token = token,
         scopes = listOf("preview", "live"),
         expiresAtMillis = System.currentTimeMillis() + 900_000,
-      )
+      ),
     )
     // Still live: status leaves it alone.
     AuthCommand(listOf("status", "--server", c.origin), store).run()
@@ -227,7 +227,7 @@ class AgentAccessClientIntegrationTest {
         requestId = opened.requestId,
         deviceSecret = opened.deviceSecret,
         expiresAtMillis = System.currentTimeMillis() + 600_000,
-      )
+      ),
     )
     assertNotNull(wedged.pendingFor(c.origin))
     serve().approve(opened.requestId, scope = "live", ttlSeconds = 900)

@@ -80,7 +80,9 @@ public object BundleClasspathHydration {
         val resources = LinkedHashMap<String, ByteArray>()
         for (entry in externalResources) {
           require(
-            entry.path.isNotBlank() && !entry.path.startsWith("/") && ".." !in entry.path.split("/")
+            entry.path.isNotBlank() &&
+              !entry.path.startsWith("/") &&
+              ".." !in entry.path.split("/"),
           ) {
             "external resource path '${entry.path}' is invalid"
           }
@@ -107,7 +109,7 @@ public object BundleClasspathHydration {
             root.toMutableMap().apply {
               if (externalClasspath.isNotEmpty()) remove("externalClasspath")
               if (externalResources.isNotEmpty()) remove("externalResources")
-            }
+            },
           )
           .toString()
           .encodeToByteArray()

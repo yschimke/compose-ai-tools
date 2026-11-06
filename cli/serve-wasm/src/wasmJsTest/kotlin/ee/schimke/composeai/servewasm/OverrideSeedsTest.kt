@@ -22,7 +22,7 @@ class OverrideSeedsTest {
     assertEquals(
       mapOf("iconColor" to "#FF7DE2FF"),
       parse(
-        """{"overrides":[{"key":"iconColor","current":{"kind":"color","argb":"#FF7DE2FF"}}]}"""
+        """{"overrides":[{"key":"iconColor","current":{"kind":"color","argb":"#FF7DE2FF"}}]}""",
       ),
     )
   }
@@ -34,7 +34,7 @@ class OverrideSeedsTest {
       parse(
         """{"overrides":[
              {"key":"enabled","current":{"kind":"bool","value":true}},
-             {"key":"count","default":{"kind":"int","value":3}}]}"""
+             {"key":"count","default":{"kind":"int","value":3}}]}""",
       ),
     )
   }
@@ -46,7 +46,7 @@ class OverrideSeedsTest {
       parse(
         """{"overrides":[{"key":"iconColor",
              "default":{"kind":"color","argb":"#FFAABBCC"},
-             "current":{"kind":"color","argb":"#FF001122"}}]}"""
+             "current":{"kind":"color","argb":"#FF001122"}}]}""",
       ),
     )
   }
@@ -56,7 +56,7 @@ class OverrideSeedsTest {
     assertEquals(
       mapOf("rowColor[1]" to "#FF7DE2FF"),
       parse(
-        """{"overrides":[{"key":"rowColor","index":1,"current":{"kind":"color","argb":"#FF7DE2FF"}}]}"""
+        """{"overrides":[{"key":"rowColor","index":1,"current":{"kind":"color","argb":"#FF7DE2FF"}}]}""",
       ),
     )
   }

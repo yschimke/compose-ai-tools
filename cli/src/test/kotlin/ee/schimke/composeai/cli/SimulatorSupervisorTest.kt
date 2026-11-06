@@ -132,7 +132,7 @@ class SimulatorSupervisorTest {
           if (cmd == "update") {
             s.restart(SimulatorSupervisor.Launch(File("second.apk"), emptyList()), false, "update")
           } else null
-        }
+        },
       )
     supervisor.start()
     nextWith("event", "ready")

@@ -99,7 +99,11 @@ class ServerJavaPreflightTest {
   fun `the refusal says where the JVM came from`() {
     val fromHome =
       assertNotNull(
-        failure(javaMin = "21", running = 17, env = { if (it == "JAVA_HOME") "/opt/jdk" else null })
+        failure(
+          javaMin = "21",
+          running = 17,
+          env = { if (it == "JAVA_HOME") "/opt/jdk" else null },
+        ),
       )
     assertContains(fromHome, "JAVA_HOME=/opt/jdk")
 
@@ -148,7 +152,7 @@ class ServerJavaPreflightTest {
 
     val refused =
       assertNotNull(
-        ServerJavaPreflight.failure(choice("99"), ReleasedDistribution.SERVER, env = env)
+        ServerJavaPreflight.failure(choice("99"), ReleasedDistribution.SERVER, env = env),
       )
     assertContains(refused, "Java 99")
     assertContains(refused, "would have run on Java ${Runtime.version().feature()}")

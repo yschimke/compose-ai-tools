@@ -65,7 +65,7 @@ import kotlin.math.roundToInt
  */
 @Preview(name = "Shared Element Filmstrip", widthDp = 340, heightDp = 820, showBackground = true)
 @RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = FILMSTRIP_CAPTURE_MS)]
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = FILMSTRIP_CAPTURE_MS)],
 )
 @Composable
 fun SharedElementFilmstripPreview() {
@@ -197,7 +197,7 @@ private fun FilmCollapsed(
             )
             .size(36.dp)
             .clip(CircleShape)
-            .background(Color(0xFF6750A4))
+            .background(Color(0xFF6750A4)),
       )
       Spacer(Modifier.size(10.dp))
       Text(
@@ -247,7 +247,7 @@ private fun FilmExpanded(
             )
             .size(88.dp)
             .clip(CircleShape)
-            .background(Color(0xFF6750A4))
+            .background(Color(0xFF6750A4)),
       )
       Spacer(Modifier.size(14.dp))
       Text(

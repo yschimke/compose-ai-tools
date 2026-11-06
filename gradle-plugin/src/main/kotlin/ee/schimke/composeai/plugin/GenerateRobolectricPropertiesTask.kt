@@ -173,7 +173,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
             |$shadowsLine
             |$instrumentedPackagesLine
             |"""
-          .trimMargin()
+          .trimMargin(),
       )
 
     // The daemon's [ee.schimke.composeai.daemon.RobolectricHost.SandboxRunner] only reads its own
@@ -225,7 +225,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
           "compose-preview: composePreview.sdkVersion = $v is outside the supported range " +
             "($MIN_SUPPORTED_SDK..$ceiling for this Robolectric build${jdkCeilingSuffix(javaMajor, ceiling, jarCeiling)}). " +
             "Pick a value inside that range or remove the override to let the plugin auto-detect " +
-            "from android.compileSdk."
+            "from android.compileSdk.",
         )
       }
       return v
@@ -236,7 +236,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
         throw GradleException(
           "compose-preview: consumer compileSdk = $raw is below Robolectric's floor " +
             "($MIN_SUPPORTED_SDK). Raise android.compileSdk or set composePreview.sdkVersion = N " +
-            "to pin a supported level explicitly."
+            "to pin a supported level explicitly.",
         )
       }
       if (raw > ceiling) {
@@ -253,7 +253,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
               "($ceiling for this Robolectric build); clamping the Robolectric sandbox " +
               "to $ceiling. Rendering may still fail if your APK's <uses-sdk> requires a " +
               "newer framework. Set composePreview.sdkVersion = N to silence this warning."
-          }
+          },
         )
         return ceiling
       }

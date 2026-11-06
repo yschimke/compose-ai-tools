@@ -30,7 +30,7 @@ class PreviewDiscoveryFailureWarningsTest {
         variantName = "debug",
         projectDirectory = classDir,
         failOnEmpty = false,
-      )
+      ),
     )
 
   @Test
@@ -52,7 +52,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = true,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
@@ -82,7 +82,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = false,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
@@ -111,7 +111,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = true,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
@@ -141,7 +141,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = false,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
@@ -311,7 +311,7 @@ class PreviewDiscoveryFailureWarningsTest {
       @Composable
       fun StationViewPreview() {}
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val outcome =
@@ -324,7 +324,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = false,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
@@ -359,7 +359,7 @@ class PreviewDiscoveryFailureWarningsTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = false,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)

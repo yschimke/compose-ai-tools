@@ -111,7 +111,7 @@ public data class PlaygroundCatalogInfo(
 /** `GET /api/{version}/compiler/catalogs`: what the editor's catalog selector may offer. */
 @Serializable
 public data class PlaygroundCatalogsResponse(
-  val catalogs: List<PlaygroundCatalogInfo> = emptyList()
+  val catalogs: List<PlaygroundCatalogInfo> = emptyList(),
 )
 
 /** Severity of a compiler diagnostic, spelled the way the editor's highlight lane expects. */

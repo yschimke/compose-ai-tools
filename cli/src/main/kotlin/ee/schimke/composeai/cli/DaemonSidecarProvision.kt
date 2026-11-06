@@ -125,7 +125,7 @@ internal object DaemonSidecarProvision {
     if (offline) {
       log(
         "compose-preview: ${sidecar.label} $version is not cached at ${dir.absolutePath}, and " +
-          "offline mode is enabled. Fetch $url while online, or point at one you already have."
+          "offline mode is enabled. Fetch $url while online, or point at one you already have.",
       )
       return null
     }
@@ -146,7 +146,7 @@ internal object DaemonSidecarProvision {
           ?: run {
             log(
               "compose-preview: $url unpacked without ${sidecar.directories.joinToString(" + ")}, " +
-                "so it is not a ${assetName(version, sidecar)} archive."
+                "so it is not a ${assetName(version, sidecar)} archive.",
             )
             return null
           }

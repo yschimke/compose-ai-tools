@@ -167,7 +167,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.svg.embedFonts", "true")
   }
@@ -182,7 +182,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           svgBackground = "true",
-        )
+        ),
       )
       .containsEntry("composeai.svg.background", "true")
     // Off unless asked: the layered SVG exports as editable layers rather than sitting on an
@@ -193,7 +193,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.svg.background", "false")
   }
@@ -208,7 +208,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           fontsFailOnFallback = "false",
-        )
+        ),
       )
       .containsEntry("composeai.fonts.failOnFallback", "false")
     // Fatal by default when the caller doesn't override it.
@@ -218,7 +218,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.fonts.failOnFallback", "true")
   }
@@ -233,7 +233,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           hostTheme = "@style/Theme.Foo",
-        )
+        ),
       )
       .containsEntry("composeai.render.hostTheme", "@style/Theme.Foo")
     // Empty when the consumer names nothing — an application module inherits
@@ -244,7 +244,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.render.hostTheme", "")
   }
@@ -259,7 +259,7 @@ class AndroidPreviewClasspathTest {
             fontsCacheDir = "cache",
             fontsOffline = "false",
           )
-          .keys
+          .keys,
       )
       .doesNotContain("composeai.render.clockPackages")
     assertThat(
@@ -269,7 +269,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           clockPackages = clockPackagesProperty(listOf("com.example.app.", "com.example.lib.")),
-        )
+        ),
       )
       .containsEntry("composeai.render.clockPackages", "com.example.app.,com.example.lib.")
   }
@@ -284,7 +284,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           fixedTime = "09:41",
-        )
+        ),
       )
       .containsEntry("composeai.render.fixedTime", "09:41")
     // Blank when the consumer names nothing — the renderer reads that as "pin the default 10:10",
@@ -295,7 +295,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.render.fixedTime", "")
   }
@@ -311,7 +311,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           linkBufferComposer = "true",
-        )
+        ),
       )
       .containsEntry("composeai.render.linkBufferComposer", "true")
     // `auto` must arrive verbatim, not coerced to a boolean.
@@ -322,7 +322,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           linkBufferComposer = "auto",
-        )
+        ),
       )
       .containsEntry("composeai.render.linkBufferComposer", "auto")
     // An opt-in stays opt-in: nothing asked for, the runtime keeps its own default.
@@ -332,7 +332,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.render.linkBufferComposer", "false")
   }
@@ -347,7 +347,7 @@ class AndroidPreviewClasspathTest {
           fontsCacheDir = "cache",
           fontsOffline = "false",
           rcPlayer = "view",
-        )
+        ),
       )
       .containsEntry("composeai.render.rcPlayer", "view")
     // Defaults to `androidx-embedded` (#5259), never the retired `cmp`.
@@ -357,7 +357,7 @@ class AndroidPreviewClasspathTest {
           rendersDir = "renders",
           fontsCacheDir = "cache",
           fontsOffline = "false",
-        )
+        ),
       )
       .containsEntry("composeai.render.rcPlayer", "androidx-embedded")
   }

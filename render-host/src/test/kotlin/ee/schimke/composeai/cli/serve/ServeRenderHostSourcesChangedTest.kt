@@ -91,7 +91,7 @@ class ServeRenderHostSourcesChangedTest {
       val frames = CopyOnWriteArrayList<StreamFrameParams>()
       val handle =
         assertNotNull(
-          h.subscribeStream(previewId, PreviewOverrides(), null, null, null) { frames += it }
+          h.subscribeStream(previewId, PreviewOverrides(), null, null, null) { frames += it },
         )
       val before = assertNotNull(session.lastFrameStreamId)
 

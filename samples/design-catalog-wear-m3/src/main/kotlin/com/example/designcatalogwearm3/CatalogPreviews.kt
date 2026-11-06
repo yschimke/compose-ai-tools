@@ -311,7 +311,11 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
       Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-          previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page)
+          previewOverrideString(
+            "page",
+            stringResource(R.string.label_page, page + 1),
+            index = page,
+          ),
         )
       }
     }

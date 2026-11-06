@@ -158,7 +158,7 @@ class ValidatePreviewToolingPresentTaskTest {
     override fun getVariants(): MutableList<ResolvedVariantResult> = mutableListOf()
 
     override fun getDependenciesForVariant(
-      variant: ResolvedVariantResult
+      variant: ResolvedVariantResult,
     ): MutableList<DependencyResult> = dependenciesList
   }
 

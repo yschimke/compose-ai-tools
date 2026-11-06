@@ -59,7 +59,7 @@ class DiscoverPreviewModulesAction : BuildAction<PreviewModuleDiscoveryResult>, 
       val message = current.message?.trim()
       parts.add(
         if (message.isNullOrEmpty()) current.javaClass.name
-        else "${current.javaClass.simpleName}: $message"
+        else "${current.javaClass.simpleName}: $message",
       )
       current = current.cause
       depth++

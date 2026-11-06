@@ -110,7 +110,7 @@ class DaemonA11yFetcherTest {
     dataDir.mkdirs()
     File(dataDir, "a11y-hierarchy.json")
       .writeText(
-        """{"nodes":[{"label":"Submit","ref":"a/role:Button[0]","role":"Button","boundsInScreen":"0,0,10,10"}]}"""
+        """{"nodes":[{"label":"Submit","ref":"a/role:Button[0]","role":"Button","boundsInScreen":"0,0,10,10"}]}""",
       )
 
     val fetcher =
@@ -193,7 +193,7 @@ class DaemonA11yFetcherTest {
     val fetcher =
       DaemonA11yFetcher(
         factory =
-          FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()), "BetaPreview" to null))
+          FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()), "BetaPreview" to null)),
       )
 
     val outcome =
@@ -406,7 +406,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previews =
           listOf(
-            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
           ),
         modulePreviewIds = listOf("Foo", "Foo_dark"),
         narrowed = true,
@@ -507,7 +507,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previews =
           listOf(
-            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
           ),
         modulePreviewIds = listOf("Foo", "Foo_dark"),
         narrowed = true,
@@ -668,7 +668,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previews =
           listOf(
-            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
           ),
         modulePreviewIds = listOf("Foo", "Foo_dark"),
         narrowed = true,
@@ -747,7 +747,7 @@ class DaemonA11yFetcherTest {
           FakeFactory(
             payloads = emptyMap(),
             payloadByCall = mapOf(1 to atfPayload(emptyList()), 2 to null),
-          )
+          ),
       )
       .fetch(
         projectDir = projectDir,
@@ -787,9 +787,9 @@ class DaemonA11yFetcherTest {
         factory =
           FakeFactory(
             mapOf(
-              "AlphaPreview" to atfPayload(listOf(finding("ERROR", "TouchTargetSize", "fresh")))
-            )
-          )
+              "AlphaPreview" to atfPayload(listOf(finding("ERROR", "TouchTargetSize", "fresh"))),
+            ),
+          ),
       )
     val outcome =
       fetcher.fetch(
@@ -871,8 +871,8 @@ class DaemonA11yFetcherTest {
             mapOf(
               "AlphaPreview" to atfPayload(emptyList()),
               "BetaPreview" to atfPayload(emptyList()),
-            )
-          )
+            ),
+          ),
       )
     fetcher.fetch(
       projectDir = projectDir,
@@ -928,7 +928,7 @@ class DaemonA11yFetcherTest {
     // delete its real finding.
     DaemonA11yFetcher(
         factory =
-          FakeFactory(mapOf("AlphaPreview" to null, "GammaPreview" to atfPayload(emptyList())))
+          FakeFactory(mapOf("AlphaPreview" to null, "GammaPreview" to atfPayload(emptyList()))),
       )
       .fetch(
         projectDir = projectDir,
@@ -1311,7 +1311,7 @@ class DaemonA11yFetcherTest {
             put("type", it.type)
             put("message", it.message)
           }
-        }
+        },
       ),
     )
   }
@@ -1332,7 +1332,7 @@ class DaemonA11yFetcherTest {
         Companion.json.encodeToString(
           AccessibilityReport.serializer(),
           AccessibilityReport(module = "sample", entries = entries.toList(), status = status),
-        )
+        ),
       )
   }
 

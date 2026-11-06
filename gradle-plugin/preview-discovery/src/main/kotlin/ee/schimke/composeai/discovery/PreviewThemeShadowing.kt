@@ -119,7 +119,7 @@ internal object PreviewThemeShadowing {
       append(
         "  A theme catalog is applied by WRAPPING the preview, so a theme installed inside the " +
           "preview body composes within that wrapper and shadows it — the viewer's Theme select " +
-          "will render identical pixels for these previews:\n"
+          "will render identical pixels for these previews:\n",
       )
       findings.take(10).forEach { append("    - ").append(it.describe()).append('\n') }
       if (findings.size > 10) append("    (+").append(findings.size - 10).append(" more)\n")
@@ -127,7 +127,7 @@ internal object PreviewThemeShadowing {
         "  Fix: declare the theme with `@PreviewWrapper(SomeThemeCatalog::class)` on the preview " +
           "instead of calling it in the body, or have the app's theme stand down when an override " +
           "is already installed. Pinning a preview to one theme on purpose (a per-theme specimen " +
-          "sheet) is fine — this is a warning, not an error."
+          "sheet) is fine — this is a warning, not an error.",
       )
     }
   }

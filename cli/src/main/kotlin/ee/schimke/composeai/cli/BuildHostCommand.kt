@@ -131,7 +131,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
             response =
               BuildHostResponse.Failure(
                 "envelope carried no request; the host answers requests and emits events, it does not " +
-                  "consume responses"
+                  "consume responses",
               ),
           ),
         )
@@ -146,7 +146,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
             envelope.id,
             response =
               BuildHostResponse.Failure(
-                "handshake first: this host speaks protocol ${BuildHostProtocol.VERSION}"
+                "handshake first: this host speaks protocol ${BuildHostProtocol.VERSION}",
               ),
           ),
         )
@@ -189,7 +189,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
           BuildHostResponse.Failure(
             "protocol mismatch: the server speaks ${request.protocolVersion}, this host speaks " +
               "${BuildHostProtocol.VERSION}. Update whichever is older; serving without a build " +
-              "host is the correct fallback until then."
+              "host is the correct fallback until then.",
           )
         } else {
           BuildHostResponse.Handshake(BuildHostProtocol.VERSION, BUNDLE_VERSION)
@@ -199,7 +199,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         if (bazel != null) BuildHostResponse.Strings(emptyList())
         else
           BuildHostResponse.Strings(
-            autoInjectInitScriptArgs(args, projectRoot = File(request.projectRoot))
+            autoInjectInitScriptArgs(args, projectRoot = File(request.projectRoot)),
           )
 
       // No Gradle root in a Bazel workspace: the server then skips its Gradle-only Wasm and git
@@ -216,7 +216,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
 
       is BuildHostRequest.GradleBuildArgs ->
         BuildHostResponse.Strings(
-          if (bazel != null) emptyList() else gradleArgsWithForce(request.extra)
+          if (bazel != null) emptyList() else gradleArgsWithForce(request.extra),
         )
 
       BuildHostRequest.GradleProjects ->
@@ -325,7 +325,7 @@ class BuildHostCommand(args: List<String>) : Command(args) {
         --variant <name>  Select the Android build variant used for previews.
         --help, -h        Show this help.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }

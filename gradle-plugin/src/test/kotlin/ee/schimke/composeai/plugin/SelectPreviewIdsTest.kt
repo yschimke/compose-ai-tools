@@ -279,7 +279,7 @@ class SelectPreviewIdsTest {
     assertThat(report.first().first)
       .isEqualTo(
         "--exclude-preview-id: 35 pattern(s) over 5 preview(s); 5 matched, 30 matched nothing " +
-          "(per-pattern lines are listed only for up to 20 patterns)"
+          "(per-pattern lines are listed only for up to 20 patterns)",
       )
     // The summary, 20 unmatched patterns, and a tail count: bounded however long the list is.
     assertThat(report).hasSize(22)

@@ -46,7 +46,7 @@ class BundleRenderEndToEndFunctionalTest {
     val cli = File(cliBinary)
     assertWithMessage(
         "CLI binary $cliBinary missing — did `:cli:installDist` run? Use " +
-          "`./gradlew functionalTestWithBundleRender`"
+          "`./gradlew functionalTestWithBundleRender`",
       )
       .that(cli.isFile)
       .isTrue()

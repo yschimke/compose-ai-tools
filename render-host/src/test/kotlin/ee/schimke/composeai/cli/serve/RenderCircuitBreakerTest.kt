@@ -33,7 +33,7 @@ class RenderCircuitBreakerTest {
         linkageDiagnosis = { reason ->
           "Skiko bindings 0.148.2 will link against libskiko 0.144.6"
             .takeIf { "org.jetbrains.ski" in reason }
-        }
+        },
       )
 
     breaker.recordFailure(linkage)

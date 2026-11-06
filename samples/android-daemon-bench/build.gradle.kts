@@ -84,8 +84,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
       .fileProperty()
       .convention(
         project.layout.projectDirectory.file(
-          "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt"
-        )
+          "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+        ),
       )
 
   @get:Internal
@@ -313,10 +313,10 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   private fun writeCsv(csv: java.io.File, rows: List<Row>) {
     val sb = StringBuilder()
     sb.appendLine(
-      "# baseline-latency.csv — captured by :samples:android-daemon-bench:benchPreviewLatency"
+      "# baseline-latency.csv — captured by :samples:android-daemon-bench:benchPreviewLatency",
     )
     sb.appendLine(
-      "# See compose-preview-daemon's docs/daemon/DESIGN.md § 13. Hardware/JDK/etc captured"
+      "# See compose-preview-daemon's docs/daemon/DESIGN.md § 13. Hardware/JDK/etc captured",
     )
     sb.appendLine("# in compose-preview-daemon's docs/daemon/baseline-latency.md sidecar.")
     sb.appendLine("phase,scenario,run,milliseconds,notes")
@@ -345,7 +345,7 @@ tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   // No inputs/outputs declared — bench is always-stale by design (forces a
   // re-run when invoked explicitly).
   notCompatibleWithConfigurationCache(
-    "BenchPreviewLatencyTask shells out to a nested ./gradlew invocation"
+    "BenchPreviewLatencyTask shells out to a nested ./gradlew invocation",
   )
   outputs.upToDateWhen { false }
 }
@@ -382,8 +382,8 @@ abstract class BenchCompileStagesTask : DefaultTask() {
       .fileProperty()
       .convention(
         project.layout.projectDirectory.file(
-          "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt"
-        )
+          "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+        ),
       )
 
   @get:Internal
@@ -486,7 +486,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
               "${previewFile.name} no longer contains $marker — update the bench marker"
             }
             previewFile.writeText(
-              original.replace(marker, "\"three-${System.nanoTime() % 1_000_000}\"")
+              original.replace(marker, "\"three-${System.nanoTime() % 1_000_000}\""),
             )
             try {
               val ms = builds.poll(120, TimeUnit.SECONDS)
@@ -590,7 +590,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     fun median(xs: List<Long>): Long? = if (xs.isEmpty()) null else xs.sorted()[xs.size / 2]
     fun medianFor(phase: String, scenario: String) =
       median(
-        rows.filter { it.phase == phase && it.scenario == scenario && it.ms >= 0 }.map { it.ms }
+        rows.filter { it.phase == phase && it.scenario == scenario && it.ms >= 0 }.map { it.ms },
       )
 
     val s1 = medianFor("compile", "stage-1-warm-after-1-line-edit")
@@ -619,7 +619,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         "Promote thresholds: save\u2192pixel total < 1 s on desktop / < 2 s on Android for the " +
         "standard scenarios, memory delta vs stage 1 under +250 MB per warm module, and a clean " +
         "fallback for KSP modules. Demote when the warm-path advantage over stage 1 collapses " +
-        "below 200 ms."
+        "below 200 ms.",
     )
     sb.appendLine()
     sb.appendLine("## Measured medians")
@@ -629,21 +629,21 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     sb.appendLine("| compile (warm, 1-line edit) | ${fmt(s1)} | ${fmt(s2compile)} |")
     sb.appendLine("| classloader-swap | — | ${fmt(s2swap)} |")
     sb.appendLine(
-      "| render (warm, from stage-0 baseline) | ${fmt(renderBaseline)} | ${fmt(renderBaseline)} |"
+      "| render (warm, from stage-0 baseline) | ${fmt(renderBaseline)} | ${fmt(renderBaseline)} |",
     )
     sb.appendLine("| **save → pixel total** | **${fmt(s1SavePixel)}** | **${fmt(s2SavePixel)}** |")
     sb.appendLine()
     sb.appendLine("## Promote criteria")
     sb.appendLine()
     sb.appendLine(
-      "- ${verdict(latencyOk)} — save→pixel < ${budget} ms ($target): measured ${fmt(s2SavePixel)}."
+      "- ${verdict(latencyOk)} — save→pixel < ${budget} ms ($target): measured ${fmt(s2SavePixel)}.",
     )
     sb.appendLine(
       "- INFORMATIONAL — memory delta vs stage 1 < +250 MB: stage-2 BTA-frontend used heap " +
-        "= ${stage2UsedMb?.let { "$it MB" } ?: "—"} (compare manually to a stage-1 daemon on the same workspace; this harness can't observe the stage-1 daemon's resident set)."
+        "= ${stage2UsedMb?.let { "$it MB" } ?: "—"} (compare manually to a stage-1 daemon on the same workspace; this harness can't observe the stage-1 daemon's resident set).",
     )
     sb.appendLine(
-      "- OUT OF SCOPE (manual) — sustained 10 min editing without wedging; a real KSP module exercises the fallback predicate cleanly."
+      "- OUT OF SCOPE (manual) — sustained 10 min editing without wedging; a real KSP module exercises the fallback predicate cleanly.",
     )
     sb.appendLine()
     sb.appendLine("## Demote signal")
@@ -651,7 +651,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     sb.appendLine(
       "- Warm-path advantage over stage 1: ${fmt(advantage)} " +
         "(< 200 ms on desktop ⇒ BTA's win has collapsed)." +
-        if (demoteSignal) " ⚠️ DEMOTE SIGNAL TRIPPED." else ""
+        if (demoteSignal) " ⚠️ DEMOTE SIGNAL TRIPPED." else "",
     )
     sb.appendLine()
     val overall =
@@ -722,10 +722,10 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     val sb = StringBuilder()
     if (existing.isBlank()) {
       sb.appendLine(
-        "# baseline-latency.csv — captured by the daemon-bench :benchPreviewLatency and"
+        "# baseline-latency.csv — captured by the daemon-bench :benchPreviewLatency and",
       )
       sb.appendLine(
-        "# :benchCompileStages tasks. See compose-preview-daemon's docs/daemon/baseline-latency.md for methodology."
+        "# :benchCompileStages tasks. See compose-preview-daemon's docs/daemon/baseline-latency.md for methodology.",
       )
       sb.appendLine(newHeader)
     } else {
@@ -752,7 +752,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     }
     for (r in rows) {
       sb.appendLine(
-        "$target,${r.phase},${r.scenario},${r.run},${r.ms},${r.notes.replace(",", ";")}"
+        "$target,${r.phase},${r.scenario},${r.run},${r.ms},${r.notes.replace(",", ";")}",
       )
     }
     csv.writeText(sb.toString())
@@ -789,7 +789,7 @@ tasks.register<BenchCompileStagesTask>("benchCompileStages") {
   daemonCoreClasspath.from(configurations.named("daemonBench"))
   dependsOn("composePreviewDaemonStart")
   notCompatibleWithConfigurationCache(
-    "BenchCompileStagesTask shells out to nested ./gradlew + a daemon JVM"
+    "BenchCompileStagesTask shells out to nested ./gradlew + a daemon JVM",
   )
   outputs.upToDateWhen { false }
 }

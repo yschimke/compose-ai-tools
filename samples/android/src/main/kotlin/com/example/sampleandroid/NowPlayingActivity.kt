@@ -70,7 +70,7 @@ class NowPlayingActivity : ComponentActivity() {
               translationX = if (edge == BackEventCompat.EDGE_LEFT) shift else -shift
               shape = RoundedCornerShape((32 * progress).dp)
               clip = progress > 0f
-            }
+            },
         ) {
           NowPlayingScreen(onClose = { finish() })
         }
@@ -93,8 +93,8 @@ fun NowPlayingScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
           .aspectRatio(1f)
           .clip(RoundedCornerShape(24.dp))
           .background(
-            Brush.linearGradient(listOf(Color(0xFF3730A3), Color(0xFF7C3AED), Color(0xFFDB2777)))
-          )
+            Brush.linearGradient(listOf(Color(0xFF3730A3), Color(0xFF7C3AED), Color(0xFFDB2777))),
+          ),
     )
     Text(text = "Midnight City", style = MaterialTheme.typography.headlineSmall)
     Text(

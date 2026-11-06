@@ -51,7 +51,7 @@ fun PinchToZoomPreview() {
       modifier =
         Modifier.size(80.dp)
           .graphicsLayer(scaleX = scale, scaleY = scale)
-          .background(Color(0xFF1976D2))
+          .background(Color(0xFF1976D2)),
     )
   }
 }

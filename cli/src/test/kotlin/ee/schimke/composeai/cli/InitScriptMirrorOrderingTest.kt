@@ -45,7 +45,7 @@ class InitScriptMirrorOrderingTest {
         rootProject.name = "mirror-repro"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "build.gradle.kts").writeText("// root build script — intentionally empty\n")
     val app = File(root, "app").apply { mkdirs() }
@@ -76,7 +76,7 @@ class InitScriptMirrorOrderingTest {
               }
           }
           """
-            .trimIndent()
+            .trimIndent(),
         )
       }
     val initScript = materializeInitScript(tempDir(), "1.0")
@@ -128,7 +128,7 @@ class InitScriptMirrorOrderingTest {
               }
           }
           """
-            .trimIndent()
+            .trimIndent(),
         )
       }
     val initScript = materializeInitScript(tempDir(), "1.0")

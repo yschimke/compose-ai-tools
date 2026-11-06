@@ -16,13 +16,14 @@ import androidx.compose.ui.unit.dp
 /**
  * Reads `android.os.Build` — the point of the fixture. A composable like this compiles only for
  * Android and can only be rendered against a real `android.jar`, so it draws on the Robolectric
- * lane and nowhere else. The Desktop renderer fails it with `NoClassDefFoundError: android/os/Build`.
+ * lane and nowhere else. The Desktop renderer fails it with `NoClassDefFoundError:
+ * android/os/Build`.
  */
 @Composable
 fun ApiLevelBadge(modifier: Modifier = Modifier) {
   Column(modifier = modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
     androidx.compose.foundation.layout.Box(
-      modifier = Modifier.size(24.dp).background(Color(0xFF3DDC84))
+      modifier = Modifier.size(24.dp).background(Color(0xFF3DDC84)),
     )
     Text("API ${Build.VERSION.SDK_INT}")
   }

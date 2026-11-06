@@ -33,7 +33,9 @@ class PreviewDataTest {
                 ),
               captures =
                 listOf(
-                  Capture(renderOutput = "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png")
+                  Capture(
+                    renderOutput = "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
+                  ),
                 ),
               dataProducts =
                 listOf(
@@ -51,9 +53,9 @@ class PreviewDataTest {
                     output =
                       "data/render-scroll-long/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
                     cost = SCROLL_LONG_COST,
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 
@@ -93,9 +95,9 @@ class PreviewDataTest {
                         TargetSignal.CROSS_FILE,
                         TargetSignal.NON_SHIPPING_SOURCE_SET,
                       ),
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 
@@ -137,7 +139,7 @@ class PreviewDataTest {
                   key = "content",
                   kind = OverrideSeedKind.STRING,
                   raw = "avatar",
-                )
+                ),
               ),
             kitAxis = "Show avatar",
             kitValue = "True",
@@ -386,9 +388,9 @@ class PreviewDataTest {
                   Capture(
                     renderOutput = "renders/x.png",
                     gestureHint = GestureHintCapture(showHints = true),
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
     val deserialized = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
@@ -410,7 +412,7 @@ class PreviewDataTest {
           mapOf(
             "android.permission.CAMERA" to PermissionGrantCaptureState.GRANTED,
             "android.permission.RECORD_AUDIO" to PermissionGrantCaptureState.DENIED,
-          )
+          ),
       )
     val manifest =
       PreviewManifest(
@@ -423,7 +425,7 @@ class PreviewDataTest {
               functionName = "CameraPermissionGrantedPreview",
               className = "com.example.PermissionGatedPreviewKt",
               captures = listOf(Capture(renderOutput = "renders/x.png", permissions = capture)),
-            )
+            ),
           ),
       )
     val deserialized = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))

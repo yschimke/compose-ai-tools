@@ -68,7 +68,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     val fontScales = fontScaleRaw?.map { it.toFloatOrNull() }
     if (fontScales?.any { it == null } == true) {
       System.err.println(
-        "render-matrix: --font-scale must be numbers, got '${fontScaleRaw.joinToString(",")}'"
+        "render-matrix: --font-scale must be numbers, got '${fontScaleRaw.joinToString(",")}'",
       )
       exitProcess(64)
     }
@@ -77,7 +77,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     if (devices == null && locales == null && uiModes == null && fontScaleValues == null) {
       System.err.println(
         "render-matrix: set at least one axis: --device, --locale, --ui-mode, --font-scale " +
-          "(or a default in ${CliPreviewSettingsFile.defaultFile().path})"
+          "(or a default in ${CliPreviewSettingsFile.defaultFile().path})",
       )
       printUsage()
       exitProcess(64)
@@ -86,7 +86,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     val cellCount = MatrixAxes.cellCount(devices, locales, uiModes, fontScaleValues)
     if (cellCount > MatrixAxes.CELL_CAP) {
       System.err.println(
-        "render-matrix: $cellCount cells exceeds the cap of ${MatrixAxes.CELL_CAP}; narrow the axes"
+        "render-matrix: $cellCount cells exceeds the cap of ${MatrixAxes.CELL_CAP}; narrow the axes",
       )
       exitProcess(64)
     }
@@ -108,14 +108,14 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     if (matched.isEmpty()) {
       System.err.println(
         "render-matrix: no previews matched. Use --id <exact>, --filter <substr> or " +
-          "--preview <ref>."
+          "--preview <ref>.",
       )
       exitProcess(3)
     }
     if (matched.size > 1) {
       System.err.println(
         "render-matrix: matched ${matched.size} previews; narrow to one with --id <exact>, " +
-          "--filter <substr> or --preview <ref>:"
+          "--filter <substr> or --preview <ref>:",
       )
       matched.take(20).forEach { (_, _, p) -> System.err.println("  ${p.id}") }
       exitProcess(1)
@@ -124,7 +124,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
 
     if (!runDaemonStart(module)) {
       System.err.println(
-        "render-matrix: composePreviewDaemonStart failed for ${module.gradlePath}."
+        "render-matrix: composePreviewDaemonStart failed for ${module.gradlePath}.",
       )
       exitProcess(2)
     }
@@ -303,7 +303,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
               } else {
                 put("rendered", false)
               }
-            }
+            },
           )
         }
       }
@@ -372,7 +372,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
                                 per-variant files importers (e.g. a Figma push) consume directly.
         --json                  Emit the compose-preview-matrix/v1 JSON summary.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 

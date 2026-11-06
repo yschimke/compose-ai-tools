@@ -84,7 +84,7 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
           filmstrip = filmstrip.get(),
           filmstripFractions = filmstripFractions.get(),
           sourceRootRelativePath = { root -> root.toRelativeStringSafe(projectRoot) },
-        )
+        ),
       )
 
     val references =
@@ -113,7 +113,7 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
         (if (resources.size == 1) "" else "s") +
         " and ${references.size} manifest reference" +
         (if (references.size == 1) "" else "s") +
-        " for ${moduleName.get()}:${variantName.get()}"
+        " for ${moduleName.get()}:${variantName.get()}",
     )
   }
 

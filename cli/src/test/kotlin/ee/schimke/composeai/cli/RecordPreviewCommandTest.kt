@@ -64,7 +64,7 @@ class RecordPreviewCommandTest {
     assertEquals("fr-FR", overrides.localeTag)
     assertNull(
       RecordPreviewCommand(emptyList())
-        .call<PreviewOverrides?>("parseOverrides", emptyList<String>())
+        .call<PreviewOverrides?>("parseOverrides", emptyList<String>()),
     )
   }
 

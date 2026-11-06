@@ -68,7 +68,7 @@ class GuidelinesComparisonTest {
           "styles" to (GuidelineVerdictV1.FAIL to 0.7),
           "clipping" to (GuidelineVerdictV1.PASS to 0.95),
         ),
-      )
+      ),
     )
 
   @Test
@@ -122,7 +122,7 @@ class GuidelinesComparisonTest {
               GuidelinesCommand.REPORT_JSON.encodeToJsonElement(
                 JevSubjectTrace.serializer(),
                 trace,
-              ))
+              )),
         )
       GuidelinesCommand.REPORT_JSON.decodeFromJsonElement(
         PreviewGuidelineResult.serializer(),
@@ -182,7 +182,7 @@ class GuidelinesComparisonTest {
       val one = dir.resolve("one.json")
       val module = ModuleGuidelines("m", "wear-m3", JevTriage.MODEL, jev, checker = "jev")
       one.writeText(
-        GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), module)
+        GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), module),
       )
       assertEquals("jev", GuidelinesComparison.load(one)!!.single().checker)
       val list = dir.resolve("list.json")
@@ -190,7 +190,7 @@ class GuidelinesComparisonTest {
         GuidelinesCommand.REPORT_JSON.encodeToString(
           ListSerializer(ModuleGuidelines.serializer()),
           listOf(module, module.copy(module = "n")),
-        )
+        ),
       )
       assertEquals(listOf("m", "n"), GuidelinesComparison.load(list)!!.map { it.module })
       // A vision report records no checker at all, so its file is what it was before.

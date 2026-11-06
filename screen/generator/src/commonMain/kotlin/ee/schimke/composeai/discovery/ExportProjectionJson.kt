@@ -109,7 +109,7 @@ object ExportProjectionJson {
                       put("component", synthesis.component)
                       put("properties", strings(synthesis.properties))
                     }
-                  }
+                  },
                 ),
               )
             }
@@ -130,12 +130,12 @@ object ExportProjectionJson {
                       put("call", link.callableFqn)
                       put("arguments", JsonArray(link.arguments.map(::value)))
                     }
-                  }
+                  },
                 ),
               )
             }
           }
-        }
+        },
       ),
     )
   }
@@ -191,7 +191,7 @@ object ExportProjectionJson {
       put(
         "modifier",
         JsonArray(
-          context.modifier.map { screenJson.encodeToJsonElement(ChainLink.serializer(), it) }
+          context.modifier.map { screenJson.encodeToJsonElement(ChainLink.serializer(), it) },
         ),
       )
     }
@@ -214,7 +214,7 @@ object ExportProjectionJson {
       JsonArray(
         patterns.patterns.map { pattern ->
           buildJsonObject { put("match", JsonArray(pattern.match.map(::matcher))) }
-        }
+        },
       ),
     )
     put(
@@ -263,7 +263,7 @@ object ExportProjectionJson {
       patterns =
         obj["patterns"]?.jsonArray.orEmpty().map { pattern ->
           ExportProjection.SlotPattern(
-            pattern.jsonObject.getValue("match").jsonArray.map { readMatcher(it.jsonObject) }
+            pattern.jsonObject.getValue("match").jsonArray.map { readMatcher(it.jsonObject) },
           )
         },
       otherwise = otherwise,
@@ -329,7 +329,7 @@ object ExportProjectionJson {
         )
       "fixed" in obj ->
         ExportProjection.Value.Fixed(
-          screenJson.decodeFromJsonElement(ScreenValue.serializer(), obj.getValue("fixed"))
+          screenJson.decodeFromJsonElement(ScreenValue.serializer(), obj.getValue("fixed")),
         )
       "call" in obj ->
         ExportProjection.Value.Call(
@@ -442,7 +442,7 @@ object ExportProjectionJson {
               put(
                 "fields",
                 JsonObject(
-                  codec.fields.mapValues { (_, field) -> ExportProjectionJson.field(field) }
+                  codec.fields.mapValues { (_, field) -> ExportProjectionJson.field(field) },
                 ),
               )
               if (codec.callableFqn != codec.typeFqn) put("callable", codec.callableFqn)

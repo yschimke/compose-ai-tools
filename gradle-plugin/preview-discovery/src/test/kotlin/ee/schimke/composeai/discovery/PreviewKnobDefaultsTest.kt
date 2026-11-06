@@ -30,7 +30,7 @@ class PreviewKnobDefaultsTest {
             Type.LONG_TYPE,
             Type.FLOAT_TYPE,
             Type.DOUBLE_TYPE,
-          )
+          ),
       ) { mv, layout ->
         layout.assignConstant(mv, parameter = 0) { it.visitLdcInsn("Shopping list") }
         layout.assignConstant(mv, parameter = 1) { it.visitInsn(Opcodes.ICONST_1) }
@@ -51,7 +51,7 @@ class PreviewKnobDefaultsTest {
           3 to "4281563647",
           4 to "0.5",
           5 to "1.5",
-        )
+        ),
       )
   }
 

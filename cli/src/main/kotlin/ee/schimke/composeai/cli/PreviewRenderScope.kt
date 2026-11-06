@@ -146,7 +146,7 @@ internal object PreviewRenderScope {
       return Scope(
         note =
           "could not narrow the Gradle render: ${patterns.size} matching preview id(s) $why, and " +
-            "the $FILE_GRADLE_PROPERTY fallback was unusable (e.g. '${patterns.first()}')"
+            "the $FILE_GRADLE_PROPERTY fallback was unusable (e.g. '${patterns.first()}')",
       )
     }
     return Scope(

@@ -42,7 +42,10 @@ fun DividerShowBackgroundDarkPreview() {
       // pixel-for-pixel.
       Box(
         modifier =
-          Modifier.align(Alignment.Center).fillMaxWidth().height(1.dp).background(Color(0x1FFFFFFF))
+          Modifier.align(Alignment.Center)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color(0x1FFFFFFF)),
       )
     }
   }

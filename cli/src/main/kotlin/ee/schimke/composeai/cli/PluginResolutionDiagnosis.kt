@@ -147,7 +147,7 @@ internal fun unresolvedPluginMarkerGuidance(
         "$COMPOSE_PREVIEW_PLUGIN_MARKER:$version$attribution" +
         (missing?.let { ", whose dependency $it was not found" } ?: "") +
         ". This is a problem with reaching that version, not with your project — the " +
-        "configuration failure above is the symptom."
+        "configuration failure above is the symptom.",
     )
     appendLine()
     when (age) {
@@ -159,14 +159,14 @@ internal fun unresolvedPluginMarkerGuidance(
             "which usually means a network, mirror or proxy problem between this machine and " +
             "those repositories: a repository edge refusing this machine (Maven Central answers " +
             "404 with a `retry-after` header when it does), a proxy, or repositories that bypass " +
-            "the mirror your build or ~/.gradle/init.d configures."
+            "the mirror your build or ~/.gradle/init.d configures.",
         )
       VersionAge.UNKNOWN ->
         appendLine(
           "Either $version is not resolvable yet (a release is downloadable as a CLI shortly " +
             "before its Gradle plugin reaches plugins.gradle.org and Maven Central, and that " +
             "clears on its own within hours), or the repositories Gradle searched could not be " +
-            "reached properly from this machine — a network, mirror or proxy problem."
+            "reached properly from this machine — a network, mirror or proxy problem.",
         )
     }
     if (searched.isNotEmpty()) {
@@ -184,25 +184,25 @@ internal fun unresolvedPluginMarkerGuidance(
       if (probe != null) {
         appendLine(
           "  * see what the repository answers: `curl -sSI '$probe'` — a 403, 429, " +
-            "`retry-after` or proxy page is a network problem, not a missing release;"
+            "`retry-after` or proxy page is a network problem, not a missing release;",
         )
       }
       if (searched.any { MAVEN_CENTRAL_HOSTS.any { host -> it.contains("://$host/") } }) {
         appendLine(
           "  * check a well-known artifact on the same host: `curl -sSI '$MAVEN_CENTRAL_PROBE'` " +
-            "— if that fails too, Maven Central is not reachable from here;"
+            "— if that fails too, Maven Central is not reachable from here;",
         )
       }
       appendLine(
         "  * if you use a mirror or proxy, check that it covers these repositories (and that " +
-          "plain `./gradlew` resolves through it);"
+          "plain `./gradlew` resolves through it);",
       )
     } else {
       appendLine("  * wait for the publication to land and re-run — nothing to change;")
     }
     appendLine(
       "  * pin a different release: `compose-preview pin <version>` (or " +
-        "`--plugin-version <version>` for a single run);"
+        "`--plugin-version <version>` for a single run);",
     )
     append("  * check availability: ${pluginPortalMarkerUrl(version)}")
   }
@@ -213,7 +213,7 @@ private fun StringBuilder.appendPublicationWindow() {
     "The usual cause is the publication window: a compose-preview release is downloadable as a " +
       "CLI (and resolvable as `latest`) before the Gradle plugin of the same version is " +
       "resolvable from plugins.gradle.org and Maven Central. Builds dispatched inside that " +
-      "window fail exactly like this, and it clears on its own."
+      "window fail exactly like this, and it clears on its own.",
   )
 }
 

@@ -17,7 +17,7 @@ import org.gradle.work.DisableCachingByDefault
  * filtered runs. Otherwise stock `Test`.
  */
 @DisableCachingByDefault(
-  because = "Robolectric rendering runs a test JVM whose environment is not a declared input"
+  because = "Robolectric rendering runs a test JVM whose environment is not a declared input",
 )
 abstract class RobolectricRenderTask : Test() {
 

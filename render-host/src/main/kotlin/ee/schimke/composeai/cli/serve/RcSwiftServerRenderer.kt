@@ -139,7 +139,7 @@ public object RcSwiftServerRenderer {
         resolveBinary()
       } catch (e: IOException) {
         return RcJvmServerRenderer.RenderResult.Unavailable(
-          "rc-swift-render is unavailable: ${e.message}"
+          "rc-swift-render is unavailable: ${e.message}",
         )
       } ?: return RcJvmServerRenderer.RenderResult.Unavailable(unavailableReason())
 
@@ -220,7 +220,7 @@ public object RcSwiftServerRenderer {
         process.destroyForcibly()
         drain.join(DRAIN_FLUSH_MILLIS)
         return RcJvmServerRenderer.RenderResult.Failed(
-          "$LANE render timed out after ${timeoutSeconds}s"
+          "$LANE render timed out after ${timeoutSeconds}s",
         )
       }
       drain.join(DRAIN_FLUSH_MILLIS)
@@ -228,7 +228,7 @@ public object RcSwiftServerRenderer {
         val tail = log.toString().trim().lines().lastOrNull()?.take(300).orEmpty()
         return RcJvmServerRenderer.RenderResult.Failed(
           "$LANE render failed (exit ${process.exitValue()})" +
-            tail.takeIf { it.isNotEmpty() }?.let { ": $it" }.orEmpty()
+            tail.takeIf { it.isNotEmpty() }?.let { ": $it" }.orEmpty(),
         )
       }
       return RcJvmServerRenderer.RenderResult.Ok(output.readBytes())
@@ -377,7 +377,7 @@ public object RcSwiftServerRenderer {
       if (response.statusCode() != 200) {
         throw IOException(
           "could not download $from (HTTP ${response.statusCode()}); rc-players $v may predate " +
-            "rc-swift-render — set -D$SYS_PROP_VERSION to a release that ships $ASSET_NAME.zip"
+            "rc-swift-render — set -D$SYS_PROP_VERSION to a release that ships $ASSET_NAME.zip",
         )
       }
       return response.body()

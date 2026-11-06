@@ -63,7 +63,7 @@ class ExtensionsCommand(private val args: List<String>) {
       "Each id can be passed to `--with-extension <id>` on any render-driving command " +
         "(`show`, `render`, `a11y`, …). `show --with-extension a11y` and `render " +
         "--with-extension a11y` run the same daemon pass as `compose-preview a11y`. " +
-        "Per-extension canned reports are surfaced by binding the id to a `ReportCommand`."
+        "Per-extension canned reports are surfaced by binding the id to a `ReportCommand`.",
     )
   }
 
@@ -79,7 +79,7 @@ class ExtensionsCommand(private val args: List<String>) {
       Options:
         --json         Emit JSON (schema: $EXTENSIONS_LIST_SCHEMA)
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }

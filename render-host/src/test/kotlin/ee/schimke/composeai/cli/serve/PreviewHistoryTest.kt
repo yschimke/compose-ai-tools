@@ -102,7 +102,9 @@ class PreviewHistoryTest {
   fun `alternating renders flag as unstable and trim to their distinct states`() {
     val log =
       gitLog(
-        *Array(8) { i -> "publish $i" to listOf("renders/m/Flaky.png" to if (i % 2 == 0) a else b) }
+        *Array(8) { i ->
+          "publish $i" to listOf("renders/m/Flaky.png" to if (i % 2 == 0) a else b)
+        },
       )
     val t = timeline(log, "renders/m/Flaky.png")
 
@@ -125,7 +127,9 @@ class PreviewHistoryTest {
   fun `a trimmed state spans its whole period in play`() {
     val log =
       gitLog(
-        *Array(4) { i -> "publish $i" to listOf("renders/m/Flaky.png" to if (i % 2 == 0) a else b) }
+        *Array(4) { i ->
+          "publish $i" to listOf("renders/m/Flaky.png" to if (i % 2 == 0) a else b)
+        },
       )
     val newest = timeline(log, "renders/m/Flaky.png").displayVersions.first()
 

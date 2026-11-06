@@ -129,7 +129,7 @@ class AndroidRClassUnionTest {
               public static int[] sheet() { return R.styleable.Sheet; }
             }
             """
-              .trimIndent()
+              .trimIndent(),
         ),
         classpath = renderer,
       )

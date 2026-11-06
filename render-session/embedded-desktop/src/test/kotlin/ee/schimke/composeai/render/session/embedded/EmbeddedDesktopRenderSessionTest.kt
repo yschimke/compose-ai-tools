@@ -37,7 +37,7 @@ class EmbeddedDesktopRenderSessionTest {
 
     val ex = runCatching {
       EmbeddedDesktopRenderSessions.open(
-        RenderSessionConfig(descriptorPath = missingDescriptor, workspaceRoot = tempDir)
+        RenderSessionConfig(descriptorPath = missingDescriptor, workspaceRoot = tempDir),
       )
     }
       .exceptionOrNull()
@@ -59,7 +59,7 @@ class EmbeddedDesktopRenderSessionTest {
 
     val ex = runCatching {
       EmbeddedDesktopRenderSessions.open(
-        RenderSessionConfig(descriptorPath = badDescriptor, workspaceRoot = tempDir)
+        RenderSessionConfig(descriptorPath = badDescriptor, workspaceRoot = tempDir),
       )
     }
       .exceptionOrNull()

@@ -193,7 +193,7 @@ class HistoryManifestCommandTest {
     val repo = deliveryRepo("publish" to "v1")
     val override = File(repo, "other-baselines.json")
     override.writeText(
-      """{"renamed/id": {"module": "samples:wear", "renderBasename": "Foo_Large_Round.png"}}"""
+      """{"renamed/id": {"module": "samples:wear", "renderBasename": "Foo_Large_Round.png"}}""",
     )
     val output = File(repo, "history.json")
 
@@ -427,7 +427,7 @@ class HistoryManifestCommandTest {
     val failure =
       assertIs<CommandExit>(
         runCatching { run(repo, "--layout", "renders-ish", "--output", "out.json") }
-          .exceptionOrNull()
+          .exceptionOrNull(),
       )
 
     assertEquals(1, failure.code)

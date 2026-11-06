@@ -44,7 +44,7 @@ class GuidelineEngineTest {
              "check": "one primary?", "source": "https://developer.android.com/e", "scope": "set"}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -72,7 +72,7 @@ class GuidelineEngineTest {
     assertThat(guidelines.subjectRules("screen").map { it.id })
       .containsExactly("any", "touch", "screen-only")
     assertThat(
-        guidelines.subjectRules("component", "launcher-widgets-v7+experimental").map { it.id }
+        guidelines.subjectRules("component", "launcher-widgets-v7+experimental").map { it.id },
       )
       .contains("v7")
     assertThat(guidelines.subjectRules("component", hasPicture = false).map { it.id })
@@ -163,7 +163,7 @@ class GuidelineEngineTest {
           {"subjectId":"s2","ruleId":"any","verdict":"needs_evidence","confidence":0.4,"nodeIds":[],
            "reason":"Need nodes.","needs":[{"kind":"a11y-hierarchy","theme":null,"fontScale":null,"device":null,"reason":"labels"}],"regions":[]},
           {"subjectId":null,"ruleId":"consistent","verdict":"pass","confidence":0.8,"nodeIds":[],"reason":"","needs":[],"regions":[]}
-        ]}"""
+        ]}""",
       )
     val reply =
       GuidelineResponse.parse(body, batch, listOf("a" to "device", "b" to "device")).getOrThrow()
@@ -364,7 +364,7 @@ class GuidelineEngineTest {
               nodeIds = listOf("n1")
               regions = listOf(GuidelineRegionV1.Builder(0.5, 0.5, 0.4, 0.4).build())
             }
-            .build()
+            .build(),
         ),
       )
     val image = ImageIO.read(out.inputStream())
@@ -471,7 +471,7 @@ class GuidelineEngineTest {
     assertThat(run.problems)
       .contains(
         "4 verdict(s) named a rule their request did not ask and were dropped: clipping ×2, " +
-          "screen-only, R5"
+          "screen-only, R5",
       )
     assertThat(run.problems.single { "outside their request" in it }).contains("s9/touch")
   }
@@ -544,7 +544,7 @@ class GuidelineEngineTest {
           variant("b1", "B"),
           variant("c1", "C"),
           variant("b2", "B"),
-        )
+        ),
       )
     assertThat(ordered.map { it.previewId })
       .containsExactly("a1", "b1", "c1", "a2", "b2", "a3")
@@ -592,7 +592,7 @@ class GuidelineEngineTest {
           preview("a.FooKt.Preview"),
           preview("a.FooKt.Preview_Dark"),
           preview("b.BarKt.Preview"),
-        )
+        ),
       )
     assertThat(ordered.map { it.previewId })
       .containsExactly("a.FooKt.Preview", "b.BarKt.Preview", "a.FooKt.Preview_Dark")
@@ -663,7 +663,7 @@ class GuidelineEngineTest {
       PreviewGuidelineRequests.predictedCostUsd(
         guidelines,
         batch.copy(
-          subjects = listOf(batch.subjects[0], batch.subjects[1].copy(source = source + "// b"))
+          subjects = listOf(batch.subjects[0], batch.subjects[1].copy(source = source + "// b")),
         ),
         price,
         null,
@@ -769,7 +769,7 @@ class GuidelineEngineTest {
     assertThat(
         GuidelineEngine(FakeModel(), options = GuidelineRunOptions().withMaxVariants(1))
           .plan(guidelines, subjects)
-          .previews
+          .previews,
       )
       .isEqualTo(3)
     assertThat(GuidelineRunOptions().withMaxVariants(0).maxVariants).isNull()
@@ -986,7 +986,7 @@ class GuidelineEngineTest {
     assertThat(request.userText)
       .contains(
         "The only valid ruleIds are the ones listed here, spelled exactly as listed: " +
-          "any, touch, v7, consistent."
+          "any, touch, v7, consistent.",
       )
     assertThat(request.systemPrompt).contains("never invent a rule id")
   }
@@ -1010,9 +1010,9 @@ class GuidelineEngineTest {
                     "This item's height is 24dp.",
                     "Button",
                     "4,4,28,28",
-                  )
+                  ),
                 ),
-            )
+            ),
         ),
       )
     val request = PreviewGuidelineRequests.request(guidelines, batch, "src", emptyList())
@@ -1131,7 +1131,7 @@ class GuidelineEngineTest {
           .run(guidelines, listOf(subject("a")))
           .results
           .single()
-          .fromCache
+          .fromCache,
       )
       .isTrue()
     dir.deleteRecursively()
@@ -1271,7 +1271,7 @@ class GuidelineEngineTest {
              "surfaces": ["widget"], "profiles": ["wear-widgets"]}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -1290,7 +1290,7 @@ class GuidelineEngineTest {
     assertThat(run.failedRequests).isEqualTo(0)
     assertThat(run.results.map { it.noRules }.distinct())
       .containsExactly(
-        "no rule in the `remote-m3` guidelines applies to surface `component` with no profile"
+        "no rule in the `remote-m3` guidelines applies to surface `component` with no profile",
       )
     assertThat(run.results.none { it.pending }).isTrue()
     assertThat(run.problems.single()).startsWith("2 preview(s) were not checked: no rule")
@@ -1329,7 +1329,7 @@ class GuidelineEngineTest {
     assertThat(request.userText)
       .contains(
         "Not rendered here: the catalog's Samsung (round widget-host), Pixel Watch (squircle " +
-          "widget-host) picture(s)."
+          "widget-host) picture(s).",
       )
     assertThat(request.userText).contains("never cite a picture that is not attached")
     // A component batch is not told about widget frames.
@@ -1352,8 +1352,8 @@ class GuidelineEngineTest {
     assertThat(
         of(
           """{"id":"w","params":{"device":null,"widthDp":216,"heightDp":124},
-             "widget":{"host":"wear","profile":"wear-widgets"}}"""
-        )
+             "widget":{"host":"wear","profile":"wear-widgets"}}""",
+        ),
       )
       .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET, "wear-widgets"))
     // The same sticker from a plugin that predates the field is, as far as anything can tell, a
@@ -1365,14 +1365,14 @@ class GuidelineEngineTest {
     assertThat(of("""{"id":"g","params":{"kind":"GLANCE_APPWIDGET"}}"""))
       .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET))
     assertThat(
-        of("""{"id":"l","params":{},"captures":[{"launcherWidget":{"width":2,"height":1}}]}""")
+        of("""{"id":"l","params":{},"captures":[{"launcherWidget":{"width":2,"height":1}}]}"""),
       )
       .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET))
     assertThat(
         of(
           """{"id":"p","params":{"previewParameterProviderClassName":
-             "androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams"}}"""
-        )
+             "androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams"}}""",
+        ),
       )
       .isEqualTo(GuidelineSubjectKind(GuidelineSurfaces.WIDGET, "wear-widgets"))
   }
@@ -1483,13 +1483,13 @@ class GuidelineEngineTest {
     assertThat(summary)
       .isEqualTo(
         "80 node(s), none scrollable; ATF: 40 WARNING TextContrastCheck. " +
-          "Ask for `a11y` for the nodes and checks."
+          "Ask for `a11y` for the nodes and checks.",
       )
     // Against ~20 tokens a node and ~60 a check for the data: 80 nodes and 40 checks is ~4,000.
     assertThat(summary.length / 4).isLessThan(40)
     assertThat(PreviewGuidelineRequests.a11ySummary(emptyList(), emptyList()))
       .isEqualTo(
-        "0 node(s), none scrollable; ATF: no findings. Ask for `a11y` for the nodes and checks."
+        "0 node(s), none scrollable; ATF: no findings. Ask for `a11y` for the nodes and checks.",
       )
   }
 
@@ -1509,7 +1509,7 @@ class GuidelineEngineTest {
   }
 
   private inner class FakeHost(
-    override val available: List<String> = listOf("a11y-hierarchy", "render")
+    override val available: List<String> = listOf("a11y-hierarchy", "render"),
   ) : GuidelineEvidenceHost {
     val nodeRequests = mutableListOf<String>()
     val renderRequests = mutableListOf<GuidelineEvidenceNeedV1>()

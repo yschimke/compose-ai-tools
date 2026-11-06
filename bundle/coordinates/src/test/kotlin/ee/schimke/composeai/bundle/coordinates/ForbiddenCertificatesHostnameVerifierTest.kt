@@ -21,7 +21,7 @@ class ForbiddenCertificatesHostnameVerifierTest {
   @Test
   fun `a chain with no forbidden certificate passes`() {
     assertTrue(
-      ForbiddenCertificatesHostnameVerifier(delegate = acceptAll).verify("example.com", session)
+      ForbiddenCertificatesHostnameVerifier(delegate = acceptAll).verify("example.com", session),
     )
   }
 

@@ -207,7 +207,7 @@ class ServerBinaryDiscoveryTest {
         env = { null },
         pathLookup = nothingOnPath,
         cacheLookup = nothingCached,
-      )
+      ),
     )
   }
 
@@ -219,7 +219,7 @@ class ServerBinaryDiscoveryTest {
         env = { null },
         pathLookup = nothingOnPath,
         cacheLookup = nothingCached,
-      )
+      ),
     )
   }
 

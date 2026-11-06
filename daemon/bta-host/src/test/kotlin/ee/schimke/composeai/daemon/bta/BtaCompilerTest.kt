@@ -71,7 +71,7 @@ class BtaCompilerTest {
 
     println("[soak] per-iteration ms (n=${durationsMs.size}): $durationsMs")
     println(
-      "[soak] first=${durationsMs.first()} median=${durationsMs.sorted()[durationsMs.size / 2]} last=${durationsMs.last()}"
+      "[soak] first=${durationsMs.first()} median=${durationsMs.sorted()[durationsMs.size / 2]} last=${durationsMs.last()}",
     )
 
     // Every iteration must have produced a usable class. The soak loop returns early on a failure,
@@ -96,7 +96,7 @@ class BtaCompilerTest {
     println(
       if (clearedAt >= 0)
         "[soak] compiler WeakReference cleared on GC attempt $clearedAt — no leak detected"
-      else "[soak] compiler WeakReference still live after 5 GC attempts — BTA holds something"
+      else "[soak] compiler WeakReference still live after 5 GC attempts — BTA holds something",
     )
   }
 
@@ -163,7 +163,7 @@ class BtaCompilerTest {
       @Composable
       fun Greeting(name: String): String = "Hello, " + name
       """
-        .trimIndent()
+        .trimIndent(),
     )
     val out = tmp.newFolder("out").toPath()
 
@@ -217,7 +217,7 @@ class BtaCompilerTest {
       System.getProperty("composeai.bta.testRuntimeClasspath")
         ?: error(
           "BTA spike test needs the runtime classpath; rerun via `./gradlew " +
-            ":daemon:bta-host:test` (build.gradle.kts populates the system property)."
+            ":daemon:bta-host:test` (build.gradle.kts populates the system property).",
         )
     return raw.split(File.pathSeparator).map { Path.of(it) }
   }

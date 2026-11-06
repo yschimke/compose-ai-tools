@@ -116,7 +116,7 @@ class ComposeLineFloorTest {
           name = "ui",
           version = "1.7.6",
           floorComposeLine = false,
-        )
+        ),
       )
       .isNull()
 

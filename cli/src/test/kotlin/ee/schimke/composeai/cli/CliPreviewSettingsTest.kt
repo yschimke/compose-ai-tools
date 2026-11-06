@@ -46,7 +46,7 @@ class CliPreviewSettingsTest {
             "renderResult": "file"
           }
         }
-        """
+        """,
       )
     assertEquals(CliPreviewSettings("id:pixel_5", true, 1.5, "ja-JP"), settings)
   }

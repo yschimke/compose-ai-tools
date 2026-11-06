@@ -57,7 +57,7 @@ fun FadeInBoxAnimatedPreview() {
         Modifier.size(96.dp)
           .alpha(alpha)
           .clip(RoundedCornerShape(16.dp))
-          .background(MaterialTheme.colorScheme.primary)
+          .background(MaterialTheme.colorScheme.primary),
     )
   }
 }

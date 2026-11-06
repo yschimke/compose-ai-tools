@@ -86,7 +86,7 @@ object DeviceArtPrefetch {
           // hint why.
           logger?.warn(
             "device-art prefetch failed for $artId/$resource: " +
-              "${t.javaClass.simpleName}: ${t.message}"
+              "${t.javaClass.simpleName}: ${t.message}",
           )
         }
       }

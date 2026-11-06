@@ -127,7 +127,7 @@ class DaemonBootstrapTaskTest {
         classpath.from(cpJar)
         jvmArgs.set(listOf("--add-opens=java.base/java.lang=ALL-UNNAMED", "-Xmx1024m"))
         systemProperties.set(
-          mapOf("robolectric.graphicsMode" to "NATIVE", "composeai.daemon.maxHeapMb" to "1024")
+          mapOf("robolectric.graphicsMode" to "NATIVE", "composeai.daemon.maxHeapMb" to "1024"),
         )
         workingDirectory.set(tempDir.root.absolutePath)
         manifestPath.set("/abs/previews.json")
@@ -173,8 +173,8 @@ class DaemonBootstrapTaskTest {
         systemProperties.set(
           mapOf(
             "composeai.daemon.userClassDirs" to
-              "/abs/build/intermediates/built_in_kotlinc/debug/classes:/abs/build/tmp/kotlin-classes/debug"
-          )
+              "/abs/build/intermediates/built_in_kotlinc/debug/classes:/abs/build/tmp/kotlin-classes/debug",
+          ),
         )
         workingDirectory.set(tempDir.root.absolutePath)
         manifestPath.set("/abs/previews.json")
@@ -216,7 +216,7 @@ class DaemonBootstrapTaskTest {
         mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
         jvmArgs.set(emptyList())
         systemProperties.set(
-          mapOf("composeai.daemon.cheapSignalFiles" to cheapPaths.joinToString(File.pathSeparator))
+          mapOf("composeai.daemon.cheapSignalFiles" to cheapPaths.joinToString(File.pathSeparator)),
         )
         workingDirectory.set(tempDir.root.absolutePath)
         manifestPath.set("/abs/previews.json")
@@ -408,7 +408,7 @@ class DaemonBootstrapTaskTest {
     warmSpare.set(true)
     mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
     classpath.from(
-      File(tempDir.root, "stub-cp.jar").apply { if (!exists()) writeText("placeholder") }
+      File(tempDir.root, "stub-cp.jar").apply { if (!exists()) writeText("placeholder") },
     )
     jvmArgs.set(listOf("-Xmx1024m"))
     systemProperties.set(mapOf("composeai.daemon.maxHeapMb" to "1024"))

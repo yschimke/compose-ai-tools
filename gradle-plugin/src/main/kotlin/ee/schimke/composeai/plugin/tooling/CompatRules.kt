@@ -334,7 +334,7 @@ internal object CompatRules {
         "Upgrade main-variant activity-compose to >= $NAVIGATIONEVENT_REQUIRES_ACTIVITY, or avoid transitively pulling navigationevent into tests.",
       remediationCommands =
         listOf(
-          "implementation(\"androidx.activity:activity-compose:$NAVIGATIONEVENT_REQUIRES_ACTIVITY\")"
+          "implementation(\"androidx.activity:activity-compose:$NAVIGATIONEVENT_REQUIRES_ACTIVITY\")",
         ),
       docsUrl = DOCS_NAVIGATIONEVENT,
     )
@@ -403,7 +403,7 @@ internal object CompatRules {
       remediationSummary = "Declare a Compose BOM to align all compose-* artifact versions.",
       remediationCommands =
         listOf(
-          "implementation(platform(\"androidx.compose:compose-bom:${suggestedComposeBom()}\"))"
+          "implementation(platform(\"androidx.compose:compose-bom:${suggestedComposeBom()}\"))",
         ),
       docsUrl = null,
     )

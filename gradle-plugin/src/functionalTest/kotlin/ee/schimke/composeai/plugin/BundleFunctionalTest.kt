@@ -52,7 +52,7 @@ class BundleFunctionalTest {
         }
         rootProject.name = "test-bundle"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -75,7 +75,7 @@ class BundleFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -102,7 +102,7 @@ class BundleFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(srcDir, "Blue.kt")
       .writeText(
@@ -124,7 +124,7 @@ class BundleFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Blue))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -403,7 +403,7 @@ class BundleFunctionalTest {
         @Target(AnnotationTarget.FIELD)
         annotation class ColorCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Tokens.kt")
       .writeText(
@@ -415,7 +415,7 @@ class BundleFunctionalTest {
 
         @ColorCatalog(group = "Brand") val Coral: Color = Color(0xFFFF6F61)
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -479,7 +479,7 @@ class BundleFunctionalTest {
         @Target(AnnotationTarget.CLASS)
         annotation class ThemeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Themes.kt")
       .writeText(
@@ -490,7 +490,7 @@ class BundleFunctionalTest {
 
         @ThemeCatalog(name = "Brand Light") class BrandLightTheme
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -871,7 +871,7 @@ class BundleFunctionalTest {
           }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     GradleRunner.create()

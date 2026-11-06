@@ -176,7 +176,7 @@ class TaskListConfigureActivity : Activity() {
       TextView(this).apply {
         text = "Which list should the widget show?"
         textSize = 18f
-      }
+      },
     )
     for (name in listOf("Work", "Home", "Errands")) {
       layout.addView(
@@ -189,7 +189,7 @@ class TaskListConfigureActivity : Activity() {
             setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
             finish()
           }
-        }
+        },
       )
     }
     setContentView(layout)

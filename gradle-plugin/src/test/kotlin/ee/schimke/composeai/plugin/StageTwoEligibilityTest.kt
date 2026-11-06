@@ -65,8 +65,8 @@ class StageTwoEligibilityTest {
             "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar",
             "kotlin-serialization-compiler-plugin-embeddable-2.3.20.jar",
             "kotlin-parcelize-compiler-2.3.20.jar",
-          )
-        )
+          ),
+        ),
       )
       .isNull()
   }
@@ -78,7 +78,7 @@ class StageTwoEligibilityTest {
         listOf(
           "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar",
           "kotlin-allopen-compiler-plugin-embeddable-2.3.20.jar",
-        )
+        ),
       )
     assertThat(reason).isNotNull()
     assertThat(reason).contains("kotlin-allopen-compiler-plugin-embeddable-2.3.20.jar")

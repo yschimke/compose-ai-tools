@@ -60,7 +60,7 @@ fun MultiTouchDrawingSeededPreview() {
           Offset(150f, 150f),
           Offset(185f, 115f),
           Offset(210f, 145f),
-        )
+        ),
       ),
   )
 }
@@ -132,7 +132,7 @@ private fun MultiTouchDrawingCanvas(
           }
           inProgress = emptyList()
         }
-      }
+      },
   ) {
     val pivot = Offset(size.width / 2f, size.height / 2f)
     scale(scaleX = scale, scaleY = scale, pivot = pivot) {

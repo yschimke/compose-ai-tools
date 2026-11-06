@@ -156,7 +156,7 @@ internal class SourceIndex private constructor(private val root: File) {
   companion object {
     private val DECLARATION =
       Regex(
-        """^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:private|internal|public|inline)\s+)*fun\s+(?:<[^>]*>\s*)?([A-Z]\w*)\s*\("""
+        """^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:private|internal|public|inline)\s+)*fun\s+(?:<[^>]*>\s*)?([A-Z]\w*)\s*\(""",
       )
     private val cache = mutableMapOf<String, SourceIndex>()
 

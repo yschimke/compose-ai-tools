@@ -49,7 +49,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
         }
         rootProject.name = "test-desktop-graph-alignment"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -102,7 +102,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

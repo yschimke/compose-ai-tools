@@ -96,7 +96,7 @@ internal class RcCommand(
     // means stdout, not a file named `-`.
     if (out == null || out == "-") {
       fail(
-        "rc compile: --output <file.rc> is required (a .rc document is binary; `-` is not stdout here)"
+        "rc compile: --output <file.rc> is required (a .rc document is binary; `-` is not stdout here)",
       )
     }
     // `compile` is one-way, so overwriting the authoring source with its output loses it.
@@ -104,7 +104,7 @@ internal class RcCommand(
       fail(
         "rc compile: --output would overwrite the authoring JSON being compiled ($out). " +
           "Compiling is one-way — a .rc cannot be turned back into its source — so this would " +
-          "destroy it. Name a different file."
+          "destroy it. Name a different file.",
       )
     }
     writing("rc compile", out) { path -> fileSystem.write(path) { write(bytes) } }
@@ -126,7 +126,7 @@ internal class RcCommand(
       if (out != null) {
         fail(
           "rc dump: --output does not apply to a directory — each document is written beside its " +
-            "source as <stem>.rc.json. Drop it, or dump one file at a time."
+            "source as <stem>.rc.json. Drop it, or dump one file at a time.",
         )
       }
       dumpTree(file, compact)
@@ -143,7 +143,7 @@ internal class RcCommand(
       // are canonicalised; an output that doesn't exist yet can't be the input.
       fail(
         "rc dump: --output would overwrite the document being dumped ($out). Document JSON " +
-          "cannot be compiled back, so this would destroy it — name a different file."
+          "cannot be compiled back, so this would destroy it — name a different file.",
       )
     } else {
       writing("rc dump", out) { path -> fileSystem.write(path) { writeUtf8(text + "\n") } }
@@ -162,7 +162,7 @@ internal class RcCommand(
       else ->
         fail(
           "$what: expected $expected, got ${positionals.size} " +
-            "(${positionals.joinToString(", ")}) — this command takes one at a time"
+            "(${positionals.joinToString(", ")}) — this command takes one at a time",
         )
     }
   }
@@ -254,13 +254,13 @@ internal class RcCommand(
     if (documents.isEmpty() && unstattable.isEmpty()) {
       fail(
         walked.stoppedBy?.let { "rc dump: could not list $root: $it" }
-          ?: "rc dump: no .rc documents under $root"
+          ?: "rc dump: no .rc documents under $root",
       )
     }
     walked.stoppedBy?.let {
       stderr(
         "compose-preview: $root: directory listing failed part-way ($it) — dumping the " +
-          "${documents.size} document(s) enumerated before it, and exiting non-zero."
+          "${documents.size} document(s) enumerated before it, and exiting non-zero.",
       )
     }
 
@@ -277,7 +277,7 @@ internal class RcCommand(
             else
               "compose-preview: $target: refusing to overwrite — it is not a document dump. " +
                 "Document JSON cannot be compiled back, so replacing authoring JSON here would " +
-                "destroy it."
+                "destroy it.",
           )
           continue
         }
@@ -389,7 +389,7 @@ internal class RcCommand(
     }
     throw OkioIOException(
       "could not claim a temporary name beside $target after $MAX_TEMP_ATTEMPTS attempts" +
-        (lastFailure?.message?.let { " (last: $it)" } ?: "")
+        (lastFailure?.message?.let { " (last: $it)" } ?: ""),
     )
   }
 
@@ -470,7 +470,7 @@ internal class RcCommand(
         "$root have names this JVM cannot decode — sun.jnu.encoding is " +
         "${System.getProperty("sun.jnu.encoding")}, and a preview id can carry an em-dash. " +
         "Re-run with a UTF-8 locale (LANG=C.UTF-8). Refusing rather than reporting an empty tree, " +
-        "which is what this looks like otherwise."
+        "which is what this looks like otherwise.",
     )
   }
 
@@ -512,7 +512,7 @@ internal class RcCommand(
       resolveProjectServeUrl(root, args, env)
         ?: fail(
           "rc upload: needs a host — pass --serve-url https://… (or set \$$SERVE_URL_ENV, or " +
-            "$SERVE_URL_PROPERTY in gradle.properties). The host must run `serve --accept-docs`."
+            "$SERVE_URL_PROPERTY in gradle.properties). The host must run `serve --accept-docs`.",
         )
     val trust =
       confirmProjectServeHost(
@@ -540,7 +540,7 @@ internal class RcCommand(
         val expiry = result.response.expiresIn?.let { ", expires in $it" } ?: ""
         stderr(
           "compose-preview: uploaded $name (${header.byteLength} bytes) to " +
-            "${ServeDocUploader.redactedUrl(url)}$expiry — anyone with the link can open it"
+            "${ServeDocUploader.redactedUrl(url)}$expiry — anyone with the link can open it",
         )
       }
     }
@@ -626,7 +626,7 @@ internal class RcCommand(
       |modifier shorthands. `dump` writes the DOCUMENT dialect — the operation stream, for
       |reading and diffing. Dumping a compiled document does not give you back its source.
       """
-        .trimMargin()
+        .trimMargin(),
     )
   }
 

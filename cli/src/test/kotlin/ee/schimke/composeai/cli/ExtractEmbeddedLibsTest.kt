@@ -51,7 +51,7 @@ class ExtractEmbeddedLibsTest {
           // Intentionally out of order to prove the result is name-sorted.
           "libs/zebra.jar" to byteArrayOf(9),
           "libs/alpha.jar" to byteArrayOf(7),
-        )
+        ),
       )
 
     val out = BundleReader.extractEmbeddedLibs(zip, libsDir("a"))
@@ -69,7 +69,7 @@ class ExtractEmbeddedLibsTest {
           "bundle.json" to "{}".toByteArray(),
           "classes/app.jar" to byteArrayOf(1),
           "previews.json" to "{}".toByteArray(),
-        )
+        ),
       )
 
     assertTrue(BundleReader.extractEmbeddedLibs(zip, libsDir("b")).isEmpty())
@@ -83,7 +83,7 @@ class ExtractEmbeddedLibsTest {
           "libs/keep.jar" to byteArrayOf(1),
           "libs/notes.txt" to byteArrayOf(2), // not a .jar — skipped
           "libs/nested/deep.jar" to byteArrayOf(3), // nested — taken, flattened to basename
-        )
+        ),
       )
 
     val out = BundleReader.extractEmbeddedLibs(zip, libsDir("c"))

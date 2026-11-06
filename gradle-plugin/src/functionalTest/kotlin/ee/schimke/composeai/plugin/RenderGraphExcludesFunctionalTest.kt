@@ -45,7 +45,7 @@ class RenderGraphExcludesFunctionalTest {
         rootProject.name = "test-render-graph-excludes"
         include(":constraints")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // The consumer's version-constraints platform: `strictly` + `reject` on every module it
@@ -71,7 +71,7 @@ class RenderGraphExcludesFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -112,7 +112,7 @@ class RenderGraphExcludesFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -146,7 +146,7 @@ class RenderGraphExcludesFunctionalTest {
     val projectDir =
       createTestProject(
         renderGraphBlock =
-          """renderGraph { exclude(group = "com.example", module = "constraints") }"""
+          """renderGraph { exclude(group = "com.example", module = "constraints") }""",
       )
 
     val result = runner(projectDir).build()
@@ -172,7 +172,7 @@ class RenderGraphExcludesFunctionalTest {
     val projectDir =
       createTestProject(
         renderGraphBlock =
-          """renderGraph { exclude(group = "com.example", module = "constraints") }"""
+          """renderGraph { exclude(group = "com.example", module = "constraints") }""",
       )
     File(projectDir, "build.gradle.kts")
       .appendText(
@@ -187,7 +187,7 @@ class RenderGraphExcludesFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =

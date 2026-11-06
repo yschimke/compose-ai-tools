@@ -126,8 +126,8 @@ public class ThemeCacheStore(
     val wrote = runCatching {
       file.writeText(
         json.encodeToString(
-          inputs.copy(createdAtEpochMillis = createdAt, dirtyBeforeEpochMillis = boundary)
-        )
+          inputs.copy(createdAtEpochMillis = createdAt, dirtyBeforeEpochMillis = boundary),
+        ),
       )
     }
       .onFailure { recordFailure(dir.name, "manifest: ${it.message}") }
@@ -362,7 +362,7 @@ public class ThemeCacheStore(
               val modified = File(dir, "$name$PNG_SUFFIX").lastModified()
               // An unreadable timestamp is treated as dirty.
               modified == 0L || modified < boundary
-            }
+            },
           )
         }
       }

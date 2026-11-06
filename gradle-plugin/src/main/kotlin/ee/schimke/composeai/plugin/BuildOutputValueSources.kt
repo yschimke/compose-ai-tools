@@ -71,7 +71,7 @@ internal abstract class AutoShardCountValueSource :
     val previewsJson = parameters.previewsJson.get()
     if (!previewsJson.exists()) {
       logger.info(
-        "compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run"
+        "compose-ai-tools: shards=auto but previews.json missing; defaulting to 1 for this run",
       )
       return 1
     }
@@ -96,7 +96,7 @@ internal abstract class AutoShardCountValueSource :
       "compose-ai-tools: shards=auto → $resolved " +
         "(rows=$rowCount, totalCost=${"%.1f".format(totalCost)}, " +
         "maxRowCost=${"%.1f".format(maxIndividualCost)}, " +
-        "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)"
+        "cores=${Runtime.getRuntime().availableProcessors()}, mem=$memTag)",
     )
     return resolved
   }

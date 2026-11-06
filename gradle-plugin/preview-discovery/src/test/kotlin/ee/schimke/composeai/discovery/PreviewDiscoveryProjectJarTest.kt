@@ -45,7 +45,7 @@ class PreviewDiscoveryProjectJarTest {
           projectDirectory = tempDir.root,
           failOnEmpty = true,
           projectClassJars = listOf(jar),
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
@@ -77,7 +77,7 @@ class PreviewDiscoveryProjectJarTest {
           variantName = "debug",
           projectDirectory = tempDir.root,
           failOnEmpty = false,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
@@ -100,7 +100,7 @@ class PreviewDiscoveryProjectJarTest {
           projectDirectory = tempDir.root,
           failOnEmpty = true,
           projectClassJars = listOf(jar),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     val base = outcome.manifest.previews.single { it.overrides == null }
@@ -130,7 +130,7 @@ class PreviewDiscoveryProjectJarTest {
           projectDirectory = tempDir.root,
           failOnEmpty = true,
           projectClassJars = listOf(jar),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     val variants = outcome.manifest.previews.mapNotNull { it.overrides }.associateBy { it.name }
@@ -160,7 +160,7 @@ class PreviewDiscoveryProjectJarTest {
           projectDirectory = tempDir.root,
           failOnEmpty = true,
           projectClassJars = listOf(jar),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     val catalog = outcome.manifest.previews.single().catalog
@@ -186,7 +186,7 @@ class PreviewDiscoveryProjectJarTest {
           projectDirectory = tempDir.root,
           failOnEmpty = true,
           projectClassJars = listOf(jar),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     val captures = outcome.manifest.previews.single().captures

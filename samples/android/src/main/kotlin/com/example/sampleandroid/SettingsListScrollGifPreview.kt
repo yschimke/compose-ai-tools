@@ -111,7 +111,7 @@ private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = M
     // geometry reference even on a preview where nothing is being
     // dragged.
     Box(
-      Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(2.dp))
+      Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(2.dp)),
     )
     // BoxWithConstraints so the thumb's Dp math uses the parent's measured height.
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -120,7 +120,7 @@ private fun ScrollPositionIndicator(state: LazyListState, modifier: Modifier = M
         Modifier.offset(y = h * start)
           .fillMaxWidth()
           .height(h * (end - start))
-          .background(Color(0xFF6750A4).copy(alpha = 0.65f), RoundedCornerShape(2.dp))
+          .background(Color(0xFF6750A4).copy(alpha = 0.65f), RoundedCornerShape(2.dp)),
       )
     }
   }

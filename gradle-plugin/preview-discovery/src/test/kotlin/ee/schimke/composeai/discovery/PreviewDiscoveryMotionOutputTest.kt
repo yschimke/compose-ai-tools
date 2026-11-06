@@ -77,7 +77,7 @@ class PreviewDiscoveryMotionOutputTest {
   @Test
   fun `an APNG animated preview beside a settled still takes the plain stem with its own extension`() {
     assertThat(
-        outputs(animation = animation(MotionFormat.APNG), settle = SettleCapture(afterMs = 400))
+        outputs(animation = animation(MotionFormat.APNG), settle = SettleCapture(afterMs = 400)),
       )
       .containsExactly("renders/$id.png", "renders/$id.apng")
   }
@@ -113,18 +113,18 @@ class PreviewDiscoveryMotionOutputTest {
   fun `motion capture kind is read off the capture, not its extension`() {
     assertThat(
         PreviewDiscovery.motionKindOf(
-          Capture(renderOutput = "renders/a.png", animation = animation(MotionFormat.APNG))
-        )
+          Capture(renderOutput = "renders/a.png", animation = animation(MotionFormat.APNG)),
+        ),
       )
       .isEqualTo(PreviewDiscovery.MotionKind.ANIMATION)
     assertThat(
         PreviewDiscovery.motionKindOf(
-          Capture(renderOutput = "renders/a.png", interaction = interaction())
-        )
+          Capture(renderOutput = "renders/a.png", interaction = interaction()),
+        ),
       )
       .isEqualTo(PreviewDiscovery.MotionKind.INTERACTION)
     assertThat(
-        PreviewDiscovery.motionKindOf(Capture(renderOutput = "renders/a.gif", focusGif = focusGif))
+        PreviewDiscovery.motionKindOf(Capture(renderOutput = "renders/a.gif", focusGif = focusGif)),
       )
       .isEqualTo(PreviewDiscovery.MotionKind.FOCUS_GIF)
     // An extension alone says nothing: a `.gif`-named still is a still, and so is the Lottie
@@ -144,7 +144,7 @@ class PreviewDiscoveryMotionOutputTest {
     assertThat(
         PreviewDiscovery.separateMotionOutputs(listOf(still, motion, interactionMotion)).map {
           it.renderOutput
-        }
+        },
       )
       .containsExactly("renders/Foo.png", "renders/Foo_anim.png", "renders/FOO_interaction.PNG")
       .inOrder()
@@ -224,7 +224,7 @@ class PreviewDiscoveryMotionOutputTest {
             failOnEmpty = false,
             resourceDirs = listOf(res),
             animatedPreviewApngSupported = apngSupported,
-          )
+          ),
         ) as PreviewDiscovery.Outcome.Success
       val outputs = outcome.manifest.previews.single().captures.map { it.renderOutput }
       assertThat(outputs).hasSize(2)

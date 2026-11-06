@@ -62,7 +62,7 @@ class GradleWriteLocksTest {
         rootProject.name = "write-locks-repro"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "build.gradle.kts")
       .writeText(
@@ -77,7 +77,7 @@ class GradleWriteLocksTest {
             dependencies { classpath("com.squareup.okio:okio:3.9.0") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "buildscript-gradle.lockfile")
       .writeText("# This is a Gradle generated file for dependency locking.\nempty=classpath\n")

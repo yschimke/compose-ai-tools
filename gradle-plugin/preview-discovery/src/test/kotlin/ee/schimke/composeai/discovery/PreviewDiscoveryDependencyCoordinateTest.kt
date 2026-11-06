@@ -46,7 +46,7 @@ class PreviewDiscoveryDependencyCoordinateTest {
           variantName = "debug",
           projectDirectory = classDir,
           failOnEmpty = false,
-        )
+        ),
       )
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
     return (outcome as PreviewDiscovery.Outcome.Success).warnings
@@ -92,7 +92,7 @@ class PreviewDiscoveryDependencyCoordinateTest {
     assertThat(discoverWith(jar, emptyMap()).joinToString("\n")).contains(droppedMessage)
     assertThat(
         discoverWith(jar, mapOf(jar.absolutePath to "androidx.compose.material3:material3:1.4.0"))
-          .joinToString("\n")
+          .joinToString("\n"),
       )
       .doesNotContain(droppedMessage)
   }
@@ -118,7 +118,7 @@ class PreviewDiscoveryDependencyCoordinateTest {
       .isNotEmpty()
     assertThat(
         discoverWith(jar, mapOf(jar.absolutePath to "com.squareup.okhttp3:okhttp:5.0.0"))
-          .joinToString("\n")
+          .joinToString("\n"),
       )
       .contains(droppedMessage)
   }

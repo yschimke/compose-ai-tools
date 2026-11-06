@@ -128,8 +128,8 @@ class TypedValueTypesTest {
     assertThat(wrapped)
       .isEqualTo(
         json(
-          """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"timeout"},"retries":{"type":"int","value":2}}}"""
-        )
+          """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"timeout"},"retries":{"type":"int","value":2}}}""",
+        ),
       )
     assertThat(codec.unwrap(wrapped)).isEqualTo(failed)
     assertThat(codec.unwrap(json("""{"type":"union","case":"idle"}""")))
@@ -137,9 +137,9 @@ class TypedValueTypesTest {
     assertThat(
         codec.unwrap(
           json(
-            """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"x"}}}"""
-          )
-        )
+            """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"x"}}}""",
+          ),
+        ),
       )
       .isEqualTo(FixtureStatus.Failed("x", retries = 0))
     for (bad in
@@ -175,7 +175,7 @@ class TypedValueTypesTest {
     assertThat(Nullable(nullableSeen).validateAgainst(nullableSeen)).isEmpty()
     assertThat(Nullable(plainSeen).validateAgainst(plainSeen))
       .containsExactly(
-        "acme/seen.seen: expected kotlin.time.Instant?, discovered kotlin.time.Instant"
+        "acme/seen.seen: expected kotlin.time.Instant?, discovered kotlin.time.Instant",
       )
     val capability = Nullable(nullableSeen).seen.capability().jsonObject
     assertThat(capability["nullable"]).isEqualTo(JsonPrimitive(true))
@@ -241,7 +241,7 @@ class TypedValueTypesTest {
               "storedKb" to from(storedKb),
               "latitude" to from(latitude),
             ),
-          )
+          ),
         )
       }
     }
@@ -255,26 +255,26 @@ class TypedValueTypesTest {
         mapOf(
           "status" to
             json(
-              """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"timeout"}}}"""
+              """{"type":"union","case":"failed","fields":{"message":{"type":"string","value":"timeout"}}}""",
             ),
           "key" to json("""{"type":"string","value":"a1b2"}"""),
           "seen" to json("""{"type":"null"}"""),
           "storedKb" to json("""{"type":"int","value":4294967296}"""),
           "latitude" to json("""{"type":"number","value":59.437}"""),
-        )
+        ),
       ) as ExportProjection.Lowered.Node
     assertThat(failed.arguments.keys).containsExactly("status", "key", "storedKb", "latitude")
     val source = generated(failed, target)
     assertThat(source)
       .contains(
-        "status = FixtureStatus.Failed(message = \"timeout\", retries = 0), key = FixtureKey.fromHex(\"a1b2\"), storedKb = 4294967296L, latitude = 59.437"
+        "status = FixtureStatus.Failed(message = \"timeout\", retries = 0), key = FixtureKey.fromHex(\"a1b2\"), storedKb = 4294967296L, latitude = 59.437",
       )
     val idle =
       projection.lower(
         mapOf(
           "status" to json("""{"type":"union","case":"idle"}"""),
           "seen" to json("""{"type":"string","value":"2026-10-12T08:00:00Z"}"""),
-        )
+        ),
       ) as ExportProjection.Lowered.Node
     val idleSource = generated(idle, target)
     assertThat(idleSource).contains("status = FixtureStatus.Idle")
@@ -314,8 +314,8 @@ class TypedValueTypesTest {
     assertThat(wrapped)
       .isEqualTo(
         json(
-          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}"""
-        )
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}""",
+        ),
       )
     assertThat(codec.unwrap(wrapped)).containsExactly("a", "b").inOrder()
     assertThat(codec.kotlinType).isEqualTo("kotlin.collections.Set")
@@ -323,8 +323,8 @@ class TypedValueTypesTest {
     assertThrows(IllegalArgumentException::class.java) {
       codec.unwrap(
         json(
-          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"a"}]}"""
-        )
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"a"}]}""",
+        ),
       )
     }
   }
@@ -374,7 +374,7 @@ class TypedValueTypesTest {
         mapOf(
           "tags" to json("""{"type":"list","values":[{"type":"string","value":"vip"}]}"""),
           "level" to json("""{"type":"string","value":"High"}"""),
-        )
+        ),
       ) as ExportProjection.Lowered.Node
     val source = generated(node, target)
     assertThat(source).contains("tags = setOf(\"vip\")")
@@ -385,9 +385,9 @@ class TypedValueTypesTest {
         mapOf(
           "tags" to
             json(
-              """{"type":"list","values":[{"type":"string","value":"vip"},{"type":"string","value":"vip"}]}"""
-            )
-        )
+              """{"type":"list","values":[{"type":"string","value":"vip"},{"type":"string","value":"vip"}]}""",
+            ),
+        ),
       )
     assertThat((repeated as ExportProjection.Lowered.Refused).reasons.single())
       .contains("a set holds each value once")

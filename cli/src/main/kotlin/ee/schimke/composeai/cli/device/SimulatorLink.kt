@@ -83,7 +83,7 @@ internal class SimulatorLink(command: List<String>, private val onLine: (String)
       Json.encodeToString(
         JsonObject.serializer(),
         JsonObject(command + ("id" to JsonPrimitive(id))),
-      )
+      ),
     )
     val answer =
       try {
@@ -105,7 +105,7 @@ internal class SimulatorLink(command: List<String>, private val onLine: (String)
       buildJsonObject {
         put("cmd", JsonPrimitive(cmd))
         for ((k, v) in args) put(k, v)
-      }
+      },
     )
 
   private fun write(line: String) {

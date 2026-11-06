@@ -45,7 +45,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
     if (fileSystem.metadataOrNull(descriptorPath)?.isRegularFile != true) {
       throw RenderSessionException(
         "Daemon launch descriptor not found at ${descriptorFile.path}. " +
-          "Run `:<modulePath>:composePreviewDaemonStart` to materialise it."
+          "Run `:<modulePath>:composePreviewDaemonStart` to materialise it.",
       )
     }
     val descriptor =
@@ -188,7 +188,7 @@ public object SubprocessRenderSessions : RenderSessionFactory {
           "against defaults for whatever the newer schema added."
     throw RenderSessionException(
       "Daemon launch descriptor at $path declares schemaVersion=$found, but this build of " +
-        "render-session-subprocess speaks version $DAEMON_DESCRIPTOR_SCHEMA_VERSION. $remedy"
+        "render-session-subprocess speaks version $DAEMON_DESCRIPTOR_SCHEMA_VERSION. $remedy",
     )
   }
 

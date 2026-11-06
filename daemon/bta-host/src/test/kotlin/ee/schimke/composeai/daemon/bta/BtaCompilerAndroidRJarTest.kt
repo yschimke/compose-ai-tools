@@ -57,7 +57,7 @@ class BtaCompilerAndroidRJarTest {
       @Composable
       fun Hi(): Int = R.string.app_name
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val compiler = BtaCompiler(implClasspath = implClasspath)
@@ -74,7 +74,7 @@ class BtaCompilerAndroidRJarTest {
               listOf(composePluginJar),
               emptyList(),
               emptySet(),
-            )
+            ),
           ),
       )
 
@@ -125,7 +125,7 @@ class BtaCompilerAndroidRJarTest {
         }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val classesDir = workDir.resolve("classes").also { it.toFile().mkdirs() }

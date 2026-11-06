@@ -66,7 +66,8 @@ private fun ShaderCard(sksl: String) {
   val px = with(LocalDensity.current) { sizeDp.toPx() }
   Box(
     modifier =
-      Modifier.size(sizeDp).background(remember(sksl, px) { shaderBrush(sksl, px, px, FIXED_TIME) })
+      Modifier.size(sizeDp)
+        .background(remember(sksl, px) { shaderBrush(sksl, px, px, FIXED_TIME) }),
   )
 }
 
@@ -92,7 +93,8 @@ private fun AnimatedShaderCard(sksl: String) {
   builder.uniform("iResolution", px, px)
   builder.uniform("iTime", time)
   Box(
-    modifier = Modifier.size(sizeDp).background(ShaderBrush(builder.makeShader().asComposeShader()))
+    modifier =
+      Modifier.size(sizeDp).background(ShaderBrush(builder.makeShader().asComposeShader())),
   )
 }
 
@@ -275,7 +277,9 @@ fun ShaderRenderEffectPreview() {
     }
   Box(
     modifier =
-      Modifier.size(sizeDp).graphicsLayer(renderEffect = renderEffect).background(Color(0xFF101820))
+      Modifier.size(sizeDp)
+        .graphicsLayer(renderEffect = renderEffect)
+        .background(Color(0xFF101820)),
   ) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
       Text(
@@ -289,7 +293,7 @@ fun ShaderRenderEffectPreview() {
       Text("and warps it", color = Color.White, fontSize = 20.sp)
       Box(
         modifier =
-          Modifier.padding(top = 12.dp).size(60.dp).background(MaterialTheme.colorScheme.primary)
+          Modifier.padding(top = 12.dp).size(60.dp).background(MaterialTheme.colorScheme.primary),
       )
     }
   }

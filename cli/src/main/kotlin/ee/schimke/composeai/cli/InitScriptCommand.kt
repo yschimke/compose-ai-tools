@@ -46,7 +46,7 @@ class InitScriptCommand(
         materializeInitScript(storageDir, pluginVersion, fileSystem)
       } catch (e: Exception) {
         stderr(
-          "compose-preview init-script: failed to materialise init script in $storageDir: ${e.message}"
+          "compose-preview init-script: failed to materialise init script in $storageDir: ${e.message}",
         )
         exitProcess(1)
       }

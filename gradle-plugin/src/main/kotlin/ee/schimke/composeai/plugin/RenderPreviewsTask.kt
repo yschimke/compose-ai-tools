@@ -294,7 +294,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
 
     val rawManifestForCleanup =
       rawManifest.copy(
-        previews = PreviewPermutations.expand(rawManifest.previews, permutationValues)
+        previews = PreviewPermutations.expand(rawManifest.previews, permutationValues),
       )
     renderWithCompose(manifest, rawManifestForCleanup, outDir)
 
@@ -359,7 +359,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         if (warm > 0) {
           logger.lifecycle(
             "composePreviewRender: $warm capture(s) drawn on a warm renderer " +
-              "(no per-capture JVM fork)."
+              "(no per-capture JVM fork).",
           )
         }
       }
@@ -548,13 +548,13 @@ abstract class RenderPreviewsTask : DefaultTask() {
         is DesktopRenderWorkerPool.WorkerResult.Ok -> return
         is DesktopRenderWorkerPool.WorkerResult.Failed ->
           throw GradleException(
-            "composePreviewRender: ${preview.className}#${preview.functionName} — ${pooled.reason}"
+            "composePreviewRender: ${preview.className}#${preview.functionName} — ${pooled.reason}",
           )
         is DesktopRenderWorkerPool.WorkerResult.Unusable -> {
           if (lane.fallbackNoticePrinted.compareAndSet(false, true)) {
             logger.info(
               "composePreviewRender: render worker unavailable (${pooled.reason}); " +
-                "forking per capture as before."
+                "forking per capture as before.",
             )
           }
         }
@@ -882,7 +882,7 @@ internal fun selectNamedPreviews(
           append(" more (run composePreviewDiscover for the full list).")
         }
       }
-    }
+    },
   )
 }
 
@@ -923,7 +923,7 @@ internal fun selectPreviewIds(
           append(" more (run composePreviewDiscover for the full list).")
         }
       }
-    }
+    },
   )
 }
 
@@ -939,7 +939,7 @@ private fun StringBuilder.appendEncodingHint(filters: List<String>) {
     " A requested id contains '?' and this JVM encodes process arguments as $encoding, so a" +
       " non-ASCII character in the id (an em dash, say) was replaced on the way in: re-run with a" +
       " UTF-8 locale (LC_ALL=C.UTF-8) or pass the ids as -PcomposePreview.idFilterFile=<path to a" +
-      " newline-delimited UTF-8 list>."
+      " newline-delimited UTF-8 list>.",
   )
 }
 
@@ -994,13 +994,13 @@ internal fun previewIdExclusionReport(
     add(
       "--exclude-preview-id: ${matches.size} pattern(s) over ${matches.first().total} " +
         "preview(s); ${matches.size - unmatched.size} matched, ${unmatched.size} matched nothing " +
-        "(per-pattern lines are listed only for up to $detailLimit patterns)" to false
+        "(per-pattern lines are listed only for up to $detailLimit patterns)" to false,
     )
     unmatched.take(detailLimit).forEach { add(it.line to true) }
     if (unmatched.size > detailLimit) {
       add(
         "--exclude-preview-id: … and ${unmatched.size - detailLimit} more pattern(s) matched " +
-          "nothing" to true
+          "nothing" to true,
       )
     }
   }
@@ -1040,7 +1040,7 @@ internal fun excludePreviewIds(
   throw GradleException(
     "composePreviewRender --exclude-preview-id excluded every one of the ${previews.size} " +
       "preview(s) for ${cleaned.joinToString(", ") { "'$it'" }} — nothing would render. Narrow the " +
-      "pattern; a render with no outputs packs a bundle of missing stickers."
+      "pattern; a render with no outputs packs a bundle of missing stickers.",
   )
 }
 

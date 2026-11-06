@@ -170,7 +170,7 @@ class SkikoNativePairingTest {
         listOf(
           "/cache/org.jetbrains.skiko/skiko-awt/0.148.2/skiko-awt-0.148.2.jar",
           "/opt/serve/lib-daemon-desktop/skiko-awt-runtime-linux-x64-0.144.6.jar",
-        )
+        ),
       )
 
     val diagnosis =
@@ -179,7 +179,7 @@ class SkikoNativePairingTest {
           "render failed: UnsatisfiedLinkError: 'int " +
             "org.jetbrains.skia.paragraph.ParagraphKt._nGetUnresolvedCodepointsCount(long)'",
           descriptor,
-        )
+        ),
       )
 
     assertContains(diagnosis, "bindings 0.148.2")
@@ -190,11 +190,11 @@ class SkikoNativePairingTest {
   fun `a link error with nothing to add says nothing`() {
     val coherent =
       writeDescriptor(
-        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.148.2.jar")
+        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.148.2.jar"),
       )
     val skewed =
       writeDescriptor(
-        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.144.6.jar")
+        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.144.6.jar"),
       )
     val skiaFailure =
       "render failed: UnsatisfiedLinkError: 'int org.jetbrains.skia.paragraph.ParagraphKt._n(long)'"
@@ -235,7 +235,7 @@ class SkikoNativePairingTest {
             manifestPath = File(dir, "previews.json").absolutePath,
           )
           .build(),
-      )
+      ),
     )
     return file
   }
@@ -244,7 +244,9 @@ class SkikoNativePairingTest {
   @Test
   fun `a classpath missing one half reports nothing`() {
     assertNull(
-      SkikoNativePairing.classpathSkew(listOf("/opt/serve/lib-daemon-android/robolectric-4.16.jar"))
+      SkikoNativePairing.classpathSkew(
+        listOf("/opt/serve/lib-daemon-android/robolectric-4.16.jar"),
+      ),
     )
     assertNull(
       SkikoNativePairing.classpathSkew(listOf("/cache/skiko-awt-0.148.2.jar")),

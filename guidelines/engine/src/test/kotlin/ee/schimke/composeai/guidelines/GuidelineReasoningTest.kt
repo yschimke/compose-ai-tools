@@ -29,7 +29,7 @@ class GuidelineReasoningTest {
              "source": "https://developer.android.com/b", "surfaces": ["component", "screen"]}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -77,7 +77,7 @@ class GuidelineReasoningTest {
               buildJsonObject {
                 put("message", buildJsonObject { put("content", content) })
                 put("finish_reason", finishReason)
-              }
+              },
             )
           },
         )
@@ -99,13 +99,13 @@ class GuidelineReasoningTest {
                   put("subjectId", "s${index + 1}")
                   put("verdict", "pass")
                   put("confidence", 0.9)
-                }
+                },
               )
             }
           },
         )
       }
-        .toString()
+        .toString(),
     )
 
   /** What the run log showed: cut at max_tokens with nothing written, every token reasoning. */
@@ -164,7 +164,7 @@ class GuidelineReasoningTest {
     assertThat(modelDefault["max_tokens"].toString().toInt())
       .isEqualTo(
         PreviewGuidelineRequests.replyTokenLimit(request, OpenRouterClient.REASONING_OFF) - 1_024 +
-          PreviewGuidelineRequests.REPLY_HEADROOM_TOKENS
+          PreviewGuidelineRequests.REPLY_HEADROOM_TOKENS,
       )
 
     val off = OpenRouterClient.chatBody(request, "m", OpenRouterClient.REASONING_OFF)
@@ -178,7 +178,7 @@ class GuidelineReasoningTest {
     assertThat(failure.problem)
       .isEqualTo(
         "the model spent its whole token budget reasoning (24576 reasoning tokens, billed) and " +
-          "wrote no reply"
+          "wrote no reply",
       )
     assertThat(failure.splittable).isFalse()
     // A long reply cut at max_tokens is not that: it is a size problem, split as before.
@@ -206,7 +206,7 @@ class GuidelineReasoningTest {
       .isEqualTo(
         "1 reply(ies) spent the whole token budget reasoning and wrote no usable reply (24576 " +
           "reasoning token(s) billed in all); 1 request(s) were asked again with reasoning off, " +
-          "and 1 answered. A lower reasoning effort leaves more of max_tokens to the reply"
+          "and 1 answered. A lower reasoning effort leaves more of max_tokens to the reply",
       )
   }
 
@@ -223,7 +223,7 @@ class GuidelineReasoningTest {
     assertThat(run.problems)
       .contains(
         "the model spent its whole token budget reasoning (24576 reasoning tokens, billed) and " +
-          "wrote no reply, even with reasoning off"
+          "wrote no reply, even with reasoning off",
       )
     assertThat(run.problems.none { "split" in it }).isTrue()
   }
@@ -291,7 +291,7 @@ class GuidelineReasoningTest {
     assertThat(run.problems)
       .contains(
         "1 reply(ies) were cut at max_tokens: their findings were kept, but not their " +
-          "statement that every other rule passes, so those rules are reported unchecked"
+          "statement that every other rule passes, so those rules are reported unchecked",
       )
   }
 

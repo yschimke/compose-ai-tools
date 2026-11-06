@@ -153,7 +153,7 @@ internal class DeviceShell(private val device: VirtualDevice) {
       "whoami" -> out.line("shell")
       "uname" ->
         out.line(
-          if ("-a" in args) "Linux localhost 6.1.0 #1 SMP PREEMPT aarch64 Toybox" else "Linux"
+          if ("-a" in args) "Linux localhost 6.1.0 #1 SMP PREEMPT aarch64 Toybox" else "Linux",
         )
       // `debug.layout` is the simulator's (layout bounds); the rest are the device's own.
       "getprop" -> if (args == listOf("debug.layout")) simulator(argv, out) else getprop(args, out)
@@ -286,7 +286,7 @@ internal class DeviceShell(private val device: VirtualDevice) {
     return when (args.firstOrNull()) {
       null ->
         out.line(
-          now.format(DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss zzz yyyy", Locale.ROOT))
+          now.format(DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss zzz yyyy", Locale.ROOT)),
         )
       "+%s" -> out.line(now.toEpochSecond().toString())
       else -> out.fail("date: only date and date +%s are supported")
@@ -439,7 +439,7 @@ internal object AdbText {
         val data = result.string("data") ?: index?.let { "Index=[$it]" }
         listOf(
           if (data != null) "Broadcast completed: result=1, data=\"$data\""
-          else "Broadcast completed: result=1"
+          else "Broadcast completed: result=1",
         )
       }
       "debugApp",

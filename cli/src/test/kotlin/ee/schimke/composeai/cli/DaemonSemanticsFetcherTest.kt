@@ -140,7 +140,7 @@ class DaemonSemanticsFetcherTest {
                 "BetaPreview" to """{"root":{"nodeId":"2","boundsInRoot":"0,0,6,6"}}""",
               ),
             fontsProduced = fonts,
-          )
+          ),
       )
 
     val outcome =
@@ -170,8 +170,8 @@ class DaemonSemanticsFetcherTest {
       DaemonSemanticsFetcher(
         factory =
           FakeFactory(
-            mapOf("AlphaPreview" to """{"root":{"nodeId":"1","boundsInRoot":"0,0,1,1"}}""")
-          )
+            mapOf("AlphaPreview" to """{"root":{"nodeId":"1","boundsInRoot":"0,0,1,1"}}"""),
+          ),
       )
 
     val outcome =
@@ -440,7 +440,7 @@ class DaemonSemanticsFetcherTest {
     assertTrue(
       factory.openedConfigs.all {
         it.systemPropertyOverrides["composeai.history.enabled"] == "false"
-      }
+      },
     )
     // Every id rendered by exactly one daemon, so no two daemons race on one sidecar.
     assertEquals(ids.sorted(), factory.submitted.toList().sorted())

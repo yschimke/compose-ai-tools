@@ -412,7 +412,7 @@ object PreviewTargetInference {
         hasContextReceivers = signature?.hasContextReceivers ?: false,
         requiredOptIns = signature?.requiredOptIns.orEmpty(),
         androidxOptIns = signature?.androidxOptIns.orEmpty(),
-      )
+      ),
     )
   }
 

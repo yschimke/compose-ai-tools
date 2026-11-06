@@ -100,7 +100,7 @@ public class DeferredReplyModel(
             append('\n')
           }
           append("\n## Reply schema\n\n```json\n").append(schema).append("\n```\n")
-        }
+        },
       )
   }
 
@@ -117,7 +117,7 @@ public class DeferredReplyModel(
               put("role", "assistant")
               put("content", JsonPrimitive(reply))
             }
-          }
+          },
         )
       },
     )

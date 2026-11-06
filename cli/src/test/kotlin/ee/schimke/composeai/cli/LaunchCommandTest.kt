@@ -529,7 +529,7 @@ class LaunchCommandTest {
       )
     assertTrue(
       "-Dcomposeai.simulator.fingerprint=google/sim/sim:16/X/1:user/release-keys" in
-        command("google/sim/sim:16/X/1:user/release-keys")
+        command("google/sim/sim:16/X/1:user/release-keys"),
     )
     assertTrue(command(null).none { it.startsWith("-Dcomposeai.simulator.fingerprint") })
   }
@@ -559,7 +559,7 @@ class LaunchCommandTest {
     assertTrue("-Dcomposeai.simulator.launcher=true" in command)
     assertTrue(
       "-Dcomposeai.simulator.widgets=WeatherAppWidgetReceiver;com.example.CounterWidgetReceiver" in
-        command
+        command,
     )
   }
 
@@ -716,7 +716,7 @@ class LaunchCommandTest {
     assertTrue("-Dcomposeai.simulator.playServices=none" in command("none"))
     assertFalse(command(null).any { it.startsWith("-Dcomposeai.simulator.playServices") })
     assertTrue(
-      LaunchCommand.PLAY_SERVICES_STATES.containsAll(listOf("installed", "none", "outdated"))
+      LaunchCommand.PLAY_SERVICES_STATES.containsAll(listOf("installed", "none", "outdated")),
     )
   }
 

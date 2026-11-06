@@ -127,7 +127,7 @@ class BtaCompilerBytecodeTest {
       @Composable
       fun Greeting(name: String): String = "Hello, " + name
       """
-        .trimIndent()
+        .trimIndent(),
     )
     return Fixture(
       implClasspath = implClasspath,

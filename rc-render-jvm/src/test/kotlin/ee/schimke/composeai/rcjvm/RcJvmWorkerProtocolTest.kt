@@ -17,7 +17,7 @@ class RcJvmWorkerProtocolTest {
           "-cp",
           System.getProperty("java.class.path"),
           mainClass,
-        ) + args
+        ) + args,
       )
       .redirectError(ProcessBuilder.Redirect.INHERIT)
       .start()

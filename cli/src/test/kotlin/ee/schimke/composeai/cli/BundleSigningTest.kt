@@ -122,7 +122,7 @@ class BundleSigningTest {
         digest = BundleSigning.hex(digest),
         signature =
           BundleSigning.base64(
-            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(priv.readText()), digest)
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(priv.readText()), digest),
           ),
         producer = "Test CI",
       )
@@ -147,7 +147,7 @@ class BundleSigningTest {
         digest = BundleSigning.hex(digest),
         signature =
           BundleSigning.base64(
-            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest)
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest),
           ),
       ),
     )
@@ -171,7 +171,7 @@ class BundleSigningTest {
         digest = BundleSigning.hex(digest),
         signature =
           BundleSigning.base64(
-            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(signer.privateKeyB64), digest)
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(signer.privateKeyB64), digest),
           ),
       ),
     )
@@ -192,7 +192,7 @@ class BundleSigningTest {
     val file = sampleBundle()
     val trust =
       TrustStore(
-        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*")),
       )
     val verdict =
       BundleVerifier.verify(
@@ -222,7 +222,7 @@ class BundleSigningTest {
         digest = BundleSigning.hex(digest),
         signature =
           BundleSigning.base64(
-            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest)
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest),
           ),
         provenance =
           BundleSigning.Provenance(
@@ -252,7 +252,7 @@ class BundleSigningTest {
         digest = BundleSigning.hex(digest),
         signature =
           BundleSigning.base64(
-            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest)
+            BundleSigning.signEd25519(BundleSigning.parsePrivateKey(keys.privateKeyB64), digest),
           ),
         provenance =
           BundleSigning.Provenance(

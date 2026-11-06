@@ -38,11 +38,11 @@ public object ContactSheet {
     val rows = ceil(cells.size.toDouble() / cols).toInt()
     val tileW =
       (images.mapNotNull { it?.width }.maxOrNull() ?: PLACEHOLDER_EDGE).coerceAtLeast(
-        PLACEHOLDER_EDGE
+        PLACEHOLDER_EDGE,
       )
     val tileH =
       (images.mapNotNull { it?.height }.maxOrNull() ?: PLACEHOLDER_EDGE).coerceAtLeast(
-        PLACEHOLDER_EDGE
+        PLACEHOLDER_EDGE,
       )
 
     val cellW = tileW + PADDING * 2

@@ -164,7 +164,7 @@ internal data class HandoffInputs(
                     entry.scrollMode,
                     entry.scrollLimit,
                   ),
-              )
+              ),
             ),
           // `a11y` data is served on request from the host; derived from the same render, so it
           // doesn't join the cache identity.
@@ -526,7 +526,9 @@ internal class CliEvidenceHost(
 
   override fun prefetch(needs: Map<String, List<GuidelineEvidenceNeedV1>>) {
     fetchA11y(
-      needs.filterValues { list -> list.any { it.kind == PreviewGuidelineRequests.KIND_A11Y } }.keys
+      needs
+        .filterValues { list -> list.any { it.kind == PreviewGuidelineRequests.KIND_A11Y } }
+        .keys,
     )
   }
 

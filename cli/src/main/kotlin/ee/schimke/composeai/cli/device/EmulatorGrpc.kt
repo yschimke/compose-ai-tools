@@ -115,15 +115,15 @@ internal class EmulatorGrpc(
             VmConfiguration.newBuilder()
               .setHypervisorTypeValue(VmConfiguration.VmHypervisorType.NONE_VALUE)
               .setNumberOfCpuCores(Runtime.getRuntime().availableProcessors())
-              .setRamSizeBytes(Runtime.getRuntime().maxMemory())
+              .setRamSizeBytes(Runtime.getRuntime().maxMemory()),
           )
           .setHardwareConfig(
             EntryList.newBuilder()
               .addAllEntry(
                 AvdFiles.hardware(config).map { (k, v) ->
                   Entry.newBuilder().setKey(k).setValue(v).build()
-                }
-              )
+                },
+              ),
           )
           .putAllGuestConfig(device.properties())
           .build()
@@ -160,7 +160,7 @@ internal class EmulatorGrpc(
               .setWidth(width)
               .setHeight(height)
               .setDpi(dpi)
-              .setDisplay(0)
+              .setDisplay(0),
           )
           .setMaxDisplays(1)
           .setUserConfigurable(0)
@@ -299,9 +299,9 @@ internal class EmulatorGrpc(
                   Notification.newBuilder()
                     .setBooted(
                       BootCompletedNotification.newBuilder()
-                        .setTime(((System.currentTimeMillis() - device.bootTimeMs) / 1000).toInt())
+                        .setTime(((System.currentTimeMillis() - device.bootTimeMs) / 1000).toInt()),
                     )
-                    .build()
+                    .build(),
                 )
               }
               // Held open, as the emulator's is, until the client or the device goes.
@@ -440,7 +440,7 @@ internal class EmulatorGrpc(
           Rotation.newBuilder()
             .setRotation(Rotation.SkinRotation.forNumber(quarters))
             // The proto's angle is in [-180, 180]: reverse landscape is -90.
-            .setZAxis(if (quarters == 3) -90.0 else quarters * 90.0)
+            .setZAxis(if (quarters == 3) -90.0 else quarters * 90.0),
         )
         .clearTransport()
     val builder =

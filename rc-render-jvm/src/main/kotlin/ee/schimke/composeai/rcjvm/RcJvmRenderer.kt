@@ -99,7 +99,7 @@ public fun renderRemoteDocumentToSvg(
           Modifier.size(
             with(LocalDensity.current) { widthPx.toDp() },
             with(LocalDensity.current) { heightPx.toDp() },
-          )
+          ),
         ) {
           RcContent(bytes, seeds, dark, typefaces, Modifier.fillMaxSize())
         }

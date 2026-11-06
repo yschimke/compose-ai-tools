@@ -34,7 +34,7 @@ fun RemoteImageWidget() {
   // so it serialises cleanly into the RemoteDocument byte stream.
   val fill =
     RemoteBrush.linearGradient(
-      listOf(RemoteColor(Color(0xFF1E88E5)), RemoteColor(Color(0xFF1565C0)))
+      listOf(RemoteColor(Color(0xFF1E88E5)), RemoteColor(Color(0xFF1565C0))),
     )
   RemoteBox(
     modifier = RemoteModifier.fillMaxSize().background(fill),

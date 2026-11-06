@@ -80,7 +80,8 @@ class ScreenRepetitionTest {
     refused(loop(rows = listOf(mapOf("caption" to ScreenValue.Bool(true)))), "which Bool is not")
     refused(
       loop(
-        rows = listOf(mapOf("caption" to ScreenValue.Text("ok"), "ignored" to ScreenValue.Whole(3)))
+        rows =
+          listOf(mapOf("caption" to ScreenValue.Text("ok"), "ignored" to ScreenValue.Whole(3))),
       ),
       "must supply exactly",
     )
@@ -113,8 +114,8 @@ class ScreenRepetitionTest {
               mapOf(
                 "onClick" to
                   listOf(
-                    ScreenAction.Set("caption", ScreenValue.RowRead("caption", "kotlin.String"))
-                  )
+                    ScreenAction.Set("caption", ScreenValue.RowRead("caption", "kotlin.String")),
+                  ),
               ),
           ),
       )

@@ -67,7 +67,7 @@ class BundleScopedClassesTest {
               id = "$previewClassFqn.sample",
               functionName = "sample",
               className = previewClassFqn,
-            )
+            ),
           ),
       )
     val previewsJson =
@@ -158,12 +158,12 @@ class BundleScopedClassesTest {
                           className = previewClassFqn,
                           functionName = "sample",
                           confidence = TargetConfidence.HIGH,
-                        )
+                        ),
                       ),
-                  )
-              )
+                  ),
+              ),
           ),
-        )
+        ),
       )
       File(outDir, "renders/sample.$IR_EXT_REMOTECOMPOSE").writeBytes(byteArrayOf(1, 2, 3, 4))
       task.moduleClassDirs.from(scoped)

@@ -315,8 +315,8 @@ class BazelHostCacheTest {
     assertNull(
       bazelEventExecutionRoot(
         sequenceOf(
-          """{"id":{"workspace":{}},"workspaceInfo":{"localExecRoot":"${root.resolve("gone").absolutePath}"}}"""
-        )
+          """{"id":{"workspace":{}},"workspaceInfo":{"localExecRoot":"${root.resolve("gone").absolutePath}"}}""",
+        ),
       ),
       "a directory that is not there falls back to bazel info",
     )

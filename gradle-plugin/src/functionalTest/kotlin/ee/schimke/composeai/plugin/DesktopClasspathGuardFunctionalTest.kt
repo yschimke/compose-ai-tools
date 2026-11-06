@@ -45,7 +45,7 @@ class DesktopClasspathGuardFunctionalTest {
         }
         rootProject.name = "test-desktop-guard"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -76,7 +76,7 @@ class DesktopClasspathGuardFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Configuration cache on: a non-serializable field fails the store regardless of `problems`

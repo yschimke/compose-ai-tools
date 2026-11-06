@@ -122,7 +122,7 @@ class RenderGraphComposeExclusionTest {
       ) as ModuleDependency
 
     assertThat(
-        dependency.excludeRules.mapNotNull { it.group }.filter { it.startsWith("androidx.") }
+        dependency.excludeRules.mapNotNull { it.group }.filter { it.startsWith("androidx.") },
       )
       .isEmpty()
   }

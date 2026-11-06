@@ -223,12 +223,12 @@ object ScreenGenerator {
   ): Result {
     if (FRAME_CONTENT in frameSlots) {
       return Result.Refused(
-        listOf("frame slot `$FRAME_CONTENT` is the document's root, never a frame slot")
+        listOf("frame slot `$FRAME_CONTENT` is the document's root, never a frame slot"),
       )
     }
     if (frame == null && frameSlots.isNotEmpty()) {
       return Result.Refused(
-        frameSlots.keys.sorted().map { "frame slot `$it` has no screen frame to be written into" }
+        frameSlots.keys.sorted().map { "frame slot `$it` has no screen frame to be written into" },
       )
     }
     if (output == Output.COMPONENTS) {
@@ -246,19 +246,19 @@ object ScreenGenerator {
       return Result.Refused(
         listOf(
           "components.json is schema ${components.schemaVersion}, newer than the " +
-            "$COMPONENT_RECORD_SCHEMA_VERSION this generator understands"
-        )
+            "$COMPONENT_RECORD_SCHEMA_VERSION this generator understands",
+        ),
       )
     }
     val badSegment = packageName.split('.').firstOrNull { !isUsableIdentifier(it) }
     if (badSegment != null) {
       return Result.Refused(
-        listOf("package segment `$badSegment` is not a usable Kotlin identifier")
+        listOf("package segment `$badSegment` is not a usable Kotlin identifier"),
       )
     }
     if (!isUsableIdentifier(document.name)) {
       return Result.Refused(
-        listOf("screen name `${document.name}` is not a usable Kotlin function name")
+        listOf("screen name `${document.name}` is not a usable Kotlin function name"),
       )
     }
     if (preview != null) {
@@ -274,8 +274,8 @@ object ScreenGenerator {
           "components.json is schema ${components.schemaVersion}; this generator needs at least " +
             "$COMPONENT_RECORD_OPT_IN_MECHANISM_SCHEMA, which is the first to record whether a " +
             "component needs a context receiver and which opt-in mechanism each marker uses. " +
-            "Re-run discovery to regenerate the catalog."
-        )
+            "Re-run discovery to regenerate the catalog.",
+        ),
       )
     }
     // Two components can share a simple name, and a screen can share one with a component it calls
@@ -346,7 +346,7 @@ object ScreenGenerator {
       return Result.Refused(
         shadowed.sorted().map {
           "state `$it` has the same name as a component this screen calls, and would shadow it"
-        }
+        },
       )
     }
     // A state name is a local `val`, so it also shadows any package root the generated source
@@ -379,7 +379,7 @@ object ScreenGenerator {
         shadowingLocals.sorted().map {
           "template local `$it` has the name of a component or package root this screen writes, " +
             "and would shadow it"
-        }
+        },
       )
     }
     val capturedParameters = parameterNames.filter {
@@ -404,7 +404,7 @@ object ScreenGenerator {
         return Result.Refused(
           shadowedFrameImports.sorted().map {
             "screen frame: import `$it` would be shadowed by a name this screen declares"
-          }
+          },
         )
       }
     }
@@ -412,13 +412,13 @@ object ScreenGenerator {
       return Result.Refused(
         capturedParameters.map {
           "function parameter `$it` would shadow a generated function or qualified package"
-        }
+        },
       )
     if (shadowedRoots.isNotEmpty()) {
       return Result.Refused(
         shadowedRoots.sorted().map {
           "state `$it` is the root of a package this screen writes in full, and would shadow it"
-        }
+        },
       )
     }
     val context =
@@ -495,7 +495,7 @@ object ScreenGenerator {
         if (!hoisted) {
           listOf(
             "val $name = androidx.compose.runtime.remember { " +
-              "androidx.compose.runtime.mutableStateOf<$type>($initial) }"
+              "androidx.compose.runtime.mutableStateOf<$type>($initial) }",
           )
         } else {
           val bound = initialBinding(declared.name, bindingNamesTaken)
@@ -563,7 +563,7 @@ object ScreenGenerator {
         conflicts.map { (name, fqns) ->
           "`$name` would be imported from ${fqns.sorted().joinToString(" and ")}, which Kotlin " +
             "rejects as a conflicting import"
-        }
+        },
       )
     }
     // A local allocated mid-body could shadow an import added later for a subsequent node. Refused.
@@ -573,7 +573,7 @@ object ScreenGenerator {
       return Result.Refused(
         shadowedImports.sorted().map {
           "the local `$it` a member read is typed through would shadow an import of the same name"
-        }
+        },
       )
     }
     // A marker is imported only when its simple name is free, decided after the conflict check so
@@ -604,7 +604,7 @@ object ScreenGenerator {
         appendLine(
           // Both qualified: markers can share a simple name across packages, and the caller's
           // package might declare its own `OptIn`.
-          optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" }
+          optIns.joinToString(", ", "@kotlin.OptIn(", ")") { "${marker(it)}::class" },
         )
       }
       if (output == Output.SCREEN && androidxOptIns.isNotEmpty()) {
@@ -618,7 +618,7 @@ object ScreenGenerator {
             "])",
           ) {
             "${marker(it)}::class"
-          }
+          },
         )
       }
       if (output == Output.SCREEN) {
@@ -636,7 +636,7 @@ object ScreenGenerator {
           appendLine(
             androidxOptIns.joinToString(", ", "@androidx.annotation.OptIn(markerClass = [", "])") {
               "${marker(it)}::class"
-            }
+            },
           )
         appendLine("@Composable")
         appendLine(function)
@@ -671,7 +671,7 @@ object ScreenGenerator {
           (named.toSet() - FRAME_CONTENT - filled).sorted().forEach {
             add(
               "screen frame: `$it` is not a hole this screen fills; it writes `content`" +
-                filled.sorted().joinToString("") { slot -> " and `$slot`" }
+                filled.sorted().joinToString("") { slot -> " and `$slot`" },
             )
           }
           for (hole in (filled + FRAME_CONTENT).sorted()) {
@@ -740,7 +740,7 @@ object ScreenGenerator {
               parameter.typeFqn.startsWith("kotlin.Function"))
         ) {
           add(
-            "function `${function.name}` parameter `${parameter.name}` needs a concrete qualified value type; callbacks use Callback"
+            "function `${function.name}` parameter `${parameter.name}` needs a concrete qualified value type; callbacks use Callback",
           )
         }
       }
@@ -795,7 +795,7 @@ object ScreenGenerator {
         else
           Outcome.Ambiguous(
             "canonical id `$id` is claimed by ${matches.size} components in this catalog, so it " +
-              "identifies none of them"
+              "identifies none of them",
           )
       }
       val aliased = byAlias[id] ?: return Outcome.Missing
@@ -804,7 +804,7 @@ object ScreenGenerator {
         Outcome.Ambiguous(
           "catalog id `$id` maps to ${aliased.size} components " +
             "(${aliased.joinToString(", ") { "`${it.canonicalId}`" }}), so it identifies none of " +
-            "them"
+            "them",
         )
     }
 
@@ -929,7 +929,7 @@ object ScreenGenerator {
       val decapitalised = simple.replaceFirstChar { it.lowercaseChar() }
       val name =
         allocateLocal(
-          if (isUsableIdentifier(decapitalised)) decapitalised else "${decapitalised}Value"
+          if (isUsableIdentifier(decapitalised)) decapitalised else "${decapitalised}Value",
         )
       hoistedNames += name
       block.locals += "val $name: $owner = $receiver"
@@ -1080,7 +1080,7 @@ object ScreenGenerator {
         reasons +=
           "`${record.symbol.name}` has ${candidates.size} overloads this node could call with " +
             (node.arguments.keys + node.slots.keys + node.handlers.keys).sorted().joinToString(
-              ", "
+              ", ",
             ) {
               "`$it`"
             } +

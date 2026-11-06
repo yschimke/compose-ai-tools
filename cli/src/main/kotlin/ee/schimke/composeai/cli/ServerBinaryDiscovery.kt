@@ -63,7 +63,7 @@ internal object ServerBinaryDiscovery {
     if (compareSemver(version, minimum) >= 0) return choice
     log(
       "compose-preview: the cached server $version predates `$command` (added in $minimum); " +
-        "fetching the newest"
+        "fetching the newest",
     )
     return provision()?.takeIf { it.binary != choice.binary }
       ?: choice.also {
@@ -111,7 +111,7 @@ internal object ServerBinaryDiscovery {
         }
     if (compareSemver(newest, version) <= 0) return choice
     log(
-      "compose-preview: the cached server $version is older than the newest, $newest; fetching it"
+      "compose-preview: the cached server $version is older than the newest, $newest; fetching it",
     )
     return provision(newest)?.takeIf { it.binary != choice.binary }
       ?: choice.also {

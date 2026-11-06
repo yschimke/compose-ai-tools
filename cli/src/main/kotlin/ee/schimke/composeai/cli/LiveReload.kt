@@ -325,7 +325,7 @@ internal class LiveReload(
       if (build.ok || !refusedConfigurationCache(output)) return build
       configurationCache = false
       log(
-        "compose-preview launch: the build fails with the configuration cache; reloading without it"
+        "compose-preview launch: the build fails with the configuration cache; reloading without it",
       )
     }
     return runOnce(tasks, gradleArguments).first
@@ -354,7 +354,7 @@ internal class LiveReload(
     val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
     val errors = if (ok) emptyList() else output.errorLines()
     log(
-      "compose-preview launch: gradle ${tasks.joinToString(" ")}: ${if (ok) "ok" else "FAILED"} in $ms ms"
+      "compose-preview launch: gradle ${tasks.joinToString(" ")}: ${if (ok) "ok" else "FAILED"} in $ms ms",
     )
     if (!ok) errors.forEach { log("compose-preview launch:   $it") }
     return Build(ok, ms, tasks, errors) to output.text()
@@ -534,7 +534,7 @@ internal class LiveReload(
               if (changed.isNotEmpty()) onChange(changed.distinct())
             }
           } catch (_: InterruptedException) {} catch (
-            _: java.nio.file.ClosedWatchServiceException) {}
+            _: java.nio.file.ClosedWatchServiceException,) {}
         },
         "live-reload-watch",
       )

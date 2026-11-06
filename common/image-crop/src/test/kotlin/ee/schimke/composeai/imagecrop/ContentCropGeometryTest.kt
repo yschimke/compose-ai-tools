@@ -111,7 +111,7 @@ class ServeThumbCropTest {
           val baos = ByteArrayOutputStream()
           ImageIO.write(it, "png", baos)
           baos.toByteArray()
-        }
+        },
       ),
       "fully transparent → null",
     )

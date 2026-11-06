@@ -108,7 +108,7 @@ public object RemoteComposeJson {
       parsed as? JsonObject
         ?: throw RemoteComposeJsonException(
           "Not a RemoteCompose JSON document: the top level is ${parsed::class.simpleName}, " +
-            "expected an object with a \"root\""
+            "expected an object with a \"root\"",
         )
     if ("root" in obj) return obj
     val wrapped =
@@ -117,7 +117,7 @@ public object RemoteComposeJson {
       else ""
     throw RemoteComposeJsonException(
       "Not a RemoteCompose JSON document: no \"root\" (keys: ${obj.keys.joinToString()}). " +
-        "Compiling it would succeed and produce an empty header-only document that plays blank.$wrapped"
+        "Compiling it would succeed and produce an empty header-only document that plays blank.$wrapped",
     )
   }
 
@@ -130,7 +130,7 @@ public object RemoteComposeJson {
     if (first.toInt().toChar() != '{') return
     throw RemoteComposeJsonException(
       "That is JSON text, not a binary RemoteCompose document. If it is authoring JSON, compile " +
-        "it first — the document dialect this reads is not the dialect a person writes."
+        "it first — the document dialect this reads is not the dialect a person writes.",
     )
   }
 

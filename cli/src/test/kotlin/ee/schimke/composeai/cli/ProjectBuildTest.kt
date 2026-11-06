@@ -200,7 +200,7 @@ class ProjectBuildTest {
           none.selectTargets(root, app, BazelBuildConfig(), 20)
         }
         .message!!
-        .contains("--target")
+        .contains("--target"),
     )
     val configured = BazelBuild { _, _, _ -> error("Configured target must not query") }
     assertEquals(

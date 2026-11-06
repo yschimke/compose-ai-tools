@@ -209,5 +209,5 @@ internal const val OFFLINE_DOCS: String =
 internal class NetworkDisabledException(val purpose: String, val remedy: String) :
   IllegalStateException(
     "$purpose needs the network, which ${NetworkPolicy.ENV} disables. $remedy " +
-      "(What to pre-provision: $OFFLINE_DOCS)"
+      "(What to pre-provision: $OFFLINE_DOCS)",
   )

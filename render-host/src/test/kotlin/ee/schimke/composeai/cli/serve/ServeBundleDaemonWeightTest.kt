@@ -46,7 +46,7 @@ class ServeBundleDaemonWeightTest {
     val file =
       descriptorFile(
         systemProperties =
-          mapOf("robolectric.graphicsMode" to "NATIVE", "robolectric.looperMode" to "PAUSED")
+          mapOf("robolectric.graphicsMode" to "NATIVE", "robolectric.looperMode" to "PAUSED"),
       )
     assertEquals(
       ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT,

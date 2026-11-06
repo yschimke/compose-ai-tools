@@ -106,7 +106,7 @@ class VersionPinTest {
           [plugins]
           android = { id = "com.android.application", version.ref = "agp" }
           """
-            .trimIndent()
+            .trimIndent(),
       )
     val pin = resolveVersionPin(root, env = { null })
     assertEquals("1.0.5", pin?.version)
@@ -126,7 +126,7 @@ class VersionPinTest {
           [libraries]
           composePreviewCli = "not-a-version"
           """
-            .trimIndent()
+            .trimIndent(),
       )
     assertNull(resolveVersionPin(root, env = { null }))
   }
@@ -200,7 +200,7 @@ class VersionPinTest {
           org.gradle.jvmargs=-Xmx4g
           android.useAndroidX=true
           """
-            .trimIndent() + "\n"
+            .trimIndent() + "\n",
       )
     writeGradlePropertiesPin(root, "1.2.3")
     val text = File(root, "gradle.properties").readText()
@@ -239,7 +239,7 @@ class VersionPinTest {
     // pin while the reader kept resolving the old one.
     val root =
       projectWith(
-        gradleProperties = "a=1\ncomposePreview.version=1.0.0\nb=2\ncomposePreview.version=1.5.0\n"
+        gradleProperties = "a=1\ncomposePreview.version=1.0.0\nb=2\ncomposePreview.version=1.5.0\n",
       )
     writeGradlePropertiesPin(root, "2.0.0")
     val text = File(root, "gradle.properties").readText()
@@ -261,7 +261,7 @@ class VersionPinTest {
   fun `remove drops every assignment, not just the first`() {
     val root =
       projectWith(
-        gradleProperties = "composePreview.version=1.0.0\na=1\ncomposePreview.version=1.5.0\n"
+        gradleProperties = "composePreview.version=1.0.0\na=1\ncomposePreview.version=1.5.0\n",
       )
     assertTrue(removeGradlePropertiesPin(root))
     assertNull(readGradlePropertiesPin(root))

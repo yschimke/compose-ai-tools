@@ -342,7 +342,7 @@ public data class PlaygroundSandbox(
           raw.removePrefix("custom:").trim().split(Regex("\\s+")).filter { it.isNotBlank() }
         if (argv.isEmpty()) {
           return Result.failure(
-            IllegalArgumentException("--playground-sandbox custom:<argv> needs a command")
+            IllegalArgumentException("--playground-sandbox custom:<argv> needs a command"),
           )
         }
         return Result.success(PlaygroundSandbox(profile = Profile.CUSTOM, customCommand = argv))
@@ -353,8 +353,8 @@ public data class PlaygroundSandbox(
             IllegalArgumentException(
               "unknown --playground-sandbox profile '$raw' — expected one of " +
                 Profile.entries.filter { it != Profile.CUSTOM }.joinToString(", ") { it.id } +
-                ", or custom:<argv>"
-            )
+                ", or custom:<argv>",
+            ),
           )
       return Result.success(PlaygroundSandbox(profile = profile))
     }
@@ -368,27 +368,27 @@ public data class PlaygroundSandbox(
       if (sandbox.memoryMb < MIN_MEMORY_MB) {
         return Result.failure(
           IllegalArgumentException(
-            "--playground-sandbox-memory-mb must be at least $MIN_MEMORY_MB (got ${sandbox.memoryMb})"
-          )
+            "--playground-sandbox-memory-mb must be at least $MIN_MEMORY_MB (got ${sandbox.memoryMb})",
+          ),
         )
       }
       if (sandbox.cpus <= 0.0) {
         return Result.failure(
-          IllegalArgumentException("--playground-sandbox-cpus must be > 0 (got ${sandbox.cpus})")
+          IllegalArgumentException("--playground-sandbox-cpus must be > 0 (got ${sandbox.cpus})"),
         )
       }
       if (sandbox.pids < 16) {
         return Result.failure(
           IllegalArgumentException(
-            "--playground-sandbox-pids must be at least 16 (got ${sandbox.pids})"
-          )
+            "--playground-sandbox-pids must be at least 16 (got ${sandbox.pids})",
+          ),
         )
       }
       if (sandbox.ttlSeconds !in 30..24 * 3600) {
         return Result.failure(
           IllegalArgumentException(
-            "--playground-sandbox-ttl must be between 30s and 24h (got ${sandbox.ttlSeconds}s)"
-          )
+            "--playground-sandbox-ttl must be between 30s and 24h (got ${sandbox.ttlSeconds}s)",
+          ),
         )
       }
       return Result.success(sandbox)
@@ -437,7 +437,7 @@ public object PlaygroundPublicGate {
     if (!isPublic) {
       return Decision.Allow(
         if (sandbox.isActive) "token-gated; ${sandbox.describe()}"
-        else "token-gated; no sandbox (add --playground-sandbox to rehearse the public posture)"
+        else "token-gated; no sandbox (add --playground-sandbox to rehearse the public posture)",
       )
     }
     // Repo collaborators only: containment becomes defence in depth, not a precondition.
@@ -447,7 +447,7 @@ public object PlaygroundPublicGate {
           if (sandbox.isActive) "${sandbox.describe()} — defence in depth, not the admission basis"
           else
             "no sandbox — a collaborator's snippet runs unconfined on this host " +
-              "(add --playground-sandbox for defence in depth)"
+              "(add --playground-sandbox for defence in depth)",
       )
     }
     if (!sandbox.isActive) {
@@ -458,19 +458,19 @@ public object PlaygroundPublicGate {
           "--github-auth-cookie-secret / --github-auth-repo), which limits the lane to repo " +
           "collaborators, OR a per-session sandbox: --playground-sandbox " +
           "<bwrap|strict|systemd|unshare|custom:…>. With neither, an anonymous stranger's snippet " +
-          "would run unconfined on the server (PLAYGROUND.md §6)."
+          "would run unconfined on the server (PLAYGROUND.md §6).",
       )
     }
     if (probe == null) {
       return Decision.Refuse(
         "playground sandbox preflight did not run — refusing to serve the playground under " +
-          "--public on an unverified sandbox."
+          "--public on an unverified sandbox.",
       )
     }
     if (!probe.ran) {
       return Decision.Refuse(
         "playground sandbox preflight could not launch the jail (${probe.detail}) — is " +
-          "'${sandbox.profile.id}' installed and permitted on this host?"
+          "'${sandbox.profile.id}' installed and permitted on this host?",
       )
     }
     val failures = probe.failedChecks()
@@ -478,7 +478,7 @@ public object PlaygroundPublicGate {
       return Decision.Refuse(
         "playground sandbox preflight failed under profile '${sandbox.profile.id}': " +
           failures.joinToString("; ") +
-          ". The playground stays disabled under --public until the jail contains a snippet."
+          ". The playground stays disabled under --public until the jail contains a snippet.",
       )
     }
     // Containment proven, but the probe can't measure CPU or process caps.
@@ -489,7 +489,7 @@ public object PlaygroundPublicGate {
         "profile '${sandbox.profile.id}' contains a snippet but applies no CPU or process-count " +
           "cap, so one snippet can still starve the box (-Xmx bounds heap only). Use " +
           "--playground-sandbox strict (cgroup caps around the same jail), or a custom: jail that " +
-          "applies its own caps."
+          "applies its own caps.",
       )
     }
     val caveat =
@@ -502,7 +502,7 @@ public object PlaygroundPublicGate {
     return Decision.Allow(
       "public and ANONYMOUS (no GitHub auth configured); verified ${sandbox.describe()}$caveat. " +
         "Admitted on containment alone — configure --github-auth-repo to also bound who can " +
-        "reach the lane."
+        "reach the lane.",
     )
   }
 }

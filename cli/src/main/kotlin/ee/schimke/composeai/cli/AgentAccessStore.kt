@@ -15,7 +15,7 @@ internal class NoCredentialHomeException :
   IllegalStateException(
     "no user config directory could be determined (XDG_CONFIG_HOME, HOME and user.home are all " +
       "unset), and credentials will not be written to the working directory. Set " +
-      "COMPOSE_PREVIEW_AGENT_ACCESS_FILE to a path you control."
+      "COMPOSE_PREVIEW_AGENT_ACCESS_FILE to a path you control.",
   )
 
 /**
@@ -266,7 +266,7 @@ internal open class AgentAccessStore(
       if (view == null) {
         warn(
           "${file.path} holds access tokens and this filesystem has no POSIX permissions — " +
-            "restrict it yourself if others can read it"
+            "restrict it yourself if others can read it",
         )
         return
       }

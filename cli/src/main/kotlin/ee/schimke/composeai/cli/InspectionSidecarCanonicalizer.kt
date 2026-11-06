@@ -125,7 +125,7 @@ internal object InspectionSidecarCanonicalizer {
         JsonArray(
           children.mapIndexed { index, child ->
             (child as? JsonObject)?.let { transform(it, "$path/$index") } ?: child
-          }
+          },
         )
       else -> error("children must be an array")
     }
@@ -150,7 +150,7 @@ internal object InspectionSidecarCanonicalizer {
         replacements.forEach { (key, value) ->
           if (key !in source && value != null) put(key, value)
         }
-      }
+      },
     )
 
   private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull

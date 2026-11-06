@@ -69,15 +69,15 @@ val rcSwiftRenderProperties =
   tasks.register<WriteProperties>("rcSwiftRenderProperties") {
     destinationFile.set(
       layout.buildDirectory.file(
-        "generated/rc-swift-render/ee/schimke/composeai/cli/serve/rc-swift-render.properties"
-      )
+        "generated/rc-swift-render/ee/schimke/composeai/cli/serve/rc-swift-render.properties",
+      ),
     )
     property("version", libs.versions.rcplayers.get())
   }
 
 sourceSets.main {
   resources.srcDir(
-    rcSwiftRenderProperties.map { layout.buildDirectory.dir("generated/rc-swift-render") }
+    rcSwiftRenderProperties.map { layout.buildDirectory.dir("generated/rc-swift-render") },
   )
 }
 
@@ -141,7 +141,7 @@ tasks.register<CheckRenderHostIsServerFree>("checkRenderHostIsServerFree") {
           }
           .toSet()
       }
-    }
+    },
   )
 
   // Prefixes, since the invariant is "no web server", not a specific engine.
@@ -156,7 +156,7 @@ tasks.register<CheckRenderHostIsServerFree>("checkRenderHostIsServerFree") {
       // `kotlin-build-tools-api`, which is the interface and arrives via `:daemon:core`.
       "org.jetbrains.kotlin:kotlin-compiler",
       "org.jetbrains.kotlin:kotlin-build-tools-impl",
-    )
+    ),
   )
 }
 

@@ -73,7 +73,7 @@ class BtaCompilerIncrementalTest {
       @Composable
       fun Greeting(name: String): String = "Hi, " + name
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val warm0 = System.nanoTime()
@@ -129,7 +129,7 @@ class BtaCompilerIncrementalTest {
         @Composable
         fun Greeting(name: String): String = "Hello, " + name
         """
-          .trimIndent()
+          .trimIndent(),
       )
     src
       .resolve("Farewell.kt")
@@ -140,7 +140,7 @@ class BtaCompilerIncrementalTest {
         @Composable
         fun Farewell(name: String): String = "Bye, " + name
         """
-          .trimIndent()
+          .trimIndent(),
       )
     src
       .resolve("Names.kt")
@@ -151,7 +151,7 @@ class BtaCompilerIncrementalTest {
           const val DEFAULT: String = "stranger"
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return Fixture(
@@ -183,7 +183,7 @@ class BtaCompilerIncrementalTest {
     val raw =
       System.getProperty("composeai.bta.testRuntimeClasspath")
         ?: error(
-          "BTA spike test needs the runtime classpath; rerun via `./gradlew :daemon:bta-host:test`."
+          "BTA spike test needs the runtime classpath; rerun via `./gradlew :daemon:bta-host:test`.",
         )
     val runtimeClasspath = raw.split(File.pathSeparator).map { Path.of(it) }
 

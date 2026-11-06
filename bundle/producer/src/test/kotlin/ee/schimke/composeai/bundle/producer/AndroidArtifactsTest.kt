@@ -39,7 +39,7 @@ class AndroidArtifactsTest {
         """{"schemaVersion":2,"target":"//app:ui","configuration":"bazel-out/k8-fastbuild/bin",
           |"projectJars":[],"runtimeJars":[],"sourceFiles":[],"dataFiles":[]
           |${android?.let { ""","android":$it""" } ?: ""}}"""
-          .trimMargin()
+          .trimMargin(),
       )
       .jsonObject
 
@@ -55,8 +55,8 @@ class AndroidArtifactsTest {
           artifacts(
             """{"packageName":"com.example.ui","resourceApk":"${apk.path}",
               |"manifest":"${manifest.path}","rJar":"${rJar.path}","compileSdk":36}"""
-              .trimMargin()
-          )
+              .trimMargin(),
+          ),
         )!!
       assertEquals("com.example.ui", resources.packageName)
       assertEquals(apk, resources.resourceApk)
@@ -82,8 +82,8 @@ class AndroidArtifactsTest {
             |{"packageName":"com.example.ui","resourceApk":"missing/resources.ap_",
             |"manifest":"missing/AndroidManifest.xml"}
             """
-              .trimMargin()
-          )
+              .trimMargin(),
+          ),
         )
       }
     assertTrue("android.resourceApk" in error.message.orEmpty(), error.message)
@@ -97,7 +97,7 @@ class AndroidArtifactsTest {
       val error =
         assertFailsWith<IllegalArgumentException> {
           BundleProducerCli.main(
-            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path),
           )
         }
       assertTrue("schema 3" in error.message.orEmpty(), error.message)
@@ -122,7 +122,7 @@ class AndroidArtifactsTest {
         val error =
           assertFailsWith<IllegalArgumentException> {
             BundleProducerCli.main(
-              arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+              arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path),
             )
           }
         assertTrue(expected in error.message.orEmpty(), error.message)
@@ -141,7 +141,7 @@ class AndroidArtifactsTest {
       val error =
         assertFailsWith<Exception> {
           BundleProducerCli.main(
-            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path)
+            arrayOf("--artifacts", file.path, "--output", root.resolve("b.png").path),
           )
         }
       assertTrue("android block" !in error.message.orEmpty(), error.message)
@@ -186,7 +186,7 @@ class AndroidArtifactsTest {
       ZipFile(
           BundleReader.extractZipBytes(bundle).let { bytes ->
             root.resolve("bundle.zip").apply { writeBytes(bytes) }
-          }
+          },
         )
         .use { zip ->
           assertTrue(zip.getEntry("android/resources.ap_") != null)
@@ -198,7 +198,7 @@ class AndroidArtifactsTest {
       val png =
         java.util.Base64.getDecoder()
           .decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
           )
       renders.resolve("Greeting.png").writeBytes(png)
       val baked = root.resolve("baked.png")
@@ -227,7 +227,7 @@ class AndroidArtifactsTest {
             |"com.example:natives:jar:linux-x86_64":{"shasums":{"jar":"${"c".repeat(64)}"},"version":"1.0"},
             |"com.example:parent:pom":{"shasums":{"jar":null},"version":"1.0"}}}
             """
-              .trimMargin()
+              .trimMargin(),
           )
         }
       assertEquals(
@@ -270,7 +270,7 @@ class AndroidArtifactsTest {
             |{"artifacts":{"androidx.activity:activity-compose:aar":
             |{"shasums":{"jar":"${"a".repeat(64)}"},"version":"1.10.1"}}}
             """
-              .trimMargin()
+              .trimMargin(),
           )
         }
       val preview =

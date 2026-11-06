@@ -90,7 +90,7 @@ class BazelComposeIntegrationTest {
             png.absolutePath,
             "--timeout",
             "60",
-          )
+          ),
         )
         .execute()
       val image = requireNotNull(ImageIO.read(png))
@@ -130,7 +130,7 @@ class BazelComposeIntegrationTest {
             bundle.path,
             "--timeout",
             "60",
-          )
+          ),
         )
         .execute()
       val sourceBundle = output.resolve("unrendered.png")
@@ -152,7 +152,7 @@ class BazelComposeIntegrationTest {
             root.resolve("maven_install.json").path,
             "--output",
             sourceBundle.path,
-          )
+          ),
         )
         .execute()
       java.util.zip
@@ -181,7 +181,7 @@ class BazelComposeIntegrationTest {
             "RuntimeGreeting",
             "--output",
             reused.path,
-          )
+          ),
         )
         .execute()
       assertEquals(bazelBundleSha(png), bazelBundleSha(reused))
@@ -211,7 +211,7 @@ class BazelComposeIntegrationTest {
             reused.path,
             "--timeout",
             "60",
-          )
+          ),
         )
         .execute()
       assertEquals(bazelBundleSha(png), bazelBundleSha(reused))
@@ -222,13 +222,13 @@ class BazelComposeIntegrationTest {
       assertTrue(
         coordinates.any {
           it.group.startsWith("org.jetbrains.compose") && it.artifact == "ui-desktop"
-        }
+        },
       )
       assertTrue(coordinates.any { it.artifact == "runtime-desktop" })
       assertTrue(
         coordinates
           .filter { it.group.startsWith("org.jetbrains.compose") }
-          .all { it.sha256?.length == 64 }
+          .all { it.sha256?.length == 64 },
       )
       val suppliedMaven = System.getenv("COMPOSE_PREVIEW_BAZEL_MAVEN_REPO")?.let(::File)
       val resolved =
@@ -268,7 +268,7 @@ class BazelComposeIntegrationTest {
       val server =
         try {
           requireNotNull(
-            ServeBundleDaemon.materialize(bundle, output.resolve("server"), "bazel-bundle")
+            ServeBundleDaemon.materialize(bundle, output.resolve("server"), "bazel-bundle"),
           )
         } finally {
           if (oldMavenRepo == null) System.clearProperty("maven.repo.local")
@@ -285,9 +285,9 @@ class BazelComposeIntegrationTest {
       server.descriptor.writeText(
         kotlinx.serialization.json
           .JsonObject(
-            launch + ("systemProperties" to kotlinx.serialization.json.JsonObject(properties))
+            launch + ("systemProperties" to kotlinx.serialization.json.JsonObject(properties)),
           )
-          .toString()
+          .toString(),
       )
       val serverPng = AtomicReference<File?>()
       val serverFinished = CountDownLatch(1)
@@ -297,7 +297,7 @@ class BazelComposeIntegrationTest {
             workspaceRoot = server.workspaceRoot,
             initializeTimeout = 60.seconds,
             maxRenderTime = 60.seconds,
-          )
+          ),
         )
         .use { session ->
           session
@@ -312,7 +312,7 @@ class BazelComposeIntegrationTest {
             }
             .use {
               assertTrue(
-                session.renderNow(listOf(greeting.id), timeout = 60.seconds).rejected.isEmpty()
+                session.renderNow(listOf(greeting.id), timeout = 60.seconds).rejected.isEmpty(),
               )
               assertTrue(
                 serverFinished.await(60, TimeUnit.SECONDS),
@@ -433,7 +433,7 @@ class BazelComposeIntegrationTest {
         assertTrue(patternDiscovery.buildOk)
         assertEquals(
           mapOf(
-            "all" to setOf("Greeting", "RuntimeGreeting", "GeneratedGreeting", "DependencyPreview")
+            "all" to setOf("Greeting", "RuntimeGreeting", "GeneratedGreeting", "DependencyPreview"),
           ),
           patternDiscovery.manifests.associate { (m, manifest) ->
             m.gradlePath to manifest.previews.map { it.functionName }.toSet()
@@ -532,7 +532,7 @@ class BazelComposeIntegrationTest {
               png.path,
               "--timeout",
               "120",
-            )
+            ),
           )
           .execute()
         assertTrue(png.length() > 0, "$png was not written")
@@ -555,8 +555,8 @@ class BazelComposeIntegrationTest {
         File(
           requireNotNull(
             ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilder.decode(shared.readText())
-              .systemProperties["composeai.daemon.socketPath"]
-          )
+              .systemProperties["composeai.daemon.socketPath"],
+          ),
         )
       val launches =
         socket.resolveSibling("daemon.log").readLines().count { "serving clients on" in it }

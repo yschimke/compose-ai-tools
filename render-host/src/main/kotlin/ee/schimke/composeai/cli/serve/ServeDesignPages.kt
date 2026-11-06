@@ -102,7 +102,7 @@ private constructor(
         runCatching {
           if (!fileSystem.exists(manifestPath)) return@runCatching null
           DesignPagesJson.decodeFromString<DesignPagesManifest>(
-            fileSystem.read(manifestPath) { readUtf8() }
+            fileSystem.read(manifestPath) { readUtf8() },
           )
         }
           .getOrNull()

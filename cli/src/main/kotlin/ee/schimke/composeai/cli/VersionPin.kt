@@ -328,7 +328,7 @@ internal fun warnOnCliSkew(
       else "") +
       "Injecting the pinned plugin version. Align the CLI with " +
       "`compose-preview update ${pin.version}`, or re-pin with " +
-      "`compose-preview pin $mavenLineVersion`."
+      "`compose-preview pin $mavenLineVersion`.",
   )
 }
 

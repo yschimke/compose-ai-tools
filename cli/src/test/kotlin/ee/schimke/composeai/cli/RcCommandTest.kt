@@ -31,7 +31,7 @@ class RcCommandTest {
 
   private val document: ByteArray =
     RemoteComposeJson.compile(
-      """{"header":{"width":10,"height":10},"root":[{"box":{"modifiers":[{"size":10.0}]}}]}"""
+      """{"header":{"width":10,"height":10},"root":[{"box":{"modifiers":[{"size":10.0}]}}]}""",
     )
 
   /** Thrown by the injected exit seam, so a refusal path ends the command and not the JVM. */

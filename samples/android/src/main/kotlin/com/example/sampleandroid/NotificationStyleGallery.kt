@@ -33,7 +33,7 @@ private fun ensureGalleryChannel(context: Context) {
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (nm.getNotificationChannel(GALLERY_CHANNEL_ID) == null) {
       nm.createNotificationChannel(
-        NotificationChannel(GALLERY_CHANNEL_ID, "Gallery", NotificationManager.IMPORTANCE_DEFAULT)
+        NotificationChannel(GALLERY_CHANNEL_ID, "Gallery", NotificationManager.IMPORTANCE_DEFAULT),
       )
     }
   }
@@ -58,7 +58,7 @@ fun MessagingStylePreview() {
           .setConversationTitle("Alice")
           .addMessage("Did the previews land?", now - 180_000, alice)
           .addMessage("Yep, six variants per source function.", now - 120_000, you)
-          .addMessage("Even RTL? 👀", now - 30_000, alice)
+          .addMessage("Even RTL? 👀", now - 30_000, alice),
       )
       .build()
   }
@@ -81,7 +81,7 @@ fun InboxStylePreview() {
           .addLine("Alice  Did the previews land?")
           .addLine("Bob  Reviewed the PR, ship it")
           .addLine("Carol  Question about MessagingStyle")
-          .addLine("Dave  Heads-up: androidchka still red")
+          .addLine("Dave  Heads-up: androidchka still red"),
       )
       .build()
   }
@@ -159,7 +159,7 @@ fun MediaStylePreview() {
       .addAction(android.R.drawable.ic_media_pause, "Pause", noopIntent)
       .addAction(android.R.drawable.ic_media_next, "Next", noopIntent)
       .setStyle(
-        androidx.media.app.NotificationCompat.MediaStyle().setShowActionsInCompactView(0, 1, 2)
+        androidx.media.app.NotificationCompat.MediaStyle().setShowActionsInCompactView(0, 1, 2),
       )
       .build()
   }
@@ -206,8 +206,8 @@ private fun surfaceAxisNotification(ctx: Context) =
         .bigText(
           "Notification previews now expose the three SystemUI surfaces — collapsed shade row, " +
             "expanded body, and heads-up popup — through the `NotificationSurface` enum on the " +
-            "`NotificationContent` helper."
-        )
+            "`NotificationContent` helper.",
+        ),
     )
     .build()
 
@@ -250,7 +250,7 @@ fun LongTitlePreview() {
       .setSmallIcon(android.R.drawable.ic_dialog_info)
       .setContentTitle(
         "A notification title that goes on far past the width of any reasonable phone shade " +
-          "to exercise the AOSP layout's title-row ellipsisation"
+          "to exercise the AOSP layout's title-row ellipsisation",
       )
       .setContentText("Tap to open")
       .build()
@@ -285,7 +285,7 @@ fun NoLargeIconPreview() {
         NotificationCompat.MessagingStyle(you)
           .setConversationTitle("Alice")
           .addMessage("No avatars on this one", now - 120_000, alice)
-          .addMessage("Just the small icon row", now - 60_000, you)
+          .addMessage("Just the small icon row", now - 60_000, you),
       )
       .build()
   }
@@ -336,7 +336,7 @@ fun GroupedSummaryPreview() {
           .setSummaryText("project-updates@")
           .addLine("Alice  Did the previews land?")
           .addLine("Bob  Reviewed the PR, ship it")
-          .addLine("Carol  Question about MessagingStyle")
+          .addLine("Carol  Question about MessagingStyle"),
       )
       .build()
   }

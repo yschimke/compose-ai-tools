@@ -30,7 +30,7 @@ class BazelDependencyPolicyTest {
     val config =
       bazelJson.decodeFromString<BazelBuildConfig>(
         """{"target":"//app","dependencyPolicy":{"default":["coordinate-verified","embed"],
-           "rules":[{"match":"androidx.*","policy":["closest-released","embed"]}]}}"""
+           "rules":[{"match":"androidx.*","policy":["closest-released","embed"]}]}}""",
       )
     val root = Files.createTempDirectory("bazel-policy").toFile()
     try {

@@ -174,7 +174,7 @@ class AgentMcpConfigTest {
       AgentMcpConfig.openCodeRewriteRefusal(
         "opencode.json",
         """{"url":"https://example.test/mcp","note":"not /* a comment */"}""",
-      )
+      ),
     )
   }
 
@@ -246,7 +246,7 @@ class AgentMcpConfigTest {
       McpCommand.selectOpenCodeConfig(null, installOpenCode = false) {
         defaultResolved = true
         error("no absolute OpenCode config home")
-      }
+      },
     )
     assertFalse(defaultResolved, "disabled OpenCode must not require a default config home")
 
@@ -266,10 +266,10 @@ class AgentMcpConfigTest {
     assertTrue(
       hints.any {
         it.command == "/plugins" && it.note == "enable compose-preview in the plugin manager"
-      }
+      },
     )
     assertTrue(
-      AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = false).isEmpty()
+      AgentMcpConfig.pluginInstallHints(setOf("claude", "codex"), enabled = false).isEmpty(),
     )
   }
 
@@ -277,7 +277,7 @@ class AgentMcpConfigTest {
   fun `plugin hints render one heading per host with its commands indented beneath`() {
     val text =
       AgentMcpConfig.renderPluginHints(
-        AgentMcpConfig.pluginInstallHints(setOf("antigravity", "claude", "codex"), enabled = true)
+        AgentMcpConfig.pluginInstallHints(setOf("antigravity", "claude", "codex"), enabled = true),
       )
     assertEquals(
       """

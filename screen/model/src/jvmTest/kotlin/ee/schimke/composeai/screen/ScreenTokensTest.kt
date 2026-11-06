@@ -41,7 +41,7 @@ class ScreenTokensTest {
           Button(onClick = {}, enabled = false) { Text("Open") }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 

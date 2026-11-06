@@ -88,7 +88,7 @@ internal class BazelCommand(
         ?.let { origin ->
           System.err.println(
             "[bazel] ${requestedDirectory.path} was staged by `bazel prepare` in ${origin.workspace}; " +
-              "preparing it again from there"
+              "preparing it again from there",
           )
           return BazelCommand(origin.args, normalSurface, invocationDirectory).execute()
         }
@@ -138,7 +138,7 @@ internal class BazelCommand(
     BazelHostCache.configure(config)?.let { digest ->
       if ("--verbose" in args || "-v" in args) {
         System.err.println(
-          "[bazel] host cache stamps by xattr user.${digest.attribute} (${digest.source})"
+          "[bazel] host cache stamps by xattr user.${digest.attribute} (${digest.source})",
         )
         reportHostCacheStamps(BazelHostCache.sharedFileStamper)
       }
@@ -177,7 +177,8 @@ internal class BazelCommand(
     args.flagValue("--aspect")?.let { config = config.copy(aspect = it) }
     config =
       config.copy(
-        buildArgs = config.buildArgs + args.flagValuesAll(if (buck) "--buck-arg" else "--bazel-arg")
+        buildArgs =
+          config.buildArgs + args.flagValuesAll(if (buck) "--buck-arg" else "--bazel-arg"),
       )
     val imported = args.flagValue("--artifacts")
     // A pattern's or a package's matches are candidates: one without previews is left out. An
@@ -202,7 +203,7 @@ internal class BazelCommand(
             root,
             config.androidCompileSdk,
             bazelRuntimeJarOwners(metadataText),
-          )
+          ),
         )
       } else if (buck) {
         if ("--verbose" in args || "-v" in args) {
@@ -239,7 +240,7 @@ internal class BazelCommand(
           .also { built ->
             if (candidates) {
               System.err.println(
-                "[buck] ${built.size} target(s): ${built.joinToString(" ") { it.metadata.target }}"
+                "[buck] ${built.size} target(s): ${built.joinToString(" ") { it.metadata.target }}",
               )
             }
           }
@@ -319,14 +320,14 @@ internal class BazelCommand(
         val key = bazelTargetKey(label, built.first().metadata.configuration)
         System.err.println(
           "[bazel] linking ${built.size} Android targets' resources into one APK " +
-            "(${plan.compiledResources.size} archives, ${plan.extraPackages.size + 1} R packages)"
+            "(${plan.compiledResources.size} archives, ${plan.extraPackages.size + 1} R packages)",
         )
         linkAndroidMerge(plan, root.resolve(".compose-preview/outputs/$key/android-link"), timeout)
       }
     }
     if (merged == null && built.size > 1) {
       System.err.println(
-        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built, config.mergeAndroid)}"
+        "[bazel] ${built.size} targets kept as separate modules: ${bazelMergeBlocker(built, config.mergeAndroid)}",
       )
     }
     val collected = merged?.let(::listOf) ?: built
@@ -335,7 +336,7 @@ internal class BazelCommand(
         System.err.println(
           "[bazel] ${artifacts.metadata.target} (${artifacts.metadata.configuration}): " +
             "${artifacts.projectJars.size} application jars, ${artifacts.runtimeJars.size} runtime jars, " +
-            "${artifacts.sourceFiles.size} sources, ${artifacts.dataFiles.size} runfiles"
+            "${artifacts.sourceFiles.size} sources, ${artifacts.dataFiles.size} runfiles",
         )
       }
       val targetKey = bazelTargetKey(artifacts.metadata.target, artifacts.metadata.configuration)
@@ -376,7 +377,7 @@ internal class BazelCommand(
           val manifests = selections.map { it.prepared.manifest }
           println(
             if (manifests.size == 1) bazelJson.encodeToString(manifests.single())
-            else bazelJson.encodeToString(manifests)
+            else bazelJson.encodeToString(manifests),
           )
         } else
           selections
@@ -406,7 +407,7 @@ internal class BazelCommand(
                     }
                   },
               )
-              .absolutePath
+              .absolutePath,
           )
         }
       }
@@ -512,7 +513,7 @@ internal class BazelCommand(
                 dependencies = bazelDependencyOptions(config.dependencyPolicy, artifacts),
               )
             System.err.println(
-              "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)"
+              "Bundle: $bundle (${manifest.resolution}, ${manifest.classpath.size} runtime entries)",
             )
           }
         }
@@ -675,7 +676,7 @@ internal class BazelCommand(
           val moduleDirectory = it.manifestFile.parentFile.parentFile.parentFile
           val manifest = bazelJson.decodeFromString<ResultManifest>(it.manifestFile.readText())
           PreviewModule(manifest.module, moduleDirectory) to manifest
-        }
+        },
       )
     val requested = selectRequested(all)
     val results =
@@ -686,7 +687,7 @@ internal class BazelCommand(
     else
       results.forEach { result ->
         println(
-          "${result.functionName} (${result.id})${previewStatusTag(result)}${result.sha256?.let { "  sha=${it.take(12)}" } ?: ""}"
+          "${result.functionName} (${result.id})${previewStatusTag(result)}${result.sha256?.let { "  sha=${it.take(12)}" } ?: ""}",
         )
         result.captures.forEach { capture -> capture.pngPath?.let { println("  $it") } }
       }
@@ -781,7 +782,7 @@ internal class BazelCommand(
       filesystem publishes as that xattr, the one Bazel's --unix_digest_hash_attribute_name reads.
       Name only an attribute derived from file content; files without it fall back to timestamps.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }
@@ -796,9 +797,9 @@ private fun reportHostCacheStamps(stamper: FileStamper) {
         System.err.println(
           "[bazel] host cache: ${stamper.digestStamps.get()} digest stamps, " +
             "${stamper.unixStamps.get()} unix fallbacks; ${memos.sumOf { it.hits.get() }} hits, " +
-            "${memos.sumOf { it.misses.get() }} misses"
+            "${memos.sumOf { it.misses.get() }} misses",
         )
-      }
+      },
     )
 }
 
@@ -925,7 +926,7 @@ internal fun prepareBazelPreviews(
           bazelTargetKey(
             root.absolutePath + "\n" + artifacts.metadata.target,
             artifacts.metadata.configuration,
-          )
+          ),
         )
       cache
         .readText(entryFile)
@@ -1002,7 +1003,7 @@ internal fun bazelDiscoveryKey(input: PreviewDiscovery.Input, cache: BazelHostCa
         input.dependencyJars.map {
           "dependency\t${it.absolutePath}\t${if (it.isFile) cache.sha256(it) else content(it)}"
         } +
-        input.sourceFiles.map { "source\t${it.absolutePath}\t${content(it)}" }
+        input.sourceFiles.map { "source\t${it.absolutePath}\t${content(it)}" },
     )
     .also { cache.sha256.save() }
 }
@@ -1198,7 +1199,7 @@ internal fun provisionedSdkLevel(
             directory.absolutePath,
           ) +
             directory.listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted() +
-            stamps.map { it ?: "" }
+            stamps.map { it ?: "" },
         )
       // A jar with no stamp (missing) leaves the answer to a fresh computation each time.
       val cached = if (stamps.all { it != null }) cache.keyed[key] else null
@@ -1213,7 +1214,7 @@ internal fun provisionedSdkLevel(
     log(
       "[android] no android-all for SDK $level in $ROBOLECTRIC_DEPS_DIR_ENV ($directory); " +
         "rendering on SDK $provisioned, the newest provisioned (compose-preview provision " +
-        "--android --android-sdk $level fetches $level where Robolectric publishes it)"
+        "--android --android-sdk $level fetches $level where Robolectric publishes it)",
     )
   }
   return provisioned
@@ -1248,8 +1249,8 @@ internal fun prepareBazelAndroidDaemon(
     android.androidJar?.takeIf { it.isFile }
       ?: checkNotNull(
         AndroidBundleLaunch.resolveAndroidJar(
-          localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile }
-        )
+          localPropertiesFile = root.resolve("local.properties").takeIf { it.isFile },
+        ),
       ) {
         "Android rendering needs android.jar: set ANDROID_HOME or ANDROID_SDK_ROOT"
       }
@@ -1267,7 +1268,7 @@ internal fun prepareBazelAndroidDaemon(
     )
   val userClasspath =
     (listOfNotNull(android.rJar) + artifacts.runtimeJars).distinct().joinToString(
-      File.pathSeparator
+      File.pathSeparator,
     ) {
       it.absolutePath
     }
@@ -1286,7 +1287,7 @@ internal fun prepareBazelAndroidDaemon(
           daemonJars,
           offlineProperties,
           cache = BazelHostCache.shared(),
-        )
+        ),
     )
   val descriptor =
     DaemonLaunchBuilder.build(

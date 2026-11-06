@@ -147,7 +147,7 @@ internal class DaemonA11yFetcher(
               nodes = if (payload != null) readNodes(projectDir, preview.entryId) else emptyList(),
               annotatedPath =
                 if (payload != null) relativeOverlayPath(projectDir, preview.entryId) else null,
-            )
+            ),
           )
         }
 
@@ -162,7 +162,7 @@ internal class DaemonA11yFetcher(
               findings = payload?.let(::parseFindings).orEmpty(),
               nodes = readNodes(projectDir, preview.entryId),
               annotatedPath = relativeOverlayPath(projectDir, preview.entryId),
-            )
+            ),
           )
           continue
         }
@@ -174,7 +174,7 @@ internal class DaemonA11yFetcher(
         if (payload == null) {
           onLog(
             "could not restore the default render of '$previewId' after its permutations; " +
-              "renders/$previewId.png may still hold a permutation's pixels"
+              "renders/$previewId.png may still hold a permutation's pixels",
           )
           // The forced fetch failed, so roll `data/<previewId>/` back rather than leave override
           // files that a later unforced fetch would serve. Rolling back, not deleting, keeps a
@@ -191,7 +191,7 @@ internal class DaemonA11yFetcher(
             findings = payload?.let(::parseFindings).orEmpty(),
             nodes = readNodes(projectDir, base.entryId),
             annotatedPath = relativeOverlayPath(projectDir, base.entryId),
-          )
+          ),
         )
       }
       // If every attempt failed, empty entries would look like a clean run; stamp the report status
@@ -355,7 +355,7 @@ internal class DaemonA11yFetcher(
       if (PER_RENDER_FILES.any { hold.resolve(it).exists() }) {
         onLog(
           "could not clear the pre-permutation hold for '$previewId' at ${hold.path}; " +
-            "rolling back will discard its artefacts instead of restoring them"
+            "rolling back will discard its artefacts instead of restoring them",
         )
         return null
       }
@@ -395,7 +395,7 @@ internal class DaemonA11yFetcher(
       if (source == null && target.exists()) {
         onLog(
           "could not roll back $name for '$previewId'; a later fetch of that preview may serve " +
-            "a permutation's render"
+            "a permutation's render",
         )
       }
     }

@@ -63,7 +63,7 @@ class PreviewDiscoveryGlimmerRetargetTest {
     assertEquals(
       false,
       PreviewDiscovery.isGlimmerModule(
-        input("androidx.compose.material3:material3:1.5.0", "androidx.compose.ui:ui:1.10.0")
+        input("androidx.compose.material3:material3:1.5.0", "androidx.compose.ui:ui:1.10.0"),
       ),
     )
   }
@@ -75,8 +75,8 @@ class PreviewDiscoveryGlimmerRetargetTest {
     // that only pulled the fonts one is still drawing with Glimmer.
     assertTrue(
       PreviewDiscovery.isGlimmerModule(
-        input("androidx.xr.glimmer:glimmer-google-fonts:1.0.0-alpha19")
-      )
+        input("androidx.xr.glimmer:glimmer-google-fonts:1.0.0-alpha19"),
+      ),
     )
   }
 

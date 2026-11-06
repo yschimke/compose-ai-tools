@@ -66,7 +66,7 @@ class BuildHostCodecTest {
   fun `an encoded message never contains a newline`() {
     val encoded =
       BuildHostCodec.encode(
-        BuildHostEnvelope(id = 1, event = BuildHostEvent.Log("first\nsecond\r\nthird"))
+        BuildHostEnvelope(id = 1, event = BuildHostEvent.Log("first\nsecond\r\nthird")),
       )
     assertFalse(encoded.contains('\n'), "encoded form spans lines: $encoded")
     assertFalse(encoded.contains('\r'), "encoded form carries a bare CR: $encoded")
@@ -88,7 +88,7 @@ class BuildHostCodecTest {
   fun `an unknown field is ignored`() {
     val decoded =
       BuildHostCodec.decode(
-        """{"id":3,"request":{"kind":"gradleBuildArgs","extra":["-q"],"whenAdded":"later"}}"""
+        """{"id":3,"request":{"kind":"gradleBuildArgs","extra":["-q"],"whenAdded":"later"}}""",
       )
     assertEquals(BuildHostRequest.GradleBuildArgs(listOf("-q")), decoded.request)
   }
@@ -125,7 +125,7 @@ class BuildHostCodecTest {
   fun `defaulted fields are written`() {
     val encoded =
       BuildHostCodec.encode(
-        BuildHostEnvelope(id = 1, request = BuildHostRequest.DiscoverAndBuild())
+        BuildHostEnvelope(id = 1, request = BuildHostRequest.DiscoverAndBuild()),
       )
     assertContains(encoded, "silenceStdout")
   }

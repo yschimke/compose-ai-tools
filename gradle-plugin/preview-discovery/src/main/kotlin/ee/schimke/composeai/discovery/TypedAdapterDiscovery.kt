@@ -123,7 +123,7 @@ object TypedAdapterDiscovery {
   ): ComponentRecordFile {
     require(module.isNotBlank() && variant.isNotBlank()) { "module and variant must be non-blank" }
     require(
-      callables.isNotEmpty() && callables.distinctBy { it.owner to it.name }.size == callables.size
+      callables.isNotEmpty() && callables.distinctBy { it.owner to it.name }.size == callables.size,
     ) {
       "declare distinct library callables"
     }

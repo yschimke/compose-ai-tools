@@ -157,7 +157,7 @@ class TypedRealRecordAdapterTest {
               put("type", "colorToken")
               put("value", "primary")
             },
-        )
+        ),
       ) as ExportProjection.Lowered.Node
     assertThat(lowered.record).isEqualTo(tonal.canonicalId)
     assertThat(lowered.slots).containsEntry("content", "label")
@@ -236,14 +236,14 @@ class TypedRealRecordAdapterTest {
                   AdapterValueCodecs.token(style).exportCodec!!,
                 ),
             ),
-          )
-        )
+          ),
+        ),
       )
     assertThat(ExportProjectionJson.decode(ExportProjectionJson.encode(projection)).getOrThrow())
       .isEqualTo(projection)
     val lowered =
       projection.lower(
-        mapOf("fontSizeSp" to JsonPrimitive(14.5), "style" to JsonPrimitive("titleLarge"))
+        mapOf("fontSizeSp" to JsonPrimitive(14.5), "style" to JsonPrimitive("titleLarge")),
       ) as ExportProjection.Lowered.Node
     val size = lowered.arguments.getValue("fontSize") as ScreenValue.Chain
     assertThat(size.receiver).isEqualTo(ScreenValue.Fractional(14.5))
@@ -254,7 +254,7 @@ class TypedRealRecordAdapterTest {
           "androidx.wear.compose.material3.MaterialTheme",
           listOf("typography", "titleLarge"),
           typeFqn = "androidx.compose.ui.text.TextStyle",
-        )
+        ),
       )
     // Zero is "unset" for a positive unit; an unknown token is refused, not guessed.
     val unset =
@@ -283,7 +283,7 @@ class TypedRealRecordAdapterTest {
       .isEqualTo(button.canonicalId)
     assertThat(
         (projection.lower(mapOf("variant" to JsonPrimitive(""))) as ExportProjection.Lowered.Node)
-          .record
+          .record,
       )
       .isEqualTo(button.canonicalId)
   }
@@ -305,8 +305,8 @@ class TypedRealRecordAdapterTest {
           ExportProjection.Target(
             "r",
             mapOf("n" to ExportProjection.Value.Property("n", ExportProjection.Codec.Whole)),
-          )
-        )
+          ),
+        ),
       )
     val lowered =
       projection.lower(mapOf("n" to JsonPrimitive(9007199254740993L)))
@@ -377,7 +377,7 @@ class TypedRealRecordAdapterTest {
                 "colors" to ExportProjection.Value.Fixed(fixed),
               ),
               slots = SLOTS,
-            )
+            ),
           )
         }
       }
@@ -419,7 +419,7 @@ class TypedRealRecordAdapterTest {
                   ),
               ),
               slots = SLOTS,
-            )
+            ),
           )
         }
       }
@@ -472,7 +472,7 @@ class TypedRealRecordAdapterTest {
             button,
             mapOf("colors" to call(listOf(required), *arguments.toTypedArray())),
             slots = SLOTS,
-          )
+          ),
         )
       }
     }
@@ -482,7 +482,7 @@ class TypedRealRecordAdapterTest {
   fun `a required factory parameter filled only by an optional property is reported`() {
     // `content` alone set writes `colors(content = …)` with no `container`.
     assertThat(
-        requiredContainerAdapter(withContent = true).validateAgainst(button).joinToString("\n")
+        requiredContainerAdapter(withContent = true).validateAgainst(button).joinToString("\n"),
       )
       .contains("required container is written only when its property is set")
   }
@@ -520,7 +520,7 @@ class TypedRealRecordAdapterTest {
               listOf(
                 TargetParameter.Builder("space", "Dp")
                   .also { it.typeFqn = "androidx.compose.ui.unit.Dp" }
-                  .build()
+                  .build(),
               ),
               returnSupertypes = supertypes,
             )
@@ -538,12 +538,12 @@ class TypedRealRecordAdapterTest {
                           ScreenValue.Whole(4),
                           listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
                           typeFqn = "androidx.compose.ui.unit.Dp",
-                        )
+                        ),
                       ),
                   ),
               ),
               slots = SLOTS,
-            )
+            ),
           )
         }
       }
@@ -566,7 +566,7 @@ class TypedRealRecordAdapterTest {
         ((untyped.projection!!.lower(emptyMap()) as ExportProjection.Lowered.Node)
             .arguments
             .getValue("verticalArrangement") as ScreenValue.Construct)
-          .typeFqn
+          .typeFqn,
       )
       .isEqualTo(both)
     // The record's own overload takes the exact return type: it decides, though another overload
@@ -606,7 +606,7 @@ class TypedRealRecordAdapterTest {
               as ExportProjection.Lowered.Node)
             .arguments
             .getValue("verticalArrangement") as ScreenValue.Construct)
-          .typeFqn
+          .typeFqn,
       )
       .isEqualTo(both)
   }
@@ -672,7 +672,7 @@ class TypedRealRecordAdapterTest {
             record,
             mapOf("enabled" to from(enabled)),
             slots = mapOf("content" to slotParameter),
-          )
+          ),
         )
       }
     }
@@ -712,7 +712,7 @@ class TypedRealRecordAdapterTest {
         .build()
     val ambiguous = record.newBuilder().also { it.overloads = record.overloads + twin }.build()
     assertThat(
-        contentSlotAdapter(ambiguous, "content").validateAgainst(ambiguous).joinToString("\n")
+        contentSlotAdapter(ambiguous, "content").validateAgainst(ambiguous).joinToString("\n"),
       )
       .contains("both take it, so it chooses neither")
     // The record's own overload wins whenever it applies, whatever else would.
@@ -772,7 +772,7 @@ class TypedRealRecordAdapterTest {
             mapOf("enabled" to from(enabled)),
             slots = SLOTS,
             contexts = mapOf("list-item" to context),
-          )
+          ),
         )
       }
     }
@@ -786,7 +786,7 @@ class TypedRealRecordAdapterTest {
             "androidx.wear.compose.material3.ButtonDefaults",
             listOf("minimumVerticalListContentPadding"),
             typeFqn = "androidx.compose.ui.unit.Dp",
-          )
+          ),
         ),
     )
 
@@ -807,10 +807,10 @@ class TypedRealRecordAdapterTest {
                   ScreenValue.Construct(
                     "androidx.wear.compose.material3.lazy.SurfaceTransformation",
                     typeFqn = "androidx.wear.compose.material3.SurfaceTransformation",
-                  )
-                )
-            )
-          )
+                  ),
+                ),
+            ),
+          ),
         )
         .validateAgainst(button)
     assertThat(missing)
@@ -822,15 +822,15 @@ class TypedRealRecordAdapterTest {
             mapOf(
               "colors" to
                 ExportProjection.Value.Fixed(
-                  ScreenValue.Reference("app.Theme", listOf("colors"), typeFqn = "app.OtherColors")
-                )
-            )
-          )
+                  ScreenValue.Reference("app.Theme", listOf("colors"), typeFqn = "app.OtherColors"),
+                ),
+            ),
+          ),
         )
         .validateAgainst(button)
     assertThat(mistyped)
       .containsExactly(
-        "wear-m3/button -> Button in list-item.colors: writes app.OtherColors, parameter takes $BUTTON_COLORS"
+        "wear-m3/button -> Button in list-item.colors: writes app.OtherColors, parameter takes $BUTTON_COLORS",
       )
   }
 
@@ -853,7 +853,7 @@ class TypedRealRecordAdapterTest {
               slots = SLOTS,
               contexts =
                 mapOf("list-item" to ExportProjection.Context(modifier = listOf(listPadding))),
-            )
+            ),
           )
         }
       }
@@ -922,8 +922,8 @@ class TypedRealRecordAdapterTest {
               listOf("label", "secondaryLabel"),
               max = 2,
             ),
-          )
-        )
+          ),
+        ),
       ),
       otherwise = "content",
     )
@@ -940,7 +940,7 @@ class TypedRealRecordAdapterTest {
 
       init {
         exportAs(
-          target(record, mapOf("enabled" to from(enabled)), slotPatterns = mapOf(slot to patterns))
+          target(record, mapOf("enabled" to from(enabled)), slotPatterns = mapOf(slot to patterns)),
         )
       }
     }
@@ -960,9 +960,9 @@ class TypedRealRecordAdapterTest {
       ExportProjection.SlotPatterns(
         listOf(
           ExportProjection.SlotPattern(
-            listOf(ExportProjection.Matcher.Component("wear-m3/icon", "icon"))
-          )
-        )
+            listOf(ExportProjection.Matcher.Component("wear-m3/icon", "icon")),
+          ),
+        ),
       )
     val problems = patternedAdapter(record, iconOnly).validateAgainst(record).joinToString("\n")
     assertThat(problems)
@@ -977,7 +977,7 @@ class TypedRealRecordAdapterTest {
     val problems = patternedAdapter(record, wearButtonPatterns).validateAgainst(record)
     assertThat(problems)
       .containsExactly(
-        "wear-m3/button -> Button [content otherwise]: overloads (content1)V and (content2)V both take it, so it chooses neither"
+        "wear-m3/button -> Button [content otherwise]: overloads (content1)V and (content2)V both take it, so it chooses neither",
       )
   }
 
@@ -1024,7 +1024,7 @@ class TypedRealRecordAdapterTest {
             emptyMap(),
             synthesize =
               mapOf(parameter to ExportProjection.Synthesis("wear-m3/text", mapOf("text" to from))),
-          )
+          ),
         )
       }
     }
@@ -1141,7 +1141,7 @@ class TypedRealRecordAdapterTest {
         implementations = listOf(adapter),
       )
     assertThat(
-        implementationOnly.catalog.statusSemantics.builtins.getValue("wear-m3/list").implementation
+        implementationOnly.catalog.statusSemantics.builtins.getValue("wear-m3/list").implementation,
       )
       .isEqualTo(list.canonicalId)
   }
@@ -1158,7 +1158,7 @@ class TypedRealRecordAdapterTest {
       .contains("slot content -> content is not a composable slot")
     val valued = transformingList(returns = "kotlin.String")
     assertThat(
-        listAdapter(mapOf("content" to "item"), valued).validateAgainst(valued).joinToString("\n")
+        listAdapter(mapOf("content" to "item"), valued).validateAgainst(valued).joinToString("\n"),
       )
       .contains("but is not a `Scope.() -> Unit` DSL")
     assertThat(headerItems().validateAgainst(listHeader).joinToString("\n"))

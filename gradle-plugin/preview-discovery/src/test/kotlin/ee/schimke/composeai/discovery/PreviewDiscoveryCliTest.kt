@@ -27,7 +27,7 @@ class PreviewDiscoveryCliTest {
           "--fail-on-empty",
           "--out",
           "/tmp/previews.json",
-        )
+        ),
       )
 
     assertThat(parsed.input.classDirs.map { it.path }).containsExactly("/tmp/a", "/tmp/b").inOrder()
@@ -59,7 +59,7 @@ class PreviewDiscoveryCliTest {
           "/proj",
           "--out",
           "/out",
-        )
+        ),
       )
 
     assertThat(parsed.input.classDirs.map { it.path }).containsExactly("/a", "/b").inOrder()
@@ -77,7 +77,7 @@ class PreviewDiscoveryCliTest {
             "/other.jar",
             "--dependency-jars",
             "/runtime.jar",
-          )
+          ),
       )
     assertThat(parsed.input.projectClassJars.map { it.path })
       .containsExactly("/app.jar", "/generated.jar", "/other.jar")
@@ -89,7 +89,7 @@ class PreviewDiscoveryCliTest {
   fun `--fail-on-empty defaults to false when absent`() {
     val parsed =
       PreviewDiscoveryCli.parse(
-        arrayOf("--module", "m", "--variant", "v", "--project-directory", "/proj", "--out", "/out")
+        arrayOf("--module", "m", "--variant", "v", "--project-directory", "/proj", "--out", "/out"),
       )
     assertThat(parsed.input.failOnEmpty).isFalse()
   }
@@ -168,7 +168,7 @@ class PreviewDiscoveryCliTest {
   fun `--retarget-wear-previews false opts a Wear widget module out of the watch-canvas retarget`() {
     val parsed =
       PreviewDiscoveryCli.parse(
-        baseArgs + arrayOf("--wear", "true", "--retarget-wear-previews", "false")
+        baseArgs + arrayOf("--wear", "true", "--retarget-wear-previews", "false"),
       )
     assertThat(parsed.input.isWear).isTrue()
     assertThat(parsed.input.retargetWearPreviews).isFalse()
@@ -188,7 +188,7 @@ class PreviewDiscoveryCliTest {
     val error =
       assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
         PreviewDiscoveryCli.parse(
-          arrayOf("--variant", "v", "--project-directory", "/p", "--out", "/o")
+          arrayOf("--variant", "v", "--project-directory", "/p", "--out", "/o"),
         )
       }
     assertThat(error.message).contains("--module is required")
@@ -229,7 +229,7 @@ class PreviewDiscoveryCliTest {
           "/p",
           "--out",
           "/o",
-        )
+        ),
       )
     assertThat(parsed.input.classDirs.map { it.path }).containsExactly("/a", "/b").inOrder()
   }

@@ -202,8 +202,8 @@ class BrowserPreviewClient(private val config: ClientConfig) {
     decodeImage(
       fetchBase64(
         "${config.serverPath("/render/${encodeComponent(previewId)}")}" +
-          config.suffix(overrides + ("format" to "png"))
-      )
+          config.suffix(overrides + ("format" to "png")),
+      ),
     )
 
   fun legacyViewerUrl(previewId: String): String =
@@ -266,7 +266,7 @@ class BrowserPreviewClient(private val config: ClientConfig) {
   fun sendTap(x: Int, y: Int) {
     sendBrowserStream(
       "{\"type\":\"input\",\"kind\":\"click\",\"pixelX\":$x,\"pixelY\":$y," +
-        "\"pointerId\":1,\"pointerType\":\"mouse\"}"
+        "\"pointerId\":1,\"pointerType\":\"mouse\"}",
     )
   }
 
@@ -285,7 +285,7 @@ class BrowserPreviewClient(private val config: ClientConfig) {
               widthPx = root.int("widthPx") ?: 1,
               heightPx = root.int("heightPx") ?: 1,
               sequence = root["seq"]?.jsonPrimitive?.longOrNull ?: 0,
-            )
+            ),
           )
         }
       }
@@ -409,7 +409,7 @@ private fun fetchTextPromise(url: String): Promise<JsString> =
     """fetch(url).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.text();
-    })"""
+    })""",
   )
 
 private fun fetchBase64Promise(url: String): Promise<JsString> =
@@ -423,7 +423,7 @@ private fun fetchBase64Promise(url: String): Promise<JsString> =
         chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + size)));
       }
       return btoa(chunks.join(''));
-    })"""
+    })""",
   )
 
 /** One browser-owned socket and a promise queue, kept outside the Compose canvas. */
@@ -448,7 +448,7 @@ private fun openBrowserStream(path: String): Unit =
         push(JSON.stringify({ type: 'closed', code: event.code, reason: event.reason || '' }));
       };
       window.__cpPreviewWasmStream = state;
-    })()"""
+    })()""",
   )
 
 private fun nextBrowserStreamEvent(): Promise<JsString> =
@@ -457,7 +457,7 @@ private fun nextBrowserStreamEvent(): Promise<JsString> =
       var state = window.__cpPreviewWasmStream;
       if (!state) { resolve('{\"type\":\"closed\",\"code\":1006,\"reason\":\"not connected\"}'); return; }
       if (state.queue.length) resolve(state.queue.shift()); else state.waiters.push(resolve);
-    })"""
+    })""",
   )
 
 private fun sendBrowserStream(message: String): Unit =
@@ -465,7 +465,7 @@ private fun sendBrowserStream(message: String): Unit =
     """(function () {
       var state = window.__cpPreviewWasmStream;
       if (state && state.socket && state.socket.readyState === WebSocket.OPEN) state.socket.send(message);
-    })()"""
+    })()""",
   )
 
 private fun closeBrowserStream(): Unit =
@@ -474,7 +474,7 @@ private fun closeBrowserStream(): Unit =
       var state = window.__cpPreviewWasmStream;
       window.__cpPreviewWasmStream = null;
       if (state && state.socket) state.socket.close();
-    })()"""
+    })()""",
   )
 
 private fun writeBrowserQuery(query: String, push: Boolean): Unit =
@@ -486,7 +486,7 @@ private fun writeBrowserQuery(query: String, push: Boolean): Unit =
         (push ? window.history.pushState : window.history.replaceState)
           .call(window.history, null, '', url);
       } catch (_) {}
-    })()"""
+    })()""",
   )
 
 private fun installBrowserHistoryListener(listener: () -> Unit): Unit =
@@ -497,7 +497,7 @@ private fun installBrowserHistoryListener(listener: () -> Unit): Unit =
       }
       window.__cpWasmHistoryListener = function () { listener(); };
       window.addEventListener('popstate', window.__cpWasmHistoryListener);
-    })()"""
+    })()""",
   )
 
 private fun removeBrowserHistoryListener(): Unit =
@@ -506,7 +506,7 @@ private fun removeBrowserHistoryListener(): Unit =
       if (!window.__cpWasmHistoryListener) return;
       window.removeEventListener('popstate', window.__cpWasmHistoryListener);
       window.__cpWasmHistoryListener = null;
-    })()"""
+    })()""",
   )
 
 private fun setBrowserDocumentTitle(title: String): Unit = js("document.title = title")

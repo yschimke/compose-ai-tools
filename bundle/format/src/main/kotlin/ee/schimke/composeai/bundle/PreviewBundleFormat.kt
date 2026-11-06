@@ -476,7 +476,7 @@ public object BundleReader {
       return bytes.copyOfRange(zipStart, bytes.size)
     }
     throw IllegalArgumentException(
-      "not a bundle: ${file.path} — leading bytes match neither PNG nor ZIP"
+      "not a bundle: ${file.path} — leading bytes match neither PNG nor ZIP",
     )
   }
 

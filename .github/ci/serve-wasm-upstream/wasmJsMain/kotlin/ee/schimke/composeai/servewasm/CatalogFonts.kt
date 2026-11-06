@@ -128,7 +128,7 @@ internal suspend fun loadCatalogFonts(
           weight = FontWeight(face.weight),
           style = if (face.italic) FontStyle.Italic else FontStyle.Normal,
         )
-      }
+      },
     )
 
   suspend fun familyOrNull(faces: List<ManifestFont>): FontFamily? = runCatching {

@@ -46,7 +46,7 @@ class ScreenGeneratorTest {
       listOf(
         TargetParameter.Builder(name = "text", type = "String")
           .also { b -> b.typeFqn = "kotlin.String" }
-          .build()
+          .build(),
       ),
     )
 
@@ -116,7 +116,7 @@ class ScreenGeneratorTest {
           "app/androidx.compose.material3.ButtonKt.Button",
           slots =
             mapOf(
-              slot to listOf(ScreenNode(text.canonicalId, mapOf("text" to ScreenValue.Text("Go"))))
+              slot to listOf(ScreenNode(text.canonicalId, mapOf("text" to ScreenValue.Text("Go")))),
             ),
         ),
     )
@@ -165,7 +165,7 @@ class ScreenGeneratorTest {
                   "androidx.compose.foundation.layout.Arrangement.spacedBy",
                   named = mapOf("space" to ScreenValue.Whole(4)),
                   typeFqn = type,
-                )
+                ),
             ),
           ),
       )
@@ -243,7 +243,7 @@ class ScreenGeneratorTest {
         buttonWith("content"),
         catalog(
           overloadedButton(
-            overload(onClick, slotParameter("content"), slotParameter("icon", default = true))
+            overload(onClick, slotParameter("content"), slotParameter("icon", default = true)),
           ),
           text,
         ),
@@ -289,8 +289,8 @@ class ScreenGeneratorTest {
             mapOf(
               "content" to
                 listOf(
-                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
-                )
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi"))),
+                ),
             ),
         ),
     )
@@ -310,8 +310,8 @@ class ScreenGeneratorTest {
                     ScreenNode(
                       text.canonicalId,
                       arguments = mapOf("text" to ScreenValue.Text("Hello")),
-                    )
-                  )
+                    ),
+                  ),
               ),
           ),
       )
@@ -691,7 +691,7 @@ class ScreenGeneratorTest {
               it.typeFqn = "androidx.compose.ui.Alignment\$Horizontal"
               it.hasDefault = true
             }
-            .build()
+            .build(),
         ),
       )
     fun generate(typeFqn: String) =
@@ -707,7 +707,7 @@ class ScreenGeneratorTest {
                     rootFqn = "androidx.compose.ui.Alignment",
                     members = listOf("Start"),
                     typeFqn = typeFqn,
-                  )
+                  ),
               ),
           ),
         ),
@@ -727,7 +727,7 @@ class ScreenGeneratorTest {
     assertThat(
         (generate("androidx.compose.ui.Alignment.Vertical") as ScreenGenerator.Result.Refused)
           .reasons
-          .joinToString()
+          .joinToString(),
       )
       .contains("and this value is a androidx.compose.ui.Alignment.Vertical")
   }
@@ -766,7 +766,7 @@ class ScreenGeneratorTest {
                   rootFqn = "androidx.compose.material.icons.Icons",
                   members = listOf("Filled", "Home"),
                   typeFqn = "androidx.compose.ui.graphics.vector.ImageVector",
-                )
+                ),
             ),
         ),
       )
@@ -823,7 +823,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "value", type = "String")
             .also { b -> b.typeFqn = "com.example.String" }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -888,8 +888,8 @@ class ScreenGeneratorTest {
                             "headlineContent" to listOf(textNode("Alex")),
                             "supportingContent" to listOf(textNode("Lunch?")),
                           ),
-                      )
-                    )
+                      ),
+                    ),
                 ),
             ),
           ),
@@ -910,7 +910,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "query", type = "String")
             .also { b -> b.typeFqn = "kotlin.String" }
-            .build()
+            .build(),
         ),
       )
     val source =
@@ -1001,7 +1001,7 @@ class ScreenGeneratorTest {
             listOf(
               TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
                 .also { b -> b.composableSlot = true }
-                .build()
+                .build(),
             )
         }
         .build()
@@ -1056,7 +1056,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "count", type = "Int")
             .also { b -> b.typeFqn = "kotlin.Int" }
-            .build()
+            .build(),
         ),
       )
     val tooBig =
@@ -1091,7 +1091,7 @@ class ScreenGeneratorTest {
               b.hasDefault = true
               b.composableSlot = true
             }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -1122,7 +1122,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "scale", type = "Float")
             .also { b -> b.typeFqn = "kotlin.Float" }
-            .build()
+            .build(),
         ),
       )
     fun screen(v: Double) =
@@ -1172,7 +1172,7 @@ class ScreenGeneratorTest {
             listOf(
               TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
                 .also { b -> b.composableSlot = true }
-                .build()
+                .build(),
             )
         }
         .build()
@@ -1226,7 +1226,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "total", type = "Long")
             .also { b -> b.typeFqn = "kotlin.Long" }
-            .build()
+            .build(),
         ),
       )
     fun screen(v: Long) =
@@ -1252,7 +1252,7 @@ class ScreenGeneratorTest {
       .contains("not a usable Kotlin function name")
     // A leading underscore on an otherwise ordinary name is legal and must still be accepted.
     assertThat(
-        emitted(ScreenDocument("_Screen", ScreenNode(text.canonicalId)), catalog(text)).source
+        emitted(ScreenDocument("_Screen", ScreenNode(text.canonicalId)), catalog(text)).source,
       )
       .contains("fun _Screen()")
   }
@@ -1295,7 +1295,7 @@ class ScreenGeneratorTest {
             listOf(
               TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
                 .also { b -> b.composableSlot = true }
-                .build()
+                .build(),
             )
         }
         .build()
@@ -1329,7 +1329,7 @@ class ScreenGeneratorTest {
               b.hasDefault = true
               b.composableSlot = true
             }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -1367,8 +1367,8 @@ class ScreenGeneratorTest {
                   ScreenNode(
                     text.canonicalId,
                     arguments = mapOf("text" to ScreenValue.Text("Hi")),
-                  )
-                )
+                  ),
+                ),
             ),
         ),
       )
@@ -1397,7 +1397,7 @@ class ScreenGeneratorTest {
               b.hasDefault = true
               b.composableSlot = true
             }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -1409,8 +1409,8 @@ class ScreenGeneratorTest {
             mapOf(
               "content" to
                 listOf(
-                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
-                )
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi"))),
+                ),
             ),
         ),
       )
@@ -1452,7 +1452,7 @@ class ScreenGeneratorTest {
     // `Übersicht` and `画面` need no backticks in Kotlin. An ASCII-only rule refused documents that
     // were never wrong.
     assertThat(
-        emitted(ScreenDocument("Übersicht", ScreenNode(text.canonicalId)), catalog(text)).source
+        emitted(ScreenDocument("Übersicht", ScreenNode(text.canonicalId)), catalog(text)).source,
       )
       .contains("fun Übersicht()")
     assertThat(emitted(ScreenDocument("画面", ScreenNode(text.canonicalId)), catalog(text)).source)
@@ -1462,7 +1462,7 @@ class ScreenGeneratorTest {
           ScreenDocument("Screen", ScreenNode(text.canonicalId)),
           catalog(text),
           packageName = "généré.écran",
-        )
+        ),
       )
       .isInstanceOf(ScreenGenerator.Result.Emitted::class.java)
   }
@@ -1497,7 +1497,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "label", type = "String")
             .also { b -> b.typeFqn = "kotlin.String" }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -1524,7 +1524,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "label", type = "String")
             .also { b -> b.typeFqn = "kotlin.String" }
-            .build()
+            .build(),
         ),
       )
     fun screen(value: String) =
@@ -1583,7 +1583,7 @@ class ScreenGeneratorTest {
               b.composableSlot = true
               b.composableSlotReceiver = "androidx.compose.foundation.layout.ColumnScope"
             }
-            .build()
+            .build(),
         ),
       )
     val screen =
@@ -1595,8 +1595,8 @@ class ScreenGeneratorTest {
             mapOf(
               "content" to
                 listOf(
-                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi")))
-                )
+                  ScreenNode(text.canonicalId, arguments = mapOf("text" to ScreenValue.Text("Hi"))),
+                ),
             ),
         ),
       )
@@ -1645,7 +1645,7 @@ class ScreenGeneratorTest {
             listOf(
               TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
                 .also { b -> b.composableSlot = true }
-                .build()
+                .build(),
             )
         }
         .build()
@@ -1676,7 +1676,7 @@ class ScreenGeneratorTest {
             listOf(
               TargetParameter.Builder(name = "content", type = "ColumnScope.() -> Unit")
                 .also { b -> b.composableSlot = true }
-                .build()
+                .build(),
             )
         }
         .build()
@@ -1693,8 +1693,8 @@ class ScreenGeneratorTest {
                     "app/com.example.GoneKt.Gone",
                     slots =
                       mapOf("content" to listOf(ScreenNode("app/com.example.AlsoGoneKt.AlsoGone"))),
-                  )
-                )
+                  ),
+                ),
             ),
         ),
       )
@@ -1722,7 +1722,7 @@ class ScreenGeneratorTest {
         // A plain receiver lambda, not `composableSlot`.
         TargetParameter.Builder(name = "content", type = "LazyListScope.() -> Unit")
           .also { b -> b.scopeDslReceiver = lazyListScope }
-          .build()
+          .build(),
       ),
     )
 
@@ -1737,7 +1737,7 @@ class ScreenGeneratorTest {
             b.composableSlot = true
             b.composableSlotReceiver = columnScope
           }
-          .build()
+          .build(),
       ),
     )
 
@@ -1797,10 +1797,10 @@ class ScreenGeneratorTest {
                   ChainLink(
                     "androidx.wear.compose.material3.lazy.transformedHeight",
                     positional = listOf(scope, specValue),
-                  )
+                  ),
                 ),
                 "androidx.compose.ui.Modifier",
-              )
+              ),
           ),
       ),
     )
@@ -1885,7 +1885,7 @@ class ScreenGeneratorTest {
       .contains(
         "    val spec = rememberTransformationSpec()\n" +
           "    ScreenScaffold(scrollState = listState) { contentPadding ->\n" +
-          "      LazyColumn {\n"
+          "      LazyColumn {\n",
       )
     assertThat(source).contains("Card(modifier = Modifier.transformedHeight(this, spec)")
     assertThat(source).contains("import androidx.wear.compose.material3.ScreenScaffold")
@@ -1939,20 +1939,20 @@ class ScreenGeneratorTest {
     assertThat(
         (generate("${'$'}{content}", mapOf("edgeButton" to listOf(textNode("Go"))))
             as ScreenGenerator.Result.Refused)
-          .reasons
+          .reasons,
       )
       .contains("screen frame: writes `edgeButton` 0 times, not once")
     assertThat(
         (generate("${'$'}{content}\n${'$'}{edgeButton}", emptyMap())
             as ScreenGenerator.Result.Refused)
-          .reasons
+          .reasons,
       )
       .contains("screen frame: `edgeButton` is not a hole this screen fills; it writes `content`")
     // `content` is the root's hole; a slot of that name would be dropped, so it is refused.
     assertThat(
         (generate("${'$'}{content}", mapOf("content" to listOf(textNode("x"))))
             as ScreenGenerator.Result.Refused)
-          .reasons
+          .reasons,
       )
       .containsExactly("frame slot `content` is the document's root, never a frame slot")
   }
@@ -1970,7 +1970,7 @@ class ScreenGeneratorTest {
               "Label",
               emptyList(),
               ScreenNode(text.canonicalId, arguments = mapOf("text" to label)),
-            )
+            ),
           ),
       )
     val refused =
@@ -1990,13 +1990,13 @@ class ScreenGeneratorTest {
       list(attested, textNode("a"))
         .copy(
           state =
-            listOf(ScreenState("rememberTransformationSpec", "kotlin.Int", ScreenValue.Whole(0)))
+            listOf(ScreenState("rememberTransformationSpec", "kotlin.Int", ScreenValue.Whole(0))),
         )
     val refused = ScreenGenerator.generate(document, catalog(lazyColumn, text), frame = wearFrame)
     assertThat((refused as ScreenGenerator.Result.Refused).reasons)
       .contains(
         "screen frame: import `rememberTransformationSpec` would be shadowed by a name this " +
-          "screen declares"
+          "screen declares",
       )
   }
 
@@ -2025,7 +2025,7 @@ class ScreenGeneratorTest {
       assertThat((refused as ScreenGenerator.Result.Refused).reasons)
         .contains(
           "template local `$name` has the name of a component or package root this screen " +
-            "writes, and would shadow it"
+            "writes, and would shadow it",
         )
     }
   }
@@ -2037,7 +2037,7 @@ class ScreenGeneratorTest {
       .contains("""item(key = "row") {""")
     assertThat(
         emitted(list(SlotItem("item", lazyListScope), textNode("a")), catalog(lazyColumn, text))
-          .source
+          .source,
       )
       .doesNotContain("item()")
   }
@@ -2060,7 +2060,7 @@ class ScreenGeneratorTest {
     assertThat(refusal(document, catalog(scopedCard, text)))
       .contains(
         "`ScopedCard`.`content` wraps its children in `item`, which is declared on " +
-          "`$lazyListScope`, and this slot composes under `$columnScope`"
+          "`$lazyListScope`, and this slot composes under `$columnScope`",
       )
   }
 
@@ -2080,7 +2080,7 @@ class ScreenGeneratorTest {
     assertThat(refusal(document, catalog(card, text)))
       .contains(
         "`Card`.`content` wraps its children in `item`, which is declared on `$lazyListScope`, " +
-          "and this slot composes under no receiver"
+          "and this slot composes under no receiver",
       )
   }
 
@@ -2130,10 +2130,10 @@ class ScreenGeneratorTest {
   fun `a slot item whose member is not an identifier is refused rather than written`() {
     // A `SlotItem` member is emitted as a name, so it's validated like every other name.
     assertThat(
-        refusal(list(SlotItem("it.em", lazyListScope), textNode("a")), catalog(lazyColumn, text))
+        refusal(list(SlotItem("it.em", lazyListScope), textNode("a")), catalog(lazyColumn, text)),
       )
       .contains(
-        "`LazyColumn`.`content` names `it.em`, which cannot be written as a Kotlin identifier"
+        "`LazyColumn`.`content` names `it.em`, which cannot be written as a Kotlin identifier",
       )
   }
 
@@ -2164,7 +2164,7 @@ class ScreenGeneratorTest {
     assertThat(source)
       .contains(
         "for (value in kotlin.collections.listOf(\"cell\", \"cell\", \"cell\", \"odd\", " +
-          "\"cell\", \"cell\", \"cell\", \"cell\")) {"
+          "\"cell\", \"cell\", \"cell\", \"cell\")) {",
       )
     assertThat(occurrences(source, "Text(text = value)")).isEqualTo(1)
     assertThat(source).doesNotContain("kotlin.repeat(")
@@ -2197,7 +2197,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "color", type = "Long")
             .also { b -> b.typeFqn = "kotlin.Long" }
-            .build()
+            .build(),
         ),
       )
     val shades = listOf(0xFFEBEDF0L, 0xFF9BE9A8L, 0xFF40C463L, 0xFF30A14EL)
@@ -2226,7 +2226,7 @@ class ScreenGeneratorTest {
         listOf(
           TargetParameter.Builder(name = "color", type = "Long")
             .also { b -> b.typeFqn = "kotlin.Long" }
-            .build()
+            .build(),
         ),
       )
     val cells =
@@ -2290,7 +2290,7 @@ class ScreenGeneratorTest {
           text.canonicalId,
           arguments =
             mapOf("text" to ScreenValue.Reference("app.theme.kotlin", typeFqn = "kotlin.String")),
-        )
+        ),
       )
 
     val source =
@@ -2322,8 +2322,8 @@ class ScreenGeneratorTest {
                     "kotlin",
                     "app.theme.Thing",
                     ScreenValue.Construct("app.theme.Thing", typeFqn = "app.theme.Thing"),
-                  )
-                )
+                  ),
+                ),
             ),
           catalog(card, text),
           expressionPackages = setOf("app.theme"),
@@ -2351,7 +2351,7 @@ class ScreenGeneratorTest {
               b.noArgConstructible = true
               b.hasDefault = false
             }
-            .build()
+            .build(),
         ),
       )
 
@@ -2359,10 +2359,10 @@ class ScreenGeneratorTest {
         refusal(
           ScreenDocument(name = "HomeScreen", root = ScreenNode(holder.canonicalId)),
           catalog(holder),
-        )
+        ),
       )
       .contains(
-        "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding"
+        "`Holder`.`state` imports `kotlin`, which the generated file spends on its own scaffolding",
       )
   }
 
@@ -2384,7 +2384,7 @@ class ScreenGeneratorTest {
                     "app.theme.label",
                     positional = listOf(argument),
                     typeFqn = "kotlin.String",
-                  )
+                  ),
               ),
           )
         }
@@ -2420,7 +2420,7 @@ class ScreenGeneratorTest {
                     "app.theme.label",
                     positional = listOf(ScreenValue.Whole(argument)),
                     typeFqn = "kotlin.String",
-                  )
+                  ),
               ),
           )
         }

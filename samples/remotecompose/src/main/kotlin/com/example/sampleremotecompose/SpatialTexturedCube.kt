@@ -114,7 +114,7 @@ fun RemoteTexturedCube(
     RemoteCanvas(
       RemoteModifier.fillMaxSize()
         .clickable(valueChange(turns, (turns + 1f).createReference()))
-        .semantics { contentDescription = "Turn the cube".rs }
+        .semantics { contentDescription = "Turn the cube".rs },
     ) {
       drawTexturedCube(yaw, pitch) { face ->
         drawConditionally(textureIndex.isLessThan(0.5f.rf)) { face(bricks) }
@@ -128,7 +128,7 @@ fun RemoteTexturedCube(
           .clip(RemoteRoundedCornerShape(10.rdp))
           .background(RemoteColor(Color(0xFF2B3A55)))
           .clickable(valueChange(textureIndex, ((textureIndex + 1f) % 2f).createReference()))
-          .semantics { contentDescription = "Swap the texture".rs }
+          .semantics { contentDescription = "Swap the texture".rs },
     ) {}
   }
 }

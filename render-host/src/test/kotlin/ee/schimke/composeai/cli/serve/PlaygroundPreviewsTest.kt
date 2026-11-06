@@ -34,7 +34,7 @@ class PlaygroundPreviewsTest {
             @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
             public @interface Preview { int widthDp() default -1; int heightDp() default -1; }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       val settledAnnotation =
@@ -45,7 +45,7 @@ class PlaygroundPreviewsTest {
             @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
             public @interface SettledPreview { int afterMs() default 0; int maxMs() default 1000; }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       val source =
@@ -63,7 +63,7 @@ class PlaygroundPreviewsTest {
               @Preview(widthDp=800, heightDp=800) public static void NotSelected() {}
             }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       assertEquals(
@@ -84,10 +84,14 @@ class PlaygroundPreviewsTest {
         json.decodeFromString<PreviewManifest>(
           PlaygroundPreviews.previewManifestJson(
             snippet(
-                listOf("sample.Snippet.Fixed", "sample.Snippet.WidthOnly", "sample.Snippet.Wrapped")
+                listOf(
+                  "sample.Snippet.Fixed",
+                  "sample.Snippet.WidthOnly",
+                  "sample.Snippet.Wrapped",
+                ),
               )
-              .copy(classesDir = directory.path.toPath())
-          )
+              .copy(classesDir = directory.path.toPath()),
+          ),
         )
       assertEquals(3, manifest.previews.size)
       assertEquals(
@@ -143,7 +147,7 @@ class PlaygroundPreviewsTest {
             @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
             public @interface Preview { int widthDp() default -1; int heightDp() default -1; }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       val source =
@@ -158,7 +162,7 @@ class PlaygroundPreviewsTest {
               @Preview(widthDp=1280, heightDp=800) public static void Tablet() {}
             }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       val classes = directory.resolve("classes").apply { mkdirs() }
@@ -175,8 +179,8 @@ class PlaygroundPreviewsTest {
         json
           .decodeFromString<PreviewManifest>(
             PlaygroundPreviews.previewManifestJson(
-              snippet(ids).copy(classesDir = path.path.toPath())
-            )
+              snippet(ids).copy(classesDir = path.path.toPath()),
+            ),
           )
           .previews
           .map { it.params.widthDp to it.params.heightDp }
@@ -267,8 +271,8 @@ class PlaygroundPreviewsTest {
       fun manifest(mode: PlaygroundMode) =
         json.decodeFromString<PreviewManifest>(
           PlaygroundPreviews.previewManifestJson(
-            snippet(ids).copy(mode = mode, classesDir = directory.path.toPath())
-          )
+            snippet(ids).copy(mode = mode, classesDir = directory.path.toPath()),
+          ),
         )
       val desktop = manifest(PlaygroundMode.CMP)
       assertEquals(
@@ -350,7 +354,7 @@ class PlaygroundPreviewsTest {
           "com.example.SnippetKt.Alpha",
           "com.example.OtherKt.Beta",
           "com.example.OtherKt.Gamma",
-        )
+        ),
       )
     assertEquals(
       listOf(
@@ -386,7 +390,7 @@ class PlaygroundPreviewsTest {
             classpath = listOf("/w/snippet/classes".toPath()),
             moduleName = "playground-cmp",
             previewId = "com.example.SnippetKt.Only",
-          )
+          ),
         ),
       )
     assertEquals(listOf("com.example.SnippetKt.Only"), manifest.previews.map { it.id })

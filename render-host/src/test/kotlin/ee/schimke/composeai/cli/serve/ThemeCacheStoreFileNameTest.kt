@@ -104,7 +104,7 @@ class ThemeCacheStoreFileNameTest {
             variant = "test",
             renderConfig = "test",
           ),
-        )
+        ),
     )
 
   private fun memoSize(generation: ThemeCacheStore.Generation): Int =

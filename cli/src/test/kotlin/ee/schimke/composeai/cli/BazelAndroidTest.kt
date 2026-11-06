@@ -84,7 +84,7 @@ class BazelAndroidTest {
       assertNull(
         BazelArtifacts("//:app", "bin", listOf("bin/ui.jar"), listOf("bin/ui.jar"))
           .resolve(root)
-          .android
+          .android,
       )
 
       // A missing linked APK is a build that did not materialize its outputs, not a JVM target.
@@ -92,7 +92,7 @@ class BazelAndroidTest {
       assertTrue(
         assertFailsWith<IllegalArgumentException> { artifacts.resolve(root) }
           .message!!
-          .contains("not materialized")
+          .contains("not materialized"),
       )
     }
 
@@ -177,7 +177,7 @@ class BazelAndroidTest {
     assertTrue(
       assertFailsWith<IllegalArgumentException> { stale.resolve(root, workspace) }
         .message!!
-        .contains("not materialized")
+        .contains("not materialized"),
     )
   }
 
@@ -187,7 +187,7 @@ class BazelAndroidTest {
     assertFailsWith<IllegalArgumentException> {
       bazelJson
         .decodeFromString<BazelArtifacts>(
-          encoded.replace("\"schemaVersion\": 2", "\"schemaVersion\": 1")
+          encoded.replace("\"schemaVersion\": 2", "\"schemaVersion\": 1"),
         )
         .resolve(root)
     }
@@ -229,7 +229,7 @@ class BazelAndroidTest {
                 PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
                 root,
               )
-              .readText()
+              .readText(),
           )
         } finally {
           if (previous == null) System.clearProperty(property)
@@ -241,7 +241,7 @@ class BazelAndroidTest {
       val testConfig = File(descriptor.classpath.first())
       val config = testConfig.resolve("com/android/tools/test_config.properties").readText()
       assertTrue(
-        config.contains("android_resource_apk=${artifacts.android!!.resourceApk.absolutePath}")
+        config.contains("android_resource_apk=${artifacts.android!!.resourceApk.absolutePath}"),
       )
       assertTrue(config.contains("android_custom_package=com.example.ui"))
       val daemonManifest =
@@ -252,7 +252,7 @@ class BazelAndroidTest {
         testConfig
           .resolve("ee/schimke/composeai/daemon/robolectric.properties")
           .readText()
-          .contains("application=android.app.Application")
+          .contains("application=android.app.Application"),
       )
       assertTrue(androidJar.absolutePath in descriptor.classpath)
       assertTrue(sidecar.resolve("daemon-android.jar").absolutePath in descriptor.classpath)
@@ -306,7 +306,7 @@ class BazelAndroidTest {
               PreparedBazelPreviews(PreviewManifest("//ui", "bin", emptyList()), manifestFile),
               root,
             )
-            .readText()
+            .readText(),
         )
       } finally {
         if (previous == null) System.clearProperty(property)
@@ -344,7 +344,7 @@ class BazelAndroidTest {
         """
         {"schemaVersion": 1,
          "appClockPackages": [" com.example.ui.", "com.example.shared.", "", ".", "com.example.ui."]}
-        """
+        """,
       )
     assertEquals(
       listOf("com.example.ui.", "com.example.shared."),
@@ -380,7 +380,7 @@ class BazelAndroidTest {
               sandboxCount,
               pngOnly,
             )
-            .readText()
+            .readText(),
         )
       val (prepared, oneShot) =
         try {
@@ -438,7 +438,7 @@ class BazelAndroidTest {
               "Greeting",
               "com.example.ui.GreetingKt",
               captures = listOf(Capture(renderOutput = "greeting.png")),
-            )
+            ),
           ),
         )
       val previewsFile =
@@ -469,7 +469,7 @@ class BazelAndroidTest {
           AndroidBundleResources.extract(
             BundleReader.extractZipBytes(bundle),
             root.resolve("replay"),
-          )
+          ),
         )
       assertEquals("linked", extracted.resourceApk.readText())
       assertTrue("com.example.ui.App" in extracted.mergedManifest.readText())
@@ -487,7 +487,7 @@ class BazelAndroidTest {
           .first()
           .resolve("com/android/tools/test_config.properties")
           .readText()
-          .contains("android_custom_package=com.example.ui")
+          .contains("android_custom_package=com.example.ui"),
       )
       assertEquals("r-classes.jar", carriage.last().name)
     }

@@ -94,7 +94,7 @@ class TypedComponentAdapterTest {
         published.insertContent!!
           .jsonObject["properties"]!!
           .jsonObject["enabled"]!!
-          .jsonObject["type"]
+          .jsonObject["type"],
       )
       .isEqualTo(JsonPrimitive("bool"))
     assertThat(published.propertyCapabilities!!.map { it.jsonObject["name"] })
@@ -103,7 +103,7 @@ class TypedComponentAdapterTest {
         published.insertContent!!
           .jsonObject["properties"]!!
           .jsonObject["label"]!!
-          .jsonObject["value"]
+          .jsonObject["value"],
       )
       .isEqualTo(JsonPrimitive("Button"))
     val json = Json { encodeDefaults = true }
@@ -111,14 +111,14 @@ class TypedComponentAdapterTest {
         json.decodeFromString(
           ComponentRecordFile.serializer(),
           json.encodeToString(ComponentRecordFile.serializer(), generated.record),
-        )
+        ),
       )
       .isEqualTo(generated.record)
     assertThat(
         json.decodeFromString(
           UiBuilderCatalogFile.serializer(),
           json.encodeToString(UiBuilderCatalogFile.serializer(), generated.catalog),
-        )
+        ),
       )
       .isEqualTo(generated.catalog)
   }
@@ -142,12 +142,12 @@ class TypedComponentAdapterTest {
             .also {
               it.components = mapOf("acme/button" to UiBuilderAuthoredComponent.Builder().build())
             }
-            .build()
+            .build(),
       )
     }
     assertThrows(IllegalArgumentException::class.java) {
       generate(
-        policy = policy.newBuilder().also { it.builtins = mapOf("acme/button" to root) }.build()
+        policy = policy.newBuilder().also { it.builtins = mapOf("acme/button" to root) }.build(),
       )
     }
   }
@@ -172,7 +172,7 @@ class TypedComponentAdapterTest {
           .insertContent!!
           .jsonObject["properties"]!!
           .jsonObject["count"]!!
-          .jsonObject["type"]
+          .jsonObject["type"],
       )
       .isEqualTo(JsonPrimitive("int"))
     assertThat(adapter.count.bindable).isFalse()
@@ -181,7 +181,7 @@ class TypedComponentAdapterTest {
           .getValue("acme/count")
           .propertyCapabilities!!
           .single()
-          .jsonObject["jsonType"]
+          .jsonObject["jsonType"],
       )
       .isEqualTo(JsonPrimitive("integer"))
     assertThat(generated.record.components.single().builder!!.stateCallbacks).isEmpty()
@@ -327,7 +327,7 @@ class TypedComponentAdapterTest {
     assertThrows(IllegalArgumentException::class.java) { adapter.freeze() }
     assertThat(
         ButtonAdapter(component)
-          .validateAgainst(component.newBuilder().also { it.signatureKnown = false }.build())
+          .validateAgainst(component.newBuilder().also { it.signatureKnown = false }.build()),
       )
       .contains("acme/button: component signature is unknown")
   }
@@ -426,8 +426,8 @@ class TypedComponentAdapterTest {
     assertThat(wrapped)
       .isEqualTo(
         json(
-          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}"""
-        )
+          """{"type":"list","values":[{"type":"string","value":"a"},{"type":"string","value":"b"}]}""",
+        ),
       )
     assertThat(codec.unwrap(wrapped)).containsExactly("a", "b").inOrder()
     assertThat(codec.decode(codec.encode(listOf("x")))).containsExactly("x")
@@ -471,28 +471,28 @@ class TypedComponentAdapterTest {
     assertThat(wrapped)
       .isEqualTo(
         json(
-          """{"type":"object","fields":{"name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}}"""
-        )
+          """{"type":"object","fields":{"name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}}""",
+        ),
       )
     assertThat(fixtureContactCodec.unwrap(wrapped)).isEqualTo(ada)
     assertThat(
         fixtureContactCodec.unwrap(
-          json("""{"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}""")
-        )
+          json("""{"type":"object","fields":{"name":{"type":"string","value":"Bo"}}}"""),
+        ),
       )
       .isEqualTo(TypedFixtureContact("Bo", 0))
     val missing =
       assertThrows(IllegalArgumentException::class.java) {
         fixtureContactCodec.unwrap(
-          json("""{"type":"object","fields":{"unread":{"type":"int","value":1}}}""")
+          json("""{"type":"object","fields":{"unread":{"type":"int","value":1}}}"""),
         )
       }
     assertThat(missing).hasMessageThat().contains("missing field `name`")
     assertThrows(IllegalArgumentException::class.java) {
       fixtureContactCodec.unwrap(
         json(
-          """{"type":"object","fields":{"name":{"type":"string","value":"Bo"},"age":{"type":"int","value":1}}}"""
-        )
+          """{"type":"object","fields":{"name":{"type":"string","value":"Bo"},"age":{"type":"int","value":1}}}""",
+        ),
       )
     }
     assertThrows(IllegalArgumentException::class.java) {
@@ -521,8 +521,8 @@ class TypedComponentAdapterTest {
               "name":{"type":"string","value":"Ada"},"unread":{"type":"int","value":2}}},
             "address":{"type":"object","fields":{"city":{"type":"string","value":"Tallinn"}}},
             "tags":{"type":"list","values":[{"type":"string","value":"vip"}]}}}
-          """
-        )
+          """,
+        ),
       )
     assertThat(fixtureProfileCodec.unwrap(wrappedProfile)).isEqualTo(fixtureProfile)
     val nestedError =
@@ -533,8 +533,8 @@ class TypedComponentAdapterTest {
             {"type":"object","fields":{
               "owner":{"type":"object","fields":{"name":{"type":"string","value":"Ada"}}},
               "address":{"type":"object","fields":{"city":{"type":"int","value":1}}}}}
-            """
-          )
+            """,
+          ),
         )
       }
     assertThat(nestedError).hasMessageThat().contains("`address`: `city`")
@@ -583,7 +583,7 @@ class TypedComponentAdapterTest {
           """
           {"name":"contacts","jsonType":"array","required":false,
            "editor":{"control":"list","element":$contact}}
-          """
+          """,
         ),
         json(
           """
@@ -596,7 +596,7 @@ class TypedComponentAdapterTest {
              {"name":"tags","required":false,"default":{"type":"list","values":[]},
               "jsonType":"array","literalType":"list",
               "editor":{"control":"list","element":{"jsonType":"string","literalType":"string"}}}]}}
-          """
+          """,
         ),
       )
       .inOrder()
@@ -614,12 +614,12 @@ class TypedComponentAdapterTest {
     assertThat(published.insertContent)
       .isEqualTo(
         json(
-          """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}"""
-        )
+          """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}""",
+        ),
       )
     assertThat(published.insertContent.toString())
       .isEqualTo(
-        """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}"""
+        """{"properties":{"label":{"type":"string","value":"Button"},"enabled":{"type":"bool","value":true}}}""",
       )
     assertThat(published.propertyCapabilities!!.map { it.toString() })
       .containsExactly(
@@ -642,8 +642,8 @@ class TypedComponentAdapterTest {
           """
           {"control":"list","element":{"jsonType":"string","literalType":"string",
             "allowedValues":["loud","soft"]}}
-          """
-        )
+          """,
+        ),
       )
   }
 
@@ -653,7 +653,7 @@ class TypedComponentAdapterTest {
     val javaList = inbox(contacts = parameter("contacts", "List<Contact>", "java.util.List"))
     assertThat(InboxAdapter(inbox()).validateAgainst(javaList))
       .containsExactly(
-        "acme/inbox.contacts: expected kotlin.collections.List, discovered java.util.List"
+        "acme/inbox.contacts: expected kotlin.collections.List, discovered java.util.List",
       )
     val nullable =
       inbox(
@@ -661,11 +661,11 @@ class TypedComponentAdapterTest {
           parameter("contacts", "List<Contact>?", LIST)
             .newBuilder()
             .also { it.nullable = true }
-            .build()
+            .build(),
       )
     assertThat(InboxAdapter(inbox()).validateAgainst(nullable))
       .containsExactly(
-        "acme/inbox.contacts: expected kotlin.collections.List, discovered kotlin.collections.List?"
+        "acme/inbox.contacts: expected kotlin.collections.List, discovered kotlin.collections.List?",
       )
     val otherClass = inbox(profile = parameter("profile", "Profile", "acme.OtherProfile"))
     assertThat(InboxAdapter(inbox()).validateAgainst(otherClass))
@@ -721,8 +721,8 @@ class TypedComponentAdapterTest {
                   default = json("""{"type":"int","value":0}"""),
                 ),
             ),
-          )
-        )
+          ),
+        ),
       )
     val swapped = inbox(contacts = parameter("contacts", "Profile", PROFILE))
     assertThat(adapter.validateAgainst(swapped).joinToString("\n"))

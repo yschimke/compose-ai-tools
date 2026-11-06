@@ -26,7 +26,7 @@ fun MainSquarePreview() {
   MaterialTheme {
     Surface(color = Color(0xFF4285F4)) {
       Box(
-        Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+        Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White),
       ) {
         Text("main")
       }

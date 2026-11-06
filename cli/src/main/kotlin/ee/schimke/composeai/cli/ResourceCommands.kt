@@ -257,7 +257,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
       System.err.println(
         "${prefix}Resource render completed but produced no PNG for ${missing.size} of " +
-          "${filtered.size} resource preview(s):"
+          "${filtered.size} resource preview(s):",
       )
       for (r in missing) {
         val nullCaptures = r.captures.filter { it.pngPath == null }
@@ -306,13 +306,13 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     // Inside the task's declared output subtree so up-to-date / build-cache carry it with the PNGs.
     val sidecar =
       module.projectDir.resolve(
-        "build/compose-previews/renders/resources/$RESOURCE_RENDER_ERRORS_SIDECAR"
+        "build/compose-previews/renders/resources/$RESOURCE_RENDER_ERRORS_SIDECAR",
       )
     if (!sidecar.exists()) return emptyMap()
     return try {
       resourceJson
         .decodeFromString<ResourceRenderErrorReport>(
-          fileSystem.read(sidecar.path.toPath()) { readUtf8() }
+          fileSystem.read(sidecar.path.toPath()) { readUtf8() },
         )
         .entries
         .associateBy { it.renderOutput }
@@ -322,13 +322,13 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   }
 
   private fun readAllResourceManifests(
-    modules: List<PreviewModule>
+    modules: List<PreviewModule>,
   ): List<Pair<PreviewModule, ResourceManifest>> = modules.mapNotNull { module ->
     readResourceManifest(module)?.let { module to it }
   }
 
   private fun buildResourceResults(
-    manifests: List<Pair<PreviewModule, ResourceManifest>>
+    manifests: List<Pair<PreviewModule, ResourceManifest>>,
   ): List<ResourcePreviewResult> {
     val out = mutableListOf<ResourcePreviewResult>()
     for ((module, manifest) in manifests) {
@@ -475,7 +475,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     } catch (e: Exception) {
       if (verbose)
         System.err.println(
-          "Warning: corrupt resource state file ${f.path}, resetting: ${e.message}"
+          "Warning: corrupt resource state file ${f.path}, resetting: ${e.message}",
         )
       ResourceCliState()
     }

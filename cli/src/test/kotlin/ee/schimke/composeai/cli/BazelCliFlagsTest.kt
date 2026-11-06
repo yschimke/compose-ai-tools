@@ -93,7 +93,7 @@ class BazelCliFlagsTest {
         null,
         functionName = "FooPreview_Disabled",
         function = "Foo",
-      )
+      ),
     )
   }
 
@@ -130,7 +130,7 @@ class BazelCliFlagsTest {
         BazelCommand(
             listOf("list") +
               form +
-              listOf("--project", workspace.path, "--build-command", fake.path)
+              listOf("--project", workspace.path, "--build-command", fake.path),
           )
           .execute()
       }

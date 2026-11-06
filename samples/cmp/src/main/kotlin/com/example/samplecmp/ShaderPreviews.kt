@@ -75,7 +75,7 @@ fun RuntimeShaderGradientBlobPreview() {
     modifier =
       Modifier.size(sizeDp)
         .clip(androidx.compose.ui.graphics.RectangleShape)
-        .background(gradientBlobBrush(px, px))
+        .background(gradientBlobBrush(px, px)),
   )
 }
 
@@ -131,6 +131,6 @@ fun RuntimeShaderAnimatedBlobPreview() {
     modifier =
       Modifier.size(sizeDp)
         .clip(androidx.compose.ui.graphics.RectangleShape)
-        .background(ShaderBrush(builder.makeShader().asComposeShader()))
+        .background(ShaderBrush(builder.makeShader().asComposeShader())),
   )
 }

@@ -33,7 +33,7 @@ class RegisterBundleTaskBackendTest {
         override fun execute(repo: MavenArtifactRepository) {
           repo.setUrl(url)
         }
-      }
+      },
     )
 
   private fun registerBundle(backendId: String): BundlePreviewTask {

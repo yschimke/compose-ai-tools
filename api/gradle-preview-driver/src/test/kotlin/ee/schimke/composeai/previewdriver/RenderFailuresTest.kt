@@ -64,7 +64,7 @@ class RenderFailuresTest {
           displayName = "Robolectric setup",
           message = "no testRuntimeOnly libraries available",
           description = null,
-        )
+        ),
       )
     val buf = ByteArrayOutputStream()
 

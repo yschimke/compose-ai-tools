@@ -108,7 +108,7 @@ class PluginResolutionDiagnosisTest {
   fun `guidance names the version, the race and the way out`() {
     val guidance =
       assertNotNull(
-        pluginResolutionGuidance(raceFailure, injectedVersion = "1.66.1", timing = recent)
+        pluginResolutionGuidance(raceFailure, injectedVersion = "1.66.1", timing = recent),
       )
     assertTrue(guidance.contains("1.66.1"), guidance)
     assertTrue(guidance.contains("not with your project"), guidance)
@@ -117,7 +117,7 @@ class PluginResolutionDiagnosisTest {
     assertTrue(
       guidance.contains(
         "https://plugins.gradle.org/m2/ee/schimke/composeai/preview/" +
-          "ee.schimke.composeai.preview.gradle.plugin/1.66.1/"
+          "ee.schimke.composeai.preview.gradle.plugin/1.66.1/",
       ),
       guidance,
     )
@@ -131,7 +131,7 @@ class PluginResolutionDiagnosisTest {
           raceFailure,
           injectedVersion = "1.66.1",
           pinSource = VersionPinSource.GRADLE_PROPERTIES.display,
-        )
+        ),
       )
     assertTrue(guidance.contains("pinned by gradle.properties"), guidance)
   }
@@ -152,7 +152,7 @@ class PluginResolutionDiagnosisTest {
           raceFailure,
           injectedVersion = "1.68.0",
           pinSource = VersionPinSource.FLAG.display,
-        )
+        ),
       )
     assertTrue(guidance.contains("1.66.1"), guidance)
     assertFalse(guidance.contains("pinned by"), guidance)
@@ -244,7 +244,7 @@ class PluginResolutionDiagnosisTest {
   fun `a weeks-old version is not blamed on the publication window`() {
     val guidance =
       assertNotNull(
-        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld)
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld),
       )
     assertFalse(guidance.contains("The usual cause is the publication window"), guidance)
     assertFalse(guidance.contains("wait for the publication"), guidance)
@@ -256,7 +256,7 @@ class PluginResolutionDiagnosisTest {
   fun `the network guidance lists every location Gradle searched`() {
     val guidance =
       assertNotNull(
-        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld)
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = weeksOld),
       )
     for (host in listOf("dl.google.com", "plugins.gradle.org/m2", "repo.maven.apache.org")) {
       assertTrue(guidance.contains("  - https://$host"), "missing $host in:\n$guidance")
@@ -296,7 +296,7 @@ class PluginResolutionDiagnosisTest {
   fun `an unknown age does not assert propagation as the cause`() {
     val guidance =
       assertNotNull(
-        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = undated)
+        pluginResolutionGuidance(edgeRefusedFailure, injectedVersion = "2.77.0", timing = undated),
       )
     assertFalse(guidance.contains("The usual cause is the publication window"), guidance)
     assertFalse(guidance.contains("wait for the publication"), guidance)

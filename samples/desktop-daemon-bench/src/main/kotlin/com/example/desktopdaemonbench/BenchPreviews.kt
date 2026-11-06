@@ -40,7 +40,7 @@ fun RedSquarePreview() {
   MaterialTheme {
     Surface(color = Color(0xFFEF5350)) {
       Box(
-        Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+        Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White),
       )
     }
   }

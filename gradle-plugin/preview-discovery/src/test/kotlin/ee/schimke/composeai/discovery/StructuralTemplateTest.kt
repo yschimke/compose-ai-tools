@@ -32,7 +32,7 @@ class StructuralTemplateTest {
         render(
           "TransformingLazyColumn(state = \${listState}) { }",
           mapOf("listState" to "columnState"),
-        )
+        ),
       )
 
     assertThat(out).isEqualTo("TransformingLazyColumn(state = columnState) { }")
@@ -54,7 +54,7 @@ class StructuralTemplateTest {
 
     val out =
       emitted(
-        render(template, mapOf("content" to "Text(\"one\")\nText(\"two\")\n\nText(\"three\")"))
+        render(template, mapOf("content" to "Text(\"one\")\nText(\"two\")\n\nText(\"three\")")),
       )
 
     assertThat(out)
@@ -69,7 +69,7 @@ class StructuralTemplateTest {
           }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 
@@ -88,14 +88,14 @@ class StructuralTemplateTest {
       emitted(
         render(
           "item {\n  \${call(modifier = \"Modifier.transformedHeight(this, spec)\", " +
-            "transformation = \"SurfaceTransformation(spec)\")}\n}"
-        )
+            "transformation = \"SurfaceTransformation(spec)\")}\n}",
+        ),
       )
 
     assertThat(out)
       .contains(
         "Call(modifier=\"Modifier.transformedHeight(this, spec)\", " +
-          "transformation=\"SurfaceTransformation(spec)\")"
+          "transformation=\"SurfaceTransformation(spec)\")",
       )
   }
 
@@ -195,7 +195,7 @@ class StructuralTemplateTest {
         as StructuralTemplate.Result2.Ok
     assertThat(nested.value)
       .containsExactly(
-        StructuralTemplate.Hole.Call(mapOf("rows" to "listOf<Pair<String, Int>>()", "n" to "1"))
+        StructuralTemplate.Hole.Call(mapOf("rows" to "listOf<Pair<String, Int>>()", "n" to "1")),
       )
   }
 
@@ -208,7 +208,7 @@ class StructuralTemplateTest {
         as StructuralTemplate.Result2.Ok
     assertThat(functionType.value)
       .containsExactly(
-        StructuralTemplate.Hole.Call(mapOf("factory" to "emptyMap<String, (Int, Int) -> Unit>()"))
+        StructuralTemplate.Hole.Call(mapOf("factory" to "emptyMap<String, (Int, Int) -> Unit>()")),
       )
   }
 
@@ -222,8 +222,8 @@ class StructuralTemplateTest {
     assertThat(annotated.value)
       .containsExactly(
         StructuralTemplate.Hole.Call(
-          mapOf("factory" to "emptyMap<String, @Composable () -> Unit>()")
-        )
+          mapOf("factory" to "emptyMap<String, @Composable () -> Unit>()"),
+        ),
       )
   }
 
@@ -236,8 +236,8 @@ class StructuralTemplateTest {
     assertThat(commented.value)
       .containsExactly(
         StructuralTemplate.Hole.Call(
-          mapOf("factory" to "emptyMap<String, /* result type */ Int>()")
-        )
+          mapOf("factory" to "emptyMap<String, /* result type */ Int>()"),
+        ),
       )
   }
 
@@ -250,7 +250,7 @@ class StructuralTemplateTest {
         as StructuralTemplate.Result2.Ok
     assertThat(compared.value)
       .containsExactly(
-        StructuralTemplate.Hole.Call(mapOf("a" to "if (x < y) 1 else 2", "b" to "3"))
+        StructuralTemplate.Hole.Call(mapOf("a" to "if (x < y) 1 else 2", "b" to "3")),
       )
 
     // And the shape admitting parentheses could have broken: `n<m(1)` is arithmetic, not a generic

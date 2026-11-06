@@ -86,7 +86,7 @@ internal class AdbDeviceServer(
                   AdbWire.VERSION,
                   AdbWire.MAX_PAYLOAD,
                   (banner() + "\u0000").toByteArray(),
-                )
+                ),
               )
             }
             AdbWire.A_OPEN -> open(message)

@@ -86,7 +86,7 @@ class ServerDistributionProvisionTest {
         fetcher = { url, dest ->
           seen += url
           dest.writeText(body)
-        }
+        },
       )
     assertEquals("4.2.0", resolved)
     assertEquals(listOf(ServerDistributionProvision.LATEST_RELEASE_API), seen)
@@ -99,13 +99,15 @@ class ServerDistributionProvisionTest {
   @Test
   fun `an unresolvable latest is null rather than a throw`() {
     assertNull(
-      ServerDistributionProvision.latestVersion(fetcher = { _, _ -> error("rate limited") })
+      ServerDistributionProvision.latestVersion(fetcher = { _, _ -> error("rate limited") }),
     )
     assertNull(
-      ServerDistributionProvision.latestVersion(fetcher = { _, dest -> dest.writeText("{}") })
+      ServerDistributionProvision.latestVersion(fetcher = { _, dest -> dest.writeText("{}") }),
     )
     assertNull(
-      ServerDistributionProvision.latestVersion(fetcher = { _, dest -> dest.writeText("not json") })
+      ServerDistributionProvision.latestVersion(
+        fetcher = { _, dest -> dest.writeText("not json") },
+      ),
     )
   }
 
@@ -200,7 +202,11 @@ class ServerDistributionProvisionTest {
     File(dir, "bin").mkdirs()
     File(dir, "bin/compose-preview-server").writeText("#!/bin/sh\n")
     assertNull(
-      ServerDistributionProvision.cached(env = { "3.0.0" }, cacheRoot = cacheRoot, osName = "Linux")
+      ServerDistributionProvision.cached(
+        env = { "3.0.0" },
+        cacheRoot = cacheRoot,
+        osName = "Linux",
+      ),
     )
 
     val binary =
@@ -296,7 +302,7 @@ class ServerDistributionProvisionTest {
       ServerDistributionProvision.distributionRoot(
         File(tmp, "empty").apply { mkdirs() },
         "compose-preview-server",
-      )
+      ),
     )
   }
 

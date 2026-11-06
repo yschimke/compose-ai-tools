@@ -75,7 +75,7 @@ internal class LaunchCommand(private val args: List<String>) {
         ?: appSpecs.firstOrNull()?.apk
         ?: live?.let { reload ->
           System.err.println(
-            "compose-preview launch: building ${reload.assembleTask} for the APK to launch"
+            "compose-preview launch: building ${reload.assembleTask} for the APK to launch",
           )
           val (build, built) = reload.assemble()
           built ?: fail("${reload.assembleTask} failed:\n" + build.errors.joinToString("\n"))
@@ -90,14 +90,14 @@ internal class LaunchCommand(private val args: List<String>) {
           fail(
             "the simulator needs Java ${SimulatorJava.MIN_FEATURE}+ (Robolectric's simulator " +
               "uses Java 21 APIs). Looked at: ${result.tried.joinToString("; ")}. Pass " +
-              "--java <jdk>, or set ${SimulatorJava.ENV}."
+              "--java <jdk>, or set ${SimulatorJava.ENV}.",
           )
       }
     val androidJar =
       androidJar(listOfNotNull(args.flagValue("--project")?.let(::File), apk))
         ?: fail(
           "needs an Android SDK platform's android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
-            "or pass --project, or an APK, in a build whose local.properties has sdk.dir."
+            "or pass --project, or an APK, in a build whose local.properties has sdk.dir.",
         )
     val simulatorJars = sidecar("lib-simulator")
     val dex2jarJars = sidecar("lib-dex2jar")
@@ -114,7 +114,7 @@ internal class LaunchCommand(private val args: List<String>) {
     if (robolectricJars.isEmpty()) {
       fail(
         "the Android daemon sidecar is missing; looked in " +
-          bundleSidecarSearchDescription("lib-daemon-android")
+          bundleSidecarSearchDescription("lib-daemon-android"),
       )
     }
     robolectricMismatch(simulatorJars, robolectricJars)?.let {
@@ -141,7 +141,7 @@ internal class LaunchCommand(private val args: List<String>) {
           System.err.println(
             "compose-preview launch: converting ${apk.name} (once per APK" +
               (if (previous != null) "; reusing the unchanged classes of its previous build)"
-              else ")")
+              else ")"),
           )
           convert(java, converterJars, apk, out, androidJar, previous)
         }
@@ -153,7 +153,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (verbose || !entry.cached) {
         System.err.println(
           "compose-preview launch: classes ${if (entry.cached) "cached" else "converted"} " +
-            "in ${conversion.ms} ms: ${entry.classesJar} ${entry.summary}"
+            "in ${conversion.ms} ms: ${entry.classesJar} ${entry.summary}",
         )
       }
       return conversion
@@ -194,7 +194,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (device !in DEVICES) fail("unknown --device $device (${DEVICES.joinToString(", ")})")
       if (args.flagValue("--qualifiers") != null) {
         fail(
-          "--device sets the display; drop --qualifiers, or send the qualifiers command after launch"
+          "--device sets the display; drop --qualifiers, or send the qualifiers command after launch",
         )
       }
     }
@@ -228,7 +228,7 @@ internal class LaunchCommand(private val args: List<String>) {
           "display ${formFactor.qualifiers}" +
           (if (args.flagValue("--qualifiers") != null || args.flagValue("--device") != null)
             " (overridden by --qualifiers / --device)"
-          else "")
+          else ""),
       )
     }
 
@@ -236,7 +236,7 @@ internal class LaunchCommand(private val args: List<String>) {
     if (headless && control == null && !adb) {
       System.err.println(
         "compose-preview launch: no display, so no window; pass --control stdio to drive the app " +
-          "headless."
+          "headless.",
       )
     }
     val options =
@@ -289,7 +289,7 @@ internal class LaunchCommand(private val args: List<String>) {
     fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> {
       val natives =
         hostNatives.computeIfAbsent(
-          "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
+          "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}",
         ) {
           hostNatives(launch.apk, options)
         }
@@ -331,12 +331,12 @@ internal class LaunchCommand(private val args: List<String>) {
         JsonObject(
           this +
             extra +
-            ("totalMs" to JsonPrimitive(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)))
+            ("totalMs" to JsonPrimitive(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))),
         )
       return when (plan) {
         is LiveReload.Plan.Failed ->
           throw IllegalStateException(
-            "the build failed; the app keeps running.\n" + plan.build.errors.joinToString("\n")
+            "the build failed; the app keeps running.\n" + plan.build.errors.joinToString("\n"),
           )
         is LiveReload.Plan.Unchanged -> buildJsonObject {
             put("mode", "unchanged")
@@ -375,7 +375,7 @@ internal class LaunchCommand(private val args: List<String>) {
                     put(
                       "classes",
                       kotlinx.serialization.json.JsonArray(
-                        swap.names.take(MAX_LISTED_CLASSES).map(::JsonPrimitive)
+                        swap.names.take(MAX_LISTED_CLASSES).map(::JsonPrimitive),
                       ),
                     )
                     put("hotswap", answer)
@@ -404,7 +404,7 @@ internal class LaunchCommand(private val args: List<String>) {
               "classesChanged" to JsonPrimitive(plan.changedClasses.size),
               "classes" to
                 kotlinx.serialization.json.JsonArray(
-                  plan.changedClasses.take(MAX_LISTED_CLASSES).map(::JsonPrimitive)
+                  plan.changedClasses.take(MAX_LISTED_CLASSES).map(::JsonPrimitive),
                 ),
               "resourcesChanged" to JsonPrimitive(plan.resources),
               "resourceIdsChanged" to JsonPrimitive(plan.resourceIds),
@@ -471,7 +471,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (verbose) {
         System.err.println(
           "compose-preview launch: ${device?.let { "$it: " } ?: ""}" +
-            commandFor(launch, options).joinToString(" ")
+            commandFor(launch, options).joinToString(" "),
         )
       }
       return SimulatorSupervisor(
@@ -490,7 +490,7 @@ internal class LaunchCommand(private val args: List<String>) {
                   ?.let { reload(it, supervisor, json) }
                   ?: throw IllegalStateException(
                     if (live != null) "reload is $reloadable's: --project builds that app"
-                    else "reload needs a launch with --project <dir>, the app's Gradle build"
+                    else "reload needs a launch with --project <dir>, the app's Gradle build",
                   )
               else -> null
             }
@@ -587,13 +587,13 @@ internal class LaunchCommand(private val args: List<String>) {
     val primaryDevice = if (formFactor == ApkFormFactor.WEAR) WATCH else PHONE
     if (pair != null && primaryDevice == WATCH) {
       fail(
-        "--pair pairs a watch with a phone app; this is a Wear app (use --app to say which is which)"
+        "--pair pairs a watch with a phone app; this is a Wear app (use --app to say which is which)",
       )
     }
     val topology = buildList {
       add(
         if (positional == null && appSpecs.isNotEmpty()) appSpecs.first()
-        else LaunchTopology.App(primaryDevice, apk)
+        else LaunchTopology.App(primaryDevice, apk),
       )
       val first = first()
       pair?.let { add(LaunchTopology.App(WATCH, it)) }
@@ -623,13 +623,13 @@ internal class LaunchCommand(private val args: List<String>) {
         val first = changed.first()
         supervisor.execute {
           System.err.println(
-            "compose-preview launch: ${changed.size} source change(s) (${first.fileName}…); reloading"
+            "compose-preview launch: ${changed.size} source change(s) (${first.fileName}…); reloading",
           )
           val event =
             try {
               JsonObject(
                 mapOf("event" to JsonPrimitive("reload")) +
-                  reload(live, supervisor, JsonObject(emptyMap()))
+                  reload(live, supervisor, JsonObject(emptyMap())),
               )
             } catch (e: Exception) {
               System.err.println("compose-preview launch: reload failed: ${e.message}")
@@ -753,7 +753,7 @@ internal class LaunchCommand(private val args: List<String>) {
                       it.apk.path
                     },
                   "composeai.simulator.device.sdcard" to sdcards.getValue(app.device).path,
-                )
+                ),
           )
       }
       if (!LaunchTopology.isFirstOnDevice(topology, app)) {
@@ -910,7 +910,7 @@ internal class LaunchCommand(private val args: List<String>) {
     for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
       val process =
         ProcessBuilder(
-            converterCommand(java.binary, converterJars, apk, out, androidJar, heap, previous)
+            converterCommand(java.binary, converterJars, apk, out, androidJar, heap, previous),
           )
           .redirectError(ProcessBuilder.Redirect.INHERIT)
           .start()
@@ -925,7 +925,7 @@ internal class LaunchCommand(private val args: List<String>) {
         .orEmpty()
         .forEach { it.delete() }
       System.err.println(
-        "compose-preview launch: the converter ran out of its $heap heap; retrying with $next"
+        "compose-preview launch: the converter ran out of its $heap heap; retrying with $next",
       )
     }
     error("unreachable")
@@ -956,7 +956,7 @@ internal class LaunchCommand(private val args: List<String>) {
     } catch (e: Exception) {
       System.err.println(
         "compose-preview launch: could not provision android-all for SDK $sdk ($e); " +
-          "Robolectric will fetch it"
+          "Robolectric will fetch it",
       )
       emptyMap()
     }
@@ -965,7 +965,7 @@ internal class LaunchCommand(private val args: List<String>) {
     locateBundleSidecarJars(name).ifEmpty {
       fail(
         "this CLI install has no `$name/`, which `launch` runs from. Looked in " +
-          bundleSidecarSearchDescription(name)
+          bundleSidecarSearchDescription(name),
       )
     }
 

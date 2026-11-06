@@ -35,7 +35,7 @@ class BuilderComponentDiscoveryTest {
     assertThat(policy.canvas).isEqualTo("placeholder")
     assertThat(policy.stateCallbacks)
       .containsExactly(
-        BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean").build()
+        BuilderPair.Builder(key = "onCheckedChange", value = "checked:boolean").build(),
       )
     assertThat(policy.starter)
       .containsExactly(BuilderPair.Builder(key = "label", value = "Checkbox").build())
@@ -97,7 +97,7 @@ class BuilderComponentDiscoveryTest {
         projectDirectory = tempDir.root,
         failOnEmpty = true,
         projectClassJars = listOf(jar),
-      )
+      ),
     ) as PreviewDiscovery.Outcome.Success
 
   private fun writeBuilderPreviewClassJar(

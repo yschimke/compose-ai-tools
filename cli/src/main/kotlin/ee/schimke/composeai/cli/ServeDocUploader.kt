@@ -65,14 +65,14 @@ internal class ServeDocUploader(
               "refusing to follow a redirect from ${redactedUrl(base)} (to " +
                 "${response.header("Location")?.let(::redactedLocation) ?: "an unnamed location"}): " +
                 "the upload goes only " +
-                "to the host you named."
+                "to the host you named.",
             )
           !response.isSuccessful -> {
             val detail = scrubbed(response.body.string().trim().take(400))
             Result.Failed(
               "${redactedUrl(base)} answered ${response.code}" +
                 (if (detail.isEmpty()) "" else ": $detail") +
-                if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) DOC_LANE_OFF else ""
+                if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) DOC_LANE_OFF else "",
             )
           }
           else -> parse(response.body.string())

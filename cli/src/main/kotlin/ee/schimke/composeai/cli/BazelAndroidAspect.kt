@@ -223,9 +223,9 @@ internal fun installCliOwnedFiles(
         (installed
           .filterKeys { it !in removed }
           .filterValues { it != null }
-          .mapValues { JsonPrimitive(it.value) }) + written.mapValues { JsonPrimitive(it.value) }
+          .mapValues { JsonPrimitive(it.value) }) + written.mapValues { JsonPrimitive(it.value) },
       ),
-    ) + "\n"
+    ) + "\n",
   )
   return kept
 }

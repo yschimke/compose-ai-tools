@@ -73,7 +73,7 @@ internal fun rememberCompileCheck(host: String, source: String): CompilePaneStat
             CompilePaneState.Unavailable(
               "no '${CompileCheck.M3_CATALOG_SYSTEM}' catalog here — this host compiles " +
                 catalogs.joinToString(", ") { it.servedSystem } +
-                ", none of which carries androidx.compose.material3"
+                ", none of which carries androidx.compose.material3",
             )
         }
       } catch (e: Exception) {
@@ -91,7 +91,7 @@ internal fun rememberCompileCheck(host: String, source: String): CompilePaneStat
     val outcome =
       try {
         CompileCheck.readResponse(
-          httpPostJson(CompileCheck.runUrl(host), CompileCheck.requestBody(source, target))
+          httpPostJson(CompileCheck.runUrl(host), CompileCheck.requestBody(source, target)),
         )
       } catch (e: Exception) {
         CompileOutcome.Failed(e.message ?: "the compile request failed")
@@ -107,7 +107,7 @@ internal fun rememberCompileCheck(host: String, source: String): CompilePaneStat
 private fun getTextPromise(url: String, timeoutMs: Int): Promise<JsString> =
   js(
     """fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })"""
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })""",
   )
 
 /**
@@ -121,7 +121,7 @@ private fun postJsonPromise(url: String, body: String, timeoutMs: Int): Promise<
         headers: { 'Content-Type': 'application/json' },
         body: body,
         signal: AbortSignal.timeout(timeoutMs)
-      }).then(function (r) { return r.text(); })"""
+      }).then(function (r) { return r.text(); })""",
   )
 
 /** Cancellable, so an edit that supersedes a check genuinely abandons it. */

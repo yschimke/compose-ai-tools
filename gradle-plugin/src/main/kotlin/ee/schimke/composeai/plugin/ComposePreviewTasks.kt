@@ -317,7 +317,7 @@ internal object ComposePreviewTasks {
               else -> null
             }
           relativePath?.let { listOf(project.layout.buildDirectory.dir(it).get()) }.orEmpty()
-        }
+        },
       )
 
     val activeSourceFiles =
@@ -336,7 +336,7 @@ internal object ComposePreviewTasks {
                 else -> emptyList()
               }
             sourceSets.map { project.layout.projectDirectory.dir("src/$it").asFile }
-          }
+          },
         )
         .asFileTree
         .matching {
@@ -538,7 +538,7 @@ internal object ComposePreviewTasks {
               .map { build.dir(it).asFile }
           },
           directory = true,
-        )
+        ),
       )
 
     return project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
@@ -559,7 +559,7 @@ internal object ComposePreviewTasks {
           project.layout.buildDirectory.dir("resources/main"),
           project.layout.buildDirectory.dir("processedResources/jvm/main"),
           project.layout.buildDirectory.dir("processedResources/desktop/main"),
-        )
+        ),
       )
       deps.jarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(deps.coordinates)
@@ -618,7 +618,7 @@ internal object ComposePreviewTasks {
       moduleProjectDir.set(project.layout.projectDirectory)
       // Resolved here because only Gradle knows the physical directory. Empty for the root project.
       moduleDirectory.set(
-        project.projectDir.relativeToOrNull(project.rootDir)?.invariantSeparatorsPath.orEmpty()
+        project.projectDir.relativeToOrNull(project.rootDir)?.invariantSeparatorsPath.orEmpty(),
       )
       // From the layout, so a relocated `buildDirectory` still finds AGP's blame files. See
       // [BundlePreviewTask.moduleBuildDir].
@@ -851,7 +851,7 @@ internal object ComposePreviewTasks {
           project,
           previewOutputDir.map { listOf(it.file("previews.json").asFile) },
           directory = false,
-        )
+        ),
       )
       // Ordering only, as on Android: the provider carries no dependency, and `dependsOn` would
       // prevent warming before discovery.
@@ -1052,7 +1052,7 @@ internal object ComposePreviewTasks {
     // when KGP has no such configuration for this compilation.
     val modulePlugins = kotlinPluginConfigurationName?.let { project.configurations.findByName(it) }
     task.btaCompilerPluginClasspath.from(
-      (modulePlugins ?: btaPluginConfig).incoming.artifactView {}.files
+      (modulePlugins ?: btaPluginConfig).incoming.artifactView {}.files,
     )
     task.btaCompileClasspath.from(userCompileClasspath)
     task.btaModuleName.set(moduleName)
@@ -1063,7 +1063,7 @@ internal object ComposePreviewTasks {
     task.btaIneligibilityReason.set(
       task.btaCompilerPluginClasspath.elements.map { elements ->
         ineligibilityReason ?: unsupportedCompilerPlugins(elements.map { it.asFile.name })
-      }
+      },
     )
 
     val pathSep = java.io.File.pathSeparator
@@ -1299,7 +1299,7 @@ internal object ComposePreviewTasks {
       .orElse(
         project.providers.gradleProperty("composePreview.idFilter").map { v ->
           v.split(",").map(String::trim).filter(String::isNotEmpty)
-        }
+        },
       )
       .orElse(emptyList())
 
@@ -1332,7 +1332,7 @@ internal object ComposePreviewTasks {
       .orElse(
         project.providers.gradleProperty("composePreview.idExclude").map { v ->
           v.split(",").map(String::trim).filter(String::isNotEmpty)
-        }
+        },
       )
       .orElse(emptyList())
 
@@ -1419,12 +1419,12 @@ internal object ComposePreviewTasks {
       // Not added to `activeClassDirs`, which is about this module's own compilation output.
       previewSourceClasspath(project, dependencyConfigName())?.let { config ->
         previewSourceClasses.from(
-          config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
+          config.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files,
         )
         previewSourceClasses.from(
           config.incoming
             .artifactView { attributes.attribute(artifactType, "android-classes") }
-            .files
+            .files,
         )
       }
 
@@ -1432,7 +1432,7 @@ internal object ComposePreviewTasks {
         project.fileTree("src") {
           include("**/*.kt")
           include("**/*.java")
-        }
+        },
       )
       // Their sources too, so previews map to their declaring file and `@file:CatalogGroup`
       // applies. See `composePreview.previewSourceRoots`.
@@ -1440,7 +1440,7 @@ internal object ComposePreviewTasks {
         extension.previewSourceRoots.asFileTree.matching {
           include("**/*.kt")
           include("**/*.java")
-        }
+        },
       )
       activeSourceFiles.from(activeCompilationSourceFiles ?: sourceFiles)
       val configName = dependencyConfigName()
@@ -1454,7 +1454,7 @@ internal object ComposePreviewTasks {
               if (useLenient) lenient(true)
               attributes.attribute(artifactType, "jar")
             }
-            .files
+            .files,
         )
         dependencyJars.from(
           config.incoming
@@ -1462,7 +1462,7 @@ internal object ComposePreviewTasks {
               if (useLenient) lenient(true)
               attributes.attribute(artifactType, "android-classes")
             }
-            .files
+            .files,
         )
         // Coordinates for the jars above, from the same views so transformed paths match (see
         // [dependencyClasspathBinding]).
@@ -1479,7 +1479,7 @@ internal object ComposePreviewTasks {
                 artifacts.associate {
                   it.file.absolutePath to it.id.componentIdentifier.displayName
                 }
-              }
+              },
           )
         }
       }
@@ -1495,14 +1495,14 @@ internal object ComposePreviewTasks {
         project.providers
           .gradleProperty("composePreview.failOnEmpty")
           .map { it.toBooleanStrictOrNull() ?: false }
-          .orElse(extension.failOnEmpty)
+          .orElse(extension.failOnEmpty),
       )
       // The Gradle property wins over the extension (#2670).
       retargetWearPreviews.set(
         project.providers
           .gradleProperty("composePreview.retargetWearPreviews")
           .map { it.toBooleanStrictOrNull() ?: true }
-          .orElse(extension.retargetWearPreviews)
+          .orElse(extension.retargetWearPreviews),
       )
       componentLibraryPrefixes.set(extension.componentLibraryPrefixes)
       // No per-extension opt-in: a11y is daemon-only, so `dataExtensionReports` is empty here.
@@ -1510,7 +1510,7 @@ internal object ComposePreviewTasks {
       componentsFile.set(previewOutputDir.map { it.file("components.json") })
       uiBuilderFile.set(previewOutputDir.map { it.file("ui-builder.json") })
       uiBuilderGuidelinesFile.set(
-        previewOutputDir.map { it.file(UiBuilderGuidelinesFile.FILE_NAME) }
+        previewOutputDir.map { it.file(UiBuilderGuidelinesFile.FILE_NAME) },
       )
       // The tree the copied template designs land in, beside the catalog that names them.
       uiBuilderTemplateDir.set(previewOutputDir.map { it.dir("ui-builder") })
@@ -1616,7 +1616,7 @@ internal object ComposePreviewTasks {
           )
         val manifest =
           manifestRaw.copy(
-            previews = PreviewPermutations.expand(manifestRaw.previews, permutationsProvider.get())
+            previews = PreviewPermutations.expand(manifestRaw.previews, permutationsProvider.get()),
           )
         if (manifest.previews.isEmpty()) return@doLast
 

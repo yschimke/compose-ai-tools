@@ -224,7 +224,7 @@ public object PreviewDiscoveryCli {
 
       Exit codes: 0 = success, 1 = discovery failure, 2 = argument parsing failure.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }

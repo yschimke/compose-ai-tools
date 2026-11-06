@@ -88,11 +88,11 @@ class AndroidResourcePrunerTest {
       )
     assertThat(
         AndroidResourcePruner.prune(input, prunableFileResources = setOf("drawable/my_anim"))
-          .droppedEntries
+          .droppedEntries,
       )
       .isEqualTo(2)
     assertThat(
-        AndroidResourcePruner.prune(input, prunableFileResources = emptySet()).droppedEntries
+        AndroidResourcePruner.prune(input, prunableFileResources = emptySet()).droppedEntries,
       )
       .isEqualTo(0)
   }

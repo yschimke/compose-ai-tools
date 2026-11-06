@@ -85,7 +85,7 @@ class ValidateComposeFloorTaskTest {
         <version>$version</version>
       </project>
       """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 }

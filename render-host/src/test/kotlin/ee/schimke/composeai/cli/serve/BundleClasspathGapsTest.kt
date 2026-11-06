@@ -61,7 +61,7 @@ class BundleClasspathGapsTest {
     assertTrue(logs.isEmpty(), "a healthy catalog must not log a gap")
     assertEquals(emptyList(), destDir.listFiles()?.toList() ?: emptyList())
     assertNull(
-      BundleClasspathGaps.linkageDiagnosis("render failed: NoClassDefFoundError: a/B", descriptor)
+      BundleClasspathGaps.linkageDiagnosis("render failed: NoClassDefFoundError: a/B", descriptor),
     )
   }
 
@@ -93,7 +93,7 @@ class BundleClasspathGapsTest {
         BundleClasspathGaps.linkageDiagnosis(
           "render failed: NoClassDefFoundError: com/example/other/Thing",
           descriptor,
-        )
+        ),
       )
 
     assertContains(text, "one of them is likely")
@@ -110,7 +110,7 @@ class BundleClasspathGapsTest {
       BundleClasspathGaps.linkageDiagnosis(
         "render failed: UnsatisfiedLinkError: 'long org.jetbrains.skia.Foo._nMake()'",
         descriptor,
-      )
+      ),
     )
     assertNull(BundleClasspathGaps.linkageDiagnosis("render failed: VerifyError: bad", descriptor))
   }
@@ -152,7 +152,7 @@ class BundleClasspathGapsTest {
           "render failed: NoSuchFieldError: Class androidx.compose.remote.core.RemoteClock does " +
             "not have member field 'androidx.compose.remote.core.RemoteClock SYSTEM'",
           descriptor,
-        )
+        ),
       ) {
         "a hash mismatch is the whole cause here — nothing was unresolved to fall back on"
       }
@@ -173,7 +173,7 @@ class BundleClasspathGapsTest {
       BundleClasspathGaps.linkageDiagnosis(
         "render failed: NoSuchMethodError: 'void com.example.other.Thing.go()'",
         descriptor,
-      )
+      ),
     )
   }
 
@@ -195,7 +195,7 @@ class BundleClasspathGapsTest {
           "render failed: NoSuchFieldError: Class androidx.compose.remote.core.RemoteClock does " +
             "not have member field 'androidx.compose.remote.core.RemoteClock SYSTEM'",
           descriptor,
-        )
+        ),
       )
 
     assertContains(text, "resolved to different bytes")

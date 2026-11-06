@@ -18,7 +18,7 @@ class RenderCliTest {
           "/abs/repo",
           "--previews",
           "Foo.Greeting,Bar.Welcome",
-        )
+        ),
       )
 
     assertThat(parsed.descriptor.path).isEqualTo("/abs/build/daemon-launch.json")
@@ -43,7 +43,7 @@ class RenderCliTest {
           "a,b",
           "--previews",
           "c",
-        )
+        ),
       )
     assertThat(parsed.previewIds).containsExactly("a", "b", "c").inOrder()
   }
@@ -61,7 +61,7 @@ class RenderCliTest {
           "my-workspace",
           "--previews",
           "a",
-        )
+        ),
       )
     assertThat(parsed.workspaceName).isEqualTo("my-workspace")
   }

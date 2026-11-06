@@ -124,7 +124,7 @@ class CoordinateResolverTest {
     val out = resolve(maven(sha = sha256(classes)).copy(type = "aar"))
     assertThat(out.single().readBytes().toList()).isEqualTo(classes.toList())
     assertThat(
-        CoordinateResolver.isGradleVariantFileName(maven(), "widgets-1.2.3-test-fixtures.jar")
+        CoordinateResolver.isGradleVariantFileName(maven(), "widgets-1.2.3-test-fixtures.jar"),
       )
       .isFalse()
   }

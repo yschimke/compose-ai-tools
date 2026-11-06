@@ -41,7 +41,7 @@ class JevCheckerTest {
              "check": "one primary?", "source": "https://developer.android.com/e", "scope": "set"}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -153,7 +153,7 @@ class JevCheckerTest {
             "larger.",
           "Add",
           "1,1,25,25",
-        )
+        ),
       )
   }
 
@@ -272,7 +272,9 @@ class JevCheckerTest {
   fun `a fail Jev judged from the render says so rather than citing a fact that did not decide it`() {
     val model =
       FakeDecisions(
-        answer = { _, rule, key -> if (rule == "clipping" && !isNode(key)) "fail" to 0.9 else null }
+        answer = { _, rule, key ->
+          if (rule == "clipping" && !isNode(key)) "fail" to 0.9 else null
+        },
       )
     val result = jev(model, A11yHost()).run(guidelines, listOf(subject("a"))).results.single()
     assertThat(result.record.verdicts.single { it.ruleId == "clipping" }.reason)
@@ -481,7 +483,7 @@ class JevCheckerTest {
   fun `a fail carries the decisive fact as its reason and the fact's node`() {
     val model =
       FakeDecisions(
-        answer = { _, rule, key -> if (rule == "touch" && !isNode(key)) "fail" to 0.88 else null }
+        answer = { _, rule, key -> if (rule == "touch" && !isNode(key)) "fail" to 0.88 else null },
       )
     val run = jev(model, A11yHost()).run(guidelines, listOf(subject("a")))
     val fail = run.results.single().failures().single()
@@ -513,7 +515,7 @@ class JevCheckerTest {
             rule == "described" && name(body) == "a" -> "fail" to 0.8
             else -> null
           }
-        }
+        },
       )
     val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
 
@@ -543,7 +545,7 @@ class JevCheckerTest {
       FakeDecisions(
         answer = { _, rule, key ->
           if (rule == "described" && !isNode(key)) "cannot_tell" to 0.7 else null
-        }
+        },
       )
     val run = jev(model, A11yHost(), rounds = 1).run(guidelines, listOf(subject("a")))
 
@@ -575,7 +577,7 @@ class JevCheckerTest {
   fun `a weak answer is not taken as a verdict`() {
     val model =
       FakeDecisions(
-        answer = { _, rule, key -> if (rule == "touch" && !isNode(key)) "pass" to 0.4 else null }
+        answer = { _, rule, key -> if (rule == "touch" && !isNode(key)) "pass" to 0.4 else null },
       )
     val result = jev(model, rounds = 0).run(guidelines, listOf(subject("a"))).results.single()
     assertThat(result.unchecked).contains("touch")
@@ -612,7 +614,7 @@ class JevCheckerTest {
           FakeDecisions(
             answer = { _, rule, key ->
               if (rule == "clipping" && !isNode(key)) "cannot_tell" to 0.7 else null
-            }
+            },
           ),
           cache = cache,
           rounds = 0,
@@ -707,7 +709,7 @@ class JevCheckerTest {
             {"id": "consistent", "kind": "structure", "severity": "info", "guidance": "g",
              "check": "one primary?", "source": "https://developer.android.com/e", "scope": "set"}
           ]}
-          """
+          """,
         )
         .guidelines!!
     val model = FakeDecisions()
@@ -756,7 +758,7 @@ class JevCheckerTest {
               """{"id": "rule$i", "kind": "structure", "severity": "info", "guidance": "$long",
                   "check": "check $i?", "source": "https://developer.android.com/r$i"}"""
             } +
-            "]}"
+            "]}",
         )
         .guidelines!!
     val model = FakeDecisions()
@@ -864,7 +866,7 @@ class JevCheckerTest {
       FakeDecisions(
         answer = { _, rule, key ->
           if (rule == "touch" && !isNode(key)) "needs:a11y" to 0.8 else null
-        }
+        },
       )
     val run = jev(model, host).run(guidelines, listOf(subject("a"), subject("b")))
     // One batched fetch failed: one evidence failure, however many previews it was for, and no
@@ -902,7 +904,7 @@ class JevCheckerTest {
       FakeDecisions(
         answer = { body, rule, key ->
           if (name(body) == "c3" && rule == "touch" && !isNode(key)) "fail" to 0.9 else null
-        }
+        },
       )
     val subjects = (1..9).map { subject("c$it") }
     val run = jev(model).run(guidelines, subjects)

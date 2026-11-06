@@ -116,7 +116,7 @@ class SpatialRemoteComposeTest {
     val longestMotion = motionRuns(changes).maxOfOrNull { it.count() } ?: 0
     assertWithMessage(
         "consecutive moving frames; > 3 means the embedded player now animates the turn, so the " +
-          "pins moved: see the comment on this test"
+          "pins moved: see the comment on this test",
       )
       .that(longestMotion)
       .isAtMost(3)

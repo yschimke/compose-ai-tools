@@ -55,7 +55,7 @@ class FramedComponentDiscoveryFunctionalTest {
         }
         rootProject.name = "test-framed-components"
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "build.gradle.kts")
       .writeText(
@@ -77,7 +77,7 @@ class FramedComponentDiscoveryFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
 
@@ -144,7 +144,7 @@ class FramedComponentDiscoveryFunctionalTest {
         @Composable
         fun TooDeepPreview() { Sticker { DeepA() } }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     return projectDir
   }

@@ -29,7 +29,7 @@ class GuidelineRetryTest {
              "check": "time text?", "source": "https://developer.android.com/c", "surfaces": ["screen"]}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 
@@ -57,7 +57,7 @@ class GuidelineRetryTest {
               put("reason", "")
               put("needs", buildJsonArray {})
               put("regions", buildJsonArray {})
-            }
+            },
           )
         }
       }
@@ -132,7 +132,7 @@ class GuidelineRetryTest {
     assertThat(run.problems)
       .containsExactly(
         "1 request(s) were asked again after a failure that may pass (no answer, a timeout, " +
-          "408, 429, 5xx or a provider error)"
+          "408, 429, 5xx or a provider error)",
       )
   }
 
@@ -303,17 +303,17 @@ class GuidelineRetryTest {
   fun `an error in place of a completion is told apart from an unreadable reply`() {
     val provider =
       GuidelineResponse.failure(
-        """{"error":{"code":502,"message":"Provider returned error","metadata":{"provider_name":"X"}}}"""
+        """{"error":{"code":502,"message":"Provider returned error","metadata":{"provider_name":"X"}}}""",
       )!!
     assertThat(provider.kind).isEqualTo(FailureKind.TRANSIENT)
     assertThat(provider.problem)
       .isEqualTo(
         "the model answered with an error in place of a completion (code 502, from X): " +
-          "Provider returned error"
+          "Provider returned error",
       )
     val midway =
       GuidelineResponse.failure(
-        """{"choices":[{"finish_reason":"error","error":{"code":"504","message":"timeout"}}]}"""
+        """{"choices":[{"finish_reason":"error","error":{"code":"504","message":"timeout"}}]}""",
       )!!
     assertThat(midway.kind).isEqualTo(FailureKind.TRANSIENT)
     assertThat(GuidelineResponse.failure("""{"error":{"code":401,"message":"No auth"}}""")!!.kind)
@@ -356,9 +356,9 @@ class GuidelineRetryTest {
     assertThat(
         GuidelineResponse.failure(
             """{"error":{"code":"server_error","message":"Provider disconnected unexpectedly"},""" +
-              """"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}"""
+              """"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}""",
           )!!
-          .kind
+          .kind,
       )
       .isEqualTo(FailureKind.TRANSIENT)
     assertThat(FailedRequest.of(timeout).kind).isEqualTo(FailureKind.TIMEOUT)
@@ -400,7 +400,7 @@ class GuidelineRetryTest {
     val now = 1_760_000_000_000L
     val date =
       java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
-        java.time.Instant.ofEpochMilli(now + 30_000).atZone(java.time.ZoneOffset.UTC)
+        java.time.Instant.ofEpochMilli(now + 30_000).atZone(java.time.ZoneOffset.UTC),
       )
     assertThat(OpenRouterClient.retryAfterMillis(date, now)).isEqualTo(30_000)
   }
@@ -420,11 +420,13 @@ class GuidelineRetryTest {
         .toByteArray()
     // A Wear screen, and its scroll capture, cost the floor; a 1080x4000 capture costs its pixels.
     assertThat(
-        PreviewGuidelineRequests.pictureTokens(SubjectPicture("device", png(454, 454), 227, 227))
+        PreviewGuidelineRequests.pictureTokens(SubjectPicture("device", png(454, 454), 227, 227)),
       )
       .isEqualTo(PreviewGuidelineRequests.PICTURE_TOKENS)
     assertThat(
-        PreviewGuidelineRequests.pictureTokens(SubjectPicture("scroll", png(1080, 4000), 411, 1523))
+        PreviewGuidelineRequests.pictureTokens(
+          SubjectPicture("scroll", png(1080, 4000), 411, 1523),
+        ),
       )
       .isEqualTo(1080 * 4000 / 750)
     assertThat(PreviewGuidelineRequests.pictureTokens(SubjectPicture("x", byteArrayOf(1), 1, 1)))
@@ -442,7 +444,7 @@ class GuidelineRetryTest {
     // the worst case (every rule listed) and the expected reply agree on six.
     assertThat(GuidelineBudget.DEFAULT_MAX_VERDICTS / 24).isEqualTo(6)
     assertThat(
-        GuidelineBudget.DEFAULT_MAX_REPLY_TOKENS / PreviewGuidelineRequests.expectedReplyTokens(24)
+        GuidelineBudget.DEFAULT_MAX_REPLY_TOKENS / PreviewGuidelineRequests.expectedReplyTokens(24),
       )
       .isEqualTo(6)
   }
