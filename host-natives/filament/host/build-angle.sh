@@ -40,8 +40,8 @@ if [[ "$(git -C angle rev-parse HEAD)" != "$commit" ]]; then
   exit 1
 fi
 (cd angle && python3 scripts/bootstrap.py >&2 && gclient sync --no-history --shallow -j8 >&2)
-if [[ -x angle/third_party/depot_tools/ensure_bootstrap ]]; then
-  angle/third_party/depot_tools/ensure_bootstrap >&2
+if ! xcrun metal -v >/dev/null 2>&1; then
+  xcodebuild -downloadComponent MetalToolchain >&2
 fi
 
 for cpu in arm64 x64; do
