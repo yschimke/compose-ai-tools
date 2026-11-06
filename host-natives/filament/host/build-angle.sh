@@ -26,6 +26,7 @@ cd "$work"
 if [[ ! -d depot_tools ]]; then
   git clone -q --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
 fi
+"$work/depot_tools/ensure_bootstrap" >&2
 export PATH="$work/depot_tools:$PATH"
 export DEPOT_TOOLS_UPDATE=0
 
@@ -39,11 +40,14 @@ if [[ "$(git -C angle rev-parse HEAD)" != "$commit" ]]; then
   exit 1
 fi
 (cd angle && python3 scripts/bootstrap.py >&2 && gclient sync --no-history --shallow -j8 >&2)
+if [[ -x angle/third_party/depot_tools/ensure_bootstrap ]]; then
+  angle/third_party/depot_tools/ensure_bootstrap >&2
+fi
 
 for cpu in arm64 x64; do
   (
     cd angle
-    gn gen "out/$cpu" --args="is_component_build=false is_debug=false angle_enable_wgpu=false \
+    gn gen "out/$cpu" --args="is_component_build=false is_debug=false use_siso=false angle_enable_wgpu=false \
 angle_enable_vulkan=false angle_enable_gl=false target_os=\"mac\" target_cpu=\"$cpu\" \
 mac_deployment_target=\"11.0\"" >&2
     autoninja -C "out/$cpu" libEGL libGLESv2 >&2
