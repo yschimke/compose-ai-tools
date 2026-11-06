@@ -40,7 +40,7 @@ class DesignCommandTest {
                 origin = "http://127.0.0.1:8791",
                 token = "cpat_live",
                 expiresAtMillis = 2_000_000L,
-              )
+              ),
             )
           },
         )
@@ -67,7 +67,7 @@ class DesignCommandTest {
                 origin = "http://127.0.0.1:8723",
                 token = "cpat_live",
                 expiresAtMillis = 2_000_000L,
-              )
+              ),
             )
           },
         )
@@ -89,7 +89,7 @@ class DesignCommandTest {
                 origin = "http://127.0.0.1:8791",
                 token = "cpat_stored",
                 expiresAtMillis = 2_000_000L,
-              )
+              ),
             )
           },
         )
@@ -108,7 +108,7 @@ class DesignCommandTest {
                 origin = "http://127.0.0.1:8791",
                 token = "cpat_stored",
                 expiresAtMillis = 2_000_000L,
-              )
+              ),
             )
           },
         )
@@ -127,7 +127,7 @@ class DesignCommandTest {
                 origin = "https://preview.coo.ee",
                 token = "cpat_hosted",
                 expiresAtMillis = 2_000_000L,
-              )
+              ),
             )
           },
         )

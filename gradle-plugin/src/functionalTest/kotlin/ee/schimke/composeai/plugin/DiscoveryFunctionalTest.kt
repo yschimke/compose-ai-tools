@@ -46,7 +46,7 @@ class DiscoveryFunctionalTest {
         }
         rootProject.name = "test-project"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // build.gradle.kts
@@ -70,7 +70,7 @@ class DiscoveryFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -109,7 +109,7 @@ class DiscoveryFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -172,7 +172,7 @@ class DiscoveryFunctionalTest {
             componentLibraryPrefixes.add("androidx.compose.foundation.text.BasicTextKt")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Previews.kt")
       .appendText(
@@ -186,7 +186,7 @@ class DiscoveryFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -199,7 +199,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val basic = manifest.previews.single { it.functionName == "BasicTextPreview" }
     assertThat(basic.componentTargets.map { it.className to it.functionName })
@@ -224,7 +224,7 @@ class DiscoveryFunctionalTest {
             androidx.compose.material3.OutlinedTextField(value = "Text", onValueChange = {})
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -237,7 +237,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val target =
       manifest.previews
@@ -260,7 +260,7 @@ class DiscoveryFunctionalTest {
             componentLibraryPrefixes.add("test.lib.GaugeKt")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/lib/Chips.kt").apply {
       parentFile.mkdirs()
@@ -277,7 +277,7 @@ class DiscoveryFunctionalTest {
         @Composable
         fun Chip(label: String, onClick: () -> Unit = {}, enabled: Boolean = true) {}
         """
-          .trimIndent()
+          .trimIndent(),
       )
     }
     File(projectDir, "src/main/kotlin/test/lib/Gauge.kt").apply {
@@ -298,7 +298,7 @@ class DiscoveryFunctionalTest {
         @Composable
         fun Gauge(state: GaugeState) {}
         """
-          .trimIndent()
+          .trimIndent(),
       )
     }
     File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -319,7 +319,7 @@ class DiscoveryFunctionalTest {
             test.lib.Gauge(state = test.lib.rememberGaugeState())
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -332,7 +332,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val chip =
       manifest.previews.single { it.functionName == "ChipPreview" }.componentTargets.single()
@@ -344,7 +344,7 @@ class DiscoveryFunctionalTest {
 
     val records =
       json.decodeFromString<ComponentRecordFile>(
-        File(projectDir, "build/compose-previews/components.json").readText()
+        File(projectDir, "build/compose-previews/components.json").readText(),
       )
     val chipRecord = records.components.single { it.symbol.name == "Chip" }
     // The record never speaks for the deprecated form.
@@ -395,7 +395,7 @@ class DiscoveryFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -408,7 +408,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val knobs = manifest.previews.single { it.functionName == "KnobbedPreview" }.knobs
 
@@ -450,7 +450,7 @@ class DiscoveryFunctionalTest {
 
         enum class MotionFormat { Gif, Apng }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Motion.kt")
       .writeText(
@@ -481,7 +481,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Apng") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -496,7 +496,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val gif = manifest.previews.single { it.functionName == "GifMotionPreview" }.captures.single()
     assertThat(gif.animation?.format).isEqualTo(MotionFormat.GIF)
@@ -536,7 +536,7 @@ class DiscoveryFunctionalTest {
 
         enum class VariantInteraction { None, Hovered, Focused, Pressed, Dragged }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(annDir, "AnimatedPreview.kt")
@@ -556,7 +556,7 @@ class DiscoveryFunctionalTest {
 
         enum class MotionFormat { Gif, Apng }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(annDir, "ScrollingPreview.kt")
@@ -577,7 +577,7 @@ class DiscoveryFunctionalTest {
         enum class ScrollMode { TOP, END, LONG, GIF }
         enum class ScrollAxis { VERTICAL, HORIZONTAL }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Toggle.kt")
@@ -638,7 +638,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Multi") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -651,7 +651,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val toggles = manifest.previews.filter { it.functionName == "TogglePreview" }
     // Base preview + one synthetic seeded preview per `@OverrideVariant`.
@@ -665,7 +665,7 @@ class DiscoveryFunctionalTest {
     assertThat(off.captures.single().renderOutput).contains("_VARIANT_off")
     assertThat(off.overrides!!.seeds)
       .containsExactly(
-        OverrideSeed(key = "checked", index = null, kind = OverrideSeedKind.BOOLEAN, raw = "false")
+        OverrideSeed(key = "checked", index = null, kind = OverrideSeedKind.BOOLEAN, raw = "false"),
       )
 
     // Multiple typed seeds, including an indexed knob (`sub#1` → seedKey `sub[1]`).
@@ -749,7 +749,7 @@ class DiscoveryFunctionalTest {
             val colors: Array<String> = [],
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Sized.kt")
@@ -781,7 +781,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Sized") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -794,7 +794,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val sized = manifest.previews.filter { it.functionName == "SizedPreview" }
     // Base + three variants. Union, not product: two annotations carrying 2 and 1 cells give 3.
@@ -806,7 +806,7 @@ class DiscoveryFunctionalTest {
     assertThat(xs.captures.single().renderOutput).contains("_VARIANT_xs")
     assertThat(xs.overrides!!.seeds)
       .containsExactly(
-        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xs")
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xs"),
       )
 
     // Reached twice (flattening and the explicit walk), still one variant.
@@ -834,7 +834,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class PermissionPreview(val grants: Array<String> = [])
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Camera.kt")
@@ -870,7 +870,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Granted") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -883,7 +883,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // The un-annotated sibling stays clean — the annotation is per-function, not per-module.
@@ -900,8 +900,8 @@ class DiscoveryFunctionalTest {
               mapOf(
                 "android.permission.CAMERA" to PermissionGrantCaptureState.GRANTED,
                 "android.permission.RECORD_AUDIO" to PermissionGrantCaptureState.DENIED,
-              )
-          )
+              ),
+          ),
         )
     }
 
@@ -937,7 +937,7 @@ class DiscoveryFunctionalTest {
             val colors: Array<String> = [],
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Clash.kt")
@@ -968,7 +968,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Clash") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -982,14 +982,14 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val clash = manifest.previews.filter { it.functionName == "ClashPreview" }
     // Base + exactly one `wide`, seeded from the annotation that won.
     assertThat(clash).hasSize(2)
     assertThat(clash.single { it.overrides != null }.overrides!!.seeds)
       .containsExactly(
-        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xl")
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xl"),
       )
   }
 
@@ -1024,7 +1024,7 @@ class DiscoveryFunctionalTest {
 
         enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Matrix.kt")
@@ -1055,7 +1055,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Matrix") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1068,7 +1068,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val matrix = manifest.previews.filter { it.functionName == "MatrixPreview" }
     // 3 sizes x 2 shapes = 6 cells, minus the all-defaults one, plus the base preview.
@@ -1081,7 +1081,7 @@ class DiscoveryFunctionalTest {
     // A default value is never seeded — an unseeded knob already resolves to it…
     assertThat(sSquare.overrides!!.seeds)
       .containsExactly(
-        OverrideSeed(key = "shape", index = null, kind = OverrideSeedKind.STRING, raw = "square")
+        OverrideSeed(key = "shape", index = null, kind = OverrideSeedKind.STRING, raw = "square"),
       )
     // …but it IS part of what the cell is, so it rides on the props.
     assertThat(sSquare.overrides!!.props.map { it.key to it.value })
@@ -1124,7 +1124,7 @@ class DiscoveryFunctionalTest {
 
         enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Hoisted.kt")
@@ -1160,7 +1160,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Hoisted") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1173,7 +1173,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val hoisted = manifest.previews.filter { it.functionName == "HoistedPreview" }
     // 2 shapes x 2 selected = 4 cells, minus the all-defaults one, plus the base: hoisted and
@@ -1186,7 +1186,12 @@ class DiscoveryFunctionalTest {
     val off = hoisted.single { it.overrides?.name == "off" }
     assertThat(off.overrides!!.seeds)
       .containsExactly(
-        OverrideSeed(key = "selected", index = null, kind = OverrideSeedKind.BOOLEAN, raw = "false")
+        OverrideSeed(
+          key = "selected",
+          index = null,
+          kind = OverrideSeedKind.BOOLEAN,
+          raw = "false",
+        ),
       )
     assertThat(off.overrides!!.props.map { it.key to it.value })
       .containsExactly("shape" to "round", "selected" to "false")
@@ -1225,7 +1230,7 @@ class DiscoveryFunctionalTest {
 
         enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Bad.kt")
@@ -1272,7 +1277,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp)) { Text("Hoisted") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1285,7 +1290,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // The BOOLEAN axis is ignored outright, so the function keeps only its base preview — rather
@@ -1320,7 +1325,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FIELD)
         annotation class ColorCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Tokens.kt")
@@ -1335,7 +1340,7 @@ class DiscoveryFunctionalTest {
         @ColorCatalog(name = "Brand Gold", group = "Brand") val Gold: Color = Color(0xFFFFD700)
         @ColorCatalog(group = "Semantic") val Danger: Color = Color(0xFFC62828)
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1349,7 +1354,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val catalogs = manifest.previews.filter { it.params.kind == PreviewKind.CATALOG }
 
@@ -1415,7 +1420,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FILE)
         annotation class CatalogGroup(val name: String, val section: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/Catalog.kt")
@@ -1489,7 +1494,7 @@ class DiscoveryFunctionalTest {
           @Preview @Composable fun MemberSticker() {}
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1503,7 +1508,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byFn = manifest.previews.associateBy { it.functionName }
 
@@ -1611,7 +1616,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FIELD)
         annotation class TypographyCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/TypeTokens.kt")
@@ -1627,7 +1632,7 @@ class DiscoveryFunctionalTest {
         @TypographyCatalog(name = "Body Large", group = "Body") val BodyL: TextStyle = TextStyle(fontSize = 16.sp)
         @TypographyCatalog(group = "Body") val Caption: TextStyle = TextStyle(fontSize = 11.sp)
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1641,7 +1646,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val catalogs = manifest.previews.filter { it.params.kind == PreviewKind.CATALOG }
 
@@ -1688,7 +1693,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FIELD)
         annotation class TypographyCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/ThemeTokens.kt")
@@ -1714,7 +1719,7 @@ class DiscoveryFunctionalTest {
         @ColorCatalog(name = "Scheme", group = "Palette") val BrandScheme: ColorScheme = lightColorScheme()
         @TypographyCatalog(name = "Scale", group = "Type") val BrandType: Typography = Typography()
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1728,7 +1733,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byId = manifest.previews.associateBy { it.id }
 
@@ -1770,7 +1775,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FIELD)
         annotation class ShapeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val remoteDir =
@@ -1784,7 +1789,7 @@ class DiscoveryFunctionalTest {
         class RemoteTypography
         class RemoteShapes
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main/kotlin/test/RemoteThemeTokens.kt")
@@ -1803,7 +1808,7 @@ class DiscoveryFunctionalTest {
         @TypographyCatalog(group = "Remote") val Type = RemoteTypography()
         @ShapeCatalog(group = "Remote") val Shapes = RemoteShapes()
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1817,7 +1822,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byId = manifest.previews.associateBy { it.id }
     assertThat(byId.getValue("colorcatalog__Remote").params.catalogTokens.single().tokenKind)
@@ -1845,7 +1850,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.CLASS)
         annotation class ThemeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Themes.kt")
       .writeText(
@@ -1857,7 +1862,7 @@ class DiscoveryFunctionalTest {
         @ThemeCatalog(name = "Brand Light") class BrandLightTheme
         @ThemeCatalog(name = "Brand Dark") class BrandDarkTheme
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1871,7 +1876,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val themes = manifest.previews.filter { it.params.kind == PreviewKind.THEME_CATALOG }
 
@@ -1906,7 +1911,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class FixedTheme
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Specimens.kt")
       .writeText(
@@ -1924,7 +1929,7 @@ class DiscoveryFunctionalTest {
         // Its ordinary neighbour keeps re-rendering under a theme override.
         @Preview @Composable fun ContactRow() {}
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1938,7 +1943,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byFn = manifest.previews.associateBy { it.functionName }
     assertThat(byFn.getValue("BrandLightSpecimen").fixedTheme).isTrue()
@@ -1959,7 +1964,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class PreviewHelper(val includeInA11y: Boolean = true)
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/Helpers.kt")
       .writeText(
@@ -1975,7 +1980,7 @@ class DiscoveryFunctionalTest {
 
         @Preview @Composable fun ContactRow() {}
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -1989,7 +1994,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byFn = manifest.previews.associateBy { it.functionName }
     assertThat(byFn.getValue("ColorSchemeSpecimenPreview").includeInA11y).isFalse()
@@ -2011,7 +2016,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.CLASS)
         annotation class ThemeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     // Two declared themes give the module a theme axis. `AppTheme` installs the real
     // `MaterialTheme` with defaulted params, so the compiler emits the `MaterialTheme$default`
@@ -2033,7 +2038,7 @@ class DiscoveryFunctionalTest {
             MaterialTheme(content = content)
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/ShadowingPreviews.kt")
       .writeText(
@@ -2050,7 +2055,7 @@ class DiscoveryFunctionalTest {
             AppTheme { Text("shadowed") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -2068,7 +2073,7 @@ class DiscoveryFunctionalTest {
     // Advisory only — discovery still succeeds and the preview is still published.
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews.map { it.functionName }).contains("ShadowedPreview")
   }
@@ -2092,7 +2097,7 @@ class DiscoveryFunctionalTest {
             MaterialTheme(content = content)
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "src/main/kotlin/test/ShadowingPreviews.kt")
       .writeText(
@@ -2109,7 +2114,7 @@ class DiscoveryFunctionalTest {
             AppTheme { Text("fine") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -2144,7 +2149,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.CLASS)
         annotation class WearThemeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     // Same display name on both platforms: the id namespace must keep them apart.
     File(projectDir, "src/main/kotlin/test/Themes.kt")
@@ -2158,7 +2163,7 @@ class DiscoveryFunctionalTest {
         @ThemeCatalog(name = "Brand", group = "B") class BrandPhoneTheme
         @WearThemeCatalog(name = "Brand", group = "B") class BrandWearTheme
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -2172,7 +2177,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val byId = manifest.previews.associateBy { it.id }
 
@@ -2206,7 +2211,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.CLASS)
         annotation class ThemeCatalog(val name: String = "", val group: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     // Same display name in different groups; without FQN disambiguation both map to
     // `themecatalog__Light`.
@@ -2220,7 +2225,7 @@ class DiscoveryFunctionalTest {
         @ThemeCatalog(name = "Light", group = "BrandA") class BrandALight
         @ThemeCatalog(name = "Light", group = "BrandB") class BrandBLight
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -2231,7 +2236,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val themes = manifest.previews.filter { it.params.kind == PreviewKind.THEME_CATALOG }
 
@@ -2300,7 +2305,7 @@ class DiscoveryFunctionalTest {
           }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2314,7 +2319,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // @LightAndDark expands to two previews on the one function
@@ -2356,7 +2361,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Red))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2370,7 +2375,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews).hasSize(1)
     assertThat(manifest.previews[0].functionName).isEqualTo("NestedPreview")
@@ -2408,7 +2413,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Red))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2421,7 +2426,7 @@ class DiscoveryFunctionalTest {
     assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews).isEmpty()
   }
@@ -2443,7 +2448,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
         annotation class PreviewWrapperClass(val wrapperClassName: String)
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // A multi-preview annotation that carries the wrapper once — no @PreviewWrapper on the
@@ -2488,7 +2493,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Blue))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2502,7 +2507,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     val hoisted = manifest.previews.filter { it.functionName == "HoistedPreview" }
@@ -2547,7 +2552,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class PreviewWrapper(val wrapper: KClass<out PreviewWrapperProvider>)
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // A direct @Preview plus a multi-preview annotation on one function: the wrapper must reach
@@ -2594,7 +2599,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Blue))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2608,7 +2613,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     val wrapped = manifest.previews.filter { it.functionName == "WrappedPreview" }
@@ -2651,7 +2656,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Red))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2665,7 +2670,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     assertThat(manifest.previews).hasSize(2)
@@ -2721,7 +2726,7 @@ class DiscoveryFunctionalTest {
       @Composable
       fun FontScale200Preview() { Box(Modifier.size(50.dp).background(Color.Red)) }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2735,7 +2740,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // fontScale is captured per preview (the annotation knob the renderer honours via Density).
@@ -2770,7 +2775,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
         annotation class SettledPreview(val afterMs: Int = 0, val maxMs: Int = 1000)
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(settledFqnDir, "AnimatedPreview.kt")
       .writeText(
@@ -2781,7 +2786,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
         annotation class AnimatedPreview(val durationMs: Int = 0, val frameIntervalMs: Int = 33)
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(settledFqnDir, "FocusedPreview.kt")
       .writeText(
@@ -2792,7 +2797,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class FocusedPreview(val indices: IntArray = [0])
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -2887,7 +2892,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -2901,7 +2906,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // Hoisted onto the multi-preview annotation: every expansion inherits the settle.
@@ -2952,7 +2957,7 @@ class DiscoveryFunctionalTest {
         com.google.common.truth.Correspondence.from<String, String>(
           { actual, expected -> actual!!.contains(expected!!) },
           "contains",
-        )
+        ),
       )
       .containsExactly("_FOCUS_0", "_FOCUS_1")
   }
@@ -2978,7 +2983,7 @@ class DiscoveryFunctionalTest {
           val bottom: Int = -1,
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -3039,7 +3044,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -3053,7 +3058,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // Hoisted onto the multi-preview annotation, so every expansion inherits it.
@@ -3107,7 +3112,7 @@ class DiscoveryFunctionalTest {
             val frameIntervalMs: Int = 80,
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -3185,7 +3190,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Green))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -3199,7 +3204,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     val endPreviews = manifest.previews.filter { it.functionName == "EndScrollPreview" }
@@ -3217,7 +3222,7 @@ class DiscoveryFunctionalTest {
             maxScrollPx = 0,
             reduceMotion = true,
             frameIntervalMs = 80,
-          )
+          ),
         )
     }
 
@@ -3232,7 +3237,7 @@ class DiscoveryFunctionalTest {
           maxScrollPx = 4000,
           reduceMotion = false,
           frameIntervalMs = 80,
-        )
+        ),
       )
     assertThat(longPreview.dataProducts.single().kind).isEqualTo("render/scroll/long")
     assertThat(longPreview.dataProducts.single().output)
@@ -3267,7 +3272,7 @@ class DiscoveryFunctionalTest {
           maxScrollPx = 0,
           reduceMotion = true,
           frameIntervalMs = 120,
-        )
+        ),
       )
     assertThat(gifOnly.dataProducts.single().kind).isEqualTo("render/scroll/gif")
     assertThat(gifOnly.dataProducts.single().output)
@@ -3283,7 +3288,7 @@ class DiscoveryFunctionalTest {
     assertThat(endAndGif.dataProducts.single().scroll?.mode).isEqualTo(ScrollMode.GIF)
     assertThat(endAndGif.dataProducts.single().output)
       .matches(
-        "data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}_SCROLL_gif\\.gif"
+        "data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}_SCROLL_gif\\.gif",
       )
   }
 
@@ -3308,7 +3313,7 @@ class DiscoveryFunctionalTest {
           val bottom: Int = -1,
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(fqnDir, "ScrollingPreview.kt")
       .writeText(
@@ -3328,7 +3333,7 @@ class DiscoveryFunctionalTest {
             val frameIntervalMs: Int = 80,
         )
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -3395,7 +3400,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Gray))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -3413,7 +3418,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     // The rejection is on the annotation's presence, so empty modes are rejected too.
@@ -3482,7 +3487,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Gray))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -3496,7 +3501,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     val swatch = manifest.previews.single { it.functionName == "SwatchPreview" }
@@ -3550,7 +3555,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = modifier.size(label.length.dp).background(Color.Gray))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -3564,7 +3569,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val functionNames = manifest.previews.map { it.functionName }
     assertThat(functionNames).contains("DefaultedPreview")
@@ -3601,7 +3606,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp).background(Color.Blue))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -3616,7 +3621,7 @@ class DiscoveryFunctionalTest {
     assertThat(result.output).doesNotContain("skipping private @Preview")
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews.map { it.functionName })
       .containsExactly("PrivatePreview", "PublicPreview")
@@ -3669,7 +3674,7 @@ class DiscoveryFunctionalTest {
             Box(modifier = Modifier.size(50.dp).background(Color(value)))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -3684,7 +3689,7 @@ class DiscoveryFunctionalTest {
       .contains("parameter(s) that are neither @PreviewParameter-injected nor fully defaulted")
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews.map { it.functionName }).containsExactly("SupportedPreview")
   }
@@ -3708,7 +3713,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
         annotation class Preview(val name: String = "")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Tiles.kt")
@@ -3738,7 +3743,7 @@ class DiscoveryFunctionalTest {
       @Preview(name = "Direct")
       fun DirectTilePreview(context: FakeContext) = "stub"
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -3754,7 +3759,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val tilePreviews =
       manifest.previews.filter {
@@ -3795,7 +3800,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Blue))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     GradleRunner.create()
@@ -3806,7 +3811,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     val light = manifest.previews.single { it.functionName == "TileLightStates" }
@@ -3846,7 +3851,7 @@ class DiscoveryFunctionalTest {
           }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     // Second run — should re-run and find 3 previews
@@ -3861,7 +3866,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews).hasSize(3)
   }
@@ -3895,7 +3900,7 @@ class DiscoveryFunctionalTest {
         rootProject.name = "nested-test"
         include(":auth:composables")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Plugin applied only to the nested subproject (#157's layout).
@@ -3925,7 +3930,7 @@ class DiscoveryFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val childSrc = File(childDir, "src/main/kotlin/nested")
@@ -3953,7 +3958,7 @@ class DiscoveryFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -4017,7 +4022,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Blue))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -4032,7 +4037,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     // Internal names are mangled, so match by prefix.
     val names = manifest.previews.map { it.functionName }
@@ -4072,7 +4077,7 @@ class DiscoveryFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(srcDir, "Previews.kt")
@@ -4089,7 +4094,7 @@ class DiscoveryFunctionalTest {
             HomeScreen()
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -4103,7 +4108,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val preview = manifest.previews.single { it.functionName == "HomeScreenPreview" }
     val target = preview.targets.single()
@@ -4167,7 +4172,7 @@ class DiscoveryFunctionalTest {
             Caption(scaled)
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =
@@ -4181,7 +4186,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val preview = manifest.previews.single { it.functionName == "ScaffoldSticker" }
     // The knob is what makes the lambda capture, so this really is the shape under test.
@@ -4222,7 +4227,7 @@ class DiscoveryFunctionalTest {
             Text("${'$'}{value.value}")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(srcDir, "Previews.kt")
@@ -4261,7 +4266,7 @@ class DiscoveryFunctionalTest {
             Screen()
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -4271,7 +4276,7 @@ class DiscoveryFunctionalTest {
       .build()
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val themeTarget =
       manifest.previews.single { it.functionName == "ThemePreview" }.targets.single()
@@ -4322,7 +4327,7 @@ class DiscoveryFunctionalTest {
             Text(title)
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(srcDir, "Previews.kt")
@@ -4344,7 +4349,7 @@ class DiscoveryFunctionalTest {
             DemoThemeFixed { SessionCard("Compose everywhere") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -4361,7 +4366,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val target =
       manifest.previews.single { it.functionName == "SessionCardPopulatedPreview" }.targets.single()
@@ -4397,7 +4402,7 @@ class DiscoveryFunctionalTest {
             Text(month)
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(srcDir, "Previews.kt")
@@ -4424,7 +4429,7 @@ class DiscoveryFunctionalTest {
             Sticker { DialogHost { CalendarCard("March") } }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     GradleRunner.create()
@@ -4435,7 +4440,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val target =
       manifest.previews.single { it.functionName == "CalendarCardModalPreview" }.targets.single()
@@ -4470,7 +4475,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(40.dp).background(Color.Red))
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     GradleRunner.create()
@@ -4481,7 +4486,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     assertThat(manifest.previews.single().targets).isEmpty()
   }
@@ -4518,7 +4523,7 @@ class DiscoveryFunctionalTest {
           FirstPreview()
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     GradleRunner.create()
@@ -4529,7 +4534,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val wrapper = manifest.previews.single { it.functionName == "WrapperPreview" }
     // FirstPreview itself is annotated @Preview, so it must be filtered out — no target emitted.
@@ -4563,7 +4568,7 @@ class DiscoveryFunctionalTest {
           }
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -4627,7 +4632,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class NotificationPreview
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Notifications.kt")
@@ -4650,7 +4655,7 @@ class DiscoveryFunctionalTest {
       @NotificationPreview
       fun NoArgNotificationPreview() = "stub"
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -4666,7 +4671,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val notificationPreviews =
       manifest.previews.filter {
@@ -4703,7 +4708,7 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class XrSubspacePreview
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/XrPreviews.kt")
@@ -4726,7 +4731,7 @@ class DiscoveryFunctionalTest {
       @Composable
       fun ParameterizedSpatialPreview(label: String) {}
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val result =
@@ -4742,7 +4747,7 @@ class DiscoveryFunctionalTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
     val xrPreviews = manifest.previews.filter { it.functionName == "MySpatialPreview" }
     assertThat(xrPreviews.map { it.functionName }).containsExactly("MySpatialPreview")

@@ -58,7 +58,7 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.truth)
   testImplementation(
-    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
+    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}",
   )
 }
 
@@ -103,8 +103,8 @@ tasks.named<Test>("test").configure {
       // `..` because this is an included build whose root isn't the repository; a wrong path fails
       // loudly at configuration time.
       rootProject.layout.projectDirectory.file(
-        "../scripts/design-artifacts/ui-builder.policy.schema.json"
-      )
+        "../scripts/design-artifacts/ui-builder.policy.schema.json",
+      ),
     )
     .withPropertyName("uiBuilderPolicySchema")
     .withPathSensitivity(PathSensitivity.RELATIVE)

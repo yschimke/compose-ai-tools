@@ -21,7 +21,7 @@ import org.gradle.work.DisableCachingByDefault
  */
 @DisableCachingByDefault(
   because =
-    "Check depends on live render-classpath resolution; caching could stale-pass a dependency version change."
+    "Check depends on live render-classpath resolution; caching could stale-pass a dependency version change.",
 )
 abstract class ValidateComposeFloorTask : DefaultTask() {
 
@@ -36,7 +36,7 @@ abstract class ValidateComposeFloorTask : DefaultTask() {
   fun validate() {
     val belowFloor = findBelowFloor(runtimeClasspathRoot.get()) ?: return
     throw GradleException(
-      AndroidPreviewSupport.composeFloorOptOutMessage(belowFloor.module, belowFloor.version)
+      AndroidPreviewSupport.composeFloorOptOutMessage(belowFloor.module, belowFloor.version),
     )
   }
 

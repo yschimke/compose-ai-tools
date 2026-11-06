@@ -51,7 +51,7 @@ class RenderFunctionalTest {
         }
         rootProject.name = "test-render"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -74,7 +74,7 @@ class RenderFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -101,7 +101,7 @@ class RenderFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     for (name in extraPreviewNames) {
@@ -125,7 +125,7 @@ class RenderFunctionalTest {
               Box(modifier = Modifier.size(100.dp).background(Color.Blue))
           }
           """
-            .trimIndent()
+            .trimIndent(),
         )
     }
 
@@ -249,12 +249,12 @@ class RenderFunctionalTest {
                       kind = "render/scroll/long",
                       output = "data/render-scroll-long/${preview.id}.png",
                       cost = SCROLL_LONG_COST,
-                    )
-                  )
-              )
-            )
-        )
-      )
+                    ),
+                  ),
+              ),
+            ),
+        ),
+      ),
     )
 
     val result =
@@ -302,7 +302,7 @@ class RenderFunctionalTest {
     // Validation marker is still written under warn so downstream tasks
     // that wire off the marker (pixel-test gates, baselines) keep running.
     assertThat(
-        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists()
+        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists(),
       )
       .isTrue()
   }
@@ -336,7 +336,7 @@ class RenderFunctionalTest {
     // previews as the steady state.
     assertThat(result.output).doesNotContain("render produced no output file")
     assertThat(
-        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists()
+        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists(),
       )
       .isTrue()
   }

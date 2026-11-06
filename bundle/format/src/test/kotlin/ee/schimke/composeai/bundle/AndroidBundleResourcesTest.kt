@@ -41,7 +41,7 @@ class AndroidBundleResourcesTest {
           "android/resources.ap_" to "APK".toByteArray(),
           "android/AndroidManifest.xml" to "<manifest/>".toByteArray(),
           "android/r-classes.jar" to "RJAR".toByteArray(),
-        )
+        ),
       )
 
     val res = AndroidBundleResources.extract(zip, File(dir, "android"))
@@ -105,7 +105,7 @@ class AndroidBundleResourcesTest {
           "android/resources.ap_" to "APK".toByteArray(),
           "android/AndroidManifest.xml" to "<manifest/>".toByteArray(),
           "android/r-classes.jar" to "RJAR".toByteArray(),
-        )
+        ),
       )
 
     val cp = AndroidBundleResources.daemonClasspath(zip, dir, "com.example.app")
@@ -166,7 +166,7 @@ class AndroidBundleResourcesTest {
       mapOf(
         "android/resources.ap_" to "APK".toByteArray(),
         "android/AndroidManifest.xml" to manifest.toByteArray(),
-      )
+      ),
     )
   }
 

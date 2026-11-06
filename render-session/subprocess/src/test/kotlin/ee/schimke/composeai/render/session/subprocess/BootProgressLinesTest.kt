@@ -36,7 +36,7 @@ class BootProgressLinesTest {
         BootProgressLines.describe(
           ":app",
           progress(BootPhase.FAILED) { message = "no android-all" },
-        )
+        ),
       )
       .contains("daemon failed to boot: no android-all")
     assertThat(BootProgressLines.describe(":app", progress("downloadingAndroidAll")))

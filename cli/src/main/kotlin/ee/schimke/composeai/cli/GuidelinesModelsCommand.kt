@@ -32,7 +32,7 @@ internal class GuidelinesModelsCommand(
         fetch()
       } catch (e: Exception) {
         System.err.println(
-          "guidelines models: could not read OpenRouter's model list (${e.message})"
+          "guidelines models: could not read OpenRouter's model list (${e.message})",
         )
         return 2
       }
@@ -54,11 +54,11 @@ internal class GuidelinesModelsCommand(
                 put("vision", model.vision)
                 put("structuredOutputs", model.structuredOutputs)
                 put("default", JsonPrimitive(model.id == OpenRouterClient.DEFAULT_MODEL))
-              }
+              },
             )
           }
         }
-          .toString()
+          .toString(),
       )
       return 0
     }
@@ -69,7 +69,7 @@ internal class GuidelinesModelsCommand(
     val width = shown.maxOf { it.id.length }.coerceAtMost(48)
     println(
       "${"model".padEnd(width)}  ${"in \$/M".padStart(8)}  ${"out \$/M".padStart(8)}  context" +
-        if ("--all" in args) "  vision  schema" else ""
+        if ("--all" in args) "  vision  schema" else "",
     )
     shown.forEach { model ->
       val marker = if (model.id == OpenRouterClient.DEFAULT_MODEL) "  (default)" else ""
@@ -78,7 +78,7 @@ internal class GuidelinesModelsCommand(
           "${price(model.completionPerMillion)}  ${model.contextLength ?: "?"}" +
           (if ("--all" in args) "  ${yes(model.vision)}     ${yes(model.structuredOutputs)}"
           else "") +
-          marker
+          marker,
       )
     }
     if ("--all" !in args) {

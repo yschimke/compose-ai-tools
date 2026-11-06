@@ -862,7 +862,7 @@ public class GuidelineEngine(
             }
             val noRoomLeft =
               failure.copy(
-                problem = failure.problem + "; not asked again: the cost cap left no room"
+                problem = failure.problem + "; not asked again: the cost cap left no room",
               )
             val again = predict(target)
             if (lock.withLock { fitsLocked(expectedLocked(again)) } == Fit.NO) return noRoomLeft
@@ -876,7 +876,7 @@ public class GuidelineEngine(
           val wait =
             response.retryAfterMillis
               ?: (options.retry.initialDelayMillis shl (attempt - 1).coerceAtMost(20)).coerceAtMost(
-                options.retry.maxDelayMillis
+                options.retry.maxDelayMillis,
               )
           val stop =
             when {
@@ -896,7 +896,7 @@ public class GuidelineEngine(
           if (stop != null) return failure.copy(problem = failure.problem + tries + stop)
           val noRoom =
             failure.copy(
-              problem = failure.problem + tries + "; not asked again: the cost cap left no room"
+              problem = failure.problem + tries + "; not asked again: the cost cap left no room",
             )
           // Not waited for when the cap has no room for it whatever comes back.
           val again = predict(target)
@@ -1035,10 +1035,10 @@ public class GuidelineEngine(
           val half = (batch.subjects.size + 1) / 2
           lock.withLock {
             queue.addFirst(
-              QueuedBatch(batch.copy(subjects = batch.subjects.drop(half)), true, task.key + ".1")
+              QueuedBatch(batch.copy(subjects = batch.subjects.drop(half)), true, task.key + ".1"),
             )
             queue.addFirst(
-              QueuedBatch(batch.copy(subjects = batch.subjects.take(half)), true, task.key + ".0")
+              QueuedBatch(batch.copy(subjects = batch.subjects.take(half)), true, task.key + ".0"),
             )
             splitsByKey[task.key] = "${batch.subjects.size} previews (${failure.problem.take(120)})"
             changed.signalAll()
@@ -1445,7 +1445,7 @@ public class GuidelineEngine(
                 compareBy<PreviewSubject>(
                   { widthClass(it) != widthClass(size) },
                   { Math.abs(width(it) - width(size)) },
-                )
+                ),
               )
         }
       }
@@ -1595,7 +1595,7 @@ public class GuidelineEngine(
             }
           }
           updated
-        }
+        },
     )
   }
 
@@ -1623,7 +1623,7 @@ public class GuidelineEngine(
                 renderHash = subject.renderHash
                 label = subject.label
               }
-              .build()
+              .build(),
           )
         ranBy = options.ranBy
         recordedAtEpochMillis = clock()

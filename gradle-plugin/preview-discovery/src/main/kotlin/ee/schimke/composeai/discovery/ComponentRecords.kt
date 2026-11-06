@@ -32,7 +32,7 @@ object ComponentRecords {
             componentTargets = compact(preview.componentTargets),
             targets = compact(preview.targets),
           )
-        }
+        },
     )
   }
 

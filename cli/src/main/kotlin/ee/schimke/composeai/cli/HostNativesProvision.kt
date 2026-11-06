@@ -341,7 +341,7 @@ object HostNativesProvision {
           log(
             "host-natives: no $loadName build for ${library.artifact} " +
               "${version ?: "(version unknown)"} on $platform; using ${build.version}'s, which " +
-              "may not match"
+              "may not match",
           )
         }
         Choice(library, loadName, build, build.platforms.getValue(platform), version, match)
@@ -414,7 +414,7 @@ object HostNativesProvision {
     if (noNetwork) {
       log(
         "host-natives: the network is off and no index is cached; skipping. Pre-provision with " +
-          "`compose-preview provision --host-natives`."
+          "`compose-preview provision --host-natives`.",
       )
       return null
     }
@@ -429,7 +429,7 @@ object HostNativesProvision {
       val stale = runCatching { parseIndex(cached.readText()) }.getOrNull()
       log(
         "host-natives: could not fetch the index $location (${e.message})" +
-          if (stale != null) "; using the cached copy" else "; skipping"
+          if (stale != null) "; using the cached copy" else "; skipping",
       )
       stale
     } finally {
@@ -461,7 +461,7 @@ object HostNativesProvision {
     if (noNetwork) {
       log(
         "host-natives: the network is off and $name ${choice.build.version} is not cached; " +
-          "skipping. Pre-provision with `compose-preview provision --host-natives`."
+          "skipping. Pre-provision with `compose-preview provision --host-natives`.",
       )
       return null
     }

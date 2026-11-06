@@ -232,7 +232,7 @@ internal object RemoteComposePairing {
   private val REMOTE_ARTIFACT =
     Regex(
       """^(remote-(?:core|player|creation|tooling|foundation|material3)(?:-[a-z0-9]+)*)-""" +
-        """(\d[\w.\-]*)\.jar$"""
+        """(\d[\w.\-]*)\.jar$""",
     )
 
   /** Linkage markers a mixed family explains (same set as [BundleClasspathGaps]). */

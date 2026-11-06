@@ -15,7 +15,7 @@ internal object ComposePreviewMutableStrings {
         require(
           name !in current.mVariables &&
             name !in current.mIntegerVariables &&
-            name !in current.mDeferredVariables
+            name !in current.mDeferredVariables,
         ) {
           "duplicate name '$name'"
         }

@@ -150,11 +150,11 @@ class DeviceCaptureParityTest {
           appendLine(
             "  \"differingRowBands\": [" +
               bands.joinToString(", ") { "\"${it.first}-${it.last}\"" } +
-              "],"
+              "],",
           )
           appendLine("  \"gate\": \"report-only\"")
           appendLine("}")
-        }
+        },
       )
 
     println(
@@ -162,7 +162,7 @@ class DeviceCaptureParityTest {
         "differing=${fixed(differing * 100)}% sameSize=$sameSize " +
         "bands=${bands.joinToString(",") { "${it.first}-${it.last}" }} " +
         "(${capturedImage.width}x${capturedImage.height} vs " +
-        "${designImage.width}x${designImage.height})"
+        "${designImage.width}x${designImage.height})",
     )
 
     // The only assertions: both images decoded and overlap. A score of any value is a result, not

@@ -491,7 +491,7 @@ object PreviewDiscovery {
         file.exists() &&
           file.name.lowercase().endsWith(".jar") &&
           (isPreviewRelevant(
-            input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath
+            input.dependencyJarCoordinates[file.absolutePath] ?: file.absolutePath,
           ) || holdsComponentLibrary(file, input.componentLibraryPrefixes))
       }
     // Project jars before dependency jars, so a class present in both is attributed to the project
@@ -520,7 +520,7 @@ object PreviewDiscovery {
         buildString {
           append(
             "composePreview: module '${input.moduleName}' has ${previewSourceFiles.size} " +
-              "source file(s) declaring @Preview "
+              "source file(s) declaring @Preview ",
           )
           append("but its active class outputs contain 0 .class files. ")
           append("A compile task may have restored an empty build-cache entry; rerun with ")
@@ -531,7 +531,7 @@ object PreviewDiscovery {
           projectJarCounts.forEach { (file, count) ->
             append("\n  projectClassJar: $file (exists=${file.exists()}, classFiles=$count)")
           }
-        }
+        },
       )
     }
 
@@ -839,7 +839,7 @@ object PreviewDiscovery {
             "(${previewSourceFiles.joinToString(", ") { it.name }}) — the compiled classes the " +
             "scan reached do not carry them. Diagnostics below; set " +
             "composePreview.failOnEmpty=true to make this a hard error."
-        }
+        },
       )
       warnings.addAll(
         buildEmptyDiagnostics(
@@ -856,7 +856,7 @@ object PreviewDiscovery {
           scanMethodsWithAnnotations = scanMethodsWithAnnotations,
           annotationFqnCounts = annotationFqnCounts,
           reachablePreviewFqns = reachablePreviewFqns,
-        )
+        ),
       )
     }
 
@@ -1416,7 +1416,7 @@ object PreviewDiscovery {
     }
     out.add(
       "  dependencyJars: $allJarCount total, ${filteredJars.size} match " +
-        "(preview|tooling|compose|annotation)"
+        "(preview|tooling|compose|annotation)",
     )
     for (jar in filteredJars.take(DIAG_JAR_SAMPLE)) {
       out.add("    - ${jar.name}")
@@ -1426,7 +1426,7 @@ object PreviewDiscovery {
     }
     out.add(
       "  ClassGraph scan: $scanClassCount classes, " +
-        "$scanMethodsWithAnnotations methods with any annotation"
+        "$scanMethodsWithAnnotations methods with any annotation",
     )
     if (scanClassCount > 0) {
       if (reachablePreviewFqns.isEmpty()) {
@@ -1434,7 +1434,7 @@ object PreviewDiscovery {
         // `classes.jar`.
         out.add(
           "  known @Preview annotation classes NOT reachable on " +
-            "ClassGraph classpath — multi-preview resolution is disabled."
+            "ClassGraph classpath — multi-preview resolution is disabled.",
         )
         out.add("    expected at least one of (by FQN):")
         for (fqn in PREVIEW_FQNS) out.add("      - $fqn")
@@ -1449,7 +1449,7 @@ object PreviewDiscovery {
       //   make it loud.
       out.add(
         "  known @Preview FQNs WERE seen on scanned methods " +
-          "(discovery dropped them — please report):"
+          "(discovery dropped them — please report):",
       )
       for (fqn in previewAnnotationsSeen) {
         out.add("    - $fqn (${annotationFqnCounts[fqn]})")
@@ -1479,7 +1479,7 @@ object PreviewDiscovery {
   // Preview/Previews, and a module-local multi-preview annotation itself contains @Preview.
   private val PREVIEW_SOURCE_ANNOTATION =
     Regex(
-      """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])"""
+      """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])""",
     )
 
   private fun File.declaresPreviewAnnotation(): Boolean = runCatching {
@@ -1866,7 +1866,7 @@ object PreviewDiscovery {
             "discovery classpath for source set '${input.variantName}'. This usually means the " +
             "tooling artifact that defines @$simple is wired into a test-only source set (e.g. " +
             "screenshotTestImplementation) rather than the main/implementation classpath, so the " +
-            "preview is silently missing until it is resolvable there. See issue #2613."
+            "preview is silently missing until it is resolvable there. See issue #2613.",
         )
       }
     }
@@ -1909,7 +1909,7 @@ object PreviewDiscovery {
             "'${classInfo.name}.${method.name}' is raised to ${FOCUS_SETUP_FRAMES_MS}ms: " +
             "@FocusedPreview on the same function spends its first ${FOCUS_SETUP_FRAMES_MS}ms " +
             "laying out the tree the focus walk searches, so nothing focusable exists before " +
-            "then and the two backends would otherwise capture different instants."
+            "then and the two backends would otherwise capture different instants.",
         )
         rawSettleSpec.copy(afterMs = FOCUS_SETUP_FRAMES_MS)
       } else {
@@ -1947,7 +1947,7 @@ object PreviewDiscovery {
       warnings.add(
         "composePreview: skipping @XrSubspacePreview '${classInfo.name}.${method.name}' — " +
           "XR subspace previews must be parameterless (@PreviewParameter / arguments aren't " +
-          "supported by the XR renderer)."
+          "supported by the XR renderer).",
       )
       return
     }
@@ -1962,7 +1962,7 @@ object PreviewDiscovery {
         "composePreview: skipping @Preview '${classInfo.name}.${method.name}' — " +
           "method has parameter(s) that are neither @PreviewParameter-injected nor fully " +
           "defaulted. Supported shapes: no parameters, exactly one @PreviewParameter value, " +
-          "or a default for every parameter."
+          "or a default for every parameter.",
       )
       return
     }
@@ -2012,7 +2012,7 @@ object PreviewDiscovery {
       warnings.add(
         "composePreview: skipping '${classInfo.name}.${method.name}' — @CaptureGutter cannot be " +
           "combined with @ScrollingPreview. A scroll capture has no component edge for a gutter " +
-          "to sit on (see @CaptureGutter's kdoc and RENDER_LANE_PARITY.md). Remove one annotation."
+          "to sit on (see @CaptureGutter's kdoc and RENDER_LANE_PARITY.md). Remove one annotation.",
       )
       return
     }
@@ -2277,7 +2277,7 @@ object PreviewDiscovery {
       if (kitProps.isNotEmpty() && (kitAxis != null || kitValue != null)) {
         warnings.add(
           "composePreview: '$owner' variant '$name' declares both kitProps and kitAxis/kitValue — " +
-            "keeping kitProps and ignoring the singular pair. Declare one or the other."
+            "keeping kitProps and ignoring the singular pair. Declare one or the other.",
         )
       }
       // `runCatching` for older annotations jars, as for `kitProps`.
@@ -2309,7 +2309,7 @@ object PreviewDiscovery {
           "different seeds — most likely two hoisted variant annotations that overlap on a cell. " +
           "Variant names are the `_VARIANT_$name` render output's identity, so the second would " +
           "overwrite the first; keeping the first and ignoring the rest. Rename the cell, or drop " +
-          "the overlapping annotation."
+          "the overlapping annotation.",
       )
     }
     return specs.values.toList()
@@ -2403,7 +2403,7 @@ object PreviewDiscovery {
         warnings.add(
           "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") with " +
             "${values.size} distinct value(s) — an axis with fewer than two multiplies nothing. " +
-            "Ignoring it."
+            "Ignoring it.",
         )
         continue
       }
@@ -2416,7 +2416,7 @@ object PreviewDiscovery {
             warnings.add(
               "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") with " +
                 "${slugsRaw.size} slugs for ${values.size} values — positional, so a mismatch " +
-                "would misname cells. Using the values as their own slugs."
+                "would misname cells. Using the values as their own slugs.",
             )
             values
           }
@@ -2431,7 +2431,7 @@ object PreviewDiscovery {
               "composePreview: '$owner' declares @PreviewAxis(key = \"$key\", default = " +
                 "\"$declaredDefault\") but that is not one of its values — every cell would then " +
                 "count as non-default and one would duplicate the base render. Using " +
-                "\"${values.first()}\"."
+                "\"${values.first()}\".",
             )
             values.first()
           }
@@ -2445,7 +2445,7 @@ object PreviewDiscovery {
           "composePreview: '$owner' declares @PreviewAxis(key = \"$key\", kind = $kind) with " +
             "value(s) ${unparseable.joinToString(", ") { "\"$it\"" }} that are not valid $kind " +
             "literals — the renderer would drop the seed and bake a duplicate of the base render " +
-            "while the catalog claimed it was that cell. Ignoring the axis."
+            "while the catalog claimed it was that cell. Ignoring the axis.",
         )
         continue
       }
@@ -2465,7 +2465,7 @@ object PreviewDiscovery {
         warnings.add(
           "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") more than once, with " +
             "different values — crossing a key with itself produces contradictory cells. Keeping " +
-            "the first."
+            "the first.",
         )
       }
     }
@@ -2551,7 +2551,7 @@ object PreviewDiscovery {
         "composePreview: '$owner' declares @PreviewAxis axes whose cross product is $total cells " +
           "(${axes.joinToString(" x ") { "${it.key}(${it.values.size})" }}), over the " +
           "$PREVIEW_AXIS_MAX_CELLS cap — that is a render bill, not a matrix. Ignoring the axes; " +
-          "split the component or drop an axis."
+          "split the component or drop an axis.",
       )
       return emptyList()
     }
@@ -2559,7 +2559,7 @@ object PreviewDiscovery {
       warnings.add(
         "composePreview: '$owner' expands to $total @PreviewAxis cells " +
           "(${axes.joinToString(" x ") { "${it.key}(${it.values.size})" }}), each rendered for " +
-          "every @Preview on the function. Intentional?"
+          "every @Preview on the function. Intentional?",
       )
     }
 
@@ -2609,7 +2609,7 @@ object PreviewDiscovery {
           "${collided.joinToString(", ")} — a name is a render output path, so only the first of " +
           "each is kept. Two axes sharing a value name, or repeated `slugs`, produce this; give " +
           "the values distinct slugs, or set `namesEveryValue` on one axis so its cells stay " +
-          "distinguishable."
+          "distinguishable.",
       )
     }
     return byName.values.toList()
@@ -2635,7 +2635,7 @@ object PreviewDiscovery {
       warnings.add(
         "composePreview: '$owner' has @OverrideVariant(s) named ${shadowed.joinToString(", ")} " +
           "that a @PreviewAxis cell already produces — one render output per name, so the " +
-          "hand-written one is ignored. Rename it, or drop it if the axes already cover the cell."
+          "hand-written one is ignored. Rename it, or drop it if the axes already cover the cell.",
       )
     }
     return merged.values.toList()
@@ -2958,7 +2958,7 @@ object PreviewDiscovery {
             glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput = motionRenderOutput(previewId, suffix, effectiveInteraction.format),
             cost = INTERACTION_COST,
-          )
+          ),
         )
       }
 
@@ -3007,7 +3007,7 @@ object PreviewDiscovery {
               launcherWidget = effectiveLauncherWidget,
               renderOutput = motionRenderOutput(previewId, suffix, MotionFormat.GIF),
               cost = FOCUS_GIF_COST,
-            )
+            ),
           )
         }
       val animationCaptures: List<Capture> =
@@ -3022,13 +3022,13 @@ object PreviewDiscovery {
               glimmerEnvironment = effectiveGlimmerEnvironment,
               renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
               cost = ANIMATION_COST,
-            )
+            ),
           )
         }
       return PreviewOutputPlan(
         captures =
           separateMotionOutputs(
-            resizeCaptures + focusGifCaptures + animationCaptures + interactionCaptures
+            resizeCaptures + focusGifCaptures + animationCaptures + interactionCaptures,
           ),
         dataProducts = emptyList(),
       )
@@ -3049,7 +3049,7 @@ object PreviewDiscovery {
             launcherWidget = effectiveLauncherWidget,
             renderOutput = motionRenderOutput(previewId, suffix, MotionFormat.GIF),
             cost = FOCUS_GIF_COST,
-          )
+          ),
         )
       }
 
@@ -3067,7 +3067,7 @@ object PreviewDiscovery {
             glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput = motionRenderOutput(previewId, suffix, effectiveAnimation.format),
             cost = ANIMATION_COST,
-          )
+          ),
         )
       }
 
@@ -3221,7 +3221,7 @@ object PreviewDiscovery {
     return PreviewOutputPlan(
       captures =
         separateMotionOutputs(
-          scrollTimeCaptures + animationCaptures + focusGifCaptures + interactionCaptures
+          scrollTimeCaptures + animationCaptures + focusGifCaptures + interactionCaptures,
         ),
       dataProducts = dataProducts,
     )
@@ -3404,7 +3404,7 @@ object PreviewDiscovery {
       "composePreview: '$owner' asks for @AnimatedPreview(format = Apng), but this module's " +
         "render backend is declared GIF-only (--animated-preview-apng-supported false) — the " +
         "capture is written as GIF to a `.gif` output. The desktop renderer and the Android " +
-        "renderer from compose-preview-daemon 3.13.0 honour the format."
+        "renderer from compose-preview-daemon 3.13.0 honour the format.",
     )
     return animation.copy(format = MotionFormat.GIF)
   }
@@ -3412,7 +3412,7 @@ object PreviewDiscovery {
   /** Which motion product a capture is — the key motion naming decisions are made on. */
   internal enum class MotionKind(
     /** Suffix that keeps this kind apart from another output on the same function. */
-    val suffix: String
+    val suffix: String,
   ) {
     ANIMATION("_anim"),
     INTERACTION("_interaction"),
@@ -3495,7 +3495,7 @@ object PreviewDiscovery {
 
   /** Reads repeatable `@GlimmerEnvironmentPreview(environment)` post-capture metadata. */
   private fun extractGlimmerEnvironmentSpecs(
-    annotations: List<AnnotationInfo>
+    annotations: List<AnnotationInfo>,
   ): List<GlimmerEnvironmentCapture> {
     val infos = mutableListOf<AnnotationInfo>()
     for (ann in annotations) {
@@ -3617,7 +3617,7 @@ object PreviewDiscovery {
           "composePreview: '$owner' declares @PermissionPreview with the entry \"$entry\", which " +
             "is not a \"<permission>=<state>\" pair with a state of granted or denied " +
             "(case-insensitive) — e.g. \"android.permission.CAMERA=granted\". Ignoring it; " +
-            "the preview will capture whatever branch the un-overridden permission check returns."
+            "the preview will capture whatever branch the un-overridden permission check returns.",
         )
         continue
       }
@@ -3626,7 +3626,7 @@ object PreviewDiscovery {
         warnings.add(
           "composePreview: '$owner' declares @PermissionPreview with conflicting states for " +
             "\"$permission\" ($existing then $state) — a permission has one grant state per " +
-            "capture. Keeping $existing."
+            "capture. Keeping $existing.",
         )
       }
     }
@@ -3695,7 +3695,7 @@ object PreviewDiscovery {
 
   /** Reads `@LauncherWidgetResize`, or `null`. */
   private fun extractLauncherWidgetResizeSpec(
-    annotations: List<AnnotationInfo>
+    annotations: List<AnnotationInfo>,
   ): LauncherWidgetResizeSpec? {
     val ann = annotations.firstOrNull { it.name == LAUNCHER_WIDGET_RESIZE_FQN } ?: return null
     val pv = ann.parameterValues
@@ -4335,7 +4335,7 @@ object PreviewDiscovery {
                 wrapSandboxWidthDp = wear.widthDp,
                 wrapSandboxHeightDp = wear.heightDp,
                 density = wear.density,
-              )
+              ),
           )
         } else {
           // Generic sandbox, Wear density (#2670). The device is dropped only for widgets;
@@ -4343,7 +4343,7 @@ object PreviewDiscovery {
           if (widgetCanvas) {
             info.copy(
               params =
-                p.copy(device = null, widthDp = null, heightDp = null, density = wear.density)
+                p.copy(device = null, widthDp = null, heightDp = null, density = wear.density),
             )
           } else {
             info.copy(params = p.copy(density = wear.density))
@@ -4394,7 +4394,7 @@ object PreviewDiscovery {
               wrapSandboxWidthDp = glasses.widthDp,
               wrapSandboxHeightDp = glasses.heightDp,
               density = glasses.density,
-            )
+            ),
         )
       } else {
         // An explicit device or size is honoured as on Wear.

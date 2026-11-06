@@ -61,7 +61,7 @@ configurations.named("api") {
     if (category != Category.REGULAR_PLATFORM && category != Category.ENFORCED_PLATFORM) {
       throw GradleException(
         "compose-ai-tools-bom may only import other platforms; '$group:$name:$version' is a " +
-          "regular dependency and would be published as one. Put a version in `constraints {}`."
+          "regular dependency and would be published as one. Put a version in `constraints {}`.",
       )
     }
   }

@@ -293,7 +293,7 @@ internal class DesktopRenderWorkerPool(
         val version = fromWorker.readInt()
         if (version != WORKER_PROTOCOL_VERSION) {
           throw IOException(
-            "worker speaks protocol $version, this plugin speaks $WORKER_PROTOCOL_VERSION"
+            "worker speaks protocol $version, this plugin speaks $WORKER_PROTOCOL_VERSION",
           )
         }
       } catch (e: Exception) {
@@ -340,7 +340,7 @@ internal class DesktopRenderWorkerPool(
         // The worker broke, so nothing was learned about this capture; the caller may fork it.
         return WorkerResult.Unusable(
           if (timedOut) "render worker timed out after ${RENDER_GUARD_SECONDS}s"
-          else "render worker failed: ${e.message}${stderrSuffix()}"
+          else "render worker failed: ${e.message}${stderrSuffix()}",
         )
       } finally {
         guard.disarm()

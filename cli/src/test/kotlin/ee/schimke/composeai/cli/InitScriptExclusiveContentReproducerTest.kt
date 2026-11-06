@@ -61,7 +61,7 @@ class InitScriptExclusiveContentReproducerTest {
         rootProject.name = "confetti-repro"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "build.gradle.kts").writeText("// root build script — intentionally empty\n")
     val app = File(root, "app").apply { mkdirs() }
@@ -118,7 +118,7 @@ class InitScriptExclusiveContentReproducerTest {
         dependencyResolutionManagement { repositories { mavenCentral(); google() } }
         rootProject.name = "no-exclusive-content"
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "build.gradle.kts").writeText("// intentionally empty\n")
 
@@ -181,7 +181,7 @@ class InitScriptExclusiveContentReproducerTest {
         rootProject.name = "confetti-repro-apply"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(root, "build.gradle.kts").writeText("// root build script — intentionally empty\n")
     val app = File(root, "app").apply { mkdirs() }
@@ -252,7 +252,7 @@ internal fun publishStubPlugins(repo: File, build: File) {
         }
         publishing { repositories { maven { url = uri("${repo.toURI()}") } } }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val src = File(dir, "src/main/java/$pkg").apply { mkdirs() }
     File(src, "$cls.java")
@@ -265,7 +265,7 @@ internal fun publishStubPlugins(repo: File, build: File) {
             public void apply(Project p) { System.out.println("$msg to " + p.getPath()); }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 

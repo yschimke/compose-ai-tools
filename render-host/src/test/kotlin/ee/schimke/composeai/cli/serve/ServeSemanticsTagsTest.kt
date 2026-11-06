@@ -88,7 +88,7 @@ class ServeSemanticsTagsTest {
               node("2", "0,20,20,40", "row"),
               node("3", "0,40,20,60", "row"),
             ),
-        )
+        ),
       )
     assertEquals(3, tags.getValue("row").count)
   }
@@ -107,7 +107,7 @@ class ServeSemanticsTagsTest {
               node("2", "40,40,40,40", "chip"), // zero area
               node("3", "not,a,box", "chip"), // unparseable
             ),
-        )
+        ),
       )
     assertEquals(3, tags.getValue("chip").count)
     // The first usable box wins, so the reported geometry is still the drawable node's.
@@ -137,7 +137,7 @@ class ServeSemanticsTagsTest {
               node("1", "0,0,50,50", children = listOf(node("2", "1,1,11,11", "dup"))),
               node("3", "50,50,90,90", "dup"),
             ),
-        )
+        ),
       )
     assertEquals(2, tags.getValue("dup").count)
     assertEquals(
@@ -155,7 +155,7 @@ class ServeSemanticsTagsTest {
           "0",
           "0,0,100,100",
           children = listOf(node("1", "0,0,10,10", "pad"), node("2", "20,20,30,30", " pad ")),
-        )
+        ),
       )
     assertEquals(setOf("pad", " pad "), tags.keys)
     assertEquals(1, tags.getValue("pad").count)
@@ -175,7 +175,7 @@ class ServeSemanticsTagsTest {
               node("2", "0,0,10,10", ""),
               node("3", "0,0,10,10", "   "),
             ),
-        )
+        ),
       )
     assertTrue(tags.isEmpty(), "expected no keys, got ${tags.keys}")
   }

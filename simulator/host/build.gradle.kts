@@ -28,7 +28,7 @@ val androidJar: Provider<File> =
         .asText
         .map { text ->
           Properties().apply { load(text.reader()) }.getProperty("sdk.dir").orEmpty().trim()
-        }
+        },
     )
     .map { sdk ->
       val platforms = File(sdk, "platforms")
@@ -43,7 +43,7 @@ val androidJar: Provider<File> =
         }
         ?: error(
           "`:simulator-host` compiles against an Android SDK platform's android.jar, and none was " +
-            "found under $platforms. Install a platform (sdkmanager \"platforms;android-36\")."
+            "found under $platforms. Install a platform (sdkmanager \"platforms;android-36\").",
         )
     }
 
@@ -155,7 +155,7 @@ dependencies {
   testCompileOnly(files(androidJar))
   testImplementation(
     files(unpackGmsTestJars.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() })
-      .builtBy(unpackGmsTestJars)
+      .builtBy(unpackGmsTestJars),
   )
 }
 
@@ -276,7 +276,7 @@ abstract class UnpackTileRenderer : DefaultTask() {
               appendLine("  }")
             }
             appendLine("}")
-          }
+          },
         )
       }
     }
@@ -308,7 +308,7 @@ val tileRendererRJar =
 dependencies {
   runtimeOnly(
     files(unpackTileRenderer.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() })
-      .builtBy(unpackTileRenderer)
+      .builtBy(unpackTileRenderer),
   )
   runtimeOnly(files(tileRendererRJar.flatMap { it.archiveFile }).builtBy(tileRendererRJar))
 }
@@ -368,9 +368,9 @@ val unpackRobolectricTestJars =
 dependencies {
   "robolectricTestRuntimeOnly"(
     files(
-        unpackRobolectricTestJars.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() }
+        unpackRobolectricTestJars.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() },
       )
-      .builtBy(unpackRobolectricTestJars)
+      .builtBy(unpackRobolectricTestJars),
   )
 }
 

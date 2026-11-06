@@ -257,7 +257,7 @@ public object PreviewHistory {
             subject = subject,
             blob = blob,
             deleted = blob == NULL_SHA,
-          )
+          ),
         )
     }
     return byPath

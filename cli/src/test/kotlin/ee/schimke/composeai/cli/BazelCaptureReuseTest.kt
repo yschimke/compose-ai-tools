@@ -28,7 +28,7 @@ class BazelCaptureReuseTest {
               "Greeting",
               "example.App",
               captures = listOf(Capture(renderOutput = "renders/greeting.png")),
-            )
+            ),
           ),
         )
       val output = root.resolve("out").apply { mkdirs() }

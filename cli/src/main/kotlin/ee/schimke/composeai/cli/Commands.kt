@@ -302,7 +302,7 @@ abstract class Command(
       System.err.println(
         "compose-preview --force: reason='$reason' — passing --rerun-tasks. " +
           "Please report on https://github.com/yschimke/compose-ai-tools/issues/924 " +
-          "(do not delete build/classes/ — that's what this flag exists to replace)."
+          "(do not delete build/classes/ — that's what this flag exists to replace).",
       )
     }
     return listOf("--rerun-tasks") + withExtras
@@ -317,7 +317,7 @@ abstract class Command(
           val here = File(".").absoluteFile.normalize().path
           val lightbuild =
             findLightbuildProjectRoot(
-              args.flagValue("--project")?.let(::File)?.absoluteFile ?: File(".").absoluteFile
+              args.flagValue("--project")?.let(::File)?.absoluteFile ?: File(".").absoluteFile,
             )
           System.err.println(
             if (lightbuild != null)
@@ -325,7 +325,7 @@ abstract class Command(
                 "($LIGHTBUILD_GRADLE_DIR) yet: run `lightbuild build` there first."
             else
               "Cannot find Gradle project root: no settings.gradle[.kts] and no gradlew at or " +
-                "above $here"
+                "above $here",
           )
           exitProcess(1)
         }
@@ -369,7 +369,7 @@ abstract class Command(
       if (one == null) {
         gradle.lastModelAccessFailure?.let {
           System.err.println(
-            "Could not query Gradle project model while resolving module '$explicitModule'."
+            "Could not query Gradle project model while resolving module '$explicitModule'.",
           )
           System.err.println("Gradle ${it.operation} failed: ${it.message}")
           it.detail?.let { detail -> System.err.println("Caused by: $detail") }
@@ -380,14 +380,14 @@ abstract class Command(
         if (discoveryFailure != null) {
           System.err.println(
             "Module '$explicitModule' failed to configure during discovery, so its previews " +
-              "are unavailable."
+              "are unavailable.",
           )
           System.err.println(discoveryFailure.message)
           dependencyVerificationGuidance(discoveryFailure.message)?.let { System.err.println(it) }
           exitProcess(1)
         }
         System.err.println(
-          "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin."
+          "Module '$explicitModule' not found or does not apply the compose-ai-tools plugin.",
         )
         printDiscoveryFailures(
           gradle.lastDiscoveryFailures,
@@ -601,7 +601,7 @@ abstract class Command(
     if (!discoverySucceeded) {
       System.err.println(
         "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
-          "rendering all resolved modules so Gradle can retry discovery."
+          "rendering all resolved modules so Gradle can retry discovery.",
       )
       return PreviewRenderScope.FULL
     }
@@ -621,7 +621,7 @@ abstract class Command(
     if (verbose && scope.narrowed) {
       System.err.println(
         "compose-preview: $flag narrowed the render to ${scope.renderedIds?.size ?: 0} preview(s) " +
-          "via ${scope.gradleArgs.first().substringBefore('=')}"
+          "via ${scope.gradleArgs.first().substringBefore('=')}",
       )
     }
     return scope
@@ -671,7 +671,7 @@ abstract class Command(
     }
 
   protected fun readAllManifests(
-    modules: List<PreviewModule>
+    modules: List<PreviewModule>,
   ): List<Pair<PreviewModule, PreviewManifest>> =
     PreviewResultBuilder.readAllManifests(modules).map { (module, manifest) ->
       module to PreviewPermutationsCli.expandManifest(manifest, permutations)
@@ -1016,7 +1016,7 @@ abstract class Command(
       System.err.println(advice)
     } else {
       System.err.println(
-        "Check Gradle wrapper/cache access, then rerun with --verbose for full output."
+        "Check Gradle wrapper/cache access, then rerun with --verbose for full output.",
       )
     }
   }
@@ -1030,7 +1030,7 @@ abstract class Command(
     if (root.absoluteFile.normalize() == cwd) return
     if (!projectRootNotePrinted.compareAndSet(false, true)) return
     System.err.println(
-      "compose-preview: driving the Gradle build at ${root.path} (from ${cwd.path})."
+      "compose-preview: driving the Gradle build at ${root.path} (from ${cwd.path}).",
     )
   }
 }
@@ -1090,7 +1090,7 @@ internal fun printDiscoveryFailures(
   err(
     "${failures.size} project(s) failed to configure during discovery and were skipped — " +
       "their previews are not listed. This is the usual cause of an empty discovery when the " +
-      "render task itself works. Rerun with --verbose for full Gradle output."
+      "render task itself works. Rerun with --verbose for full Gradle output.",
   )
   failures.take(limit).forEach { err("  ${it.path}: ${it.message}") }
   if (failures.size > limit) err("  … and ${failures.size - limit} more")
@@ -1144,7 +1144,7 @@ internal fun discoveryTimeoutGuidance(
       "Discovery timed out$budget while Gradle was still configuring the build: " +
         "$matching of ${failures.size} project(s) were cancelled mid-configuration " +
         "(\"Build cancelled.\"), not misconfigured. Their previews are not listed, and whether " +
-        "they apply the plugin is unknown — discovery never got far enough to see."
+        "they apply the plugin is unknown — discovery never got far enough to see.",
     )
     appendLine()
     append(
@@ -1153,7 +1153,7 @@ internal fun discoveryTimeoutGuidance(
         "second pass reuses the cached configuration — or raise the budget with " +
         "--timeout <seconds>" +
         (timeoutSeconds?.let { " (e.g. --timeout ${it * 2})" } ?: "") +
-        "."
+        ".",
     )
   }
 }
@@ -1188,7 +1188,7 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
     appendLine(
       "$matching of ${failures.size} project(s) failed to configure during discovery with the " +
         "same root cause: the compose-preview plugin can't see the Android Gradle Plugin " +
-        "(NoClassDefFoundError on com.android.build.api.variant.* — AGP's variant API)."
+        "(NoClassDefFoundError on com.android.build.api.variant.* — AGP's variant API).",
     )
     appendLine()
     appendLine(
@@ -1197,7 +1197,7 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
         "ee.schimke.composeai.preview on each project's own buildscript classpath — a sibling " +
         "classloader that can't reach AGP — so the plugin throws the moment it touches AGP. " +
         "There is no init-script API to add the plugin to the included build's classpath, so " +
-        "auto-inject can't fix this layout."
+        "auto-inject can't fix this layout.",
     )
     appendLine()
     appendLine(
@@ -1207,11 +1207,11 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
         "ee.schimke.composeai.preview.gradle.plugin:<version>\")) so it's on the convention " +
         "plugin's runtime classpath, then pluginManager.apply(\"ee.schimke.composeai.preview\") " +
         "alongside AGP in the convention plugin. The CLI detects that and skips auto-inject " +
-        "automatically."
+        "automatically.",
     )
     append(
       "Docs: https://preview.coo.ee/start/install/" +
-        "#builds-that-apply-agp-via-a-convention-plugin"
+        "#builds-that-apply-agp-via-a-convention-plugin",
     )
   }
 }
@@ -1666,7 +1666,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       System.err.println(
         "Reporting the ${outcome.results.size} preview(s) that were discovered anyway — previews " +
           "that failed to render carry a null pngPath (`[no PNG]` in text output). Exit code " +
-          "stays 2."
+          "stays 2.",
       )
     }
 
@@ -1699,7 +1699,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       println(
         if (linkRequest is ShowLinkRequest.Ready) {
           injectPreviewLinks(encoded, filtered.map(::linkFor), pretty = !brief)
-        } else encoded
+        } else encoded,
       )
     } else {
       var lastModule: String? = null
@@ -1740,7 +1740,7 @@ class ShowCommand(args: List<String>) : Command(args) {
           total = filtered.size,
           taskOutcomes = outcome.taskOutcomes,
           prefix = prefix,
-        )
+        ),
       )
       System.out.flush()
       if (shouldFailOnMissingRenders()) exitProcess(2)
@@ -1854,7 +1854,7 @@ class RenderCommand(args: List<String>) : Command(args) {
         "svg" -> true
         else -> {
           System.err.println(
-            "unsupported --format '$formatFlag' for render; expected 'png' or 'svg'"
+            "unsupported --format '$formatFlag' for render; expected 'png' or 'svg'",
           )
           exitProcess(1)
         }
@@ -1924,7 +1924,7 @@ class RenderCommand(args: List<String>) : Command(args) {
         if (filtered.size != 1) {
           System.err.println(
             "--output requires a single match (got ${filtered.size}). " +
-              "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
+              "Narrow with --id <exact>, --filter <substring>, or --preview <ref>.",
           )
           exitProcess(1)
         }
@@ -1941,7 +1941,7 @@ class RenderCommand(args: List<String>) : Command(args) {
                 manifests = manifests,
                 total = filtered.size,
                 taskOutcomes = gradle.lastTaskOutcomes(),
-              )
+              ),
           )
           exitProcess(2)
         }
@@ -1964,7 +1964,7 @@ class RenderCommand(args: List<String>) : Command(args) {
               total = filtered.size,
               taskOutcomes = gradle.lastTaskOutcomes(),
               prefix = prefix,
-            )
+            ),
           )
           if (shouldFailOnMissingRenders()) exitProcess(2)
         }
@@ -1997,7 +1997,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     if (output != null && filtered.size != 1) {
       System.err.println(
         "--output requires a single match (got ${filtered.size}). " +
-          "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
+          "Narrow with --id <exact>, --filter <substring>, or --preview <ref>.",
       )
       exitProcess(1)
     }
@@ -2016,7 +2016,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (!daemonStarted) {
         System.err.println(
           "render --format svg: could not start the preview daemon for $modulePath " +
-            "(composePreviewDaemonStart failed) — no SVG produced for its previews."
+            "(composePreviewDaemonStart failed) — no SVG produced for its previews.",
         )
         continue
       }
@@ -2041,14 +2041,14 @@ class RenderCommand(args: List<String>) : Command(args) {
         is DaemonSemanticsFetcher.Outcome.DescriptorMissing -> {
           System.err.println(
             "render --format svg: daemon-launch.json missing at ${outcome.expected.path} for " +
-              "$modulePath — no SVG produced."
+              "$modulePath — no SVG produced.",
           )
           continue
         }
         is DaemonSemanticsFetcher.Outcome.OpenFailed -> {
           System.err.println(
             "render --format svg: could not open a render session for $modulePath " +
-              "(${outcome.reason}) — no SVG produced."
+              "(${outcome.reason}) — no SVG produced.",
           )
           continue
         }
@@ -2062,7 +2062,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (fontWarningsById.isNotEmpty()) {
         System.err.println(
           "render --format svg: ${fontWarningsById.size} preview(s) exported as missing-glyph " +
-            "boxes (a font family the render drew could not be named):"
+            "boxes (a font family the render drew could not be named):",
         )
         for (id in fontWarningsById.keys.sorted()) System.err.println("  $id")
       }
@@ -2071,7 +2071,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (noSvg.isNotEmpty()) {
         System.err.println(
           "render --format svg: no figma-svg for ${noSvg.size} preview(s) in $modulePath " +
-            "(backend has no figma-svg producer, or the preview drew no vector layers):"
+            "(backend has no figma-svg producer, or the preview drew no vector layers):",
         )
         for (r in noSvg) System.err.println("  ${r.id}")
       }
@@ -2104,7 +2104,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       RenderSvgOutput.write(target, svgBytes, rasterById[row.id].orEmpty(), fileSystem)
       written++
       println(
-        if (output != null) "Rendered ${row.id} to ${target.path}" else "Wrote ${target.path}"
+        if (output != null) "Rendered ${row.id} to ${target.path}" else "Wrote ${target.path}",
       )
     }
     return written
@@ -2125,7 +2125,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     if (!bundleFile.isFile) {
       System.err.println(
         "render --format svg --bundle: expected bundle missing at ${bundleFile.path} for " +
-          "$modulePath — cannot inject SVG."
+          "$modulePath — cannot inject SVG.",
       )
       return 0
     }
@@ -2137,7 +2137,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       println(
         "Injected $svgWritten figma-svg" +
           (if (rasterWritten > 0) " + $rasterWritten raster crop(s)" else "") +
-          " into ${bundleFile.path} as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
+          " into ${bundleFile.path} as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX",
       )
     }
     return svgWritten
@@ -2244,7 +2244,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
    * [RawRenderOutcome.renderedIds] is also null when the request selected everything.
    */
   protected fun dataProductRequests(
-    manifests: List<Pair<PreviewModule, PreviewManifest>>
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
   ): List<DataProductRequest> = manifests.mapNotNull { (module, manifest) ->
     val consumerIds = mutableListOf<String>()
     val requested = mutableListOf<RequestedPreview>()
@@ -2291,7 +2291,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
           System.err.println(
             "Unknown extension id '$extensionId'. Available: " +
               "${extensionRenderers.keys.sorted().joinToString(", ")}. " +
-              "Run `compose-preview extensions list` for descriptions."
+              "Run `compose-preview extensions list` for descriptions.",
           )
           exitProcess(1)
         }
@@ -2307,7 +2307,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     val manifests = readAllManifests(raw.modules)
     // The unexpanded manifests: the daemon only knows discovered previews ([requestedPreviewIds]).
     produceAdditionalDataProducts(
-      dataProductRequests(PreviewResultBuilder.readAllManifests(raw.modules))
+      dataProductRequests(PreviewResultBuilder.readAllManifests(raw.modules)),
     )
     // Abort when the data product was unavailable, so a daemon crash isn't a clean run.
     atfUnavailableExitMessage()?.let { message ->
@@ -2383,7 +2383,7 @@ open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
     if (!daemonStartOk) {
       System.err.println(
         "compose-preview a11y: composePreviewDaemonStart failed; skipping daemon-driven a11y " +
-          "fetch."
+          "fetch.",
       )
       // A failed daemon start means ATF is unavailable for every module, so the run fails visibly.
       for (request in requests) {
@@ -2400,7 +2400,7 @@ open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
         System.err.println(
           "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previews.size} of " +
             "${consumerPreviewIds.size} preview(s); the rest keep whatever the last run recorded, " +
-            "and the report is marked partial for any still uncovered."
+            "and the report is marked partial for any still uncovered.",
         )
       }
       val outcome =
@@ -2421,14 +2421,14 @@ open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
             if (verbose) {
               System.err.println(
                 "compose-preview a11y: ${module.gradlePath} wrote ${outcome.reportFile.path} " +
-                  "(${outcome.entryCount} entr${if (outcome.entryCount == 1) "y" else "ies"})"
+                  "(${outcome.entryCount} entr${if (outcome.entryCount == 1) "y" else "ies"})",
               )
             }
           } else {
             unavailableModules += module.gradlePath
             System.err.println(
               "compose-preview a11y: ${module.gradlePath} ATF data unavailable — every " +
-                "per-preview fetch failed (see daemon log above)."
+                "per-preview fetch failed (see daemon log above).",
             )
           }
         }
@@ -2436,14 +2436,14 @@ open class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           unavailableModules += module.gradlePath
           System.err.println(
             "compose-preview a11y: ${module.gradlePath} missing daemon-launch.json at " +
-              "${outcome.expected.path}"
+              "${outcome.expected.path}",
           )
         }
         is DaemonA11yFetcher.Outcome.OpenFailed -> {
           unavailableModules += module.gradlePath
           System.err.println(
             "compose-preview a11y: ${module.gradlePath} failed to open render session " +
-              "(${outcome.reason})"
+              "(${outcome.reason})",
           )
         }
       }
@@ -2552,7 +2552,7 @@ internal fun injectPreviewLinks(encoded: String, links: List<String?>, pretty: B
         val link = links.getOrNull(i)
         if (link == null || row !is JsonObject) row
         else JsonObject(row + ("link" to JsonPrimitive(link)))
-      }
+      },
     )
   return codec.encodeToString(JsonObject.serializer(), JsonObject(root + ("previews" to linked)))
 }

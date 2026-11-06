@@ -255,7 +255,7 @@ public object ServeOverrides {
             "landscape" -> Orientation.LANDSCAPE
             else ->
               return OverrideParse.Invalid(
-                "orientation must be 'portrait' or 'landscape', got '$it'"
+                "orientation must be 'portrait' or 'landscape', got '$it'",
               )
           }
         }
@@ -265,7 +265,7 @@ public object ServeOverrides {
       else
         params.getValue("fontScale").toFloatOrNull()?.takeIf { it > 0f }
           ?: return OverrideParse.Invalid(
-            "fontScale must be a positive number, got '${params["fontScale"]}'"
+            "fontScale must be a positive number, got '${params["fontScale"]}'",
           )
 
     val density =
@@ -273,7 +273,7 @@ public object ServeOverrides {
       else
         params.getValue("density").toFloatOrNull()?.takeIf { it > 0f }
           ?: return OverrideParse.Invalid(
-            "density must be a positive number, got '${params["density"]}'"
+            "density must be a positive number, got '${params["density"]}'",
           )
 
     val widthPx =
@@ -281,7 +281,7 @@ public object ServeOverrides {
       else
         params.getValue("widthPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "widthPx must be a positive integer, got '${params["widthPx"]}'"
+            "widthPx must be a positive integer, got '${params["widthPx"]}'",
           )
 
     val heightPx =
@@ -289,7 +289,7 @@ public object ServeOverrides {
       else
         params.getValue("heightPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "heightPx must be a positive integer, got '${params["heightPx"]}'"
+            "heightPx must be a positive integer, got '${params["heightPx"]}'",
           )
 
     // Wrapped-axis bounds: positive integers; `min > max` on one axis is rejected below.
@@ -298,7 +298,7 @@ public object ServeOverrides {
       else
         params.getValue("minWidthPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "minWidthPx must be a positive integer, got '${params["minWidthPx"]}'"
+            "minWidthPx must be a positive integer, got '${params["minWidthPx"]}'",
           )
 
     val minHeightPx =
@@ -306,7 +306,7 @@ public object ServeOverrides {
       else
         params.getValue("minHeightPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "minHeightPx must be a positive integer, got '${params["minHeightPx"]}'"
+            "minHeightPx must be a positive integer, got '${params["minHeightPx"]}'",
           )
 
     val maxWidthPx =
@@ -314,7 +314,7 @@ public object ServeOverrides {
       else
         params.getValue("maxWidthPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "maxWidthPx must be a positive integer, got '${params["maxWidthPx"]}'"
+            "maxWidthPx must be a positive integer, got '${params["maxWidthPx"]}'",
           )
 
     val maxHeightPx =
@@ -322,17 +322,17 @@ public object ServeOverrides {
       else
         params.getValue("maxHeightPx").toIntOrNull()?.takeIf { it > 0 }
           ?: return OverrideParse.Invalid(
-            "maxHeightPx must be a positive integer, got '${params["maxHeightPx"]}'"
+            "maxHeightPx must be a positive integer, got '${params["maxHeightPx"]}'",
           )
 
     if (minWidthPx != null && maxWidthPx != null && minWidthPx > maxWidthPx) {
       return OverrideParse.Invalid(
-        "minWidthPx ($minWidthPx) must not exceed maxWidthPx ($maxWidthPx)"
+        "minWidthPx ($minWidthPx) must not exceed maxWidthPx ($maxWidthPx)",
       )
     }
     if (minHeightPx != null && maxHeightPx != null && minHeightPx > maxHeightPx) {
       return OverrideParse.Invalid(
-        "minHeightPx ($minHeightPx) must not exceed maxHeightPx ($maxHeightPx)"
+        "minHeightPx ($minHeightPx) must not exceed maxHeightPx ($maxHeightPx)",
       )
     }
 
@@ -410,7 +410,7 @@ public object ServeOverrides {
           val tabIndex =
             it.toIntOrNull()?.takeIf { n -> n >= 0 }
               ?: return OverrideParse.Invalid(
-                "focus must be a non-negative integer tab index, got '$it'"
+                "focus must be a non-negative integer tab index, got '$it'",
               )
           FocusOverride.Builder()
             .also {
@@ -447,7 +447,7 @@ public object ServeOverrides {
             "page" -> GestureKindOverride.PAGE
             else ->
               return OverrideParse.Invalid(
-                "gestureInvoke must be primary, dismiss, scroll or page, got '$it'"
+                "gestureInvoke must be primary, dismiss, scroll or page, got '$it'",
               )
           }
         }
@@ -478,7 +478,7 @@ public object ServeOverrides {
             "on" -> false
             else ->
               return OverrideParse.Invalid(
-                "background must be 'clear' or 'default', got '${params["background"]}'"
+                "background must be 'clear' or 'default', got '${params["background"]}'",
               )
           }
         !blank("clearBackground") ->
@@ -489,7 +489,7 @@ public object ServeOverrides {
             "0" -> false
             else ->
               return OverrideParse.Invalid(
-                "clearBackground must be a boolean, got '${params["clearBackground"]}'"
+                "clearBackground must be a boolean, got '${params["clearBackground"]}'",
               )
           }
         else -> null
@@ -520,16 +520,16 @@ public object ServeOverrides {
           "int" ->
             value.toIntOrNull()?.let { PreviewOverrideValue.IntValue(it) }
               ?: return OverrideParse.Invalid(
-                "knob '$wireKey' int must be an integer, got '$value'"
+                "knob '$wireKey' int must be an integer, got '$value'",
               )
           "float" ->
             value.toFloatOrNull()?.let { PreviewOverrideValue.FloatValue(it) }
               ?: return OverrideParse.Invalid(
-                "knob '$wireKey' float must be a number, got '$value'"
+                "knob '$wireKey' float must be a number, got '$value'",
               )
           "bool" ->
             PreviewOverrideValue.BooleanValue(
-              value.equals("true", ignoreCase = true) || value == "1"
+              value.equals("true", ignoreCase = true) || value == "1",
             )
           "color" -> PreviewOverrideValue.ColorValue(value)
           else -> return OverrideParse.Invalid("knob '$wireKey' has unknown kind '$kind'")
@@ -552,7 +552,7 @@ public object ServeOverrides {
             else ->
               return OverrideParse.Invalid(
                 "rcProfile must be one of androidx/androidx7/androidx8/androidx9/widgetsV6/" +
-                  "widgetsV7/wearWidgets, got '$it'"
+                  "widgetsV7/wearWidgets, got '$it'",
               )
           }
         }
@@ -604,12 +604,12 @@ public object ServeOverrides {
           RcPlayerBackend.isNonDaemonLane(raw) ->
             return OverrideParse.Invalid(
               "rcPlayer '$raw' is not drawn by a server-side render; use androidx-view, " +
-                "androidx-embedded, cmp-android, or the id of a player registered with the daemon"
+                "androidx-embedded, cmp-android, or the id of a player registered with the daemon",
             )
           RcPlayerBackend.isPlayerIdShaped(raw) -> rcPlayerId = raw.trim().lowercase()
           else ->
             return OverrideParse.Invalid(
-              "rcPlayer must be a player id (letters, digits, '.', '_', '-'), got '$raw'"
+              "rcPlayer must be a player id (letters, digits, '.', '_', '-'), got '$raw'",
             )
         }
       }
@@ -623,7 +623,7 @@ public object ServeOverrides {
         } else {
           "unknown themeProvider '$themeProvider'; this catalog declares " +
             declaredThemeFqns.sorted().joinToString(", ")
-        }
+        },
       )
     }
 
@@ -666,7 +666,7 @@ public object ServeOverrides {
         clearBackground = clearBackground,
         namedOverrides = namedOverrides.ifEmpty { null },
         remoteCompose = remoteCompose,
-      )
+      ),
     )
   }
 

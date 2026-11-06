@@ -177,7 +177,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
    */
   public fun forComparison(previewId: String, referenceId: String): List<ParityFindingSet> =
     spendPageBudget(
-      forPreview(previewId).filter { it.referenceId == null || it.referenceId == referenceId }
+      forPreview(previewId).filter { it.referenceId == null || it.referenceId == referenceId },
     )
 
   public companion object {
@@ -357,7 +357,7 @@ private constructor(private val byPreview: Map<String, List<ParityFindingSet>>) 
             .map { anchor ->
               anchor.copy(
                 label =
-                  anchor.label?.trim()?.takeIf { it.isNotEmpty() }?.let { clamp(it, MAX_LABEL) }
+                  anchor.label?.trim()?.takeIf { it.isNotEmpty() }?.let { clamp(it, MAX_LABEL) },
               )
             },
       )

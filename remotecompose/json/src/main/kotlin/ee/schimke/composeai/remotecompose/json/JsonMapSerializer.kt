@@ -122,7 +122,7 @@ internal class JsonMapSerializer : MapSerializer {
             mapOf(
               UNSERIALIZED to JsonPrimitive(value.javaClass.simpleName),
               "text" to JsonPrimitive(value.deepToString("")),
-            )
+            ),
           )
         is Boolean -> JsonPrimitive(value)
         is Float -> float(value)

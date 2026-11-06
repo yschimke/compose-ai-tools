@@ -60,7 +60,7 @@ class XrCompositeCachePathTest {
       )
     assertThat(path.get())
       .isEqualTo(
-        File("/home/u/.cache/composeai/xr-composite/0.13.1/windows-x86_64/xr-composite.exe").path
+        File("/home/u/.cache/composeai/xr-composite/0.13.1/windows-x86_64/xr-composite.exe").path,
       )
   }
 

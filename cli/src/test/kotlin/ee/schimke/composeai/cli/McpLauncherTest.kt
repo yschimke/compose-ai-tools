@@ -88,7 +88,7 @@ class McpLauncherTest {
         env = { null },
         pathLookup = { null },
         cacheLookup = { null },
-      )
+      ),
     )
   }
 
@@ -112,7 +112,7 @@ class McpLauncherTest {
     )
     assertTrue(
       ServerDistributionProvision.assetUrl(version, ReleasedDistribution.SERVER)
-        .startsWith("https://github.com/$PREVIEW_SERVER_REPO/releases/download/v$version/")
+        .startsWith("https://github.com/$PREVIEW_SERVER_REPO/releases/download/v$version/"),
     )
     val server = ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.SERVER)
     val mcp = ServerDistributionProvision.defaultCacheRoot(ReleasedDistribution.MCP)
@@ -170,7 +170,7 @@ class McpLauncherTest {
       McpCommand.cliEnvironment(
         "/home/u/.local/bin/compose-preview",
         mapOf(McpCommand.CLI_ENV to "/opt/compose-preview"),
-      )
+      ),
     )
     assertNull(McpCommand.cliEnvironment(null, emptyMap()))
     assertNull(McpCommand.cliEnvironment(" ", emptyMap()))

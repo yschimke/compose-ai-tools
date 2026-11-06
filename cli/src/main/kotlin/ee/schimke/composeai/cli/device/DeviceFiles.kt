@@ -87,7 +87,7 @@ internal class DeviceFiles(private val device: VirtualDevice) {
     }
     return out.line(
       "  File: $path\n  Size: ${file?.takeIf { it.isFile }?.length() ?: 0}\t" +
-        (if (file?.isFile == true) "regular file" else "directory")
+        (if (file?.isFile == true) "regular file" else "directory"),
     )
   }
 

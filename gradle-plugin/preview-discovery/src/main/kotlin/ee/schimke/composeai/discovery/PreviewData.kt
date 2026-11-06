@@ -355,7 +355,7 @@ data class GestureHintCapture(
   /**
    * Force-show the one-handed-gesture hints for the render. Mirrors `GestureOverride.showHints`.
    */
-  val showHints: Boolean = true
+  val showHints: Boolean = true,
 )
 
 /**
@@ -369,7 +369,7 @@ data class PermissionsCapture(
    * Grant state keyed by full permission name. **Exhaustive**: anything not named is denied, so
    * grants can't leak between previews.
    */
-  val grants: Map<String, PermissionGrantCaptureState> = emptyMap()
+  val grants: Map<String, PermissionGrantCaptureState> = emptyMap(),
 )
 
 /**

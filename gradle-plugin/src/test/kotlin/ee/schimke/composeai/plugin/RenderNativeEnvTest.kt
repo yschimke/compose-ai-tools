@@ -121,7 +121,7 @@ class RenderNativeEnvTest {
         decide(
           ldLibraryPath = "/root/.cache/coo-ee/desktop-gl/lib",
           mode = RenderNativeEnv.MODE_INHERIT,
-        )
+        ),
       )
       .isEqualTo(RenderNativeEnv.Decision.Inherit)
   }

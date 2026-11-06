@@ -30,7 +30,7 @@ class ProfileCommand(
       System.err.println("Usage: compose-preview profile <path.json> [flags…]")
       System.err.println(
         "Run `compose-preview extensions list` to see available extension ids " +
-          "for the `extensions` / `failOn` / `report` fields."
+          "for the `extensions` / `failOn` / `report` fields.",
       )
       exitProcess(1)
     }
@@ -65,7 +65,7 @@ class ProfileCommand(
     if (parsed.schema !in ACCEPTED_PROFILE_SCHEMAS) {
       System.err.println(
         "Unsupported profile schema '${parsed.schema}' in ${file.path}. " +
-          "Expected one of: ${ACCEPTED_PROFILE_SCHEMAS.joinToString(", ")}."
+          "Expected one of: ${ACCEPTED_PROFILE_SCHEMAS.joinToString(", ")}.",
       )
       exitProcess(1)
     }
@@ -83,14 +83,14 @@ class ProfileCommand(
       System.err.println(
         "Profile must set `report` or include at least one entry in `extensions` " +
           "so the CLI knows which canned report to render. " +
-          "Known extensions: ${known.sorted().joinToString(", ")}."
+          "Known extensions: ${known.sorted().joinToString(", ")}.",
       )
       exitProcess(1)
     }
     if (candidate !in known) {
       System.err.println(
         "Profile references unknown extension '$candidate'. " +
-          "Known extensions: ${known.sorted().joinToString(", ")}."
+          "Known extensions: ${known.sorted().joinToString(", ")}.",
       )
       exitProcess(1)
     }

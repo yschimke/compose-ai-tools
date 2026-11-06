@@ -30,7 +30,7 @@ class ThemePinClassGeneratorExtension : ClassGeneratorExtension {
         exceptions: Array<out String>?,
       ): MethodVisitor =
         RedirectingMethodVisitor(
-          generator.newMethod(declaration, access, name, desc, signature, exceptions)
+          generator.newMethod(declaration, access, name, desc, signature, exceptions),
         )
     }
 

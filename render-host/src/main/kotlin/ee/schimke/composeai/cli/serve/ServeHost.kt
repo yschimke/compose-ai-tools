@@ -66,7 +66,7 @@ public interface ServeHost : AutoCloseable {
 
   /** The published design-guideline result for [previewId] (`guidelines.json`), or null. */
   public fun guidelineResultFor(
-    previewId: String
+    previewId: String,
   ): ee.schimke.composeai.guidelines.protocol.GuidelineRecordV1? = null
 
   /** Published parity findings (`parity/findings.json`) for one preview/reference pair. */
@@ -356,7 +356,7 @@ public interface ServeHost : AutoCloseable {
         // cmp-wasm is excluded: it is an interactive iframe lane needing an installed Wasm
         // distribution.
         addAll(
-          stagedRcPlayers(previewId).filterNot { it == RcPlayerBackend.CMP_WASM || it in this }
+          stagedRcPlayers(previewId).filterNot { it == RcPlayerBackend.CMP_WASM || it in this },
         )
         // …and the player the BAKED artifact already is ([bakedRcPlayerBackend]).
         bakedRcPlayerBackend(previewId)?.let { if (it !in this) add(it) }

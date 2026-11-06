@@ -32,7 +32,7 @@ class CrossProjectMetadataFunctionalTest {
         include(":app")
         include(":shared")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "gradle.properties")
       .writeText(
@@ -40,7 +40,7 @@ class CrossProjectMetadataFunctionalTest {
         org.gradle.configuration-cache=true
         org.gradle.unsafe.isolated-projects=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectDir, "build.gradle.kts").writeText("")
 
@@ -56,7 +56,7 @@ class CrossProjectMetadataFunctionalTest {
             implementation(project(":shared"))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val shared = File(projectDir, "shared").apply { mkdirs() }
@@ -70,7 +70,7 @@ class CrossProjectMetadataFunctionalTest {
             api("org.jetbrains.compose.components:components-ui-tooling-preview:1.7.5")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 

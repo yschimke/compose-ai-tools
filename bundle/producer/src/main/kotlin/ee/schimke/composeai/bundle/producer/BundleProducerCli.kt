@@ -33,7 +33,7 @@ public object BundleProducerCli {
             "--dependency-policy",
             "--metadata-cache",
           )
-      }
+      },
     ) {
       "Unknown producer option"
     }
@@ -96,7 +96,7 @@ public object BundleProducerCli {
           failOnEmpty = true,
           catalogRenderSupported = false,
           animatedPreviewApngSupported = true,
-        )
+        ),
       )
     check(result is PreviewDiscovery.Outcome.Success) { "Preview discovery failed: $result" }
     // Discovery uses absolute source paths for editor navigation. Portable preparation must not
@@ -118,9 +118,9 @@ public object BundleProducerCli {
                       root.toPath().relativize(it).toString().replace('\\', '/')
                     }
                   }
-                }
+                },
             )
-          }
+          },
       )
     val selected =
       portable.previews

@@ -77,7 +77,7 @@ class BundleReproducibilityTest {
       val png =
         java.util.Base64.getDecoder()
           .decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
           )
       val rendersA = a.resolve("renders").apply { mkdirs() }
       val rendersB = b.resolve("renders").apply { mkdirs() }

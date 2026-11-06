@@ -186,7 +186,7 @@ class AgentAccessStoreTest {
           requestId = "r",
           deviceSecret = "s",
           expiresAtMillis = now + 600_000,
-        )
+        ),
       )
     store().save(entry(origin = "https://b.example", token = "cpat_b"))
     assertEquals(1, store().allPending().size)
@@ -226,7 +226,7 @@ class AgentAccessStoreTest {
           requestId = "late",
           deviceSecret = "s",
           expiresAtMillis = now + 600_000,
-        )
+        ),
       )
     now += 601_000
     val kept = store().pendingFor("https://preview.coo.ee")
@@ -298,7 +298,7 @@ class AgentAccessStoreTest {
       AgentAccessStore.defaultFile(
         env = { name ->
           if (name == "COMPOSE_PREVIEW_AGENT_ACCESS_FILE") "/tmp/x/creds.json" else null
-        }
+        },
       )
     assertEquals(File("/tmp/x/creds.json"), chosen)
   }
@@ -315,8 +315,8 @@ class AgentAccessStoreTest {
           origin = "https://preview.coo.ee",
           token = "cpat_short",
           expiresAtMillis = now + 60_000,
-        )
-      )
+        ),
+      ),
     )
     assertEquals(
       "cpat_short",
@@ -338,7 +338,7 @@ class AgentAccessStoreTest {
           requestId = "late",
           deviceSecret = "s",
           expiresAtMillis = now + windowMillis,
-        )
+        ),
       )
     // Approved at the last instant of the window, granted the server's hard maximum.
     now += windowMillis + AgentAccessStore.POLL_RETENTION_SECONDS * 1000 - 1000
@@ -357,7 +357,7 @@ class AgentAccessStoreTest {
           requestId = "ancient",
           deviceSecret = "s",
           expiresAtMillis = now + 600_000,
-        )
+        ),
       )
     // Past the window's end PLUS the retention span — retention is anchored to window-end now,
     // because that is what covers a grant approved at the last possible moment.
@@ -378,7 +378,7 @@ class AgentAccessStoreTest {
             requestId = "r$i",
             deviceSecret = "s$i",
             expiresAtMillis = now + 600_000,
-          )
+          ),
         )
     for (i in 1..AgentAccessStore.MAX_PENDING) assertTrue(add(i), "request $i should fit")
     assertFalse(add(99), "the pile is full of live requests — refuse, do not evict")
@@ -400,7 +400,7 @@ class AgentAccessStoreTest {
             requestId = "r$i",
             deviceSecret = "s$i",
             expiresAtMillis = now + 600_000,
-          )
+          ),
         )
     }
     now += 600_000 + (AgentAccessStore.POLL_RETENTION_SECONDS + 60) * 1000
@@ -412,7 +412,7 @@ class AgentAccessStoreTest {
             requestId = "fresh",
             deviceSecret = "s",
             expiresAtMillis = now + 600_000,
-          )
+          ),
         ),
       "records past every deadline are free to sweep",
     )
@@ -433,7 +433,7 @@ class AgentAccessStoreTest {
           requestId = "r",
           deviceSecret = "s",
           expiresAtMillis = now + 60_000,
-        )
+        ),
       )
     now += 61_000
     val kept = store().pendingFor("https://a.example")

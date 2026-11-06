@@ -24,7 +24,7 @@ class SkikoVersionsOnClasspathTest {
           cached("skiko-awt-runtime-macos-arm64-0.150.1.jar"),
           cached("skiko-0.150.1.jar"),
           "/home/u/.gradle/caches/x/annotations-23.0.0.jar",
-        )
+        ),
       )
     assertThat(versions).containsExactly("0.150.1")
   }
@@ -35,7 +35,7 @@ class SkikoVersionsOnClasspathTest {
     // fails at draw time with UnsatisfiedLinkError, far from the cause.
     val versions =
       ValidateComposePreviewClasspathTask.skikoVersionsOnClasspath(
-        listOf(cached("skiko-awt-0.150.1.jar"), cached("skiko-awt-runtime-linux-x64-0.144.6.jar"))
+        listOf(cached("skiko-awt-0.150.1.jar"), cached("skiko-awt-runtime-linux-x64-0.144.6.jar")),
       )
     assertThat(versions).containsExactly("0.144.6", "0.150.1").inOrder()
   }
@@ -110,13 +110,13 @@ class SkikoVersionsOnClasspathTest {
   @Test
   fun `a classpath with no skiko names none, and windows paths still parse`() {
     assertThat(
-        ValidateComposePreviewClasspathTask.skikoVersionsOnClasspath(listOf("/a/kotlin.jar"))
+        ValidateComposePreviewClasspathTask.skikoVersionsOnClasspath(listOf("/a/kotlin.jar")),
       )
       .isEmpty()
     assertThat(
         ValidateComposePreviewClasspathTask.skikoVersionsOnClasspath(
-          listOf("C:\\Users\\u\\.gradle\\caches\\x\\skiko-awt-0.148.2.jar")
-        )
+          listOf("C:\\Users\\u\\.gradle\\caches\\x\\skiko-awt-0.148.2.jar"),
+        ),
       )
       .containsExactly("0.148.2")
   }

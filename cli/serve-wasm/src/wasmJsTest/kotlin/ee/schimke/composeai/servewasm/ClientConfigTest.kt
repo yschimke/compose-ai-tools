@@ -33,7 +33,7 @@ class ClientConfigTest {
           transparent = true,
           fontScale = 1.3f,
           localeTag = "ar",
-        )
+        ),
       ),
     )
   }
@@ -80,7 +80,7 @@ class ClientConfigTest {
         localeTag = "ar",
       ),
       AppLocation.fromSearch(
-        "?preview=button&uiMode=dark&background=off&fontScale=99&localeTag=ar"
+        "?preview=button&uiMode=dark&background=off&fontScale=99&localeTag=ar",
       ),
     )
     assertEquals(

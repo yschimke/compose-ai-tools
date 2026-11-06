@@ -71,7 +71,7 @@ internal class BazelHostCache(
     if (pending.size < 2) return
     val pool =
       Executors.newFixedThreadPool(
-        minOf(pending.size, Runtime.getRuntime().availableProcessors().coerceIn(1, 8))
+        minOf(pending.size, Runtime.getRuntime().availableProcessors().coerceIn(1, 8)),
       ) { task ->
         Thread(task, "jar-hash").apply { isDaemon = true }
       }
@@ -332,10 +332,10 @@ internal class StampedFileMemo(
     ConcurrentHashMap(
       runCatching {
           cacheJson.decodeFromString<Map<String, StampedEntry>>(
-            fileSystem.read(file) { readUtf8() }
+            fileSystem.read(file) { readUtf8() },
           )
         }
-        .getOrDefault(emptyMap())
+        .getOrDefault(emptyMap()),
     )
   }
   private val dirty = AtomicBoolean(false)
@@ -399,7 +399,7 @@ internal class KeyedMemo(
       runCatching {
           cacheJson.decodeFromString<Map<String, String>>(fileSystem.read(file) { readUtf8() })
         }
-        .getOrDefault(emptyMap())
+        .getOrDefault(emptyMap()),
     )
   }
   private val dirty = AtomicBoolean(false)
@@ -415,7 +415,7 @@ internal class KeyedMemo(
     writeAtomically(
       file,
       cacheJson.encodeToString(
-        entries.entries.toList().takeLast(1_000).associate { it.key to it.value }
+        entries.entries.toList().takeLast(1_000).associate { it.key to it.value },
       ),
       fileSystem,
     )

@@ -38,7 +38,7 @@ class DevicesCommand(private val args: List<String>) {
     response.devices.forEach { device ->
       println(
         "${device.id.padEnd(idWidth)} ${device.widthDp.toString().padStart(4)}x" +
-          "${device.heightDp.toString().padEnd(4)} dp  density=${device.density}"
+          "${device.heightDp.toString().padEnd(4)} dp  density=${device.density}",
       )
     }
   }
@@ -52,7 +52,7 @@ class DevicesCommand(private val args: List<String>) {
       This command reads the shared daemon core device catalog directly; it
       does not run Gradle and does not start a daemon.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }
@@ -69,5 +69,5 @@ internal fun buildDeviceCatalogResponse(): DeviceCatalogResponse =
           density = spec.density,
           isRound = spec.isRound,
         )
-      }
+      },
   )

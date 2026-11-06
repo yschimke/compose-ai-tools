@@ -104,7 +104,7 @@ object OverloadSelection {
         .thenByDescending { ComponentSnippets.refusalWith(it.record, supplied) == null }
         .thenBy { unmatchedRequired(it, supplied) }
         .thenByDescending { it.previewCount }
-        .thenBy { it.declarationIndex }
+        .thenBy { it.declarationIndex },
     )
 
   private fun names(alt: OverloadAlternative) = alt.record.parameters.map { it.name }.toSet()

@@ -72,8 +72,8 @@ class VariantMatchesTargetTest {
             "debugScreenshotTestRuntimeClasspath",
             "releaseTestFixturesRuntimeClasspath",
             "debugCompileClasspath",
-          )
-        )
+          ),
+        ),
       )
       .containsExactly("debug", "release")
       .inOrder()

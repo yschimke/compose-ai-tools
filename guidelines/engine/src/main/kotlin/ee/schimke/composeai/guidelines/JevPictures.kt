@@ -169,7 +169,7 @@ internal object JevPictures {
     if (layout.scale != 1.0) {
       append(
         ", shown at ${String.format(java.util.Locale.ROOT, "%.2f", layout.scale)}× its pixels; " +
-          "node bounds are in the render's own pixels"
+          "node bounds are in the render's own pixels",
       )
     }
     if (layout.padded) {

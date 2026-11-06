@@ -53,7 +53,7 @@ class HistoryManifestCommand(
       stderr(
         "compose-preview history-manifest: unknown --layout '$layoutArg'; expected one of " +
           PreviewHistoryManifest.Layout.entries.joinToString(", ") { it.name.lowercase() } +
-          "."
+          ".",
       )
       exit(1)
     }
@@ -76,7 +76,7 @@ class HistoryManifestCommand(
       // manifest; fail.
       stderr(
         "compose-preview history-manifest: could not read baselines.json from '$branch'. " +
-          "Pass --baselines to point at it explicitly."
+          "Pass --baselines to point at it explicitly.",
       )
       exit(1)
     }
@@ -85,7 +85,7 @@ class HistoryManifestCommand(
     if (baselinesJson != null && pathToPreviewId.isNullOrEmpty()) {
       stderr(
         "compose-preview history-manifest: baselines.json from '$branch' yielded no usable " +
-          "entries; refusing to write an empty manifest."
+          "entries; refusing to write an empty manifest.",
       )
       exit(1)
     }
@@ -94,7 +94,7 @@ class HistoryManifestCommand(
     // overwrite a good manifest with an empty one.
     if (resolveSha(repoDir, branch) == null) {
       stderr(
-        "compose-preview history-manifest: '$branch' is not a ref this repository can resolve."
+        "compose-preview history-manifest: '$branch' is not a ref this repository can resolve.",
       )
       exit(1)
     }
@@ -110,7 +110,7 @@ class HistoryManifestCommand(
         PreviewHistory.read(repoDir, branch, layout.dir)
       } catch (e: Exception) {
         stderr(
-          "compose-preview history-manifest: failed to read history from '$branch': ${e.message}"
+          "compose-preview history-manifest: failed to read history from '$branch': ${e.message}",
         )
         exit(1)
       }
@@ -121,7 +121,7 @@ class HistoryManifestCommand(
         pathToPreviewId?.let { ", while baselines.json lists ${it.size} previews" }.orEmpty()
       stderr(
         "compose-preview history-manifest: '$branch' resolved but yielded no render history " +
-          "under '${layout.dir}/'$against; refusing to write an empty manifest."
+          "under '${layout.dir}/'$against; refusing to write an empty manifest.",
       )
       exit(1)
     }
@@ -132,7 +132,7 @@ class HistoryManifestCommand(
       stderr(
         "compose-preview history-manifest: none of the ${timelines.size} render paths under " +
           "'${layout.dir}/' on '$branch' could be keyed to a preview; refusing to write an " +
-          "empty manifest."
+          "empty manifest.",
       )
       exit(1)
     }
@@ -149,7 +149,7 @@ class HistoryManifestCommand(
       stdout(
         "compose-preview history-manifest: wrote ${output.path}: " +
           "${manifest.previews.size} previews, $versions versions, $unstable unstable" +
-          if (dropped > 0) ", $dropped unmatched render paths dropped." else "."
+          if (dropped > 0) ", $dropped unmatched render paths dropped." else ".",
       )
     }
   }

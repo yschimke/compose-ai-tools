@@ -40,7 +40,7 @@ private val googleFontProvider =
 /** Roboto Flex — the catalog's default typeface, resolved as a downloadable Google font. */
 val RobotoFlex: FontFamily =
   FontFamily(
-    GoogleFontFont(GoogleFont("Roboto Flex"), googleFontProvider, weight = FontWeight.Normal)
+    GoogleFontFont(GoogleFont("Roboto Flex"), googleFontProvider, weight = FontWeight.Normal),
   )
 
 /**
@@ -49,19 +49,19 @@ val RobotoFlex: FontFamily =
  */
 val GoogleSansFlex: FontFamily =
   FontFamily(
-    GoogleFontFont(GoogleFont("Google Sans Flex"), googleFontProvider, weight = FontWeight.Normal)
+    GoogleFontFont(GoogleFont("Google Sans Flex"), googleFontProvider, weight = FontWeight.Normal),
   )
 
 /** Lobster Two — a selectable display face, resolved as a downloadable Google font. */
 val LobsterTwo: FontFamily =
   FontFamily(
-    GoogleFontFont(GoogleFont("Lobster Two"), googleFontProvider, weight = FontWeight.Normal)
+    GoogleFontFont(GoogleFont("Lobster Two"), googleFontProvider, weight = FontWeight.Normal),
   )
 
 /** JetBrains Mono — the KotlinConf title face (see [wearCatalogTypography]). */
 val JetBrainsMono: FontFamily =
   FontFamily(
-    GoogleFontFont(GoogleFont("JetBrains Mono"), googleFontProvider, weight = FontWeight.Normal)
+    GoogleFontFont(GoogleFont("JetBrains Mono"), googleFontProvider, weight = FontWeight.Normal),
   )
 
 /** Inter — the KotlinConf body face (see [wearCatalogTypography]). */

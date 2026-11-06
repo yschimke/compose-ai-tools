@@ -299,7 +299,7 @@ public data class RenderFailureFrame(
  * (`@FocusedPreview`) and one-handed gestures (`@GestureHintPreview`).
  */
 public fun detectedFeaturesOf(
-  preview: ee.schimke.composeai.previewdata.PreviewInfo
+  preview: ee.schimke.composeai.previewdata.PreviewInfo,
 ): Pair<Boolean, Boolean> {
   val focus = preview.captures.any { it.focus != null || it.focusGif != null }
   val gestures = preview.captures.any { it.gestureHint != null }
@@ -341,7 +341,7 @@ internal fun inferredThemeMode(name: String, providerFqn: String): String? {
  * `params.wrapperClassName`). Entries without an FQN are skipped; deduped by FQN.
  */
 public fun declaredThemesFromPreviews(
-  previews: List<ee.schimke.composeai.previewdata.PreviewInfo>
+  previews: List<ee.schimke.composeai.previewdata.PreviewInfo>,
 ): List<ServeTheme> =
   previews
     .filter { it.params.kind == "THEME_CATALOG" || it.params.kind == "WEAR_THEME_CATALOG" }
@@ -579,7 +579,7 @@ internal constructor(
           ComposeSemanticsProduct.KIND,
           LayoutInspectorProduct.KIND,
           THEME_EXTENSION_ID,
-        )
+        ),
       )
     }
       .getOrElse { e ->
@@ -794,7 +794,7 @@ internal constructor(
       // holding [renderLock] for a render the daemon already reported dead.
       pendingFailure.set(
         params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
-          ?: "daemon reported renderFailed"
+          ?: "daemon reported renderFailed",
       )
     }
     pendingLatch.get()?.countDown()

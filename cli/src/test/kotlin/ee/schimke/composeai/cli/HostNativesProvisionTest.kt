@@ -63,7 +63,7 @@ class HostNativesProvisionTest {
               Build(
                 "1.0.1",
                 mapOf("linux-x86_64" to Entry("https://x/gp.tar.gz", "a".repeat(64), "lib.so")),
-              )
+              ),
             ),
         ),
         HostNativesProvision.Library(
@@ -342,7 +342,7 @@ class HostNativesProvisionTest {
         noNetwork = false,
       ) {
         logs += it
-      }
+      },
     )
     assertTrue(logs.single().contains("the index says"), logs.toString())
 

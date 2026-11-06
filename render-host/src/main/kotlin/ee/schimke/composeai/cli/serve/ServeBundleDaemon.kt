@@ -95,7 +95,7 @@ public object ServeBundleDaemon {
     if (backend != "desktop" && backend != "android") {
       onLog(
         "catalog $system: bundle backend '$backend' is not 'desktop' or 'android' — no live daemon " +
-          "for this backend"
+          "for this backend",
       )
       return null
     }
@@ -157,7 +157,7 @@ public object ServeBundleDaemon {
     if (bundleRepositories.isNotEmpty()) {
       onLog(
         "catalog $system: bundle declares ${bundleRepositories.size} extra Maven " +
-          "repository(s) — ${bundleRepositories.joinToString()}"
+          "repository(s) — ${bundleRepositories.joinToString()}",
       )
     }
     val resolutions =
@@ -194,7 +194,7 @@ public object ServeBundleDaemon {
           "${skikoNativeRepair.version} — the live lane will link Skiko ${skikoNativeRepair.version} " +
           "bindings against this server's own libskiko and is likely to fail every render with " +
           "UnsatisfiedLinkError. Republish the catalog against a Compose Multiplatform version " +
-          "whose Skiko this server ships, or give the server network access to Maven Central."
+          "whose Skiko this server ships, or give the server network access to Maven Central.",
       )
     }
     // Resolved first: which Remote Compose artifacts the sidecar ships decides what may be
@@ -256,7 +256,7 @@ public object ServeBundleDaemon {
       onLog(
         "catalog $system: ${parentOverlayDependencies.size} shared bundle dependency classpath " +
           "entry(s) precede the daemon sidecar; ${childDependencies.size} app dependency " +
-          "entry(s) remain isolated"
+          "entry(s) remain isolated",
       )
     }
     // Backstop for split-Skiko cases the repair can't close, read off the assembled classpath
@@ -419,7 +419,7 @@ public object ServeBundleDaemon {
               putAll(
                 if (android)
                   sandbox.robolectricSystemProperties(backendLaunch.extraSystemProperties)
-                else backendLaunch.extraSystemProperties
+                else backendLaunch.extraSystemProperties,
               )
             },
           workingDirectory = workDir.absolutePath,
@@ -437,7 +437,7 @@ public object ServeBundleDaemon {
                       classesDir)
                     .distinct(),
                 javaHome = File(System.getProperty("java.home")),
-              )
+              ),
             )
           it.hardTtlSeconds = sandbox.ttlSeconds.takeIf { sandbox.isActive }
         }
@@ -725,7 +725,7 @@ public object ServeBundleDaemon {
   private val KOTLINX_SHARED_ARTIFACT_PATH =
     Regex(
       "/(?:org\\.jetbrains\\.kotlinx|org/jetbrains/kotlinx)/" +
-        "kotlinx-(?:coroutines|io)(?:-[^/]+)?(?:/|$)"
+        "kotlinx-(?:coroutines|io)(?:-[^/]+)?(?:/|$)",
     )
 
   private data class ResolvedBundleDependency(
@@ -754,7 +754,7 @@ public object ServeBundleDaemon {
       onLog(
         "catalog $system: no daemon jars found (looked in " +
           "${bundleSidecarSearchDescription("lib-daemon-desktop")}) — is this a " +
-          "`:cli:installDist` build?"
+          "`:cli:installDist` build?",
       )
       return null
     }
@@ -762,7 +762,7 @@ public object ServeBundleDaemon {
     if (rendererJars.isEmpty()) {
       onLog(
         "catalog $system: no renderer jars found (looked in " +
-          "${bundleSidecarSearchDescription("lib-renderer")})"
+          "${bundleSidecarSearchDescription("lib-renderer")})",
       )
       return null
     }
@@ -803,7 +803,7 @@ public object ServeBundleDaemon {
           " which ships separately as `compose-preview-android-daemon-<version>.zip` (too large for" +
           " the CLI tarball). Unpack it and set" +
           " `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
-          "${bundleSidecarSearchDescription("lib-daemon-android")}."
+          "${bundleSidecarSearchDescription("lib-daemon-android")}.",
       )
       return null
     }
@@ -812,7 +812,7 @@ public object ServeBundleDaemon {
         ?: run {
           onLog(
             "catalog $system: backend=android needs android.jar — set ANDROID_HOME / " +
-              "ANDROID_SDK_ROOT."
+              "ANDROID_SDK_ROOT.",
           )
           return null
         }

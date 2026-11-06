@@ -40,7 +40,7 @@ class AppliedMarkerFunctionalTest {
         }
         rootProject.name = "marker-test"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -51,7 +51,7 @@ class AppliedMarkerFunctionalTest {
             id("ee.schimke.composeai.preview")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Configuration cache + Isolated Projects on by default — every
@@ -62,7 +62,7 @@ class AppliedMarkerFunctionalTest {
         org.gradle.configuration-cache=true
         org.gradle.unsafe.isolated-projects=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

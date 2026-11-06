@@ -33,7 +33,7 @@ class DefaultPolicyGoldenTest {
       fixture.write(
         viaOptions,
         DependencyResolutionOptions(
-          runtimeJarOwners = mapOf(fixture.local to "@maven//:com_example_runtime")
+          runtimeJarOwners = mapOf(fixture.local to "@maven//:com_example_runtime"),
         ),
       )
       assertEquals(PRE_POLICY_BUNDLE_SHA, bazelBundleSha(viaOptions))
@@ -109,7 +109,7 @@ internal class PolicyFixture(root: File) {
           "org.jetbrains.kotlin:kotlin-stdlib":{"version":"2.0.0","shasums":{"jar":"${bazelBundleSha(stdlib)}"}}
         }}
         """
-          .trimIndent()
+          .trimIndent(),
       )
     }
 
@@ -162,8 +162,8 @@ internal class PolicyFixture(root: File) {
     java.util.zip
       .ZipInputStream(
         java.io.ByteArrayInputStream(
-          ee.schimke.composeai.bundle.BundleReader.extractZipBytes(bundle)
-        )
+          ee.schimke.composeai.bundle.BundleReader.extractZipBytes(bundle),
+        ),
       )
       .use { zip ->
         while (true) {

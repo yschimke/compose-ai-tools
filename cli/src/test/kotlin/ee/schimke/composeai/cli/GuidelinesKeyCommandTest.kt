@@ -93,20 +93,20 @@ class GuidelinesKeyCommandTest {
       GuidelinesKeyCommand.confirmTrust(file, project) {
         asked++
         ""
-      }
+      },
     )
     assertFalse(GuidelineCredentials.isTrusted(file, project))
     assertTrue(
       GuidelinesKeyCommand.confirmTrust(file, project) {
         asked++
         "y"
-      }
+      },
     )
     assertTrue(
       GuidelinesKeyCommand.confirmTrust(file, project) {
         asked++
         "n"
-      }
+      },
     )
     assertEquals(2, asked)
   }

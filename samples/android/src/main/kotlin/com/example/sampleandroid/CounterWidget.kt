@@ -48,7 +48,7 @@ class CounterWidget : GlanceAppWidget() {
 private fun CounterContent(count: Int) {
   Column(
     modifier =
-      GlanceModifier.fillMaxSize().background(ColorProvider(Color(0xFF00695C))).padding(12.dp)
+      GlanceModifier.fillMaxSize().background(ColorProvider(Color(0xFF00695C))).padding(12.dp),
   ) {
     Text(
       text = "Glance counter",

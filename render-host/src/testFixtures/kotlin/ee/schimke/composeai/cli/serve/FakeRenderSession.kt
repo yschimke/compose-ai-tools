@@ -277,7 +277,7 @@ public class FakeRenderSession(
             RejectedRender(
               id,
               "coalesced: override-bearing render already in flight for this previewId",
-            )
+            ),
           ),
       )
     }
@@ -355,7 +355,7 @@ public class FakeRenderSession(
                     ),
                 ),
               ),
-          )
+          ),
       )
     File(previewDir, ComposeSemanticsProduct.FILE)
       .writeText(streamJson.encodeToString(ComposeSemanticsPayload.serializer(), payload))
@@ -466,7 +466,7 @@ public class FakeRenderSession(
             attachable = false,
             fetchable = true,
             requiresRerender = true,
-          )
+          ),
         )
       } else {
         emptyList()
@@ -578,7 +578,7 @@ public class FakeRenderSession(
         keyCode = keyCode,
         text = text,
         pointerType = pointerType,
-      )
+      ),
     )
   }
 

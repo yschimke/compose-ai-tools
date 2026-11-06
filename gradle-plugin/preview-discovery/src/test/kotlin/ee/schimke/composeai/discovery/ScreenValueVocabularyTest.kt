@@ -97,7 +97,7 @@ class ScreenValueVocabularyTest {
             b.composableSlot = true
             b.composableSlotReceiver = COLUMN_SCOPE
           }
-          .build()
+          .build(),
       ),
       componentIds = listOf("layout/column"),
       canonicalId = "app/androidx.compose.foundation.layout.ColumnKt.Column",
@@ -145,7 +145,7 @@ class ScreenValueVocabularyTest {
               rootFqn = "androidx.compose.material3.MaterialTheme",
               members = listOf("colorScheme", "primary"),
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -161,7 +161,7 @@ class ScreenValueVocabularyTest {
     val result =
       emitted(
         textNode(
-          "color" to ScreenValue.Reference("androidx.compose.ui.graphics.Color", typeFqn = color)
+          "color" to ScreenValue.Reference("androidx.compose.ui.graphics.Color", typeFqn = color),
         ),
         catalog(text),
       )
@@ -179,14 +179,14 @@ class ScreenValueVocabularyTest {
                 "androidx.compose.ui.text.style.TextAlign",
                 listOf("Center"),
                 typeFqn = "androidx.compose.ui.text.style.TextAlign",
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
         "`Text`.`color` is androidx.compose.ui.graphics.Color, and this value is a " +
-          "androidx.compose.ui.text.style.TextAlign"
+          "androidx.compose.ui.text.style.TextAlign",
       )
   }
 
@@ -201,7 +201,7 @@ class ScreenValueVocabularyTest {
               positional = listOf(ScreenValue.Fractional(0.5)),
               named = mapOf("alpha" to ScreenValue.Fractional(1.0)),
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -220,7 +220,7 @@ class ScreenValueVocabularyTest {
             ScreenValue.Construct(
               callableFqn = "androidx.compose.material3.ColorDefaults.brand",
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -245,11 +245,11 @@ class ScreenValueVocabularyTest {
               ),
           ),
           catalog(text),
-        )
+        ),
       )
       .contains(
         "`Color` would be imported from androidx.compose.ui.graphics.Color and " +
-          "com.example.paint.Color, which Kotlin rejects as a conflicting import"
+          "com.example.paint.Color, which Kotlin rejects as a conflicting import",
       )
   }
 
@@ -261,7 +261,7 @@ class ScreenValueVocabularyTest {
           textNode("color" to ScreenValue.Reference("com.example.paint.Screen", typeFqn = color)),
           catalog(text),
           name = "Screen",
-        )
+        ),
       )
       .containsExactly("`Text`.`color` imports `Screen`, which is the screen's own name")
   }
@@ -285,12 +285,12 @@ class ScreenValueVocabularyTest {
                           receiver = ScreenValue.Whole(16),
                           links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
                           typeFqn = "androidx.compose.ui.unit.Dp",
-                        )
+                        ),
                       ),
                   ),
                 ),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -324,12 +324,12 @@ class ScreenValueVocabularyTest {
                               "androidx.compose.foundation.layout.ColumnScope.weight",
                               positional = listOf(ScreenValue.Fractional32(1f)),
                               receiverScopeFqn = COLUMN_SCOPE,
-                            )
+                            ),
                           ),
                         typeFqn = modifier,
-                      )
-                  )
-                )
+                      ),
+                  ),
+                ),
             ),
         ),
         catalog(text, column),
@@ -361,20 +361,20 @@ class ScreenValueVocabularyTest {
                                 "androidx.compose.foundation.layout.RowScope.weight",
                                 positional = listOf(ScreenValue.Fractional32(1f)),
                                 receiverScopeFqn = ROW_SCOPE,
-                              )
+                              ),
                             ),
                           typeFqn = modifier,
-                        )
-                    )
-                  )
+                        ),
+                    ),
+                  ),
               ),
           ),
           catalog(text, column),
-        )
+        ),
       )
       .containsExactly(
         "`Text`.`modifier` links `weight`, which is declared on `$ROW_SCOPE` and is in scope only " +
-          "inside a slot with that receiver; this node sits in a `$COLUMN_SCOPE` slot"
+          "inside a slot with that receiver; this node sits in a `$COLUMN_SCOPE` slot",
       )
   }
 
@@ -392,17 +392,17 @@ class ScreenValueVocabularyTest {
                       "androidx.compose.foundation.layout.ColumnScope.weight",
                       positional = listOf(ScreenValue.Fractional32(1f)),
                       receiverScopeFqn = COLUMN_SCOPE,
-                    )
+                    ),
                   ),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
         "`Text`.`modifier` links `weight`, which is declared on `$COLUMN_SCOPE` and is in scope " +
-          "only inside a slot with that receiver; this node sits at the root, which has no receiver"
+          "only inside a slot with that receiver; this node sits at the root, which has no receiver",
       )
   }
 
@@ -416,7 +416,7 @@ class ScreenValueVocabularyTest {
               callableFqn = "androidx.compose.ui.graphics.Color",
               positional = listOf(ScreenValue.Whole(0xFF1A73E8)),
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -435,7 +435,7 @@ class ScreenValueVocabularyTest {
               callableFqn = "androidx.compose.ui.graphics.Color",
               positional = listOf(ScreenValue.Fractional32(0.5f), ScreenValue.Fractional(0.5)),
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -456,14 +456,14 @@ class ScreenValueVocabularyTest {
                     ChainLink("com.example.decor.padding"),
                   ),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
         "`padding` would be imported from androidx.compose.foundation.layout.padding and " +
-          "com.example.decor.padding, which Kotlin rejects as a conflicting import"
+          "com.example.decor.padding, which Kotlin rejects as a conflicting import",
       )
   }
 
@@ -522,7 +522,7 @@ class ScreenValueVocabularyTest {
         listOf(
           TargetParameter.Builder(name = "content", type = "() -> Unit")
             .also { b -> b.composableSlot = true }
-            .build()
+            .build(),
         ),
         canonicalId = "app/com.example.decor.PaddingKt.padding",
       )
@@ -540,17 +540,17 @@ class ScreenValueVocabularyTest {
                           receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                           links = listOf(ChainLink("androidx.compose.foundation.layout.padding")),
                           typeFqn = modifier,
-                        )
-                    )
-                  )
+                        ),
+                    ),
+                  ),
               ),
           ),
           catalog(text, padding),
-        )
+        ),
       )
       .containsExactly(
         "`padding` would be imported from androidx.compose.foundation.layout.padding and " +
-          "com.example.decor.padding, which Kotlin rejects as a conflicting import"
+          "com.example.decor.padding, which Kotlin rejects as a conflicting import",
       )
   }
 
@@ -564,11 +564,11 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = listOf(ChainLink("com.example.decor.Screen")),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
           name = "Screen",
-        )
+        ),
       )
       .containsExactly("`Text`.`modifier` imports `Screen`, which is the screen's own name")
   }
@@ -583,10 +583,10 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = emptyList(),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly("`Text`.`modifier` is a chain with no links, which is a plain reference")
   }
@@ -605,13 +605,13 @@ class ScreenValueVocabularyTest {
                       "androidx.compose.ui.unit.dp",
                       positional = listOf(ScreenValue.Whole(1)),
                       property = true,
-                    )
+                    ),
                   ),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly("`Text`.`modifier` reads `dp` as a property and also passes it arguments")
   }
@@ -626,7 +626,7 @@ class ScreenValueVocabularyTest {
               "androidx.compose.ui.graphics.Color",
               positional = listOf(ScreenValue.Whole(0xFF6750A4), ScreenValue.Fractional(2.0)),
               typeFqn = color,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -639,13 +639,13 @@ class ScreenValueVocabularyTest {
         refusal(
           textNode(
             "color" to
-              ScreenValue.Reference("androidx.compose.ui.graphics.Color", listOf("a b`c"), color)
+              ScreenValue.Reference("androidx.compose.ui.graphics.Color", listOf("a b`c"), color),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
-        "`Text`.`color` names `a b`c`, which cannot be written as a Kotlin identifier"
+        "`Text`.`color` names `a b`c`, which cannot be written as a Kotlin identifier",
       )
   }
 
@@ -654,7 +654,7 @@ class ScreenValueVocabularyTest {
     val result =
       emitted(
         textNode(
-          "color" to ScreenValue.Reference("com.example.in.Palette", listOf("brand"), color)
+          "color" to ScreenValue.Reference("com.example.in.Palette", listOf("brand"), color),
         ),
         catalog(text),
       )
@@ -686,11 +686,14 @@ class ScreenValueVocabularyTest {
         refusal(
           textNode("color" to ScreenValue.Construct("Color", typeFqn = color)),
           catalog(text),
-        )
+        ),
       )
       .containsExactly("`Text`.`color` refers to `Color`, which is not a qualified Kotlin name")
     assertThat(
-        refusal(textNode("color" to ScreenValue.Reference("Color", typeFqn = color)), catalog(text))
+        refusal(
+          textNode("color" to ScreenValue.Reference("Color", typeFqn = color)),
+          catalog(text),
+        ),
       )
       .containsExactly("`Text`.`color` refers to `Color`, which is not a qualified Kotlin name")
     assertThat(
@@ -701,13 +704,13 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = listOf(ChainLink("padding")),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
-        "`Text`.`modifier` refers to `padding`, which is not a qualified Kotlin name"
+        "`Text`.`modifier` refers to `padding`, which is not a qualified Kotlin name",
       )
   }
 
@@ -723,7 +726,7 @@ class ScreenValueVocabularyTest {
               receiver = ScreenValue.Whole(-1),
               links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -736,7 +739,7 @@ class ScreenValueVocabularyTest {
               receiver = ScreenValue.Fractional(-1.5),
               links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -753,7 +756,7 @@ class ScreenValueVocabularyTest {
               receiver = ScreenValue.Whole(16),
               links = listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -773,7 +776,7 @@ class ScreenValueVocabularyTest {
               callableFqn = "java.nio.file.Path.of",
               positional = listOf(ScreenValue.Text("/etc/passwd")),
               typeFqn = "java.nio.file.Path",
-            )
+            ),
           ),
         typeFqn = "kotlin.String",
       )
@@ -783,11 +786,11 @@ class ScreenValueVocabularyTest {
             catalog(text),
             expressionPackages = allowed,
           ) as ScreenGenerator.Result.Refused)
-          .reasons
+          .reasons,
       )
       .contains(
         "`Text`.`text` names `java.nio.file.Files.readString`, which is outside the packages this " +
-          "screen may call (androidx.compose, com.example)"
+          "screen may call (androidx.compose, com.example)",
       )
   }
 
@@ -816,7 +819,7 @@ class ScreenValueVocabularyTest {
     assertThat((result as ScreenGenerator.Result.Refused).reasons)
       .containsExactly(
         "`Text`.`color` names `androidx.compose.material3.MaterialTheme`, which is outside the " +
-          "packages this screen may call (none are allowed)"
+          "packages this screen may call (none are allowed)",
       )
   }
 
@@ -838,11 +841,11 @@ class ScreenValueVocabularyTest {
             catalog(text),
             expressionPackages = setOf("androidx.compose"),
           ) as ScreenGenerator.Result.Refused)
-          .reasons
+          .reasons,
       )
       .contains(
         "`Text`.`color` names `androidx.composeevil.Exfiltrate`, which is outside the packages " +
-          "this screen may call (androidx.compose)"
+          "this screen may call (androidx.compose)",
       )
   }
 
@@ -861,11 +864,11 @@ class ScreenValueVocabularyTest {
                     listOf("colorScheme", "primary"),
                     typeFqn = color,
                     androidxOptIns = listOf("androidx.compose.material3.ExperimentalMaterial3Api"),
-                  )
+                  ),
                 ),
               typeFqn = color,
               requiredOptIns = listOf("com.example.ExperimentalPalette"),
-            )
+            ),
         ),
         catalog(text),
       )
@@ -892,15 +895,15 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = listOf(ChainLink("androidx.compose.foundation.layout.RowScope.weight")),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
         "`Text`.`modifier` links `androidx.compose.foundation.layout.RowScope.weight`, whose " +
           "qualifier names a classifier rather than a package — a member extension comes from an " +
-          "implicit receiver and cannot be imported"
+          "implicit receiver and cannot be imported",
       )
   }
 
@@ -914,7 +917,7 @@ class ScreenValueVocabularyTest {
               receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
               links = listOf(ChainLink("androidx.compose.foundation.layout.fillMaxWidth")),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -935,13 +938,13 @@ class ScreenValueVocabularyTest {
                 listOf("Unspecified"),
                 typeFqn = color,
                 requiredOptIns = listOf(injected),
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
-        "`Text`.`color` needs opt-in marker `$injected`, which is not a qualified Kotlin name"
+        "`Text`.`color` needs opt-in marker `$injected`, which is not a qualified Kotlin name",
       )
   }
 
@@ -959,7 +962,7 @@ class ScreenValueVocabularyTest {
       }
     assertThat(refusal(ScreenNode(gated.canonicalId), catalog(gated)))
       .containsExactly(
-        "`Gated` needs opt-in marker `not a name`, which is not a qualified Kotlin name"
+        "`Gated` needs opt-in marker `not a name`, which is not a qualified Kotlin name",
       )
   }
 
@@ -982,7 +985,7 @@ class ScreenValueVocabularyTest {
       .contains(
         "catalog id `m3/text` maps to 2 components " +
           "(`app/androidx.compose.material3.TextKt.Text`, " +
-          "`app/androidx.compose.material3.LabelKt.Label`), so it identifies none of them"
+          "`app/androidx.compose.material3.LabelKt.Label`), so it identifies none of them",
       )
   }
 
@@ -997,13 +1000,13 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = listOf(ChainLink("foo..padding")),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
-        "`Text`.`modifier` refers to `foo..padding`, which is not a qualified Kotlin name"
+        "`Text`.`modifier` refers to `foo..padding`, which is not a qualified Kotlin name",
       )
   }
 
@@ -1013,7 +1016,7 @@ class ScreenValueVocabularyTest {
         refusal(
           textNode("color" to ScreenValue.Reference(color, listOf("__"), color)),
           catalog(text),
-        )
+        ),
       )
       .containsExactly("`Text`.`color` names `__`, which cannot be written as a Kotlin identifier")
     assertThat(
@@ -1024,13 +1027,13 @@ class ScreenValueVocabularyTest {
                 receiver = ScreenValue.Reference(modifier, typeFqn = modifier),
                 links = listOf(ChainLink("com.example.decor._")),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
-        "`Text`.`modifier` refers to `com.example.decor._`, which is not a qualified Kotlin name"
+        "`Text`.`modifier` refers to `com.example.decor._`, which is not a qualified Kotlin name",
       )
   }
 
@@ -1049,7 +1052,7 @@ class ScreenValueVocabularyTest {
       .contains(
         "catalog id `m3/text` maps to 2 components " +
           "(`app/androidx.compose.material3.TextKt.Text`, " +
-          "`app/androidx.compose.material3.TextKt.Text`), so it identifies none of them"
+          "`app/androidx.compose.material3.TextKt.Text`), so it identifies none of them",
       )
   }
 
@@ -1104,7 +1107,7 @@ class ScreenValueVocabularyTest {
 
     assertThat(statefulRefusal(listOf(ScreenState("expanded", spliced, ScreenValue.Bool(false)))))
       .containsExactly(
-        "state `expanded` is declared as `$spliced`, which is not a qualified Kotlin name"
+        "state `expanded` is declared as `$spliced`, which is not a qualified Kotlin name",
       )
   }
 
@@ -1112,7 +1115,7 @@ class ScreenValueVocabularyTest {
   fun `an unqualified state type is refused rather than emitted bare`() {
     assertThat(statefulRefusal(listOf(ScreenState("expanded", "Boolean", ScreenValue.Bool(false)))))
       .containsExactly(
-        "state `expanded` is declared as `Boolean`, which is not a qualified Kotlin name"
+        "state `expanded` is declared as `Boolean`, which is not a qualified Kotlin name",
       )
   }
 
@@ -1139,7 +1142,7 @@ class ScreenValueVocabularyTest {
     assertThat(result.source)
       .contains(
         "val expanded = androidx.compose.runtime.remember { " +
-          "androidx.compose.runtime.mutableStateOf<kotlin.Boolean>(false) }"
+          "androidx.compose.runtime.mutableStateOf<kotlin.Boolean>(false) }",
       )
     // Declaration order is emitted order: a preamble that reshuffles is a diff nobody can review.
     assertThat(result.source.indexOf("val expanded"))
@@ -1189,7 +1192,7 @@ class ScreenValueVocabularyTest {
         listOf(
           ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
           ScreenState("caption", "kotlin.String", ScreenValue.Text("b")),
-        )
+        ),
       )
 
     assertThat(reasons).containsExactly("state `caption` is declared more than once")
@@ -1232,7 +1235,7 @@ class ScreenValueVocabularyTest {
             listOf(
               ScreenAction.Toggle("expanded"),
               ScreenAction.Set("caption", ScreenValue.Text("tapped")),
-            )
+            ),
         ),
       )
         as ScreenGenerator.Result.Emitted
@@ -1334,7 +1337,7 @@ class ScreenValueVocabularyTest {
         listOf(
           ScreenState("first", "kotlin.String", ScreenValue.StateRead("second", "kotlin.String")),
           ScreenState("second", "kotlin.String", ScreenValue.Text("b")),
-        )
+        ),
       )
 
     assertThat(reasons.single()).contains("not declared before it")
@@ -1346,7 +1349,9 @@ class ScreenValueVocabularyTest {
     // declaration instead of two.
     val reasons =
       statefulRefusal(
-        listOf(ScreenState("only", "kotlin.String", ScreenValue.StateRead("only", "kotlin.String")))
+        listOf(
+          ScreenState("only", "kotlin.String", ScreenValue.StateRead("only", "kotlin.String")),
+        ),
       )
 
     assertThat(reasons.single()).contains("not declared before it")
@@ -1359,7 +1364,7 @@ class ScreenValueVocabularyTest {
         listOf(
           ScreenState("first", "kotlin.String", ScreenValue.Text("a")),
           ScreenState("second", "kotlin.String", ScreenValue.StateRead("first", "kotlin.String")),
-        )
+        ),
       )
         as ScreenGenerator.Result.Emitted
 
@@ -1450,8 +1455,8 @@ class ScreenValueVocabularyTest {
               members = listOf("DEFAULT"),
               typeFqn = "com.example.fun.Type",
             ),
-          )
-        )
+          ),
+        ),
       )
 
     assertThat((result as ScreenGenerator.Result.Emitted).source)
@@ -1473,8 +1478,8 @@ class ScreenValueVocabularyTest {
               members = listOf("colorScheme", "primary"),
               typeFqn = "androidx.compose.ui.graphics.Color",
             ),
-          )
-        )
+          ),
+        ),
       )
         as ScreenGenerator.Result.Emitted
 
@@ -1504,7 +1509,7 @@ class ScreenValueVocabularyTest {
         listOf(
           TargetParameter.Builder(name = "text", type = "String")
             .also { b -> b.typeFqn = "kotlin.String" }
-            .build()
+            .build(),
         ),
         componentIds = listOf("m3/tint-initial"),
       )
@@ -1527,7 +1532,7 @@ class ScreenValueVocabularyTest {
                   members = listOf("colorScheme", "primary"),
                   typeFqn = "androidx.compose.ui.graphics.Color",
                 ),
-              )
+              ),
             ),
         ),
         catalog(clash),
@@ -1553,7 +1558,7 @@ class ScreenValueVocabularyTest {
               typeFqn = "androidx.compose.ui.graphics.Color",
             ),
           ),
-        )
+        ),
       )
         as ScreenGenerator.Result.Emitted
 
@@ -1569,7 +1574,7 @@ class ScreenValueVocabularyTest {
         listOf(
           ScreenState("androidx", "kotlin.Boolean", ScreenValue.Bool(false)),
           ScreenState("caption", "kotlin.String", ScreenValue.Text("a")),
-        )
+        ),
       )
 
     assertThat(reasons.single()).contains("root of a package this screen writes in full")
@@ -1600,7 +1605,7 @@ class ScreenValueVocabularyTest {
               members = listOf("colorScheme", "surface"),
               typeFqn = "androidx.compose.ui.graphics.Color",
             ),
-          )
+          ),
         ),
         mapOf(
           "onClick" to
@@ -1612,8 +1617,8 @@ class ScreenValueVocabularyTest {
                   members = listOf("colorScheme", "primary"),
                   typeFqn = "androidx.compose.ui.graphics.Color",
                 ),
-              )
-            )
+              ),
+            ),
         ),
       )
 
@@ -1631,7 +1636,7 @@ class ScreenValueVocabularyTest {
         listOf(
           TargetParameter.Builder(name = "content", type = "() -> Unit")
             .also { b -> b.composableSlot = true }
-            .build()
+            .build(),
         ),
         componentIds = listOf("m3/card"),
       )
@@ -1696,7 +1701,7 @@ class ScreenValueVocabularyTest {
           ScreenValue.Construct(
             "androidx.compose.material3.adaptive.currentWindowAdaptiveInfo",
             typeFqn = "androidx.compose.material3.adaptive.WindowAdaptiveInfo",
-          )
+          ),
         ),
       typeFqn = DIRECTIVE,
     )
@@ -1714,10 +1719,10 @@ class ScreenValueVocabularyTest {
               receiver = directive,
               links =
                 listOf(
-                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true),
                 ),
               typeFqn = "kotlin.Int",
-            )
+            ),
         ),
         catalog(paneScaffold),
       )
@@ -1725,7 +1730,7 @@ class ScreenValueVocabularyTest {
       .contains(
         "    val paneScaffoldDirective: PaneScaffoldDirective = " +
           "calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())\n" +
-          "    PaneScaffold(partitions = paneScaffoldDirective.maxHorizontalPartitions)"
+          "    PaneScaffold(partitions = paneScaffoldDirective.maxHorizontalPartitions)",
       )
     // The classifier imports, for the local's type; the member never does.
     assertThat(result.source).contains("import $DIRECTIVE\n")
@@ -1754,13 +1759,13 @@ class ScreenValueVocabularyTest {
                             links =
                               listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
                             typeFqn = "androidx.compose.ui.unit.Dp",
-                          )
+                          ),
                       ),
                     member = true,
-                  )
+                  ),
                 ),
               typeFqn = DIRECTIVE,
-            )
+            ),
         ),
         catalog(paneScaffold),
       )
@@ -1781,14 +1786,14 @@ class ScreenValueVocabularyTest {
                 links =
                   listOf(ChainLink("org.evil.Exfiltrate.secret", property = true, member = true)),
                 typeFqn = "kotlin.Int",
-              )
+              ),
           ),
           catalog(paneScaffold),
-        )
+        ),
       )
       .containsExactly(
         "`PaneScaffold`.`partitions` names `org.evil.Exfiltrate.secret`, which is outside the " +
-          "packages this screen may call (androidx.compose, com.example)"
+          "packages this screen may call (androidx.compose, com.example)",
       )
   }
 
@@ -1809,7 +1814,7 @@ class ScreenValueVocabularyTest {
                 ),
               links = listOf(ChainLink("androidx.compose.Fake.delete", member = true)),
               typeFqn = "kotlin.Int",
-            )
+            ),
         ),
         catalog(paneScaffold),
       )
@@ -1831,7 +1836,7 @@ class ScreenValueVocabularyTest {
               receiver = directive,
               links =
                 listOf(
-                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true),
                 ),
               typeFqn = "kotlin.Int",
             ),
@@ -1841,7 +1846,7 @@ class ScreenValueVocabularyTest {
     assertThat(result.source)
       .contains(
         "PaneScaffold(directive = paneScaffoldDirective, " +
-          "partitions = paneScaffoldDirective.maxHorizontalPartitions)"
+          "partitions = paneScaffoldDirective.maxHorizontalPartitions)",
       )
     assertThat(result.source.split("calculatePaneScaffoldDirective(").size - 1).isEqualTo(1)
   }
@@ -1860,18 +1865,18 @@ class ScreenValueVocabularyTest {
               receiver = directive,
               links =
                 listOf(
-                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true)
+                  ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true, member = true),
                 ),
               typeFqn = "kotlin.Int",
             ),
-          )
-        )
+          ),
+        ),
       )
         as ScreenGenerator.Result.Emitted
     assertThat(result.source)
       .contains(
         "calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())" +
-          ".let<PaneScaffoldDirective, _> { it.maxHorizontalPartitions }"
+          ".let<PaneScaffoldDirective, _> { it.maxHorizontalPartitions }",
       )
     assertThat(result.source).doesNotContain("val paneScaffoldDirective")
   }
@@ -1905,7 +1910,7 @@ class ScreenValueVocabularyTest {
                   ),
                 ),
               typeFqn = modifier,
-            )
+            ),
         ),
         catalog(text),
       )
@@ -1928,17 +1933,17 @@ class ScreenValueVocabularyTest {
                       "$modifier.then",
                       positional = listOf(ScreenValue.Reference(modifier, typeFqn = modifier)),
                       member = true,
-                    )
+                    ),
                   ),
                 typeFqn = modifier,
-              )
+              ),
           ),
           catalog(text),
-        )
+        ),
       )
       .containsExactly(
         "`Text`.`modifier` links member `then` of `$modifier` on `$modifier`, which names a type " +
-          "rather than a value; a member needs an explicit receiver expression"
+          "rather than a value; a member needs an explicit receiver expression",
       )
   }
 
@@ -1948,7 +1953,7 @@ class ScreenValueVocabularyTest {
       refusal(
         paneNode(
           "partitions" to
-            ScreenValue.Chain(receiver = directive, links = listOf(link), typeFqn = "kotlin.Int")
+            ScreenValue.Chain(receiver = directive, links = listOf(link), typeFqn = "kotlin.Int"),
         ),
         catalog(paneScaffold),
       )
@@ -1958,12 +1963,12 @@ class ScreenValueVocabularyTest {
             "androidx.compose.material3.adaptive.layout.maxHorizontalPartitions",
             property = true,
             member = true,
-          )
-        )
+          ),
+        ),
       )
       .containsExactly(
         "`PaneScaffold`.`partitions` links member `maxHorizontalPartitions`, whose qualifier " +
-          "`androidx.compose.material3.adaptive.layout` does not name the classifier that declares it"
+          "`androidx.compose.material3.adaptive.layout` does not name the classifier that declares it",
       )
     assertThat(
         reasons(
@@ -1972,12 +1977,12 @@ class ScreenValueVocabularyTest {
             property = true,
             receiverScopeFqn = COLUMN_SCOPE,
             member = true,
-          )
-        )
+          ),
+        ),
       )
       .containsExactly(
         "`PaneScaffold`.`partitions` links `maxHorizontalPartitions` as both a member of " +
-          "`$DIRECTIVE` and a member extension of `$COLUMN_SCOPE`"
+          "`$DIRECTIVE` and a member extension of `$COLUMN_SCOPE`",
       )
   }
 
@@ -1991,15 +1996,15 @@ class ScreenValueVocabularyTest {
                 receiver = directive,
                 links = listOf(ChainLink("$DIRECTIVE.maxHorizontalPartitions", property = true)),
                 typeFqn = "kotlin.Int",
-              )
+              ),
           ),
           catalog(paneScaffold),
-        )
+        ),
       )
       .containsExactly(
         "`PaneScaffold`.`partitions` links `$DIRECTIVE.maxHorizontalPartitions`, whose qualifier " +
           "names a classifier rather than a package — a member extension comes from an implicit " +
-          "receiver and cannot be imported"
+          "receiver and cannot be imported",
       )
   }
 
@@ -2043,7 +2048,7 @@ class ScreenValueVocabularyTest {
     // Every zero-argument function type is `kotlin.Function0`, so the lambda's return must be
     // checked too.
     assertThat(
-        refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator))
+        refusal(indicatorNode(ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(indicator)),
       )
       .containsExactly("`LinearProgressIndicator`.`progress` is kotlin.Float, which Text is not")
   }
@@ -2055,10 +2060,10 @@ class ScreenValueVocabularyTest {
         refusal(
           indicatorNode(ScreenValue.Lambda(ScreenValue.Fractional(1.0e40))),
           catalog(indicator),
-        )
+        ),
       )
       .containsExactly(
-        "`LinearProgressIndicator`.`progress` is kotlin.Float, which Fractional is not"
+        "`LinearProgressIndicator`.`progress` is kotlin.Float, which Fractional is not",
       )
   }
 
@@ -2076,7 +2081,7 @@ class ScreenValueVocabularyTest {
               b.typeFqn = "kotlin.Function1"
               b.lambdaReturnTypeFqn = "kotlin.Float"
             }
-            .build()
+            .build(),
         ),
       )
 
@@ -2087,20 +2092,20 @@ class ScreenValueVocabularyTest {
             arguments = mapOf("measure" to ScreenValue.Lambda(ScreenValue.Fractional32(1f))),
           ),
           catalog(measured),
-        )
+        ),
       )
       .containsExactly(
-        "`Measured`.`measure` is `(Int) -> Float`, which a `{ … }` returning a value does not satisfy"
+        "`Measured`.`measure` is `(Int) -> Float`, which a `{ … }` returning a value does not satisfy",
       )
   }
 
   @Test
   fun `a lambda is refused on a parameter that is not a function type at all`() {
     assertThat(
-        refusal(textNode("text" to ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(text))
+        refusal(textNode("text" to ScreenValue.Lambda(ScreenValue.Text("hi"))), catalog(text)),
       )
       .containsExactly(
-        "`Text`.`text` is `String`, which a `{ … }` returning a value does not satisfy"
+        "`Text`.`text` is `String`, which a `{ … }` returning a value does not satisfy",
       )
   }
 
@@ -2115,7 +2120,7 @@ class ScreenValueVocabularyTest {
               callableFqn = "androidx.compose.foundation.rememberCarouselState",
               named = mapOf("itemCount" to ScreenValue.Lambda(ScreenValue.Whole(5))),
               typeFqn = "androidx.compose.ui.Modifier",
-            )
+            ),
         ),
         catalog(text),
       )

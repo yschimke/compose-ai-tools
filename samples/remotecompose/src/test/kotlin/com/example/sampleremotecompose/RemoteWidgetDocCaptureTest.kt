@@ -27,7 +27,7 @@ class RemoteWidgetDocCaptureTest {
     // this test sat red instead of guarding anything after `.rcdoc` became `.rc`.
     assertWithMessage(
         "no $stem*.rc sidecar in $rendersDir; found " +
-          (rendersDir.listFiles()?.map { it.name }?.sorted() ?: emptyList<String>())
+          (rendersDir.listFiles()?.map { it.name }?.sorted() ?: emptyList<String>()),
       )
       .that(encodedDoc.exists())
       .isTrue()

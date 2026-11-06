@@ -36,7 +36,7 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
  */
 @Composable
 fun TlcScalingHost(
-  content: @Composable TransformingLazyColumnItemScope.(TransformationSpec) -> Unit
+  content: @Composable TransformingLazyColumnItemScope.(TransformationSpec) -> Unit,
 ) {
   val screenHeightDp = LocalConfiguration.current.screenHeightDp
   // Anchor the item (index 1, between the spacers) centred at full scale — the resting, no-op

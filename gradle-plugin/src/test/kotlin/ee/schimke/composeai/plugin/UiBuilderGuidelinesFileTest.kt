@@ -139,7 +139,7 @@ class UiBuilderGuidelinesFileTest {
           .jsonObject
           .getValue("guidance")
           .jsonPrimitive
-          .content
+          .content,
       )
       .isEqualTo("Focus on one task.")
     // The pack's sized frame duplicates the catalog's and is not added twice.

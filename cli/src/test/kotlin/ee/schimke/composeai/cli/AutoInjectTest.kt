@@ -29,7 +29,7 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:\$pluginVersion"
+        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:\$pluginVersion",
       ),
       "expected the buildscript classpath coordinate to reference the pinned coordinate",
     )
@@ -226,7 +226,7 @@ class AutoInjectTest {
         includeBuild("gradle-plugin")
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val out =
       autoInjectInitScriptArgs(
@@ -288,7 +288,7 @@ class AutoInjectTest {
         pluginManagement { includeBuild("build-logic") }
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val out =
       autoInjectInitScriptArgs(
@@ -319,7 +319,7 @@ class AutoInjectTest {
         include(":cli")
         include(":samples:android")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertTrue(hasIncludedPluginBuild(projectRoot))
   }
@@ -342,13 +342,13 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)"
+        "composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)",
       ),
       "expected the set to be populated during settingsEvaluated",
     )
     assertTrue(
       script.contains(
-        "val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs"
+        "val composeAiPreviewIsPreApplied = projectDir in composeAiPreviewPreAppliedDirs",
       ),
       "expected the buildscript block to be guarded per-project on the directory set",
     )
@@ -364,7 +364,7 @@ class AutoInjectTest {
     val script = renderInitScript("1.0.0")
     assertTrue(
       script.contains(
-        "fun scanForComposeAiPreviewDeclaration(\n    rootDir: java.io.File,\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {"
+        "fun scanForComposeAiPreviewDeclaration(\n    rootDir: java.io.File,\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {",
       ),
       "expected scanForComposeAiPreviewDeclaration to return Set<File> of pre-applied project dirs",
     )
@@ -469,7 +469,7 @@ class AutoInjectTest {
     val script = renderInitScript("0.15.1")
     assertTrue(
       script.contains(
-        "pluginManager.withPlugin(\"com.android.kotlin.multiplatform.library\") { applyComposeAiPreview() }"
+        "pluginManager.withPlugin(\"com.android.kotlin.multiplatform.library\") { applyComposeAiPreview() }",
       ),
       "expected an apply hook for the KMP-Android library plugin id",
     )
@@ -528,20 +528,20 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {"
+        "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {",
       ),
       "expected the scanner function in the rendered script",
     )
     assertTrue(
       script.contains(
-        "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)"
+        "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)",
       ),
       "expected settingsEvaluated to populate the flag from the scanner",
     )
     assertTrue(
       script.contains(
         "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                    beforeEvaluate {\n" +
-          "                        buildscript.repositories.composeAiPreviewAddDefaultRepositories()"
+          "                        buildscript.repositories.composeAiPreviewAddDefaultRepositories()",
       ),
       "expected the buildscript repositories add to be guarded — must keep the dependency add " +
         "and the apply hooks reachable when exclusiveContent is present",
@@ -579,7 +579,7 @@ class AutoInjectTest {
         rootProject.name = "confetti"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertTrue(
       settingsDeclaresExclusiveContentInPluginManagement(root),
@@ -604,7 +604,7 @@ class AutoInjectTest {
         }
         rootProject.name = "demo"
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertTrue(settingsDeclaresExclusiveContentInPluginManagement(root))
   }
@@ -629,7 +629,7 @@ class AutoInjectTest {
         }
         rootProject.name = "demo"
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
   }
@@ -647,7 +647,7 @@ class AutoInjectTest {
             repositories { gradlePluginPortal() }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
   }
@@ -664,7 +664,7 @@ class AutoInjectTest {
         rootProject.name = "demo"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
   }
@@ -689,7 +689,7 @@ class AutoInjectTest {
         }
         plugins { kotlin("jvm") }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertTrue(projectHasBuildscriptRepositories(dir))
   }
@@ -706,7 +706,7 @@ class AutoInjectTest {
             kotlin("jvm") version "2.2.21"
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(projectHasBuildscriptRepositories(dir))
   }
@@ -722,7 +722,7 @@ class AutoInjectTest {
         plugins { kotlin("jvm") }
         repositories { mavenCentral() }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(projectHasBuildscriptRepositories(dir))
   }
@@ -738,7 +738,7 @@ class AutoInjectTest {
         // }
         plugins { kotlin("jvm") }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertFalse(projectHasBuildscriptRepositories(dir))
   }
@@ -758,25 +758,25 @@ class AutoInjectTest {
     val script = renderInitScript("0.11.9")
     assertTrue(
       script.contains(
-        "var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()"
+        "var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()",
       ),
       "expected the per-project buildscript-repos set declaration",
     )
     assertTrue(
       script.contains(
-        "fun scanForProjectsWithBuildscriptRepos(\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {"
+        "fun scanForProjectsWithBuildscriptRepos(\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {",
       ),
       "expected the scanner function in the rendered script",
     )
     assertTrue(
       script.contains(
-        "composeAiPreviewProjectsWithOwnBuildscriptRepos =\n            scanForProjectsWithBuildscriptRepos(projectDirs)"
+        "composeAiPreviewProjectsWithOwnBuildscriptRepos =\n            scanForProjectsWithBuildscriptRepos(projectDirs)",
       ),
       "expected the set to be populated inside the exclusiveContent branch at settingsEvaluated time",
     )
     assertTrue(
       script.contains(
-        "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos"
+        "val composeAiPreviewNeedsResolvedClasspathInject =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos",
       ),
       "expected the per-project fork flag in allprojects",
     )
@@ -799,7 +799,7 @@ class AutoInjectTest {
     val script = renderInitScript("0.11.9")
     assertTrue(
       script.contains(
-        "fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {"
+        "fun org.gradle.api.Project.composeAiPreviewResolvePluginClasspath(): Set<java.io.File> {",
       ),
       "expected the detached-configuration classpath resolver helper",
     )
@@ -826,19 +826,19 @@ class AutoInjectTest {
     val script = renderInitScript("0.15.5")
     assertTrue(
       script.contains(
-        "val composeAiPreviewHasPreAppliedDescendant =\n        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }"
+        "val composeAiPreviewHasPreAppliedDescendant =\n        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }",
       ),
       "expected the pre-applied-descendant scan in allprojects",
     )
     assertTrue(
       script.contains(
-        "if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {"
+        "if (!composeAiPreviewIsPreApplied && !composeAiPreviewHasPreAppliedDescendant) {",
       ),
       "expected the buildscript classpath injection to be gated on the pre-applied + descendant flags",
     )
     assertTrue(
       script.contains(
-        "if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {\n        return@allprojects\n    }"
+        "if (composeAiPreviewHasPreAppliedDescendant && !composeAiPreviewIsPreApplied) {\n        return@allprojects\n    }",
       ),
       "expected the apply hooks to short-circuit for ancestors of pre-applied modules too",
     )
@@ -885,7 +885,7 @@ class AutoInjectTest {
         rootProject.name = "androidx-mini"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
     File(projectRoot, "build-logic").mkdirs()
     File(projectRoot, "build-logic/build.gradle.kts")
@@ -896,7 +896,7 @@ class AutoInjectTest {
           $buildLogicScript
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
   }
 
@@ -916,7 +916,7 @@ class AutoInjectTest {
     File(projectRoot, "build-logic").mkdirs()
     File(projectRoot, "build-logic/build.gradle.kts")
       .writeText(
-        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"com.gradleup.tapmoc:tapmoc-gradle-plugin:0.4.2\") }\n"
+        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"com.gradleup.tapmoc:tapmoc-gradle-plugin:0.4.2\") }\n",
       )
     assertFalse(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
   }
@@ -960,7 +960,7 @@ class AutoInjectTest {
     File(projectRoot, "build-logic/conventions").mkdirs()
     File(projectRoot, "build-logic/conventions/build.gradle.kts")
       .writeText(
-        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\") }\n"
+        "plugins { `kotlin-dsl` }\ndependencies { implementation(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.15.12\") }\n",
       )
     assertTrue(includedBuildProvidesComposeAiPreviewPlugin(projectRoot))
   }

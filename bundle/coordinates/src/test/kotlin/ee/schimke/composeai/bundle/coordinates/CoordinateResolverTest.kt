@@ -643,7 +643,7 @@ class CoordinateResolverTest {
           "/com/example/foo/widgets/1.0.0-SNAPSHOT/maven-metadata.xml" to
             snapshotMetadata(timestamped, "jar").toByteArray(),
           "/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-$timestamped.jar" to jar,
-        )
+        ),
       )
 
     val r = networkResolver(base).resolve(snapshotCoord())
@@ -653,7 +653,7 @@ class CoordinateResolverTest {
     // Cached under the LITERAL coordinate name so the next (possibly offline) run finds it in
     // `locate`, which only ever looks for `<artifact>-<version>.<ext>`.
     assertTrue(
-      File(cacheDir, "com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar").isFile
+      File(cacheDir, "com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar").isFile,
     )
   }
 
@@ -664,7 +664,7 @@ class CoordinateResolverTest {
     val jar = byteArrayOf(1, 2, 3)
     val base =
       startRoutedRepo(
-        mapOf("/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar" to jar)
+        mapOf("/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar" to jar),
       )
 
     val file = assertNotNull(networkResolver(base).resolve(snapshotCoord()).file)

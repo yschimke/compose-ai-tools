@@ -34,12 +34,12 @@ internal object RenderGraphExclusions {
         buildMap {
           exclusion.group?.let { put("group", it) }
           exclusion.module?.let { put("module", it) }
-        }
+        },
       )
     }
     project.logger.info(
       "compose-preview: excluding ${exclusions.joinToString()} from the render graph " +
-        "(configuration '${configuration.name}', via composePreview.renderGraph)"
+        "(configuration '${configuration.name}', via composePreview.renderGraph)",
     )
   }
 }

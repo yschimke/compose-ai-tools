@@ -33,7 +33,7 @@ internal class AgentAccessClient(
   val origin: String =
     AgentAccessStore.normalizeOrigin(baseUrl)
       ?: throw IllegalArgumentException(
-        "not an http(s) server URL (and credentials in the URL are refused): $baseUrl"
+        "not an http(s) server URL (and credentials in the URL are refused): $baseUrl",
       )
 
   init {
@@ -131,7 +131,7 @@ internal class AgentAccessClient(
         if (response.isRedirect) {
           return Result.Err(
             "$origin redirected to ${response.header("Location")} — refusing to follow it with a " +
-              "credential in the request"
+              "credential in the request",
           )
         }
         val text = response.body.string()

@@ -127,7 +127,7 @@ fun CatalogApp(
           Box(
             modifier =
               Modifier.onGloballyPositioned { content = it.size }
-                .graphicsLayer(scaleX = scale, scaleY = scale)
+                .graphicsLayer(scaleX = scale, scaleY = scale),
           ) {
             // A 1:1 port of `CatalogSticker`: a transparent Surface with 16dp padding. Not
             // `colorScheme.surface`, which would add a panel the snapshot never had.

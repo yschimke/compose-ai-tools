@@ -31,7 +31,7 @@ class PlaygroundDesktopRenderTest {
             @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.CLASS)
             public @interface Preview { int widthDp() default -1; int heightDp() default -1; }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       // A Java fixture with the composable ABI avoids executing a Kotlin compiler or loading
@@ -60,7 +60,7 @@ class PlaygroundDesktopRenderTest {
               }
             }
             """
-              .trimIndent()
+              .trimIndent(),
           )
         }
       val classes = root.resolve("classes").apply { mkdirs() }

@@ -66,7 +66,7 @@ class KmpAndroidDaemonClasspathFunctionalTest {
         rootProject.name = "kmp-android-daemon-test"
         include(":lib")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Producer: an `androidRuntimeElements`-shaped consumable configuration exposing several
@@ -92,7 +92,7 @@ class KmpAndroidDaemonClasspathFunctionalTest {
             }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // The desktop path prefers `androidRuntimeClasspath` over `runtimeClasspath`; the task resolves
@@ -137,7 +137,7 @@ class KmpAndroidDaemonClasspathFunctionalTest {
             doLast { logger.lifecycle("resolved BTA classpath: ${'$'}{bta.get().files.map { it.name }}") }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

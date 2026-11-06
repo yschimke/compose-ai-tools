@@ -145,7 +145,7 @@ dependencies {
   // SPIKE, test-only: the Kotlin frontend for `PsiParseSpikeTest`. Must stay off the runtime
   // classpath; a real change would load it through the isolated `lib-bta/` classloader.
   testImplementation(
-    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
+    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}",
   )
 
   // Published wire-format DTOs. `api` so in-package imports here and in tests keep resolving;
@@ -267,7 +267,7 @@ dependencies {
       version { strictly("2.0.17") }
       because(
         "gradle-tooling-api 9.5.1 strictly requires slf4j-api 2.0.17; ktor 3.5.0 client+server " +
-          "pull 2.0.18"
+          "pull 2.0.18",
       )
     }
   }
@@ -299,7 +299,7 @@ val stageRcJvmLibs =
         resolved
           .filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
           .map(ResolvedArtifactResult::getFile)
-      }
+      },
     )
     val nameByPath = artifactsProvider.map { resolved ->
       val staged = resolved.filterNot { it.file.name.startsWith("skiko-awt-runtime-") }
@@ -441,7 +441,7 @@ tasks.withType<Test>().configureEach {
         "-Dcomposeai.usagePsi.jars=" +
           (usagePsiJars + btaJars).joinToString(File.pathSeparator) { it.absolutePath },
       )
-    }
+    },
   )
 }
 
@@ -478,12 +478,12 @@ tasks.register<CheckCliDaemonLibraryBoundary>("checkCliDaemonLibraryBoundary") {
           }
         }
       }
-    }
+    },
   )
   forbiddenModules.set(
     listOf("daemon-android", "daemon-desktop", "renderer-android", "renderer-desktop").map {
       "ee.schimke.composeai:$it"
-    }
+    },
   )
 }
 
@@ -546,7 +546,7 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
         "**/dist/**",
         "scripts/**",
       )
-    }
+    },
   )
   // The JVM reader lives in yschimke/compose-preview-contracts, so declare it as an input or edits
   // to it never re-run this task. Eager String for the configuration cache.
@@ -559,7 +559,7 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
         ?.takeIf {
           it
             .resolve(
-              "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt"
+              "daemon/protocol/src/main/kotlin/ee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor.kt",
             )
             .isFile
         }
@@ -570,7 +570,7 @@ tasks.register<CheckDaemonLaunchSchema>("checkDaemonLaunchSchema") {
       rootProject.fileTree(contractsRootPath) {
         include("**/*.kt")
         exclude("**/build/**", "**/.git/**")
-      }
+      },
     )
   }
 
@@ -638,7 +638,7 @@ val generateCliVersionResource =
           "xrCompositeVersion=$xrCompositeVersion\n" +
           "mavenLineVersion=$mavenLineVersion\n" +
           "previewDaemonVersion=$previewDaemonVersion\n" +
-          "releaseEpochSeconds=$releaseEpochSeconds\n"
+          "releaseEpochSeconds=$releaseEpochSeconds\n",
       )
     }
   }

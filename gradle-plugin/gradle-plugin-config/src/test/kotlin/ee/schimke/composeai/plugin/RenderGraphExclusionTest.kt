@@ -95,7 +95,7 @@ class RenderGraphExclusionTest {
   @Test
   fun `parses the gradle property spec`() {
     assertThat(
-        RenderGraphExclusion.parse("com.example:version-constraints, com.other:platform-bom")
+        RenderGraphExclusion.parse("com.example:version-constraints, com.other:platform-bom"),
       )
       .containsExactly(
         RenderGraphExclusion("com.example", "version-constraints"),

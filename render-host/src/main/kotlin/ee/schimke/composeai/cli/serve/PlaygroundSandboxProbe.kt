@@ -97,7 +97,7 @@ public object PlaygroundSandboxProbe {
             workDir = probeDir,
             readOnly = classpath.map { File(it) },
             javaHome = javaHome,
-          )
+          ),
         ) +
           listOf(
             javaBin,
@@ -208,7 +208,7 @@ public object PlaygroundSandboxProbeMain {
     val report = probe(workDir, canary, hostPid)
     println(
       PlaygroundSandboxProbe.REPORT_PREFIX +
-        Json.encodeToString(PlaygroundSandboxProbe.Report.serializer(), report)
+        Json.encodeToString(PlaygroundSandboxProbe.Report.serializer(), report),
     )
   }
 

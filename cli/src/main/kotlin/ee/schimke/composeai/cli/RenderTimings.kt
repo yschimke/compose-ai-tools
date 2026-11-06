@@ -69,18 +69,18 @@ internal class RenderTimings {
           if (unacknowledged.get() > 0) append(", ${unacknowledged.get()} unacknowledged")
           if (unsubmitted > 0) append(", $unsubmitted never submitted")
           append(" in ${formatMs(wallMs)} across $daemons daemon(s), window $window")
-        }
+        },
       )
       if (took.isNotEmpty()) {
         add(
           buildString {
             append(
-              "  per preview: p50 ${percentile(took, 0.50)}ms, p95 ${percentile(took, 0.95)}ms"
+              "  per preview: p50 ${percentile(took, 0.50)}ms, p95 ${percentile(took, 0.95)}ms",
             )
             append(", max ${took.last()}ms, sum ${formatMs(took.sum())}")
             val heap = peakHeapAfterGcMb.get()
             if (heap >= 0) append("; peak heap after GC ${heap}MB")
-          }
+          },
         )
       }
       val steps =
@@ -88,7 +88,7 @@ internal class RenderTimings {
           .map { (kind, values) -> kind to synchronized(values) { values.sorted() } }
           .filter { it.second.isNotEmpty() }
           .sortedWith(
-            compareByDescending<Pair<String, List<Long>>> { it.second.sum() }.thenBy { it.first }
+            compareByDescending<Pair<String, List<Long>>> { it.second.sum() }.thenBy { it.first },
           )
       if (steps.isNotEmpty()) {
         add(
@@ -96,7 +96,7 @@ internal class RenderTimings {
             steps.joinToString("; ") { (kind, values) ->
               "$kind ${percentile(values, 0.50)}/${percentile(values, 0.95)}ms/" +
                 formatMs(values.sum())
-            }
+            },
         )
       }
       if (took.size > SLOWEST_COUNT) {
@@ -104,10 +104,10 @@ internal class RenderTimings {
           "  slowest: " +
             tookMsById.entries
               .sortedWith(
-                compareByDescending<Map.Entry<String, Long>> { it.value }.thenBy { it.key }
+                compareByDescending<Map.Entry<String, Long>> { it.value }.thenBy { it.key },
               )
               .take(SLOWEST_COUNT)
-              .joinToString(", ") { "${it.key} ${it.value}ms" }
+              .joinToString(", ") { "${it.key} ${it.value}ms" },
         )
       }
     }

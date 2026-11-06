@@ -98,7 +98,7 @@ class A11yReportRendererTest {
         ]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val renderer = A11yReportRenderer()
@@ -132,7 +132,7 @@ class A11yReportRendererTest {
         "entries": [{"previewId": "Foo", "findings": []}]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val renderer = A11yReportRenderer()
@@ -156,7 +156,7 @@ class A11yReportRendererTest {
         "entries": [{"previewId": "ButtonPreview", "findings": []}]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
     val helper =
       PreviewInfo(
@@ -207,7 +207,7 @@ class A11yReportRendererTest {
         ]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
 
     val renderer = A11yReportRenderer()
@@ -242,7 +242,7 @@ class A11yReportRendererTest {
         ]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
     // annotated PNG resolves relative to the report file's parent, so place a file there.
     moduleDir.resolve("build/compose-previews/annotated").mkdirs()

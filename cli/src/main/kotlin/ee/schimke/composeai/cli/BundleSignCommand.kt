@@ -59,11 +59,11 @@ internal class KeygenSubcommand(private val args: List<String>) {
         "publicKey": "${pair.publicKeyB64}"
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
     println()
     println(
-      "sign with:  compose-preview bundle sign <bundle.png> --key <private-key> --key-id $keyId"
+      "sign with:  compose-preview bundle sign <bundle.png> --key <private-key> --key-id $keyId",
     )
   }
 }
@@ -79,7 +79,7 @@ internal class SignSubcommand(private val args: List<String>) {
     if (path == null || keyArg == null || keyId == null) {
       System.err.println(
         "Usage: compose-preview bundle sign <bundle.png> --key <private-key-file> --key-id <id> " +
-          "[--producer <name>] [--provenance-identity <id> [--provenance-type github-oidc|sigstore]]"
+          "[--producer <name>] [--provenance-identity <id> [--provenance-type github-oidc|sigstore]]",
       )
       exitProcess(64)
     }
@@ -124,7 +124,7 @@ internal class VerifySubcommand(private val args: List<String>) {
     if (path == null) {
       System.err.println(
         "Usage: compose-preview bundle verify <bundle.png | URL> [--trust <store.json>] " +
-          "[--origin <repo@branch>]"
+          "[--origin <repo@branch>]",
       )
       exitProcess(64)
     }

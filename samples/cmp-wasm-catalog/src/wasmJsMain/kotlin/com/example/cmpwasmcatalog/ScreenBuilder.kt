@@ -94,7 +94,7 @@ internal fun ScreenBuilderApp(
                 document = newScreen(id)
                 selected = 0
                 slot = null
-              }
+              },
             ) {
               Text(
                 if (document.root.componentId == id) "[$id]" else id,
@@ -110,7 +110,7 @@ internal fun ScreenBuilderApp(
             Modifier.fillMaxWidth()
               .background(
                 if (selected == indexed.index) MaterialTheme.colorScheme.secondaryContainer
-                else MaterialTheme.colorScheme.surface
+                else MaterialTheme.colorScheme.surface,
               )
               .clickable {
                 selected = indexed.index
@@ -130,7 +130,7 @@ internal fun ScreenBuilderApp(
                   document = document.removeNode(indexed.index)
                   selected = 0
                   slot = null
-                }
+                },
               ) {
                 Text("x")
               }
@@ -177,7 +177,7 @@ internal fun ScreenBuilderApp(
           Modifier.fillMaxWidth()
             .weight(1f)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(8.dp)
+            .padding(8.dp),
         ) {
           previewHost.Preview(document, Modifier)
         }
@@ -272,7 +272,7 @@ internal fun ScreenBuilderApp(
                     document =
                       document.toggleModifier(selected, previous).toggleModifier(selected, next)
                   }
-                }
+                },
               ) {
                 Text(
                   if (amount == paddingDp) "[$amount]" else "$amount",
@@ -304,7 +304,7 @@ internal fun ScreenBuilderApp(
             .weight(1f)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .verticalScroll(rememberScrollState())
-            .padding(8.dp)
+            .padding(8.dp),
         ) {
           if (source != null) {
             Text(

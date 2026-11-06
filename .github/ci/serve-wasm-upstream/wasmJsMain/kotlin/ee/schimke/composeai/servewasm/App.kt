@@ -115,7 +115,7 @@ fun PreviewServerApp(client: BrowserPreviewClient) {
                 location.composing -> "UI Composer · ${loaded.module}"
                 selected != null -> "${selected.label} · ${loaded.module}"
                 else -> "${loaded.module} · Compose Preview"
-              }
+              },
             )
           }
           BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -765,7 +765,7 @@ private fun PreviewStage(
       Box(
         Modifier.fillMaxSize()
           .then(
-            if (transparent) Modifier.checkerboard() else Modifier.background(Color(0xFFF8F8FA))
+            if (transparent) Modifier.checkerboard() else Modifier.background(Color(0xFFF8F8FA)),
           )
           .onSizeChanged(onSize)
           .then(
@@ -779,7 +779,7 @@ private fun PreviewStage(
                     }
                   }
                 }
-              }
+              },
           ),
         contentAlignment = Alignment.Center,
       ) {

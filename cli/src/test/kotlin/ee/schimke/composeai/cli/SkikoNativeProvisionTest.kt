@@ -36,7 +36,7 @@ class SkikoNativeProvisionTest {
     assertEquals(
       "0.144.6",
       SkikoNativeProvision.skikoVersion(
-        listOf(File("skiko-awt-runtime-linux-x64-0.144.6.jar"), File("skiko-awt-0.144.6.jar"))
+        listOf(File("skiko-awt-runtime-linux-x64-0.144.6.jar"), File("skiko-awt-0.144.6.jar")),
       ),
     )
     assertEquals(

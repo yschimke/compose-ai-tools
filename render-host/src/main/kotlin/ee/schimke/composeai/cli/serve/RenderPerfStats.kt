@@ -68,7 +68,7 @@ public class RenderPerfStats {
             durationMs = durationMs,
             timedOut = timeout,
             reason = lastFailureReason!!,
-          )
+          ),
         )
         while (recentFailures.size > FAILURE_WINDOW_SIZE) recentFailures.removeFirst()
       }
@@ -238,7 +238,7 @@ public data class RenderPerfSnapshot(
             .filter { it.open }
             .sortedWith(
               compareByDescending<RenderBreakerSnapshot> { it.fatal }
-                .thenByDescending { it.openedAtEpochMillis ?: 0 }
+                .thenByDescending { it.openedAtEpochMillis ?: 0 },
             )
             .firstOrNull(),
       )

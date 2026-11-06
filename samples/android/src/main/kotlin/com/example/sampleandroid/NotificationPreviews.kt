@@ -15,7 +15,7 @@ private fun ensureChannel(context: Context) {
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (nm.getNotificationChannel(CHANNEL_ID) == null) {
       nm.createNotificationChannel(
-        NotificationChannel(CHANNEL_ID, "Sample", NotificationManager.IMPORTANCE_DEFAULT)
+        NotificationChannel(CHANNEL_ID, "Sample", NotificationManager.IMPORTANCE_DEFAULT),
       )
     }
   }
@@ -43,8 +43,8 @@ fun bigTextNotificationPreview(context: Context): Notification {
         .bigText(
           "Notification previews now render through the same Robolectric pipeline " +
             "Compose @Preview uses. This is the BigTextStyle variant — the expanded " +
-            "shade layout, drawn at AOSP fidelity (no Pixel / OEM chrome)."
-        )
+            "shade layout, drawn at AOSP fidelity (no Pixel / OEM chrome).",
+        ),
     )
     .build()
 }

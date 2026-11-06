@@ -73,7 +73,7 @@ internal object BundleClasspathGaps {
         "catalog $system: ${unresolved.size} of $total classpath coordinate(s) did not resolve — " +
           "the live daemon starts with an incomplete classpath and any render that needs one of " +
           "them will fail with a linkage error. Unresolved: " +
-          unresolved.joinToString { "${it.group}:${it.artifact}:${it.version}" }
+          unresolved.joinToString { "${it.group}:${it.artifact}:${it.version}" },
       )
     }
     if (mismatched.isNotEmpty()) {
@@ -82,7 +82,7 @@ internal object BundleClasspathGaps {
           "that are not the ones the bundle recorded — the version string matches but the artifact " +
           "does not, so the daemon links code from two builds of the same library and a render " +
           "that crosses the seam fails with NoSuchMethodError / NoSuchFieldError. Mismatched: " +
-          mismatched.joinToString { "${it.group}:${it.artifact}:${it.version}" }
+          mismatched.joinToString { "${it.group}:${it.artifact}:${it.version}" },
       )
     }
     val gaps =

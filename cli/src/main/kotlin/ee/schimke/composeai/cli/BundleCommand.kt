@@ -269,7 +269,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         --json              Print a machine-readable summary (bundle path, res dir, externalized
                             {path,sha256,size} list) instead of the human summary.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }
@@ -359,7 +359,7 @@ private class PackSubcommand(private val args: List<String>) {
             val modules = resolveModules(gradle)
             if (modules.size != 1) {
               System.err.println(
-                "bundle pack expects exactly one module; found ${modules.size}. Use --module to disambiguate."
+                "bundle pack expects exactly one module; found ${modules.size}. Use --module to disambiguate.",
               )
               exitProcess(1)
             }
@@ -378,18 +378,18 @@ private class PackSubcommand(private val args: List<String>) {
               if (excludePreviewIdFile != null)
                 add(
                   "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
-                    excludePreviewIdFile.absolutePath
+                    excludePreviewIdFile.absolutePath,
                 )
               else if (excludePreviewIds.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
-                    excludePreviewIds.joinToString(",")
+                    excludePreviewIds.joinToString(","),
                 )
               // Same for the `@PreviewParameter` row axis, resolved inside the render JVM.
               if (excludePreviewRows.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.ROW_GRADLE_PROPERTY}=" +
-                    excludePreviewRows.joinToString(",")
+                    excludePreviewRows.joinToString(","),
                 )
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
@@ -401,7 +401,7 @@ private class PackSubcommand(private val args: List<String>) {
             val packSemantics = withSemantics && !noRender
             if (withSemantics && noRender) {
               System.err.println(
-                "bundle pack: --with-semantics needs a render; ignoring it because --no-render was passed."
+                "bundle pack: --with-semantics needs a render; ignoring it because --no-render was passed.",
               )
             }
             val tasks = buildList {
@@ -414,14 +414,14 @@ private class PackSubcommand(private val args: List<String>) {
               System.err.println(
                 "Gradle bundle task failed." +
                   if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
-                  else ""
+                  else "",
               )
               exitProcess(1)
             }
 
             if (!resolvedOutput.isFile) {
               System.err.println(
-                "Bundle task reported success but ${resolvedOutput.path} is missing."
+                "Bundle task reported success but ${resolvedOutput.path} is missing.",
               )
               exitProcess(1)
             }
@@ -431,7 +431,7 @@ private class PackSubcommand(private val args: List<String>) {
                 BundleReader.readMetadata(resolvedOutput)
               } catch (e: Exception) {
                 System.err.println(
-                  "Wrote ${resolvedOutput.path} (${resolvedOutput.length()} bytes) but failed to read it back: ${e.message}"
+                  "Wrote ${resolvedOutput.path} (${resolvedOutput.length()} bytes) but failed to read it back: ${e.message}",
                 )
                 exitProcess(1)
               }
@@ -450,7 +450,7 @@ private class PackSubcommand(private val args: List<String>) {
                   System.err.println(
                     "bundle pack: --with-semantics could not start the preview daemon for " +
                       "${target.gradlePath} (composePreviewDaemonStart failed) — bundle written " +
-                      "without semantics. Re-run with --verbose to surface the underlying Gradle error."
+                      "without semantics. Re-run with --verbose to surface the underlying Gradle error.",
                   )
                   null
                 } else {
@@ -507,7 +507,7 @@ private class PackSubcommand(private val args: List<String>) {
           if (withSemantics) {
             System.err.println(
               "bundle pack: --with-semantics is not yet carried in --per-preview mode; " +
-                "writing baked single-preview bundles without semantics sidecars."
+                "writing baked single-preview bundles without semantics sidecars.",
             )
           }
           withGradle { gradle ->
@@ -515,7 +515,7 @@ private class PackSubcommand(private val args: List<String>) {
             if (modules.size != 1) {
               System.err.println(
                 "bundle pack --per-preview expects exactly one module; found ${modules.size}. " +
-                  "Use --module to disambiguate."
+                  "Use --module to disambiguate.",
               )
               exitProcess(1)
             }
@@ -531,17 +531,17 @@ private class PackSubcommand(private val args: List<String>) {
               if (excludePreviewIdFile != null)
                 add(
                   "-P${PackPreviewIdExclusions.FILE_GRADLE_PROPERTY}=" +
-                    excludePreviewIdFile.absolutePath
+                    excludePreviewIdFile.absolutePath,
                 )
               else if (excludePreviewIds.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
-                    excludePreviewIds.joinToString(",")
+                    excludePreviewIds.joinToString(","),
                 )
               if (excludePreviewRows.isNotEmpty())
                 add(
                   "-P${PackPreviewIdExclusions.ROW_GRADLE_PROPERTY}=" +
-                    excludePreviewRows.joinToString(",")
+                    excludePreviewRows.joinToString(","),
                 )
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
@@ -559,7 +559,7 @@ private class PackSubcommand(private val args: List<String>) {
                 System.err.println(
                   "Gradle render task failed." +
                     if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
-                    else ""
+                    else "",
                 )
                 exitProcess(1)
               }
@@ -570,7 +570,7 @@ private class PackSubcommand(private val args: List<String>) {
             if (manifest == null || manifest.previews.isEmpty()) {
               System.err.println(
                 "bundle pack --per-preview: no previews found for ${target.gradlePath} " +
-                  "(did discovery/render run?)."
+                  "(did discovery/render run?).",
               )
               exitProcess(1)
             }
@@ -582,7 +582,7 @@ private class PackSubcommand(private val args: List<String>) {
               if (unknown.isNotEmpty()) {
                 System.err.println(
                   "bundle pack --per-preview: unknown preview id(s): ${unknown.joinToString(", ")}. " +
-                    "Available: ${allIds.joinToString(", ")}"
+                    "Available: ${allIds.joinToString(", ")}",
                 )
                 exitProcess(1)
               }
@@ -627,7 +627,7 @@ private class PackSubcommand(private val args: List<String>) {
                 System.err.println(
                   "bundle pack --per-preview: failed to pack '$id'." +
                     if (!verbose) " Re-run with --verbose to surface the underlying Gradle error."
-                    else ""
+                    else "",
                 )
                 exitProcess(1)
               }
@@ -653,7 +653,7 @@ private class PackSubcommand(private val args: List<String>) {
     println(
       "bundle pack --per-preview — wrote ${written.size} bundle(s) to ${outDir.path}\n" +
         "  total:   $total bytes\n" +
-        "  size:    min ${sizes.minOrNull() ?: 0} / avg $avg / max ${sizes.maxOrNull() ?: 0} bytes"
+        "  size:    min ${sizes.minOrNull() ?: 0} / avg $avg / max ${sizes.maxOrNull() ?: 0} bytes",
     )
     val over =
       written.filter { it.second.length() > 100 * 1024 }.sortedByDescending { it.second.length() }
@@ -662,7 +662,7 @@ private class PackSubcommand(private val args: List<String>) {
       System.err.println(
         "bundle pack --per-preview: ${over.size} bundle(s) exceed 100 KB " +
           "(largest: ${worst.first} = ${worst.second.length()} bytes) — a single preview should " +
-          "normally be well under that; check for --embed-deps or a large inlined project jar."
+          "normally be well under that; check for --embed-deps or a large inlined project jar.",
       )
     }
   }
@@ -708,7 +708,7 @@ private class PackSubcommand(private val args: List<String>) {
     // A pattern matching nothing is usually a typo; a generated list is summarised, not echoed.
     for (line in
       PackPreviewIdExclusions.reportLines(
-        PackPreviewIdExclusions.matches(rawIds, excludePreviewIds)
+        PackPreviewIdExclusions.matches(rawIds, excludePreviewIds),
       )) {
       System.err.println("bundle pack: ${line.text}")
     }
@@ -716,13 +716,13 @@ private class PackSubcommand(private val args: List<String>) {
     if (excludedFromCapture > 0) {
       System.err.println(
         "bundle pack: --with-semantics skipping $excludedFromCapture excluded preview(s) " +
-          "(--exclude-preview-id); ${captureIds.size} to capture."
+          "(--exclude-preview-id); ${captureIds.size} to capture.",
       )
     }
     if (captureIds.isEmpty()) {
       System.err.println(
         "bundle pack: --exclude-preview-id excluded every preview from the semantics capture; " +
-          "bundle written without previews/<id>$BUNDLE_SEMANTICS_SUFFIX."
+          "bundle written without previews/<id>$BUNDLE_SEMANTICS_SUFFIX.",
       )
       return null
     }
@@ -736,7 +736,7 @@ private class PackSubcommand(private val args: List<String>) {
     if (semanticsWorkersSpec != null) {
       System.err.println(
         "bundle pack: --with-semantics capturing $captureCount preview(s) with $workers daemon(s) " +
-          "(${SemanticsWorkers.FLAG} $semanticsWorkersSpec)."
+          "(${SemanticsWorkers.FLAG} $semanticsWorkersSpec).",
       )
     }
     val fetcher =
@@ -757,7 +757,7 @@ private class PackSubcommand(private val args: List<String>) {
         if (outcome.semanticsById.isEmpty()) {
           System.err.println(
             "bundle pack: --with-semantics produced no semantics for ${target.gradlePath} " +
-              "(see daemon log above); bundle written without previews/<id>.semantics.json."
+              "(see daemon log above); bundle written without previews/<id>.semantics.json.",
           )
           return null
         }
@@ -793,27 +793,27 @@ private class PackSubcommand(private val args: List<String>) {
           if (layoutWritten > 0)
             append(
               "\n  layout:        $layoutWritten / $captureCount preview(s) carried " +
-                "as previews/<id>$BUNDLE_LAYOUT_SUFFIX"
+                "as previews/<id>$BUNDLE_LAYOUT_SUFFIX",
             )
           if (fontsWritten > 0)
             append(
               "\n  fonts:         $fontsWritten / $captureCount preview(s) carried " +
-                "as previews/<id>$BUNDLE_FONTS_SUFFIX"
+                "as previews/<id>$BUNDLE_FONTS_SUFFIX",
             )
           if (figmaSvgWritten > 0)
             append(
               "\n  figma-svg:     $figmaSvgWritten / $captureCount preview(s) carried " +
-                "as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
+                "as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX",
             )
           if (figmaRasterWritten > 0)
             append(
               "\n  figma-raster:  $figmaRasterWritten crop(s) carried as " +
-                "previews/<id>$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/<node>.png"
+                "previews/<id>$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/<node>.png",
             )
           if (fontWarningsWritten > 0)
             append(
               "\n  figma-fonts:   $fontWarningsWritten preview(s) DEGRADED — text exported as " +
-                "missing-glyph boxes, carried as previews/<id>$BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX"
+                "missing-glyph boxes, carried as previews/<id>$BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX",
             )
         }
         return PackedSemantics(
@@ -824,12 +824,12 @@ private class PackSubcommand(private val args: List<String>) {
       is DaemonSemanticsFetcher.Outcome.DescriptorMissing ->
         System.err.println(
           "bundle pack: --with-semantics could not find daemon-launch.json at " +
-            "${outcome.expected.path} — bundle written without semantics."
+            "${outcome.expected.path} — bundle written without semantics.",
         )
       is DaemonSemanticsFetcher.Outcome.OpenFailed ->
         System.err.println(
           "bundle pack: --with-semantics could not open a render session (${outcome.reason}) — " +
-            "bundle written without semantics."
+            "bundle written without semantics.",
         )
     }
     return null
@@ -839,32 +839,32 @@ private class PackSubcommand(private val args: List<String>) {
     println("wrote ${file.path} (${file.length()} bytes)")
     println(
       "  schema:        v${meta.manifest.schemaVersion}, backend=${meta.manifest.backend}, " +
-        "producer=${meta.manifest.producer}, resolution=${meta.manifest.resolution}"
+        "producer=${meta.manifest.producer}, resolution=${meta.manifest.resolution}",
     )
     println(
-      "  previews:      ${meta.manifest.previewIds.size} (cover=${meta.manifest.coverPreviewId})"
+      "  previews:      ${meta.manifest.previewIds.size} (cover=${meta.manifest.coverPreviewId})",
     )
     val mavenCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Maven }
     val projectCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Project }
     val embeddedCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Embedded }
     println(
       "  classpath:     ${meta.manifest.classpath.size} entries " +
-        "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)"
+        "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)",
     )
     if (meta.manifest.dataExtensions.isNotEmpty()) {
       println(
         "  data exts:     ${meta.manifest.dataExtensions.size} " +
-          "(${meta.manifest.dataExtensions.joinToString(", ") { it.extensionId }})"
+          "(${meta.manifest.dataExtensions.joinToString(", ") { it.extensionId }})",
       )
     }
     val r = meta.report
     if (r != null) {
       println("  entry classes: ${r.entryClassFqns.size}")
       println(
-        "  reachable:     ${r.reachableClassCount} / ${r.totalScannedClassCount} classes scanned"
+        "  reachable:     ${r.reachableClassCount} / ${r.totalScannedClassCount} classes scanned",
       )
       println(
-        "  module:        ${r.moduleClasses.reachableClasses} / ${r.moduleClasses.totalClasses} classes kept, ${r.moduleClasses.packedBytes} B packed"
+        "  module:        ${r.moduleClasses.reachableClasses} / ${r.moduleClasses.totalClasses} classes kept, ${r.moduleClasses.packedBytes} B packed",
       )
       val kept = r.dependencies.count { it.kept }
       println("  deps:          $kept / ${r.dependencies.size} contributed reachable classes")
@@ -922,7 +922,7 @@ private class ExtractSubcommand(private val args: List<String>) {
     val target =
       File(
           outDir
-            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-extracted")
+            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-extracted"),
         )
         .absoluteFile
     target.mkdirs()
@@ -946,7 +946,7 @@ private class EmbedSubcommand(
     if (path == null) {
       System.err.println(
         "Usage: compose-preview bundle embed <bundle.png | URL> [-o <dir|file.png>] [--title T] " +
-          "[--external-images] [--in-bundle]"
+          "[--external-images] [--in-bundle]",
       )
       exitProcess(64)
     }
@@ -962,7 +962,7 @@ private class EmbedSubcommand(
     if (data.previews.isEmpty()) {
       System.err.println(
         "bundle embed: ${file.name} has no baked preview images — nothing to put on a page. " +
-          "Pack with a render (drop --no-render) so previews/<id>.png exist."
+          "Pack with a render (drop --no-render) so previews/<id>.png exist.",
       )
       exitProcess(1)
     }
@@ -1001,7 +1001,7 @@ private class EmbedSubcommand(
     println("wrote web embed for ${out.previewCount} preview(s) → ${target.path}")
     println("  ${WebEmbed.INDEX_NAME}   open this to view the gallery")
     println(
-      "  ${WebEmbed.SCRIPT_NAME}  add <script src> + <compose-preview-gallery> to embed in a page"
+      "  ${WebEmbed.SCRIPT_NAME}  add <script src> + <compose-preview-gallery> to embed in a page",
     )
   }
 
@@ -1021,7 +1021,7 @@ private class EmbedSubcommand(
     if (targetArg == null) {
       System.err.println(
         "bundle embed --in-bundle: the input is a downloaded URL (a temporary file). " +
-          "Pass -o <file.png> so the enriched bundle is written somewhere durable."
+          "Pass -o <file.png> so the enriched bundle is written somewhere durable.",
       )
       exitProcess(64)
     }
@@ -1044,7 +1044,7 @@ private class EmbedSubcommand(
 
     println(
       "embedded web gallery (${out.previewCount} preview(s)) into ${target.path} " +
-        "under $BUNDLE_WEB_DIR/ (${target.length()} bytes)"
+        "under $BUNDLE_WEB_DIR/ (${target.length()} bytes)",
     )
     println("  unzip it and open $BUNDLE_WEB_DIR/${WebEmbed.INDEX_NAME}")
   }
@@ -1069,7 +1069,7 @@ private class RenderSubcommand(private val args: List<String>) {
       System.err.println(
         "Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>] [--knob key=value …] " +
           "[--res <pool-dir>] [--svg] [--android-sdk <n>] [--android-jar <file>] " +
-          "[--clock-packages <prefix,…>] [--local-jars <list>] [--app-compose auto|app|daemon]"
+          "[--clock-packages <prefix,…>] [--local-jars <list>] [--app-compose auto|app|daemon]",
       )
       exitProcess(64)
     }
@@ -1097,7 +1097,7 @@ private class RenderSubcommand(private val args: List<String>) {
     val target =
       File(
           (if (outputFile != null) outputFile.parent else outDir)
-            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render")
+            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render"),
         )
         .absoluteFile
     target.mkdirs()
@@ -1113,7 +1113,7 @@ private class RenderSubcommand(private val args: List<String>) {
       require(
         selectedIds.size == BundleReader.readMetadata(file).manifest.previewIds.size &&
           outputFile == null &&
-          "--json" !in args
+          "--json" !in args,
       ) {
         "Filtered/file/JSON bundle renders currently require the stock renderer"
       }
@@ -1125,7 +1125,7 @@ private class RenderSubcommand(private val args: List<String>) {
       // Without `--knob` there's nothing to re-theme, so `--svg` doesn't apply.
       System.err.println(
         "bundle render: --svg exports re-themed vectors and only applies with --knob; the stock " +
-          "render already carries the bundle's baked figma.svg. Ignoring --svg."
+          "render already carries the bundle's baked figma.svg. Ignoring --svg.",
       )
     }
 
@@ -1171,19 +1171,19 @@ private class RenderSubcommand(private val args: List<String>) {
                   put(
                     "outputFile",
                     kotlinx.serialization.json.JsonPrimitive(
-                      (outputFile ?: rendered.outputFile).path
+                      (outputFile ?: rendered.outputFile).path,
                     ),
                   )
                   put(
                     "sha256",
                     kotlinx.serialization.json.JsonPrimitive(
                       ee.schimke.composeai.bundle.producer.bazelBundleSha(
-                        outputFile ?: rendered.outputFile
-                      )
+                        outputFile ?: rendered.outputFile,
+                      ),
                     ),
                   )
                 }
-              }
+              },
             ),
           )
           put(
@@ -1195,16 +1195,16 @@ private class RenderSubcommand(private val args: List<String>) {
                   put("exitCode", kotlinx.serialization.json.JsonPrimitive(failure.exitCode))
                   put("diagnostic", kotlinx.serialization.json.JsonPrimitive(failure.tail))
                 }
-              }
+              },
             ),
           )
-        }
+        },
       )
       if (!result.allOk) exitProcess(1)
       return
     }
     println(
-      "rendered ${result.succeeded.size} / ${result.previewCount} preview(s) → ${target.path}"
+      "rendered ${result.succeeded.size} / ${result.previewCount} preview(s) → ${target.path}",
     )
     for (rendered in result.succeeded) {
       println("  ok    ${rendered.id}  →  ${rendered.outputFile.name}")
@@ -1233,7 +1233,7 @@ private class RepackSubcommand(private val args: List<String>) {
     val out = args.flagValue("--output") ?: args.flagValue("-o")
     if (path == null || rendersDir == null || out == null) {
       System.err.println(
-        "Usage: compose-preview bundle repack <bundle.png | URL> --renders <dir> -o <out.png>"
+        "Usage: compose-preview bundle repack <bundle.png | URL> --renders <dir> -o <out.png>",
       )
       exitProcess(64)
     }
@@ -1260,7 +1260,7 @@ private class RepackSubcommand(private val args: List<String>) {
     println("repacked ${outcome.repacked} re-themed artifact(s)$svgNote → ${outFile.path}")
     if (outcome.unmatched.isNotEmpty()) {
       System.err.println(
-        "  ${outcome.unmatched.size} render(s) had no matching baked preview — skipped"
+        "  ${outcome.unmatched.size} render(s) had no matching baked preview — skipped",
       )
       if (verbose) outcome.unmatched.forEach { System.err.println("    skip $it") }
     }
@@ -1339,7 +1339,7 @@ private class MergeSubcommand(private val args: List<String>) {
     val out = args.flagValue("--output") ?: args.flagValue("-o")
     if (inputs.size < 2 || out == null) {
       System.err.println(
-        "Usage: compose-preview bundle merge <base.png | URL> <shard.png | URL>… -o <out.png>"
+        "Usage: compose-preview bundle merge <base.png | URL> <shard.png | URL>… -o <out.png>",
       )
       exitProcess(64)
     }
@@ -1360,13 +1360,13 @@ private class MergeSubcommand(private val args: List<String>) {
       }
     println(
       "merged ${outcome.previews} preview(s) from ${files.size - 1} shard(s) " +
-        "(${outcome.entries} entries) → ${outFile.path}"
+        "(${outcome.entries} entries) → ${outFile.path}",
     )
     if (outcome.overlapping.isNotEmpty()) {
       // Partitions should be disjoint; an overlap wastes render time and silently picks a winner.
       System.err.println(
         "  ${outcome.overlapping.size} preview(s) were baked by more than one shard — " +
-          "the base's copy wins; the partition is not disjoint"
+          "the base's copy wins; the partition is not disjoint",
       )
       if (verbose) outcome.overlapping.forEach { System.err.println("    overlap $it") }
     }
@@ -1513,7 +1513,7 @@ private fun renderBundleWithOverrides(
       System.err.println(
         "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
           "a 'desktop'/'android' backend bundle and the matching daemon sidecars (build them with " +
-          ":cli:installDist). Re-run without --knob for the stock render."
+          ":cli:installDist). Re-run without --knob for the stock render.",
       )
       return false
     }
@@ -1675,7 +1675,7 @@ internal fun renderPreviewsToDir(
   log(
     "rendered $rendered / ${host.previews.size} preview(s) themed" +
       (if (exportSvg) " (+ $svgWritten svg)" else "") +
-      " → ${outDir.path}"
+      " → ${outDir.path}",
   )
   return failures
 }

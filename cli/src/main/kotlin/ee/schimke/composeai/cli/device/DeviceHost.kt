@@ -64,7 +64,7 @@ internal class DeviceHost(
       "compose-preview launch: device ${config.serial} (${config.avdName}): adb on ${config.adbPort}, " +
         "console on ${config.consolePort}" +
         (grpc?.let { ", emulator gRPC on ${it.port}" } ?: "") +
-        ". `adb devices` lists it; `adb connect localhost:${config.adbPort}` if it does not."
+        ". `adb devices` lists it; `adb connect localhost:${config.adbPort}` if it does not.",
     )
     registerWithAdbServer(config.adbPort)
     // What a control client (the MCP server's simulator_adb) addresses the device by.
@@ -78,7 +78,7 @@ internal class DeviceHost(
         put("avd", config.avdName)
         put("formFactor", config.formFactor.id)
       }
-        .toString()
+        .toString(),
     )
     if (initialApk != null) {
       if (installFailure != null) {
@@ -158,7 +158,7 @@ internal class DeviceHost(
         put("apk", apk.path)
         put("error", error.message ?: error.toString())
       }
-        .toString()
+        .toString(),
     )
     System.err.println("compose-preview launch: installing ${apk.name} failed: ${error.message}")
   }

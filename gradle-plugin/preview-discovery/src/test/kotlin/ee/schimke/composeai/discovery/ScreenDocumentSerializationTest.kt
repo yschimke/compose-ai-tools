@@ -62,7 +62,7 @@ class ScreenDocumentSerializationTest {
                 listOf(
                   ScreenAction.Toggle("expanded"),
                   ScreenAction.Set("caption", ScreenValue.Text("tapped")),
-                )
+                ),
             ),
         ),
       state =
@@ -84,7 +84,7 @@ class ScreenDocumentSerializationTest {
     // The specific shape that lost its annotation. Named on its own so a failure says which one.
     val chain =
       everyShape.copy(
-        root = ScreenNode(componentId = "m3/text", arguments = everyShape.root.arguments)
+        root = ScreenNode(componentId = "m3/text", arguments = everyShape.root.arguments),
       )
 
     val encoded = json.encodeToString(ScreenDocument.serializer(), chain)

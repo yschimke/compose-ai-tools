@@ -31,7 +31,7 @@ class PreviewNameFilterTest {
   @Test
   fun `exact package-qualified name matches`() {
     assertThat(
-        PreviewNameFilter.matches(listOf("com.example.preview.ExportHelpDialogPreview"), fn, cls)
+        PreviewNameFilter.matches(listOf("com.example.preview.ExportHelpDialogPreview"), fn, cls),
       )
       .isTrue()
   }
@@ -69,7 +69,7 @@ class PreviewNameFilterTest {
     // `com.example` must not match `comXexample` — the escaped dot proves the glob isn't leaking
     // regex metacharacters.
     assertThat(
-        PreviewNameFilter.matches(listOf("com.example.preview.*"), fn, "comXexampleXpreviewXKt")
+        PreviewNameFilter.matches(listOf("com.example.preview.*"), fn, "comXexampleXpreviewXKt"),
       )
       .isFalse()
   }

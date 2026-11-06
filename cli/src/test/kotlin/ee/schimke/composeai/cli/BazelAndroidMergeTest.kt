@@ -58,7 +58,7 @@ class BazelAndroidMergeTest {
       .also { runtime.forEach { file(it) } }
       .resolve(root)
       .copy(
-        android = ResolvedAndroidArtifacts(pkg, file("$own.ap_"), file("$own.xml"), rJar, 35, link)
+        android = ResolvedAndroidArtifacts(pkg, file("$own.ap_"), file("$own.xml"), rJar, 35, link),
       )
   }
 
@@ -118,7 +118,7 @@ class BazelAndroidMergeTest {
         mergeBazelArtifacts("//...", listOf(ui, feature), mergeAndroid = true) {
           plan = it
           linked
-        }
+        },
       )
 
     val asked = assertNotNull(plan)
@@ -169,13 +169,13 @@ class BazelAndroidMergeTest {
     assertNull(mergeBazelArtifacts("//...", listOf(withLink, withLink)) { error("not linked") })
     assertTrue(
       bazelMergeBlocker(listOf(withLink, withoutLink), mergeAndroid = true)!!.contains(
-        "link inputs"
-      )
+        "link inputs",
+      ),
     )
     assertNull(
       mergeBazelArtifacts("//...", listOf(withLink, withoutLink), mergeAndroid = true) {
         error("not linked")
-      }
+      },
     )
     assertTrue(bazelMergeBlocker(listOf(withLink, jvm))!!.contains("mix Android and JVM"))
     assertNull(mergeBazelArtifacts("//...", listOf(withLink, jvm)) { error("not linked") })

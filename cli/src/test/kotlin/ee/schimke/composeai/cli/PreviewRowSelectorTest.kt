@@ -299,7 +299,7 @@ class PreviewRowSelectorTest {
           exactId = "Foo_PARAM_1",
           filter = "Unrelated",
         )
-        .isEmpty()
+        .isEmpty(),
     )
   }
 

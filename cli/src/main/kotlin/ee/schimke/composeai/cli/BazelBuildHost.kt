@@ -85,7 +85,7 @@ internal class BazelBuildHost(
       else -> {
         System.err.println(
           "compose-preview build-host: $task is a Gradle task; this is a Bazel workspace, where " +
-            "only :<module>$DAEMON_START and :<module>$COMPILE are supported"
+            "only :<module>$DAEMON_START and :<module>$COMPILE are supported",
         )
         false
       }
@@ -115,7 +115,7 @@ internal class BazelBuildHost(
   private fun requestedTargets(): List<String> =
     args.flagValuesAll("--target").ifEmpty {
       listOfNotNull(
-        args.flagValue("--module")?.takeIf { it.startsWith("//") || it.startsWith("@") }
+        args.flagValue("--module")?.takeIf { it.startsWith("//") || it.startsWith("@") },
       )
     }
 

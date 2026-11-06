@@ -21,7 +21,7 @@ class OpenAiCompatibleClientTest {
          "platform": "wear", "version": 1, "rules": [
           {"id": "any", "kind": "structure", "severity": "info", "guidance": "g", "check": "ok?",
            "source": "https://developer.android.com/a"}]}
-        """
+        """,
       )
       .guidelines!!
 

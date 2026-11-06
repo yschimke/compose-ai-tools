@@ -19,7 +19,7 @@ class OpenRouterStreamTest {
          "platform": "wear", "version": 1, "rules": [
           {"id": "any", "kind": "structure", "severity": "info", "guidance": "g", "check": "ok?",
            "source": "https://developer.android.com/a"}]}
-        """
+        """,
       )
       .guidelines!!
 
@@ -84,7 +84,7 @@ class OpenRouterStreamTest {
         """{"id":"cmpl-abc123","object":"chat.completion.chunk","model":"openai/gpt-4o",""" +
         """"provider":"openai","error":{"code":"server_error","message":"Provider """ +
         """disconnected unexpectedly"},"choices":[{"index":0,"delta":{"content":""},""" +
-        """"finish_reason":"error"}]}"""
+        """"finish_reason":"error"}]}""",
     )
     val failure = GuidelineResponse.failure(stream.completion()!!)!!
     assertThat(failure.kind).isEqualTo(FailureKind.TRANSIENT)
@@ -230,7 +230,7 @@ class OpenRouterStreamTest {
       assertThat(bodies[2]).doesNotContain("\"reasoning\"")
       // Sized as a request sending no effort is.
       assertThat(
-          GUIDELINES_JSON.parseToJsonElement(bodies[2]).jsonObject["max_tokens"].toString().toInt()
+          GUIDELINES_JSON.parseToJsonElement(bodies[2]).jsonObject["max_tokens"].toString().toInt(),
         )
         .isEqualTo(PreviewGuidelineRequests.replyTokenLimit(request, null))
     } finally {
@@ -332,7 +332,7 @@ class OpenRouterStreamTest {
       .isEqualTo(OpenRouterKeyStatus(2.0, 2.5, 0.0, null))
     // A resetting limit without `limit_remaining`: usage spans every period, so nothing is assumed.
     assertThat(
-        OpenRouterKeyStatus.parse("""{"data":{"limit":2,"usage":9,"limit_reset":"daily"}}""")
+        OpenRouterKeyStatus.parse("""{"data":{"limit":2,"usage":9,"limit_reset":"daily"}}"""),
       )
       .isEqualTo(OpenRouterKeyStatus(2.0, 9.0, null, "daily"))
     assertThat(OpenRouterKeyStatus.parse("""{"data":{"label":"x"}}""")).isNull()

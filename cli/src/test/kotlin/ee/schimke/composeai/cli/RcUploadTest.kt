@@ -27,7 +27,7 @@ class RcUploadTest {
 
   private val document: ByteArray =
     RemoteComposeJson.compile(
-      """{"header":{"width":10,"height":10},"root":[{"box":{"modifiers":[{"size":10.0}]}}]}"""
+      """{"header":{"width":10,"height":10},"root":[{"box":{"modifiers":[{"size":10.0}]}}]}""",
     )
 
   private class Exited(val code: Int) : RuntimeException()

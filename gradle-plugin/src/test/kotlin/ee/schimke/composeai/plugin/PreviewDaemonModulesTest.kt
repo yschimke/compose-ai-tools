@@ -141,7 +141,7 @@ class PreviewDaemonModulesTest {
         PreviewDaemonModules.isArtifact(
           module("ee.schimke.composeai", "renderer-android"),
           "renderer-android",
-        )
+        ),
       )
       .isTrue()
     // The `-Pcomposeai.previewDaemonDir` substitution resolves it to the checkout's project.
@@ -152,14 +152,14 @@ class PreviewDaemonModulesTest {
         PreviewDaemonModules.isArtifact(
           module("com.example", "renderer-android"),
           "renderer-android",
-        )
+        ),
       )
       .isFalse()
     assertThat(
         PreviewDaemonModules.isArtifact(
           module("ee.schimke.composeai", "renderer-desktop"),
           "renderer-android",
-        )
+        ),
       )
       .isFalse()
     assertThat(PreviewDaemonModules.isArtifact(project(":daemon:android"), "renderer-android"))

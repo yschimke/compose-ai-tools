@@ -25,7 +25,7 @@ class BrandLightThemeCatalog : PreviewWrapperProvider {
           primary = Color(0xFFFF6F61),
           secondary = Color(0xFF008080),
           tertiary = Color(0xFFB8860B),
-        )
+        ),
     ) {
       content()
     }
@@ -41,7 +41,7 @@ class BrandDarkThemeCatalog : PreviewWrapperProvider {
           primary = Color(0xFFFF8A80),
           secondary = Color(0xFF4DD0E1),
           tertiary = Color(0xFFFFE082),
-        )
+        ),
     ) {
       content()
     }

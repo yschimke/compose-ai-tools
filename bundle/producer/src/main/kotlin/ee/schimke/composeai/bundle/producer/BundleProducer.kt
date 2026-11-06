@@ -433,7 +433,7 @@ public fun writeBazelBundle(
   }
   val classpath =
     mutableListOf<BundleReader.ClasspathEntry>(
-      BundleReader.ClasspathEntry.Module("classes/app.jar")
+      BundleReader.ClasspathEntry.Module("classes/app.jar"),
     )
   val decisions = mutableListOf<kotlinx.serialization.json.JsonObject>()
   // The R classes travel as `android/r-classes.jar`, which the Android replay puts on the `-cp`.
@@ -460,7 +460,7 @@ public fun writeBazelBundle(
           put(
             "coordinate",
             kotlinx.serialization.json.JsonPrimitive(
-              coordinate?.let { "${it.group}:${it.artifact}:${it.version}" }
+              coordinate?.let { "${it.group}:${it.artifact}:${it.version}" },
             ),
           )
           put(
@@ -481,7 +481,7 @@ public fun writeBazelBundle(
                     put("policy", kotlinx.serialization.json.JsonPrimitive(it.policy))
                     put("reason", kotlinx.serialization.json.JsonPrimitive(it.reason))
                   }
-                }
+                },
               ),
             )
             put(
@@ -490,7 +490,7 @@ public fun writeBazelBundle(
             )
             put("reason", kotlinx.serialization.json.JsonPrimitive(outcome.reason))
           }
-        }
+        },
       )
       if (outcome.coordinate != null) classpath.add(outcome.coordinate)
       else {
@@ -556,7 +556,7 @@ private val bazelJson = Json {
 private val stubCover =
   java.util.Base64.getDecoder()
     .decode(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
     )
 
 /**
@@ -593,7 +593,7 @@ public fun bakePreparedBundle(bundle: File, renders: File, output: File): Unit {
   output.parentFile?.mkdirs()
   output.outputStream().use { stream ->
     stream.write(
-      contents.getValue("previews/${manifest.coverPreviewId ?: manifest.previewIds.first()}.png")
+      contents.getValue("previews/${manifest.coverPreviewId ?: manifest.previewIds.first()}.png"),
     )
     stream.write(bazelBundleZip(contents))
   }
@@ -628,7 +628,7 @@ public fun previewPngName(id: String): String =
 // Object member order is not semantic. Arrays (particularly classpaths/captures) retain order.
 private fun canonicalJsonBytes(text: String): ByteArray {
   fun normalize(
-    value: kotlinx.serialization.json.JsonElement
+    value: kotlinx.serialization.json.JsonElement,
   ): kotlinx.serialization.json.JsonElement =
     when (value) {
       is kotlinx.serialization.json.JsonObject ->

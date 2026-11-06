@@ -32,7 +32,7 @@ class EmptyRunFailureTest {
     // Deliberately all-or-nothing: a preview that cannot draw is an ordinary fact about a catalog
     // and is already reported through its `.error.json` sidecar.
     assertThat(
-        RenderPreviewsTask.emptyRunFailure(listOf(png("ok.png", 8), File(tmp.root, "no.png")))
+        RenderPreviewsTask.emptyRunFailure(listOf(png("ok.png", 8), File(tmp.root, "no.png"))),
       )
       .isNull()
   }
@@ -51,8 +51,8 @@ class EmptyRunFailureTest {
     png("CollapsingHeaderLayoutPreview-b2afa1fb_SakuraPlum.png", 8)
     assertThat(
         RenderPreviewsTask.emptyRunFailure(
-          listOf(File(tmp.root, "CollapsingHeaderLayoutPreview-b2afa1fb.png"))
-        )
+          listOf(File(tmp.root, "CollapsingHeaderLayoutPreview-b2afa1fb.png")),
+        ),
       )
       .isNull()
   }

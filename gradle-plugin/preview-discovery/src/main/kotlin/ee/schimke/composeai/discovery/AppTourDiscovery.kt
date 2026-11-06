@@ -229,7 +229,7 @@ object AppTourDiscovery {
               renderOutput = "renders/$stem.png",
               optional = !activity.launcher,
               cost = ACTIVITY_LAUNCH_COST,
-            )
+            ),
           ),
       )
     }

@@ -106,7 +106,7 @@ public object RcJvmServerRenderer {
             if (secondsLeft() < MIN_FALLBACK_SECONDS) {
               return RenderResult.Failed(
                 "${pooled.reason}; no time left in the ${RENDER_TIMEOUT_SECONDS}s render budget " +
-                  "for a one-shot retry"
+                  "for a one-shot retry",
               )
             }
           }
@@ -193,7 +193,7 @@ public object RcJvmServerRenderer {
               .trim()
               .takeIf { it.isNotEmpty() }
               ?.let { ": ${it.lines().last().take(300)}" }
-              .orEmpty()
+              .orEmpty(),
         )
       }
       return RenderResult.Ok(output.readBytes())

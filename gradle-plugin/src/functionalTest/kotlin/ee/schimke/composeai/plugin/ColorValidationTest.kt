@@ -43,7 +43,7 @@ class ColorValidationTest {
         }
         rootProject.name = "test-colors"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Uses Android-style @Preview with backgroundColor parameter
@@ -68,7 +68,7 @@ class ColorValidationTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -125,7 +125,7 @@ class ColorValidationTest {
             Box(modifier = Modifier.size(50.dp).background(Color.Green))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -143,7 +143,7 @@ class ColorValidationTest {
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
-        File(projectDir, "build/compose-previews/previews.json").readText()
+        File(projectDir, "build/compose-previews/previews.json").readText(),
       )
 
     assertThat(manifest.previews).hasSize(3)

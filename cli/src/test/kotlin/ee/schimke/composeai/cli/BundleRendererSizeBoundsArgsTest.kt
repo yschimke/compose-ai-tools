@@ -47,7 +47,7 @@ class BundleRendererSizeBoundsArgsTest {
     val args =
       renderer.buildRendererArgs(
         preview(
-          PreviewParams(minWidthPx = 120, minHeightPx = 48, maxWidthPx = 400, maxHeightPx = 800)
+          PreviewParams(minWidthPx = 120, minHeightPx = 48, maxWidthPx = 400, maxHeightPx = 800),
         ),
         File("/tmp/out.png"),
       )

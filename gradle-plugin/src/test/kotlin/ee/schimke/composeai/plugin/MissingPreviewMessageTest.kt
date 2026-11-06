@@ -67,7 +67,7 @@ class MissingPreviewMessageTest {
                 line = 42,
                 function = "Greeting",
               ),
-          )
+          ),
       )
 
     val msg =
@@ -107,7 +107,7 @@ class MissingPreviewMessageTest {
           "stackTrace": "..."
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val manifest =
       PreviewManifest(
@@ -314,7 +314,7 @@ class MissingPreviewMessageTest {
         previews =
           listOf(
             previewWithCapture("WearAppPreview_Devices - Large Round", "renders/WearApp.png")
-              .copy(className = "com.example.wear.WearAppKt")
+              .copy(className = "com.example.wear.WearAppKt"),
           ),
       )
 
@@ -466,7 +466,7 @@ class MissingPreviewMessageTest {
               ComposePreviewTasks.ErrorSidecar(
                 exception = "java.lang.IllegalStateException",
                 message = "missing state",
-              )
+              ),
           ),
       )
 
@@ -485,8 +485,8 @@ class MissingPreviewMessageTest {
 
     assertThat(
         ComposePreviewTasks.missingAgpRClass(
-          insight("java.lang.ClassNotFoundException", "androidx.customview.poolingcontainer.R\$id")
-        )
+          insight("java.lang.ClassNotFoundException", "androidx.customview.poolingcontainer.R\$id"),
+        ),
       )
       .isEqualTo("androidx.customview.poolingcontainer.R\$id")
     // The cascade every other preview reports: the wrapper is an initialiser error and only the
@@ -497,22 +497,22 @@ class MissingPreviewMessageTest {
             "java.lang.ExceptionInInitializerError",
             "androidx/customview/poolingcontainer/R\$id",
             chain = "ExceptionInInitializerError \u2192 NoClassDefFoundError",
-          )
-        )
+          ),
+        ),
       )
       .isEqualTo("androidx.customview.poolingcontainer.R\$id")
     // A class-loading failure over something that is not a resource table.
     assertThat(
         ComposePreviewTasks.missingAgpRClass(
-          insight("java.lang.ClassNotFoundException", "com.example.PreviewsKt")
-        )
+          insight("java.lang.ClassNotFoundException", "com.example.PreviewsKt"),
+        ),
       )
       .isNull()
     // An R table named by a failure that is not about loading a class.
     assertThat(
         ComposePreviewTasks.missingAgpRClass(
-          insight("java.lang.IllegalStateException", "androidx.customview.poolingcontainer.R\$id")
-        )
+          insight("java.lang.IllegalStateException", "androidx.customview.poolingcontainer.R\$id"),
+        ),
       )
       .isNull()
   }

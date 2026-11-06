@@ -274,7 +274,7 @@ class SharePreviewRawUrlBaseTest {
     assertEquals(
       "https://raw.githubusercontent.com/yschimke/compose-ai-tools",
       SharePreviewCommand.githubRawUrlBase(
-        "http://local_proxy@127.0.0.1:38695/git/yschimke/compose-ai-tools"
+        "http://local_proxy@127.0.0.1:38695/git/yschimke/compose-ai-tools",
       ),
     )
     assertEquals(

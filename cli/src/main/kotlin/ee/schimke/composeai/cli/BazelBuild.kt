@@ -288,7 +288,7 @@ internal fun BazelArtifacts.resolve(
     System.err.println(
       "[bazel] $target: ${pruned.jars.size} of ${runtime.size} runtime jars on the classpath " +
         "(${pruned.empty.size} empty, ${pruned.supersededRJars.size} R jars the final-ID R jar " +
-        "covers)"
+        "covers)",
     )
   }
   // The metadata lists the same jars, so a merge can still pair each file with its path.
@@ -658,7 +658,7 @@ internal fun bazelMetadataFiles(
 }
 
 internal class BazelBuild(
-  private val execute: (List<String>, File, Long) -> String = BazelProcess::run
+  private val execute: (List<String>, File, Long) -> String = BazelProcess::run,
 ) {
   /**
    * `bazel query [expression] --output=label`, with [BazelBuildConfig.queryArgs], or else the
@@ -683,7 +683,7 @@ internal class BazelBuild(
       System.err.println(
         "[bazel] query rejected the language flags from buildArgs (${args.joinToString(" ")}); " +
           "querying without them, which costs Bazel its analysis cache. Set queryArgs in " +
-          ".compose-preview/bazel.json to the ones query accepts."
+          ".compose-preview/bazel.json to the ones query accepts.",
       )
       run(emptyList())
     }
@@ -776,7 +776,7 @@ internal class BazelBuild(
       listOfNotNull(
         wildcards
           .takeIf { it.isNotEmpty() }
-          ?.joinToString(" + ", prefix = "kind('$kinds', ", postfix = ")") { "\"$it\"" }
+          ?.joinToString(" + ", prefix = "kind('$kinds', ", postfix = ")") { "\"$it\"" },
       ) + labels.map { "\"$it\"" }
     val expression =
       "(${selected.joinToString(" + ")})" + excluded.joinToString("") { " - \"$it\"" }
@@ -869,7 +869,7 @@ internal class BazelBuild(
     require(
       config.aspect.isNotBlank() &&
         config.metadataOutputGroup.isNotBlank() &&
-        config.runtimeOutputGroup.isNotBlank()
+        config.runtimeOutputGroup.isNotBlank(),
     ) {
       "Aspect and output groups must be configured"
     }
@@ -1034,7 +1034,7 @@ internal class BazelBuild(
       if (skipped.isNotEmpty()) {
         System.err.println(
           "[bazel] no Preview annotation in the jars of ${skipped.joinToString(" ")}; " +
-            "skipped before linking resources or building the runtime"
+            "skipped before linking resources or building the runtime",
         )
       }
       return kept

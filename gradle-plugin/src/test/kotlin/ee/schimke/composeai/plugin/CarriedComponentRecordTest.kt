@@ -70,7 +70,7 @@ class CarriedComponentRecordTest {
           "(Lacme/Icon;)V",
           "icon",
           listOf(bundleIds.getValue("acme.ButtonIcon A")),
-        )
+        ),
       )
 
     val carried = carriedComponentRecord(full, filtered, bundleIds).components

@@ -29,7 +29,7 @@ class SharedElementModelsTest {
               occurrences = 2,
               modifier = "sharedBounds",
             ),
-          )
+          ),
       )
 
     val decoded = json.decodeFromString<SharedElementPayload>(json.encodeToString(payload))
@@ -47,7 +47,7 @@ class SharedElementModelsTest {
             SharedElementFinding("b", SharedElementMatchStatus.MATCHED),
             SharedElementFinding("c", SharedElementMatchStatus.UNMATCHED),
             SharedElementFinding("d", SharedElementMatchStatus.MULTIPLE_MATCHES, occurrences = 3),
-          )
+          ),
       )
 
     assertEquals(2, payload.matchedCount)
@@ -69,7 +69,7 @@ class SharedElementModelsTest {
           listOf(
             SharedElementFinding("avatar", SharedElementMatchStatus.MATCHED),
             SharedElementFinding("title", SharedElementMatchStatus.MATCHED),
-          )
+          ),
       )
 
     assertFalse(payload.hasProblems)

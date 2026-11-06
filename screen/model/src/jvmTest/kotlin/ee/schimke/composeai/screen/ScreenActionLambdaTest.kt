@@ -25,15 +25,15 @@ class ScreenActionLambdaTest {
                     ChainLink(
                       "androidx.compose.foundation.clickable",
                       named = mapOf("onClick" to ScreenValue.ActionLambda(actions)),
-                    )
+                    ),
                   ),
                   typeFqn = "androidx.compose.ui.Modifier",
-                )
+                ),
             ),
           slots =
             mapOf(
               "content" to
-                listOf(ScreenNode("text", arguments = mapOf("text" to ScreenValue.Text("Next"))))
+                listOf(ScreenNode("text", arguments = mapOf("text" to ScreenValue.Text("Next")))),
             ),
         ),
     )
@@ -52,7 +52,7 @@ class ScreenActionLambdaTest {
         listOf(
           ScreenAction.Set("page", ScreenValue.Whole(20)),
           ScreenAction.Set("page", ScreenValue.Whole(30)),
-        )
+        ),
       )
     assertEquals(
       doc,
@@ -76,7 +76,7 @@ class ScreenActionLambdaTest {
           ScreenAction.Set(
             "page",
             ScreenValue.Reference("kotlin.Int.MAX_VALUE", typeFqn = "kotlin.Int"),
-          )
+          ),
         ) to "cannot evaluate",
       )) {
       val result = generate(document(actions))

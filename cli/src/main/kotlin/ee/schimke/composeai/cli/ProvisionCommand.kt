@@ -200,7 +200,7 @@ internal class ProvisionCommand(
       appendLine("Ship ${report.cacheRoot} (and the CLI install), then render with:")
       report.env.forEach { (key, value) -> appendLine("  export $key=$value") }
       append(
-        "XDG_CACHE_HOME is the directory holding composeai/; set it to wherever the copy lands."
+        "XDG_CACHE_HOME is the directory holding composeai/; set it to wherever the copy lands.",
       )
     } else {
       append("Some parts could not be provisioned; renders will fetch them on first use.")

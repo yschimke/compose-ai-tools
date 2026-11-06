@@ -47,7 +47,7 @@ internal object SystemApk {
             Axml.Attr.int("minSdkVersion", MIN_SDK_VERSION, 21),
             Axml.Attr.int("targetSdkVersion", TARGET_SDK_VERSION, targetSdk),
           ),
-        )
+        ),
       )
       if (formFactor == ApkFormFactor.WEAR) {
         add(
@@ -57,7 +57,7 @@ internal object SystemApk {
               Axml.Attr.string("name", NAME, "android.hardware.type.watch"),
               Axml.Attr.bool("required", REQUIRED, true),
             ),
-          )
+          ),
         )
       }
       add(Axml.Element("application", listOf(Axml.Attr.string("label", LABEL, "System"))))
@@ -71,7 +71,7 @@ internal object SystemApk {
           Axml.Attr.plainString("package", PACKAGE),
         ),
         children,
-      )
+      ),
     )
   }
 

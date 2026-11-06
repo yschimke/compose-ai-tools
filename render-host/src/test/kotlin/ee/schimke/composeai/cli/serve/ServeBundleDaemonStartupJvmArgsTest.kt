@@ -32,7 +32,7 @@ class ServeBundleDaemonStartupJvmArgsTest {
     val archive = args.single { it.startsWith("-XX:SharedArchiveFile=") }
     assertTrue(
       archive.startsWith(
-        "-XX:SharedArchiveFile=${dir.absolutePath}${File.separator}android-daemon-"
+        "-XX:SharedArchiveFile=${dir.absolutePath}${File.separator}android-daemon-",
       ),
       archive,
     )

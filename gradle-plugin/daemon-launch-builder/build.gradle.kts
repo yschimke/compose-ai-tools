@@ -74,7 +74,7 @@ val generateDaemonLaunchSchemaMetadata =
           "schemaVersion": $schemaVersion
         }
         """
-          .trimIndent() + "\n"
+          .trimIndent() + "\n",
       )
     }
   }

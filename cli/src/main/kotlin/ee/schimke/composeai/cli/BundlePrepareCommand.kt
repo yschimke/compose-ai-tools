@@ -72,7 +72,7 @@ internal class BundlePrepareCommand(
       }
     if (descriptor == null) {
       System.err.println(
-        "bundle prepare: could not prepare a daemon for ${bundle.name} (see the log above)"
+        "bundle prepare: could not prepare a daemon for ${bundle.name} (see the log above)",
       )
       exitProcess(1)
     }

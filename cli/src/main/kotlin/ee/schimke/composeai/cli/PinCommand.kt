@@ -53,7 +53,7 @@ class PinCommand(
         ?: run {
           stderr(
             "compose-preview pin: cannot find a Gradle project root " +
-              "(no settings.gradle[.kts] and no gradlew at or above this directory)."
+              "(no settings.gradle[.kts] and no gradlew at or above this directory).",
           )
           exitProcess(1)
         }
@@ -78,7 +78,7 @@ class PinCommand(
               (if (remaining.source == VersionPinSource.VERSION_CATALOG)
                 "`pin` never edits a version catalog (Renovate owns it) — remove the " +
                   "$VERSION_PIN_CATALOG_KEY entry by hand to fully unpin."
-              else "Unset it to fully unpin.")
+              else "Unset it to fully unpin."),
           )
         }
         report(root, json, warnSkew = false)
@@ -113,7 +113,7 @@ class PinCommand(
           append("  \"cliVersion\": ${cliVersion.jsonOrNull()},\n")
           append("  \"matchesCli\": ${pin == null || pin.version == cliVersion}\n")
           append("}")
-        }
+        },
       )
       return
     }
@@ -121,7 +121,7 @@ class PinCommand(
       stdout(
         "No version pin. Every entrypoint uses its own bundled version " +
           "(this CLI: $cliVersion).\n" +
-          "Pin the project with `compose-preview pin --cli`."
+          "Pin the project with `compose-preview pin --cli`.",
       )
       return
     }

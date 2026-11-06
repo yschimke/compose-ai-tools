@@ -273,7 +273,7 @@ class BundleSemanticsInjectTest {
     assertTrue(
       entries(BundleReader.extractZipBytes(file)).keys.none {
         it.endsWith(".figma-fonts.warnings.json")
-      }
+      },
     )
   }
 
@@ -418,7 +418,7 @@ class BundleSemanticsInjectTest {
         addOrReplaceZipEntries(
           original,
           mapOf("replace.txt" to "new".toByteArray(), "add.txt" to "added".toByteArray()),
-        )
+        ),
       )
 
     assertEquals("keep", result.getValue("keep.txt").toString(Charsets.UTF_8))

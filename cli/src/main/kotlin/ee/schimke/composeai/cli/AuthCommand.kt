@@ -151,7 +151,7 @@ internal class AuthCommand(
       fail(
         storeFailure
           ?: "no user config directory could be determined, and credentials will not be written " +
-            "to the working directory."
+            "to the working directory.",
       )
     }
 
@@ -176,7 +176,7 @@ internal class AuthCommand(
           approveUrl = opened.approveUrl,
           label = label,
           expiresAtMillis = System.currentTimeMillis() + opened.expiresInSeconds * 1000,
-        )
+        ),
       )
 
     // The store exists but the write failed: don't ask a human to approve access that would be
@@ -188,7 +188,7 @@ internal class AuthCommand(
           "run this again, or use --json, which prints the device secret for you to poll with. " +
           "The unsaved request expires on its own in " +
           AgentGrantProtocol.formatDuration(opened.expiresInSeconds) +
-          "; nobody has been asked to approve anything."
+          "; nobody has been asked to approve anything.",
       )
     }
 
@@ -226,7 +226,7 @@ internal class AuthCommand(
       println(
         "  They will be asked to grant: ${opened.requestedScope}$requestedCapabilities · " +
           AgentGrantProtocol.formatDuration(opened.requestedTtlSeconds) +
-          (if (label.isNotEmpty()) " · \"$label\"" else "")
+          (if (label.isNotEmpty()) " · \"$label\"" else ""),
       )
       println("  The code above must match what they see on that page.")
       // Capabilities above the server's ceiling can never be granted; say so now rather than at the
@@ -235,7 +235,7 @@ internal class AuthCommand(
       if (notOffered.isNotEmpty()) {
         println(
           "  Note: this server will not offer ${notOffered.joinToString(", ")} — its " +
-            "--agent-grant-capabilities does not include them, so the grant cannot carry them."
+            "--agent-grant-capabilities does not include them, so the grant cannot carry them.",
         )
       }
       println()
@@ -244,13 +244,13 @@ internal class AuthCommand(
           // `remembered` is true here: an unsaved request aborts earlier.
           "Not waiting. Run `compose-preview auth status --server ${client.origin}` after they " +
             "approve and it will collect the token — or run this without --no-wait to block " +
-            "until they do."
+            "until they do.",
         )
         return
       }
       println(
         "Waiting for approval (this request expires in " +
-          "${AgentGrantProtocol.formatDuration(opened.expiresInSeconds)})…"
+          "${AgentGrantProtocol.formatDuration(opened.expiresInSeconds)})…",
       )
     }
 
@@ -268,7 +268,7 @@ internal class AuthCommand(
           approvedBy = outcome.approvedBy.orEmpty(),
           label = label,
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
-        )
+        ),
       )
     if (saved == true) optionalStore?.forgetPendingRequest(opened.requestId)
     if (json) {
@@ -292,7 +292,7 @@ internal class AuthCommand(
       "Access granted by ${outcome.approvedBy ?: "an approver"} — " +
         "${outcome.scopes.joinToString(", ")} for " +
         AgentGrantProtocol.formatDuration(outcome.expiresInSeconds ?: 0) +
-        "."
+        ".",
     )
     println(
       if (saved == true)
@@ -300,7 +300,7 @@ internal class AuthCommand(
           "it automatically; `compose-preview auth token` prints it for anything else."
       else
         "WARNING: the grant could not be saved to disk (see the warning above). It is live on the " +
-          "server, but this CLI will not remember it."
+          "server, but this CLI will not remember it.",
     )
   }
 
@@ -331,7 +331,7 @@ internal class AuthCommand(
               fail(
                 "the request was declined" +
                   (response.approvedBy?.let { " by $it" }.orEmpty()) +
-                  ". Nothing was granted."
+                  ". Nothing was granted.",
               )
             "expired" ->
               fail("the request expired before anyone approved it. Run `auth request` again.")
@@ -419,7 +419,8 @@ internal class AuthCommand(
     if (rows.isEmpty() && waiting.isEmpty()) {
       println(
         if (explicit == null) "No access grants. Run `compose-preview auth request --server <url>`."
-        else "No access grant for $explicit. Run `compose-preview auth request --server $explicit`."
+        else
+          "No access grant for $explicit. Run `compose-preview auth request --server $explicit`.",
       )
       return
     }
@@ -437,7 +438,7 @@ internal class AuthCommand(
           "expires in ${AgentGrantProtocol.formatDuration(left)}" +
           (if (entry.approvedBy.isNotEmpty()) " · approved by ${entry.approvedBy}" else "") +
           (if (entry.label.isNotEmpty()) " · \"${entry.label}\"" else "") +
-          suffix
+          suffix,
       )
     }
     for (p in waiting) {
@@ -445,14 +446,14 @@ internal class AuthCommand(
         // Still polled: the server keeps an approved-but-uncollected request until its grant
         // expires.
         println(
-          "${p.origin} — approval window closed; still checking whether it was approved in time"
+          "${p.origin} — approval window closed; still checking whether it was approved in time",
         )
         continue
       }
       println(
         "${p.origin} — waiting for approval (${AgentGrantProtocol.formatDuration(
-          p.secondsUntilExpiry(now)
-        )} left)"
+          p.secondsUntilExpiry(now),
+        )} left)",
       )
       println("  ${p.approveUrl}")
       println("  verification code: ${p.userCode}")
@@ -479,7 +480,7 @@ internal class AuthCommand(
         System.err.println(
           "WARNING: replaced an older grant for $origin but could NOT revoke it " +
             "(${result.reason}). It stays live on that server until it expires — revoke " +
-            "${superseded.fingerprint} from $origin/status if you want it gone now."
+            "${superseded.fingerprint} from $origin/status if you want it gone now.",
         )
     }
   }
@@ -515,7 +516,7 @@ internal class AuthCommand(
                 label = pending.label,
                 expiresAtMillis =
                   System.currentTimeMillis() + (polled.expiresInSeconds ?: 0) * 1000,
-              )
+              ),
             )
           if (stored) store.forgetPendingRequest(pending.requestId)
         }
@@ -550,7 +551,7 @@ internal class AuthCommand(
     val entry =
       store.entryFor(server)
         ?: fail(
-          "no live access grant for $server. Run `compose-preview auth request --server $server`."
+          "no live access grant for $server. Run `compose-preview auth request --server $server`.",
         )
     println(entry.token)
   }
@@ -566,14 +567,14 @@ internal class AuthCommand(
     if (hadPending && !droppedPending) {
       fail(
         "could not rewrite the credential file (see the warning above) — $server's pending access " +
-          "request is still on disk and a later `auth status` could still collect it."
+          "request is still on disk and a later `auth status` could still collect it.",
       )
     }
     val entry = store.entryFor(server)
     if (entry == null) {
       println(
         if (hadPending) "Dropped the pending request for $server; there was no grant to revoke."
-        else "No access grant for $server — nothing to revoke."
+        else "No access grant for $server — nothing to revoke.",
       )
       return
     }
@@ -596,12 +597,12 @@ internal class AuthCommand(
       is AgentAccessClient.Result.Ok ->
         println(
           if (outcome.value.revoked) "Revoked on $server and $locally."
-          else "The server had no live grant for this token; $locally."
+          else "The server had no live grant for this token; $locally.",
         )
       is AgentAccessClient.Result.Err ->
         println(
           "The server could not be told (${outcome.reason}) and the grant is $locally. It expires " +
-            "on its own; revoke it from ${server}/status to end it now."
+            "on its own; revoke it from ${server}/status to end it now.",
         )
     }
     if (!dropped) exitProcess(1)
@@ -613,12 +614,12 @@ internal class AuthCommand(
       // Don't claim "forgotten" over a failed rewrite.
       if (store.clear()) {
         println(
-          "Forgot every stored access grant. They remain live on their servers until they expire."
+          "Forgot every stored access grant. They remain live on their servers until they expire.",
         )
       } else {
         fail(
           "could not rewrite the credential file (see the warning above) — the stored grants are " +
-            "still on disk. Revoke them from each server's /status if you need them ended now."
+            "still on disk. Revoke them from each server's /status if you need them ended now.",
         )
       }
       return
@@ -635,10 +636,10 @@ internal class AuthCommand(
         hadGrant || hadPendingHere ->
           fail(
             "could not rewrite the credential file (see the warning above) — $server's " +
-              "credentials are still on disk."
+              "credentials are still on disk.",
           )
         else -> "Nothing stored for $server."
-      }
+      },
     )
   }
 
@@ -712,7 +713,7 @@ internal class AuthCommand(
         revoke    End the grant now, on the server and locally.
         forget    Drop the local copy only (--server, or all of them).
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 

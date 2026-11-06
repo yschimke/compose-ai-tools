@@ -114,7 +114,7 @@ internal fun removeComposerItem(items: List<ComposerItem>, key: Int): List<Compo
                 if (child.key == key) null
                 else name to removeComposerItem(listOf(child), key).single()
               }
-              .toMap()
+              .toMap(),
         )
     }
   }
@@ -131,7 +131,7 @@ internal fun putComposerItemInSlot(
         slots =
           item.slots.mapValues { (_, nested) ->
             putComposerItemInSlot(listOf(nested), target, child).single()
-          }
+          },
       )
   }
 }
@@ -148,7 +148,7 @@ internal fun putComposerSlots(
         slots =
           item.slots.mapValues { (_, child) ->
             putComposerSlots(listOf(child), hostKey, slots).single()
-          }
+          },
       )
   }
 }
@@ -175,7 +175,7 @@ internal fun UiComposer(compact: Boolean) {
         ComposerItem(1, "card-slots"),
         ComposerItem(2, "switch-on"),
         ComposerItem(3, "button-filled"),
-      )
+      ),
     )
   }
   var nextKey by remember { mutableStateOf(4) }
@@ -673,7 +673,7 @@ private fun SlotEditor(
       .clipToBounds()
       .background(
         if (hovered) MaterialTheme.colorScheme.primary.copy(alpha = .28f)
-        else MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+        else MaterialTheme.colorScheme.primary.copy(alpha = .10f),
       )
       .border(
         1.dp,
@@ -721,7 +721,7 @@ private fun SlotChild(
   Box(
     Modifier.then(
         if (slot.constraints.horizontal == PreviewSlotSizing.Fill) Modifier.fillMaxWidth()
-        else Modifier
+        else Modifier,
       )
       .clipToBounds(),
     contentAlignment = Alignment.CenterStart,
@@ -921,6 +921,6 @@ private fun DragHandle() {
         drawCircle(color, radius, Offset(left, y))
         drawCircle(color, radius, Offset(right, y))
       }
-    }
+    },
   )
 }

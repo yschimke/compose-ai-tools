@@ -144,7 +144,7 @@ internal fun linkAndroidMerge(
       <application />
     </manifest>
     """
-      .trimIndent() + "\n"
+      .trimIndent() + "\n",
   )
   assets.writeText(plan.assets.joinToString("") { (path, file) -> "${file.absolutePath}\t$path\n" })
   val log = directory.resolve("link.log")

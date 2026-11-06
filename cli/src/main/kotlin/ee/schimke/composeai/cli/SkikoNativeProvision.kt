@@ -89,13 +89,13 @@ internal object SkikoNativeProvision {
       )
         ?: error(
           "Skiko has no CLI native artifact for " +
-            "${System.getProperty("os.name")}/${System.getProperty("os.arch")}."
+            "${System.getProperty("os.name")}/${System.getProperty("os.arch")}.",
         )
     val version =
       skikoVersion(sidecarJars)
         ?: error(
           "Cannot determine the Skiko version: no skiko-awt-<version>.jar was found in the " +
-            "installed desktop sidecars. Reinstall the CLI distribution."
+            "installed desktop sidecars. Reinstall the CLI distribution.",
         )
     val configuredDir =
       System.getProperty(CLI_SKIKO_DIR_PROPERTY)?.takeIf { it.isNotBlank() }?.let(::File)
@@ -144,7 +144,7 @@ internal object SkikoNativeProvision {
       error(
         "Skiko native $expectedName is not cached at ${cached.absolutePath}, and offline mode is " +
           "enabled. Pre-warm the cache while online or provide " +
-          "-D$CLI_SKIKO_DIR_PROPERTY=<dir> containing $expectedName."
+          "-D$CLI_SKIKO_DIR_PROPERTY=<dir> containing $expectedName.",
       )
     }
 

@@ -95,7 +95,7 @@ private fun AnimatedShaderCard(agsl: String) {
           shader.setFloatUniform("iTime", time)
           drawRect(brush)
         }
-      }
+      },
   )
 }
 
@@ -284,7 +284,7 @@ fun ShaderRenderEffectPreview() {
     modifier =
       Modifier.size(sizeDp)
         .graphicsLayer { this.renderEffect = renderEffect }
-        .background(Color(0xFF101820))
+        .background(Color(0xFF101820)),
   ) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
       Text(
@@ -298,7 +298,7 @@ fun ShaderRenderEffectPreview() {
       Text("and warps it", color = Color.White, fontSize = 20.sp)
       Box(
         modifier =
-          Modifier.padding(top = 12.dp).size(60.dp).background(MaterialTheme.colorScheme.primary)
+          Modifier.padding(top = 12.dp).size(60.dp).background(MaterialTheme.colorScheme.primary),
       )
     }
   }

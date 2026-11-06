@@ -36,7 +36,7 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
     if (!descriptorFile.isFile) {
       throw RenderSessionException(
         "Daemon launch descriptor not found at ${descriptorFile.path}. " +
-          "Run `:<modulePath>:composePreviewDaemonStart` to materialise it."
+          "Run `:<modulePath>:composePreviewDaemonStart` to materialise it.",
       )
     }
     var descriptor =

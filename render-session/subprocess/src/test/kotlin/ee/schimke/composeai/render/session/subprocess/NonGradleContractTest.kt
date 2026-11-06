@@ -53,7 +53,7 @@ class NonGradleContractTest {
     if (!previewsJson.isFile || !gradlePluginDescriptor.isFile) {
       System.err.println(
         "[NonGradleContractTest] skipping — run `:samples:cmp:composePreviewDiscover " +
-          ":samples:cmp:composePreviewDaemonStart` first to produce the reference inputs."
+          ":samples:cmp:composePreviewDaemonStart` first to produce the reference inputs.",
       )
       return
     }
@@ -89,7 +89,7 @@ class NonGradleContractTest {
           renderOutputDir = renderOutputDir,
           historyDir = historyDir,
         )
-        .toString()
+        .toString(),
     )
 
     // Open the session and render a vanilla preview. `@PreviewParameter` previews are skipped: the
@@ -106,7 +106,7 @@ class NonGradleContractTest {
           // Surface daemon stderr in the test report so a render failure is debuggable without
           // re-running with extra flags.
           logSink = { line -> System.err.println("[daemon] $line") },
-        )
+        ),
       )
       .use { session ->
         // The synthesised descriptor's modulePath round-trips through the daemon — proves the
@@ -132,7 +132,7 @@ class NonGradleContractTest {
           .use {
             val queueAck = session.renderNow(previewIds = listOf(target), tier = RenderTier.FULL)
             assertWithMessage(
-                "renderNow should queue our target id, got rejected=${queueAck.rejected}"
+                "renderNow should queue our target id, got rejected=${queueAck.rejected}",
               )
               .that(queueAck.rejected.map { it.id })
               .doesNotContain(target)
@@ -180,7 +180,7 @@ class NonGradleContractTest {
       JsonObject(
         preview +
           ("captures" to JsonArray(captures ?: emptyList())) +
-          ("module" to JsonPrimitive(":non-gradle-fixture"))
+          ("module" to JsonPrimitive(":non-gradle-fixture")),
       )
     }
     return json.encodeToString(

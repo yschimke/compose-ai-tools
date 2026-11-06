@@ -58,7 +58,7 @@ class BazelBuildHostTest {
               "Greeting",
               "app.ui.GreetingKt",
               captures = listOf(Capture(renderOutput = "renders/Greeting.png")),
-            )
+            ),
           ),
         )
       val file =
@@ -95,13 +95,13 @@ class BazelBuildHostTest {
   fun `a Bazel workspace routes the build host to the Bazel driver, a Gradle one does not`() =
     workspace { root ->
       assertNotNull(
-        BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG, "--project", root.path)).bazel
+        BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG, "--project", root.path)).bazel,
       )
       val gradle = Files.createTempDirectory("gradle-build-host").toFile()
       try {
         gradle.resolve("settings.gradle.kts").writeText("")
         assertNull(
-          BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG, "--project", gradle.path)).bazel
+          BuildHostCommand(listOf(BuildHostProtocol.STDIO_FLAG, "--project", gradle.path)).bazel,
         )
       } finally {
         gradle.deleteRecursively()
@@ -227,7 +227,7 @@ class BazelBuildHostTest {
             label,
             "bazel-out/k8-fastbuild/bin",
             listOf(
-              PreviewInfo("$key.P", "P", key, captures = listOf(Capture(renderOutput = "r.png")))
+              PreviewInfo("$key.P", "P", key, captures = listOf(Capture(renderOutput = "r.png"))),
             ),
           )
         PreparedBazelPreviews(

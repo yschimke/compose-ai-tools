@@ -91,7 +91,7 @@ class UnrealizedTasksFunctionalTest {
         }
         rootProject.name = "unrealized-tasks-android-test"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "local.properties").writeText("sdk.dir=$androidSdkDir\n")
@@ -132,7 +132,7 @@ class UnrealizedTasksFunctionalTest {
             throw GradleException("$REALIZED_MARKER")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties")
@@ -141,7 +141,7 @@ class UnrealizedTasksFunctionalTest {
         org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
         android.useAndroidX=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "src/main").mkdirs()
@@ -169,7 +169,7 @@ class UnrealizedTasksFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

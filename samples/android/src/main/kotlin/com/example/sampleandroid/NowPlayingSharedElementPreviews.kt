@@ -154,7 +154,7 @@ private fun MiniPlayer(
               )
               .size(56.dp)
               .clip(RoundedCornerShape(14.dp))
-              .background(artworkBrush)
+              .background(artworkBrush),
         )
         Spacer(Modifier.size(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -199,7 +199,7 @@ private fun FullPlayer(
           .clip(RoundedCornerShape(28.dp))
           .background(Color(CARD))
           .fillMaxSize()
-          .padding(22.dp)
+          .padding(22.dp),
     ) {
       Box(
         modifier =
@@ -211,7 +211,7 @@ private fun FullPlayer(
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(24.dp))
-            .background(artworkBrush)
+            .background(artworkBrush),
       )
       Spacer(Modifier.size(22.dp))
       Text(
@@ -237,11 +237,11 @@ private fun FullPlayer(
           Modifier.fillMaxWidth()
             .height(4.dp)
             .clip(CircleShape)
-            .background(Color(ACCENT).copy(alpha = 0.18f))
+            .background(Color(ACCENT).copy(alpha = 0.18f)),
       ) {
         Box(
           modifier =
-            Modifier.fillMaxWidth(0.38f).height(4.dp).clip(CircleShape).background(Color(ACCENT))
+            Modifier.fillMaxWidth(0.38f).height(4.dp).clip(CircleShape).background(Color(ACCENT)),
         )
       }
       Spacer(Modifier.size(8.dp))

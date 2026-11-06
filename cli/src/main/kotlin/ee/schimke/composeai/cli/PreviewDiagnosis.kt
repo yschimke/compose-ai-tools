@@ -331,7 +331,7 @@ private fun paramFanoutOutputs(
       val suffix = leaf.substring(dot) + RENDER_ERROR_SIDECAR_SUFFIX
       val absoluteDir =
         module.projectDir.resolve(
-          if (dir.isEmpty()) "build/compose-previews" else "build/compose-previews/$dir"
+          if (dir.isEmpty()) "build/compose-previews" else "build/compose-previews/$dir",
         )
       val dirPrefix = if (dir.isEmpty()) "" else "$dir/"
       (fileSystem.listOrNull(absoluteDir.path.toPath()) ?: emptyList())

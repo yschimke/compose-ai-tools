@@ -90,7 +90,7 @@ internal fun rememberGestureConfiguration(
 
 @Composable
 internal fun rememberGestureIndicatorState(
-  forceShow: Boolean = false
+  forceShow: Boolean = false,
 ): OneHandedGestureClickIndicatorState {
   val state = remember { OneHandedGestureClickIndicatorState() }
   LaunchedEffect(forceShow, state) {
@@ -103,7 +103,7 @@ internal fun rememberGestureIndicatorState(
 
 @Composable
 private fun rememberScrollGestureIndicatorState(
-  forceShow: Boolean = false
+  forceShow: Boolean = false,
 ): OneHandedGestureScrollIndicatorState {
   val state = remember { OneHandedGestureScrollIndicatorState() }
   LaunchedEffect(forceShow, state) { if (forceShow) state.showIndicator() }
@@ -112,7 +112,7 @@ private fun rememberScrollGestureIndicatorState(
 
 @Composable
 private fun rememberPageGestureIndicatorState(
-  forceShow: Boolean = false
+  forceShow: Boolean = false,
 ): OneHandedGesturePageIndicatorState {
   val state = remember { OneHandedGesturePageIndicatorState() }
   LaunchedEffect(forceShow, state) { if (forceShow) state.showIndicator() }

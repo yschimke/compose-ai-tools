@@ -23,7 +23,7 @@ class CatalogFontsTest {
             {"file":"Roboto-Italic.ttf","italic":true}
           ]}
         ]}
-        """
+        """,
       )
     assertEquals(3, faces.size)
     assertEquals(listOf("default", "default", "default"), faces.map { it.role })
@@ -51,7 +51,7 @@ class CatalogFontsTest {
       )) {
       val faces =
         parseFontsManifest(
-          """{"families":[$broken,{"role":"default","name":"Roboto","fonts":[{"file":"R.ttf"}]}]}"""
+          """{"families":[$broken,{"role":"default","name":"Roboto","fonts":[{"file":"R.ttf"}]}]}""",
         )
       assertTrue(
         faces.any { it.role == "default" && it.file == "R.ttf" },
@@ -65,7 +65,7 @@ class CatalogFontsTest {
     val faces =
       parseFontsManifest(
         """{"families":[{"role":"default","name":"R","fonts":[
-             {"file":"R.ttf","weight":"heavy","italic":"yes"}]}]}"""
+             {"file":"R.ttf","weight":"heavy","italic":"yes"}]}]}""",
       )
     assertEquals(1, faces.size)
     assertEquals(400, faces.single().weight)
@@ -83,13 +83,13 @@ class CatalogFontsTest {
     assertEquals(
       emptyList(),
       parseFontsManifest(
-        """{"families":[{"role":"default","name":"R","fonts":[{"weight":400}]}]}"""
+        """{"families":[{"role":"default","name":"R","fonts":[{"weight":400}]}]}""",
       ),
     )
     assertEquals(
       emptyList(),
       parseFontsManifest(
-        """{"families":[{"role":"default","name":"R","fonts":[{"file":"  "}]}]}"""
+        """{"families":[{"role":"default","name":"R","fonts":[{"file":"  "}]}]}""",
       ),
     )
   }

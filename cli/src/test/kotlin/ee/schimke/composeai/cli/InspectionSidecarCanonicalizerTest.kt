@@ -23,7 +23,7 @@ class InspectionSidecarCanonicalizerTest {
                 buttonId = "655",
                 runtimeHash = "4c3cfed3",
                 lambdaAddress = "00007f6b7824d4b8",
-              )
+              ),
           ),
       )
     val second =
@@ -38,7 +38,7 @@ class InspectionSidecarCanonicalizerTest {
                 buttonId = "662",
                 runtimeHash = "4fbd2fbd",
                 lambdaAddress = "00007f75302494f8",
-              )
+              ),
           ),
       )
 
@@ -93,7 +93,7 @@ class InspectionSidecarCanonicalizerTest {
 
     assertContentEquals(futureChildren, result.semanticsById.getValue("future"))
     assertTrue(
-      result.layoutById.getValue("authored").decodeToString().contains("account.name@abcdef.com")
+      result.layoutById.getValue("authored").decodeToString().contains("account.name@abcdef.com"),
     )
   }
 

@@ -25,25 +25,25 @@ object ComposePreviewDsl {
     val extension = project.extensions.create(EXTENSION_NAME, PreviewExtension::class.java)
 
     extension.variant.convention(
-      project.providers.gradleProperty("composePreview.variant").orElse("debug")
+      project.providers.gradleProperty("composePreview.variant").orElse("debug"),
     )
     extension.kmpAndroidRobolectric.convention(
       project.providers
         .gradleProperty("composePreview.kmpAndroidRobolectric")
         .map { it.toBooleanStrictOrNull() ?: false }
-        .orElse(false)
+        .orElse(false),
     )
     extension.enforcePreviewToolingDependency.convention(
       project.providers
         .gradleProperty("composePreview.enforcePreviewToolingDependency")
         .map { it.toBooleanStrictOrNull() ?: true }
-        .orElse(true)
+        .orElse(true),
     )
     extension.failOnMissingPreviewTooling.convention(
       project.providers
         .gradleProperty("composePreview.failOnMissingPreviewTooling")
         .map { it.toBooleanStrictOrNull() ?: false }
-        .orElse(false)
+        .orElse(false),
     )
     // `addAll`, not `convention`: the property and the DSL are additive, whereas a convention would
     // be replaced by the first DSL `add`.
@@ -51,7 +51,7 @@ object ComposePreviewDsl {
       project.providers
         .gradleProperty("composePreview.renderGraphExcludes")
         .map { RenderGraphExclusion.parse(it) }
-        .orElse(emptyList())
+        .orElse(emptyList()),
     )
     return extension
   }

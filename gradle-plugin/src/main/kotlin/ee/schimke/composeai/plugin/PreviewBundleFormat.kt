@@ -283,7 +283,7 @@ sealed interface ClasspathEntry {
   @kotlinx.serialization.SerialName("module")
   data class Module(
     /** Posix relative path inside the bundle zip, e.g. `classes/app.jar`. */
-    val path: String
+    val path: String,
   ) : ClasspathEntry
 
   /**
@@ -330,7 +330,7 @@ sealed interface ClasspathEntry {
   @kotlinx.serialization.SerialName("embedded")
   data class Embedded(
     /** Posix relative path inside the bundle zip, e.g. `libs/coil-compose-2.6.0.jar`. */
-    val inlinedAs: String
+    val inlinedAs: String,
   ) : ClasspathEntry
 }
 
@@ -551,7 +551,7 @@ internal fun extractZipBytes(file: File): ByteArray {
     return bytes.copyOfRange(zipStart, bytes.size)
   }
   throw IllegalArgumentException(
-    "not a bundle: ${file.path} — leading bytes match neither PNG (\\x89PNG…) nor ZIP (PK\\x03\\x04)"
+    "not a bundle: ${file.path} — leading bytes match neither PNG (\\x89PNG…) nor ZIP (PK\\x03\\x04)",
   )
 }
 

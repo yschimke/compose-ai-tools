@@ -126,6 +126,6 @@ fun RuntimeShaderAnimatedBlobPreview() {
           shader.setFloatUniform("iTime", time)
           drawRect(brush)
         }
-      }
+      },
   )
 }

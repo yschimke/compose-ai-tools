@@ -183,7 +183,7 @@ class DesktopRenderWorkerPoolTest {
   }
 
   private fun assertUnusable(
-    result: DesktopRenderWorkerPool.WorkerResult
+    result: DesktopRenderWorkerPool.WorkerResult,
   ): DesktopRenderWorkerPool.WorkerResult.Unusable {
     assertTrue(
       "expected Unusable, got $result",

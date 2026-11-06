@@ -40,7 +40,7 @@ class BazelBundleTest {
       val lock =
         root.resolve("maven_install.json").apply {
           writeText(
-            """{"artifacts":{"org.jetbrains.compose:ui":{"version":"1.0","shasums":{"jar":"$sha"}}}}"""
+            """{"artifacts":{"org.jetbrains.compose:ui":{"version":"1.0","shasums":{"jar":"$sha"}}}}""",
           )
         }
       assertEquals(
@@ -97,7 +97,7 @@ class BazelBundleTest {
       val lock =
         root.resolve("maven_install.json").apply {
           writeText(
-            """{"artifacts":{"org.jetbrains.compose:ui":{"version":"1.0","shasums":{"jar":"$sha"}}}}"""
+            """{"artifacts":{"org.jetbrains.compose:ui":{"version":"1.0","shasums":{"jar":"$sha"}}}}""",
           )
         }
       val id = "example.App.Greeting"
@@ -111,7 +111,7 @@ class BazelBundleTest {
               "Greeting",
               "example.App",
               captures = listOf(Capture(renderOutput = "greeting.png")),
-            )
+            ),
           ),
         )
       val manifestFile =
@@ -119,7 +119,7 @@ class BazelBundleTest {
       val png =
         Base64.getDecoder()
           .decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
           )
       root.resolve("greeting.png").writeBytes(png)
       val metadata =
@@ -194,9 +194,9 @@ class BazelBundleTest {
             read.classpath
               .filterIsInstance<BundleReader.ClasspathEntry.Embedded>()
               .single()
-              .inlinedAs
+              .inlinedAs,
           )
-          .contentEquals(runtime.readBytes())
+          .contentEquals(runtime.readBytes()),
       )
       writeBazelBundle(
         metadata.resolve(root),
@@ -210,7 +210,7 @@ class BazelBundleTest {
       assertTrue(
         BundleReader.readMetadata(bundle).manifest.classpath.none {
           it is BundleReader.ClasspathEntry.Maven
-        }
+        },
       )
     } finally {
       root.deleteRecursively()

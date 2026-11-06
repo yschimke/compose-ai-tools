@@ -460,7 +460,7 @@ internal object AndroidPreviewSupport {
         decision == null -> Unit
         decision.name != null -> {
           useTarget(
-            mapOf("group" to req.group, "name" to decision.name, "version" to decision.version)
+            mapOf("group" to req.group, "name" to decision.name, "version" to decision.version),
           )
           because(
             "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
@@ -474,7 +474,7 @@ internal object AndroidPreviewSupport {
                   "drop it (issue #3590)."
               } else {
                 ""
-              }
+              },
           )
         }
         decision.version != null -> {
@@ -486,7 +486,7 @@ internal object AndroidPreviewSupport {
               "renderer calls and every preview dies before user code runs: " +
               "NoSuchMethodError androidx.compose.ui.node.ComposeUiNode\$Companion" +
               ".getApplyOnDeactivatedNodeAssertion(). Raise to the floor; consumers already at or " +
-              "above it keep their own version (issue #3590)."
+              "above it keep their own version (issue #3590).",
           )
         }
       }
@@ -495,7 +495,7 @@ internal object AndroidPreviewSupport {
       if (requested.group == "org.hamcrest" && requested.name == "hamcrest") {
         useTarget("org.hamcrest:hamcrest-core:1.3")
         because(
-          "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it"
+          "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it",
         )
       }
     }
@@ -606,7 +606,7 @@ internal object AndroidPreviewSupport {
       if (!matches && variant.name != fallback) return@onVariants
       if (!matches && fallback != null) {
         project.logger.info(
-          "compose-preview: ${project.path} has no '$target' variant; using '${variant.name}'."
+          "compose-preview: ${project.path} has no '$target' variant; using '${variant.name}'.",
         )
       }
       if (kmpAndroid && !kmpAndroidWantsRobolectric(project, extension, variant)) {
@@ -622,7 +622,7 @@ internal object AndroidPreviewSupport {
             "skipping task registration. Add one of " +
             "${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
             "(or remove the plugin from this module) to opt in, or set " +
-            "`composePreview { enforcePreviewToolingDependency = false }` to bypass this gate."
+            "`composePreview { enforcePreviewToolingDependency = false }` to bypass this gate.",
         )
         return@onVariants
       }
@@ -887,7 +887,7 @@ internal object AndroidPreviewSupport {
   }
 
   private fun declarableBucketsOf(
-    project: Project
+    project: Project,
   ): Sequence<org.gradle.api.artifacts.Configuration> =
     project.configurations.asSequence().filter { c ->
       val n = c.name
@@ -914,7 +914,7 @@ internal object AndroidPreviewSupport {
     // `composePreview.appClockPackages` defaults to the module's namespace (as a `.`-terminated
     // prefix). No namespace means no prefix, never an empty one, which would instrument everything.
     extension.appClockPackages.convention(
-      variant.namespace.map { ns -> if (ns.isBlank()) emptyList() else listOf("${ns.trim()}.") }
+      variant.namespace.map { ns -> if (ns.isBlank()) emptyList() else listOf("${ns.trim()}.") },
     )
     // Consumer clock prefixes for `pinAppClock` (on by default); empty when off. Feeds the
     // generated
@@ -953,7 +953,7 @@ internal object AndroidPreviewSupport {
         project.layout.buildDirectory.dir("tmp/kotlin-classes/$variantName"),
         project.layout.buildDirectory.dir("intermediates/javac/$variantName/classes"),
         project.layout.buildDirectory.dir(
-          "intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
+          "intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes",
         ),
       )
     if (isKmp) {
@@ -964,17 +964,17 @@ internal object AndroidPreviewSupport {
       // carry.
       if (naming.extraClassDirs.isEmpty()) {
         sourceClassDirs.from(
-          project.layout.buildDirectory.dir("classes/kotlin/android/$variantName")
+          project.layout.buildDirectory.dir("classes/kotlin/android/$variantName"),
         )
       }
     }
     if (screenshotTestEnabled) {
       sourceClassDirs.from(
         project.layout.buildDirectory.dir(
-          "intermediates/built_in_kotlinc/${variantName}ScreenshotTest/compile${capVariant}ScreenshotTestKotlin/classes"
+          "intermediates/built_in_kotlinc/${variantName}ScreenshotTest/compile${capVariant}ScreenshotTestKotlin/classes",
         ),
         project.layout.buildDirectory.dir(
-          "intermediates/javac/${variantName}ScreenshotTest/classes"
+          "intermediates/javac/${variantName}ScreenshotTest/classes",
         ),
       )
     }
@@ -1042,18 +1042,18 @@ internal object AndroidPreviewSupport {
         tourSpecFiles.from(
           project.layout.projectDirectory.dir(TOUR_SPECS_DIR).asFileTree.matching {
             include("*.json")
-          }
+          },
         )
         if (screenshotTestEnabled) {
           dependsOn(optionalTaskDependencies(project, screenshotCompileTaskNames))
           screenshotTestRuntimeConfig?.let { stConfig ->
             dependencyJars.from(
-              stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
+              stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files,
             )
             dependencyJars.from(
               stConfig.incoming
                 .artifactView { attributes.attribute(artifactType, "android-classes") }
-                .files
+                .files,
             )
             // Coordinates too: on Android a jar path names the module but not its group (see
             // [ComposePreviewTasks]).
@@ -1067,7 +1067,7 @@ internal object AndroidPreviewSupport {
                     artifacts.associate {
                       it.file.absolutePath to it.id.componentIdentifier.displayName
                     }
-                  }
+                  },
               )
             }
           }
@@ -1175,11 +1175,11 @@ internal object AndroidPreviewSupport {
         project.provider {
           injectedDependencyJson.encodeToString(
             kotlinx.serialization.builtins.ListSerializer(
-              ee.schimke.composeai.plugin.tooling.InjectedDependency.serializer()
+              ee.schimke.composeai.plugin.tooling.InjectedDependency.serializer(),
             ),
             injectedDependencies.toList(),
           )
-        }
+        },
       )
     }
 
@@ -1750,7 +1750,7 @@ internal object AndroidPreviewSupport {
       rendererClassDirs =
         project.files(
           rendererProjectDir.resolve(
-            "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
+            "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes",
           ),
           rendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
         )
@@ -1767,7 +1767,7 @@ internal object AndroidPreviewSupport {
       // `rendererConfig` at configuration time (#1038).
       rendererClassDirs =
         project.files(
-          rendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
+          rendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } },
         )
       rendererClasspathEntries = rendererJars
     }
@@ -1780,7 +1780,7 @@ internal object AndroidPreviewSupport {
       xrRendererClassDirs =
         project.files(
           xrRendererProjectDir.resolve(
-            "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
+            "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes",
           ),
           xrRendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
         )
@@ -1795,7 +1795,7 @@ internal object AndroidPreviewSupport {
           .files
       xrRendererClassDirs =
         project.files(
-          xrRendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } }
+          xrRendererJars.elements.map { elements -> elements.map { archives.zipTree(it.asFile) } },
         )
       xrRendererClasspathEntries = xrRendererJars
     }
@@ -1948,7 +1948,7 @@ internal object AndroidPreviewSupport {
         .orElse(
           xrCompositeBinary.map {
             java.io.File(it).absoluteFile.parentFile.resolve("materials").path
-          }
+          },
         )
 
     // ATF / hierarchy data products come only from the daemon, so no a11y outputs are declared.
@@ -2050,7 +2050,7 @@ internal object AndroidPreviewSupport {
             idExcludeFile = ComposePreviewTasks.previewIdExcludeFileProperty(project),
             rowExcludes = previewRowExcludes,
             permutations = permutations,
-          )
+          ),
         )
         // Fail fast when tooling isn't actually reachable (#1549); null when direct tooling was
         // found.
@@ -2164,11 +2164,11 @@ internal object AndroidPreviewSupport {
         // No a11y providers: the daemon is the only a11y producer. Display filters use a lazy input
         // so toggling them doesn't invalidate the configuration cache.
         jvmArgumentProviders.add(
-          DisplayFilterSystemPropsProvider(filters = resolveDisplayFilterFilters(project))
+          DisplayFilterSystemPropsProvider(filters = resolveDisplayFilterFilters(project)),
         )
         // Device frame: composites each PNG into device-art when set.
         jvmArgumentProviders.add(
-          DeviceFrameSystemPropsProvider(device = resolveDeviceFrameDevice(project))
+          DeviceFrameSystemPropsProvider(device = resolveDeviceFrameDevice(project)),
         )
         // Prefetch device art in the Gradle JVM (never on the render classpath). Captures only the
         // provider.
@@ -2233,7 +2233,7 @@ internal object AndroidPreviewSupport {
           optionalTaskDependencies(
             project,
             listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
-          )
+          ),
         )
         if (compileShardsTask != null) {
           dependsOn(compileShardsTask)
@@ -2272,8 +2272,8 @@ internal object AndroidPreviewSupport {
           unitTestConfigDir?.let { from(it) }
           from(
             project.layout.buildDirectory.dir(
-              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest"
-            )
+              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest",
+            ),
           )
           from(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
         }
@@ -2363,7 +2363,7 @@ internal object AndroidPreviewSupport {
           optionalTaskDependencies(
             project,
             listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
-          )
+          ),
         )
       }
     }
@@ -2437,7 +2437,7 @@ internal object AndroidPreviewSupport {
             // Inert here: XR has no `@PreviewParameter` fan-out.
             rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
             permutations = project.providers.provider { emptyList() },
-          )
+          ),
         )
         // The row filter still gates caching: this task declares the whole shared
         // `rendersDirectory`, so a filtered run could store and later restore stale PNGs, just as
@@ -2472,7 +2472,7 @@ internal object AndroidPreviewSupport {
           optionalTaskDependencies(
             project,
             listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig"),
-          )
+          ),
         )
       }
 
@@ -2501,7 +2501,7 @@ internal object AndroidPreviewSupport {
           val binary = java.io.File(binaryPath)
           if (!binary.isFile) {
             logger.lifecycle(
-              "xr-composite binary not found at $binaryPath; skipping XR composite stills"
+              "xr-composite binary not found at $binaryPath; skipping XR composite stills",
             )
             return@doLast
           }
@@ -2531,7 +2531,7 @@ internal object AndroidPreviewSupport {
                 }
           if (!hasDisplay && xvfbRun == null) {
             logger.lifecycle(
-              "DISPLAY unset and xvfb-run not available; skipping XR composite stills"
+              "DISPLAY unset and xvfb-run not available; skipping XR composite stills",
             )
             return@doLast
           }
@@ -2564,7 +2564,7 @@ internal object AndroidPreviewSupport {
             val code = process.waitFor()
             if (code != 0 || !outFile.isFile) {
               logger.lifecycle(
-                "xr-composite failed for ${scene.parentFile.name} (exit $code); skipping. Output:\n$output"
+                "xr-composite failed for ${scene.parentFile.name} (exit $code); skipping. Output:\n$output",
               )
             } else {
               baked++
@@ -2675,7 +2675,7 @@ internal object AndroidPreviewSupport {
           project.files(
             unitTestConfigDir,
             project.layout.buildDirectory.dir(
-              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest"
+              naming.apkForLocalTest ?: "intermediates/apk_for_local_test/${variantName}UnitTest",
             ),
             variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
           ),
@@ -2770,8 +2770,8 @@ internal object AndroidPreviewSupport {
             .dir(
               naming.btaOutputDir(
                 kotlinAndroidPluginApplied =
-                  project.pluginManager.hasPlugin("org.jetbrains.kotlin.android")
-              )
+                  project.pluginManager.hasPlugin("org.jetbrains.kotlin.android"),
+              ),
             )
             .map { it.asFile.absolutePath },
         icWorkingDirProvider =
@@ -2791,7 +2791,7 @@ internal object AndroidPreviewSupport {
       }
       variant.sources.res?.all?.let { layers ->
         this.watchResourceDirs.addAll(
-          layers.map { all -> all.flatten().map { it.asFile.absolutePath } }
+          layers.map { all -> all.flatten().map { it.asFile.absolutePath } },
         )
       }
       variant.sources.resources?.all?.let { dirs ->
@@ -2801,10 +2801,10 @@ internal object AndroidPreviewSupport {
       this.watchResourceDirs.addAll(
         androidLottieResourceDirs(project).elements.map { all ->
           all.map { it.asFile.absolutePath }
-        }
+        },
       )
       this.watchBuildFiles.set(
-        ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project)
+        ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project),
       )
       // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
@@ -2836,7 +2836,7 @@ internal object AndroidPreviewSupport {
           unitTestConfigDir = unitTestConfigDir,
           robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
           legacyClasspathUnion = legacyClasspathUnion,
-        )
+        ),
       )
       this.classpath.from(lateAgpClasspathExtras)
       this.classpath.from(lateAgpTestTask.testClassesDirs)
@@ -2846,7 +2846,7 @@ internal object AndroidPreviewSupport {
           agpTestClasspath = lateAgpTestTask.classpath,
           testConfig = testConfig,
           legacyClasspathUnion = legacyClasspathUnion,
-        )
+        ),
       )
       // Duplicate guard on the daemon classpath, which a11y and VS Code actually use. Runs before
       // the descriptor is written so `fail` never emits one. Reads the daemon-scoped coordinate map
@@ -2888,7 +2888,7 @@ internal object AndroidPreviewSupport {
         clockPackages.map { packages ->
           if (packages.isEmpty()) emptyMap()
           else mapOf(CLOCK_PACKAGES_PROPERTY to clockPackagesProperty(packages))
-        }
+        },
       )
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
@@ -2965,7 +2965,7 @@ internal object AndroidPreviewSupport {
           project,
           previewOutputDir.map { listOf(it.file("previews.json").asFile) },
           directory = false,
-        )
+        ),
       )
       // The provider carries no build dependency, which strict validation rejects. `mustRunAfter`
       // rather than `dependsOn`: the daemon must be warmable before any discovery.
@@ -2980,7 +2980,7 @@ internal object AndroidPreviewSupport {
    * configuration cache. Blank means disabled.
    */
   internal class DisplayFilterSystemPropsProvider(
-    @get:org.gradle.api.tasks.Input val filters: org.gradle.api.provider.Provider<String>
+    @get:org.gradle.api.tasks.Input val filters: org.gradle.api.provider.Provider<String>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> =
       listOf("-Dcomposeai.displayfilter.filters=${filters.get()}")
@@ -2991,7 +2991,7 @@ internal object AndroidPreviewSupport {
    * inputs.
    */
   internal fun resolveDisplayFilterFilters(
-    project: org.gradle.api.Project
+    project: org.gradle.api.Project,
   ): org.gradle.api.provider.Provider<String> =
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
 
@@ -3000,7 +3000,7 @@ internal object AndroidPreviewSupport {
    * [DisplayFilterSystemPropsProvider]. Blank means disabled.
    */
   internal class DeviceFrameSystemPropsProvider(
-    @get:org.gradle.api.tasks.Input val device: org.gradle.api.provider.Provider<String>
+    @get:org.gradle.api.tasks.Input val device: org.gradle.api.provider.Provider<String>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> {
       val d = device.get()
@@ -3018,7 +3018,7 @@ internal object AndroidPreviewSupport {
    * off).
    */
   internal fun resolveDeviceFrameDevice(
-    project: org.gradle.api.Project
+    project: org.gradle.api.Project,
   ): org.gradle.api.provider.Provider<String> =
     project.providers.gradleProperty("composePreview.deviceFrame.device").orElse("")
 
@@ -3028,7 +3028,7 @@ internal object AndroidPreviewSupport {
    * nothing.
    */
   internal fun androidLottieResourceDirs(
-    project: org.gradle.api.Project
+    project: org.gradle.api.Project,
   ): org.gradle.api.file.FileCollection =
     project.files(
       project.layout.projectDirectory.dir("src/main/resources"),
@@ -3069,7 +3069,7 @@ internal object AndroidPreviewSupport {
         .orElse(
           typed.checks.zip(genericChecks) { typedChecks, genericChecks ->
             (typedChecks + genericChecks).any { it in COMPOSE_AI_TRACE_CHECK_IDS }
-          }
+          },
         )
     return wholeExtension.zip(selectedChecks) { whole, selected -> whole || selected }
   }
@@ -3082,7 +3082,7 @@ internal object AndroidPreviewSupport {
    * everything. A Provider so VS Code's per-save toggle doesn't invalidate the configuration cache.
    */
   internal fun resolveTier(
-    project: org.gradle.api.Project
+    project: org.gradle.api.Project,
   ): org.gradle.api.provider.Provider<String> =
     project.providers
       .gradleProperty("composePreview.tier")
@@ -3094,7 +3094,7 @@ internal object AndroidPreviewSupport {
    * empty list emits nothing.
    */
   internal class ClockPackagesSystemPropProvider(
-    @get:org.gradle.api.tasks.Input val packages: org.gradle.api.provider.Provider<List<String>>
+    @get:org.gradle.api.tasks.Input val packages: org.gradle.api.provider.Provider<List<String>>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> {
       val p = packages.get()
@@ -3105,7 +3105,7 @@ internal object AndroidPreviewSupport {
 
   /** Lazy render-tier system property for `composePreviewRender`. */
   internal class TierSystemPropProvider(
-    @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
+    @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = listOf("-Dcomposeai.render.tier=${tier.get()}")
   }
@@ -3335,7 +3335,7 @@ internal object AndroidPreviewSupport {
           missing.joinToString(separator = "\n") { "  - $it" } +
           suffix +
           "\n\nAdd them to your build file, or set composePreview.manageDependencies = true " +
-          "to let the plugin add them automatically."
+          "to let the plugin add them automatically.",
       )
     }
   }

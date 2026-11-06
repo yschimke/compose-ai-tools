@@ -91,7 +91,7 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
           .mapValues { (_, tags) ->
             tags.mapNotNull { (tag, e) -> e.validated()?.let { tag to it } }.toMap()
           }
-          .filterValues { it.isNotEmpty() }
+          .filterValues { it.isNotEmpty() },
       )
     }
 

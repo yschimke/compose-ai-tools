@@ -194,7 +194,7 @@ public object DaemonLaunchBuilderCli {
 
       Exit codes: 0 = success, 2 = argument parsing failure.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }

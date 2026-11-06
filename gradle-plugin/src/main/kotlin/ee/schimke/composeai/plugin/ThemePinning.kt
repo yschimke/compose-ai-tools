@@ -82,7 +82,7 @@ internal object ThemePinning {
       project.logger.warn(
         "compose-preview: theme pinning skipped for ${project.path} — it uses Kotlin " +
           "${consumerKotlin ?: "(unknown)"}, and the theme-pin compiler plugin is built for Kotlin " +
-          "${kotlinLine(compilerPluginKotlin)}.x. Previews render with their own theme."
+          "${kotlinLine(compilerPluginKotlin)}.x. Previews render with their own theme.",
       )
       return
     }

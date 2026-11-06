@@ -191,7 +191,7 @@ data class ExportProjection(
       require(all.size == all.toSet().size) { "a slot pattern fills each parameter once: $all" }
       require(
         match.count { it is Matcher.Rest } <= 1 &&
-          match.lastOrNull().let { m -> match.none { it is Matcher.Rest } || m is Matcher.Rest }
+          match.lastOrNull().let { m -> match.none { it is Matcher.Rest } || m is Matcher.Rest },
       ) {
         "`any` takes the remaining children, so it is the last matcher"
       }
@@ -291,7 +291,7 @@ data class ExportProjection(
     return patterns.otherwise?.let { SlotAssignment.Assigned(mapOf(it to children)) }
       ?: SlotAssignment.Refused(
         "no pattern of `$slot` matches its children " +
-          children.joinToString(", ", "[", "]") { componentId(it) }
+          children.joinToString(", ", "[", "]") { componentId(it) },
       )
   }
 
@@ -904,7 +904,7 @@ data class ExportProjection(
           else -> {
             if (wrapper.keys != setOf("type", "case", "fields"))
               return refuse(
-                "a `union` wrapper of the `$name` case is {\"type\", \"case\", \"fields\"}, found ${wrapper.keys.sorted()}"
+                "a `union` wrapper of the `$name` case is {\"type\", \"case\", \"fields\"}, found ${wrapper.keys.sorted()}",
               )
             val fields = wrapper.getValue("fields")
             // Typed as the sealed type it is passed as, which is what the parameter takes.
@@ -929,7 +929,7 @@ data class ExportProjection(
         // silently collapsed, so the export would hold fewer values than the design shows.
         if (codec.set && values.distinct().size != values.size)
           return refuse(
-            "a set holds each value once; ${values.size - values.distinct().size} repeat"
+            "a set holds each value once; ${values.size - values.distinct().size} repeat",
           )
         val before = reasons.size
         val written = values.mapIndexed { index, item ->
@@ -979,7 +979,7 @@ data class ExportProjection(
         val stated = (wrapper?.get("type") as? JsonPrimitive)?.takeIf { it.isString }?.content
         if (wrapper == null || stated != literalType)
           return refuse(
-            "expected a `$literalType` wrapper, found ${stated?.let { "`$it`" } ?: stored}"
+            "expected a `$literalType` wrapper, found ${stated?.let { "`$it`" } ?: stored}",
           )
         val raw =
           wrapper["value"] as? JsonPrimitive

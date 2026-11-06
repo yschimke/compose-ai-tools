@@ -312,12 +312,12 @@ internal class LogcatHub {
         mapOf<String, JsonElement>(
           "cmd" to JsonPrimitive("logcat"),
           "op" to JsonPrimitive("follow"),
-        )
+        ),
       )
 
     val STOP: JsonObject =
       JsonObject(
-        mapOf<String, JsonElement>("cmd" to JsonPrimitive("logcat"), "op" to JsonPrimitive("stop"))
+        mapOf<String, JsonElement>("cmd" to JsonPrimitive("logcat"), "op" to JsonPrimitive("stop")),
       )
   }
 }

@@ -14,12 +14,12 @@ class ValidateComposePreviewClasspathTaskTest {
         listOf(
           "/home/user/.gradle/caches/modules-2/files-2.1/androidx.compose.ui/ui-jvmstubs/1.9.5/ui-jvmstubs-1.9.5.jar",
           "/home/user/.gradle/caches/modules-2/files-2.1/org.jetbrains.compose.ui/ui-desktop/1.10.3/ui-desktop-1.10.3.jar",
-        )
+        ),
       )
 
     assertThat(offenders)
       .containsExactly(
-        "/home/user/.gradle/caches/modules-2/files-2.1/androidx.compose.ui/ui-jvmstubs/1.9.5/ui-jvmstubs-1.9.5.jar"
+        "/home/user/.gradle/caches/modules-2/files-2.1/androidx.compose.ui/ui-jvmstubs/1.9.5/ui-jvmstubs-1.9.5.jar",
       )
   }
 

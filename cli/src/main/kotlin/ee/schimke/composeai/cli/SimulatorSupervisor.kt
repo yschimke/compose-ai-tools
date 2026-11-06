@@ -254,7 +254,7 @@ internal class SimulatorSupervisor(
     val withData =
       next.copy(
         properties =
-          next.properties + (snapshot?.let { mapOf(RESTORE_PROPERTY to it.path) } ?: emptyMap())
+          next.properties + (snapshot?.let { mapOf(RESTORE_PROPERTY to it.path) } ?: emptyMap()),
       )
     val spawnStart = System.nanoTime()
     val warm = takeSpare(next)
@@ -262,7 +262,7 @@ internal class SimulatorSupervisor(
       if (warm != null) {
         warm.child.promote(
           withData.properties.filterKeys { it == RESTORE_PROPERTY } +
-            (ASKED_PROPERTY to "${System.currentTimeMillis()}")
+            (ASKED_PROPERTY to "${System.currentTimeMillis()}"),
         )
         warm.child
       } else spawn(withData, first = false)
@@ -324,7 +324,7 @@ internal class SimulatorSupervisor(
         put("event", "restarted")
         put("reason", reason)
         put("totalMs", elapsed(start))
-      }
+      },
     )
     return result
   }
@@ -415,7 +415,7 @@ internal class SimulatorSupervisor(
   private fun spawn(launch: Launch, first: Boolean, standby: Boolean = false): Child {
     val stamped =
       launch.copy(
-        properties = launch.properties + (LAUNCHED_PROPERTY to "${System.currentTimeMillis()}")
+        properties = launch.properties + (LAUNCHED_PROPERTY to "${System.currentTimeMillis()}"),
       )
     val builder = ProcessBuilder(command(stamped))
     if (!control) builder.redirectInput(ProcessBuilder.Redirect.INHERIT)
@@ -462,7 +462,7 @@ internal class SimulatorSupervisor(
             buildJsonObject {
               put("event", "exited")
               put("code", process.exitValue())
-            }
+            },
           )
         } else {
           finished.complete(process.exitValue())
@@ -498,7 +498,7 @@ internal class SimulatorSupervisor(
           future.complete(
             if (json.boolean("ok") == true)
               Reply.Ok(json["result"] as? JsonObject ?: JsonObject(emptyMap()))
-            else Reply.Failed(json.string("error") ?: "failed")
+            else Reply.Failed(json.string("error") ?: "failed"),
           )
           return
         }
@@ -521,9 +521,9 @@ internal class SimulatorSupervisor(
       standby = false
       write(
         JsonObject(
-            mapOf("go" to JsonObject(properties.mapValues { (_, value) -> JsonPrimitive(value) }))
+            mapOf("go" to JsonObject(properties.mapValues { (_, value) -> JsonPrimitive(value) })),
           )
-          .toString()
+          .toString(),
       )
     }
 
@@ -557,7 +557,7 @@ internal class SimulatorSupervisor(
             put("id", Json.parseToJsonElement(id))
             put("ok", false)
             put("error", message)
-          }
+          },
         )
       }
     }
@@ -588,7 +588,7 @@ internal class SimulatorSupervisor(
         put("id", id ?: kotlinx.serialization.json.JsonNull)
         put("ok", error == null)
         if (error == null) put("result", result ?: JsonObject(emptyMap())) else put("error", error)
-      }
+      },
     )
   }
 

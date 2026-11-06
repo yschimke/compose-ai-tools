@@ -46,7 +46,7 @@ class PreviewReferenceTest {
         id = "HomePreview",
         className = "com.example.HomeKt",
         functionName = "HomePreview",
-      )
+      ),
     )
   }
 
@@ -58,7 +58,7 @@ class PreviewReferenceTest {
         id = "com.example.HomeKt.Home_row0",
         className = "com.example.HomeKt",
         functionName = "Home",
-      )
+      ),
     )
   }
 
@@ -75,7 +75,7 @@ class PreviewReferenceTest {
         id = "HomePreview",
         className = "com.example.HomeKt",
         functionName = "HomePreview",
-      )
+      ),
     )
   }
 

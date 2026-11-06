@@ -73,7 +73,7 @@ class CmpPreviewAnnotationTest {
         variantName = "debug",
         projectDirectory = classDir,
         failOnEmpty = false,
-      )
+      ),
     )
 
   /** A public static parameterless method carrying [annotationDescriptor]. */

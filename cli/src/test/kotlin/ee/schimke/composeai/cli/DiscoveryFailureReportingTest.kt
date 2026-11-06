@@ -28,7 +28,7 @@ class DiscoveryFailureReportingTest {
     val guidance =
       dependencyVerificationGuidance(
         "Dependency verification failed for ee.schimke.composeai:preview:2.0 " +
-          "(verification-metadata.xml)"
+          "(verification-metadata.xml)",
       )
     assertTrue(guidance != null && "ee.schimke.composeai" in guidance, "got $guidance")
     assertEquals(null, dependencyVerificationGuidance("Cannot resolve external dependency"))
@@ -54,7 +54,7 @@ class DiscoveryFailureReportingTest {
     assertTrue(lines.first().contains("2 project(s) failed to configure"), "got ${lines.first()}")
     assertTrue(lines.any { it.contains(":app:") && it.contains("already on the classpath") })
     assertTrue(
-      lines.any { it.contains(":lib:") && it.contains("Cannot resolve external dependency") }
+      lines.any { it.contains(":lib:") && it.contains("Cannot resolve external dependency") },
     )
   }
 
@@ -80,13 +80,13 @@ class DiscoveryFailureReportingTest {
     assertTrue(isAgpClassloaderFailure(noClassDefFound))
     // NoClassDefFoundError alone (internal slash name).
     assertTrue(
-      isAgpClassloaderFailure("NoClassDefFoundError: com/android/build/api/variant/Variant")
+      isAgpClassloaderFailure("NoClassDefFoundError: com/android/build/api/variant/Variant"),
     )
     // ClassNotFoundException alone (dotted name).
     assertTrue(
       isAgpClassloaderFailure(
-        "ClassNotFoundException: com.android.build.api.variant.AndroidComponentsExtension"
-      )
+        "ClassNotFoundException: com.android.build.api.variant.AndroidComponentsExtension",
+      ),
     )
     // Unrelated failures don't match.
     assertTrue(!isAgpClassloaderFailure("Cannot resolve external dependency"))

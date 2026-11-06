@@ -131,7 +131,7 @@ fun RemoteShaderGradient() {
   val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
   val brush =
     RemoteBrush.linearGradient(
-      listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C)))
+      listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C))),
     )
   RemoteBox(
     modifier = RemoteModifier.fillMaxSize().background(brush),

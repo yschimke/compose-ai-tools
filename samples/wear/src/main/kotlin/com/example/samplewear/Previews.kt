@@ -77,7 +77,7 @@ fun WearApp() {
       // The production app uses the system clock; previews still render a fixed `10:10` because the
       // renderer pins its wall clock, or supply a `FixedPreviewTimeSource` (see
       // [ActivityListPreview]).
-      timeText = { TimeText() }
+      timeText = { TimeText() },
     ) {
       ActivityListScreen()
     }

@@ -22,7 +22,7 @@ class ApkFormFactorTest {
         manifest(
           Element("manifest", emptyMap()),
           Element("uses-feature", mapOf("name" to "android.hardware.type.watch")),
-        )
+        ),
       )
     assertEquals(setOf("android.hardware.type.watch"), signals.requiredFeatures)
     assertEquals(ApkFormFactor.WEAR, ApkFormFactor.classify(signals, emptySequence()))
@@ -36,8 +36,8 @@ class ApkFormFactorTest {
           Element(
             "uses-feature",
             mapOf("name" to "android.hardware.type.watch", "required" to false),
-          )
-        )
+          ),
+        ),
       )
     assertEquals(setOf("android.hardware.type.watch"), signals.features)
     assertEquals(emptySet(), signals.requiredFeatures)
@@ -52,8 +52,8 @@ class ApkFormFactorTest {
           Element(
             "activity",
             mapOf("name" to ".Glasses", "requiredDisplayCategory" to "xr_projected"),
-          )
-        )
+          ),
+        ),
       )
     assertEquals(ApkFormFactor.GLIMMER, ApkFormFactor.classify(projected, emptySequence()))
 
@@ -63,8 +63,8 @@ class ApkFormFactorTest {
           Element(
             "uses-feature",
             mapOf("name" to "android.software.xr.api.spatial", "required" to false),
-          )
-        )
+          ),
+        ),
       )
     assertEquals(ApkFormFactor.XR, ApkFormFactor.classify(spatial, emptySequence()))
   }
@@ -87,7 +87,7 @@ class ApkFormFactorTest {
                 "requiredDisplayCategory" to "android.hardware.display.category.XR_PROJECTED",
               ),
             ),
-          )
+          ),
         )
         zip.closeEntry()
       }
@@ -107,7 +107,7 @@ class ApkFormFactorTest {
         manifest(
           Element("manifest", mapOf("package" to "com.example")),
           Element("activity", mapOf("name" to "com.example.Main")),
-        )
+        ),
       )
     assertEquals(emptyList(), signals.projectedActivities)
   }

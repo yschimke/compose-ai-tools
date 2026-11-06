@@ -57,7 +57,7 @@ class ScreenGeneratorCompileFunctionalTest {
         }
         rootProject.name = "test-screen-generator"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -80,7 +80,7 @@ class ScreenGeneratorCompileFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -147,7 +147,7 @@ class ScreenGeneratorCompileFunctionalTest {
             Gauge(progress = { 0.4f })
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -222,7 +222,7 @@ class ScreenGeneratorCompileFunctionalTest {
                                     positional = listOf(ScreenValue.Fractional32(1f)),
                                     receiverScopeFqn =
                                       "androidx.compose.foundation.layout.ColumnScope",
-                                  )
+                                  ),
                                 ),
                               typeFqn = "androidx.compose.ui.Modifier",
                             ),
@@ -261,10 +261,10 @@ class ScreenGeneratorCompileFunctionalTest {
                                                         ChainLink(
                                                           "androidx.compose.ui.unit.dp",
                                                           property = true,
-                                                        )
+                                                        ),
                                                       ),
                                                     typeFqn = "androidx.compose.ui.unit.Dp",
-                                                  )
+                                                  ),
                                                 ),
                                             ),
                                             ChainLink(
@@ -274,7 +274,7 @@ class ScreenGeneratorCompileFunctionalTest {
                                                   ScreenValue.Reference(
                                                     "androidx.compose.ui.Modifier",
                                                     typeFqn = "androidx.compose.ui.Modifier",
-                                                  )
+                                                  ),
                                                 ),
                                               member = true,
                                             ),
@@ -282,11 +282,11 @@ class ScreenGeneratorCompileFunctionalTest {
                                         typeFqn = "androidx.compose.ui.Modifier",
                                       ),
                                   ),
-                              )
-                            )
+                              ),
+                            ),
                         ),
                     ),
-                  )
+                  ),
               ),
           ),
       )
@@ -349,7 +349,7 @@ class ScreenGeneratorCompileFunctionalTest {
     val buildFile = File(projectDir, "build.gradle.kts")
     buildFile.writeText(
       "@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)\n" +
-        buildFile.readText()
+        buildFile.readText(),
     )
     File(projectDir, "build.gradle.kts")
       .appendText(
@@ -360,7 +360,7 @@ class ScreenGeneratorCompileFunctionalTest {
           testImplementation("junit:junit:4.13.2")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     runGradle(projectDir, "composePreviewDiscover")
     val components =
@@ -407,7 +407,7 @@ class ScreenGeneratorCompileFunctionalTest {
                           "fallback" to listOf(label("Unknown page")),
                         ),
                     ),
-                  )
+                  ),
               ),
           ),
       )
@@ -458,7 +458,7 @@ class ScreenGeneratorCompileFunctionalTest {
           }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val run = runGradle(projectDir, "test", "--tests", "generated.SelectionInteractionTest")
     assertThat(run.task(":test")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
@@ -483,10 +483,10 @@ class ScreenGeneratorCompileFunctionalTest {
     val buildFile = File(projectDir, "build.gradle.kts")
     buildFile.writeText(
       "@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)\n" +
-        buildFile.readText()
+        buildFile.readText(),
     )
     buildFile.appendText(
-      "\ndependencies { testImplementation(compose.uiTest); testImplementation(\"junit:junit:4.13.2\") }\n"
+      "\ndependencies { testImplementation(compose.uiTest); testImplementation(\"junit:junit:4.13.2\") }\n",
     )
     runGradle(projectDir, "composePreviewDiscover")
     val components =
@@ -521,7 +521,7 @@ class ScreenGeneratorCompileFunctionalTest {
                   idOf(components, "Button"),
                   slots =
                     mapOf(
-                      "content" to listOf(label(ScreenValue.RowRead("label", "kotlin.String")))
+                      "content" to listOf(label(ScreenValue.RowRead("label", "kotlin.String"))),
                     ),
                   handlers =
                     mapOf(
@@ -530,11 +530,11 @@ class ScreenGeneratorCompileFunctionalTest {
                           ScreenAction.Set(
                             "selection",
                             ScreenValue.RowRead("selection", "kotlin.String"),
-                          )
-                        )
+                          ),
+                        ),
                     ),
-                )
-              )
+                ),
+              ),
           ),
       )
     val modifierType = "androidx.compose.ui.Modifier"
@@ -555,7 +555,7 @@ class ScreenGeneratorCompileFunctionalTest {
             ),
           slots =
             mapOf(
-              "content" to listOf(label(ScreenValue.ParameterRead("caption", "kotlin.String")))
+              "content" to listOf(label(ScreenValue.ParameterRead("caption", "kotlin.String"))),
             ),
         ),
       )
@@ -578,9 +578,9 @@ class ScreenGeneratorCompileFunctionalTest {
                           ScreenValue.RowRead("inset", "kotlin.Float"),
                           listOf(ChainLink("androidx.compose.ui.unit.dp", property = true)),
                           "androidx.compose.ui.unit.Dp",
-                        )
+                        ),
                       ),
-                  )
+                  ),
                 ),
                 modifierType,
               ),
@@ -589,8 +589,8 @@ class ScreenGeneratorCompileFunctionalTest {
           mapOf(
             "onSelect" to
               listOf(
-                ScreenAction.Set("selection", ScreenValue.RowRead("selection", "kotlin.String"))
-              )
+                ScreenAction.Set("selection", ScreenValue.RowRead("selection", "kotlin.String")),
+              ),
           ),
       )
     val repeated = if (useFunction) loop.copy(slots = mapOf("body" to listOf(call))) else loop
@@ -602,7 +602,7 @@ class ScreenGeneratorCompileFunctionalTest {
           slots =
             mapOf(
               "content" to
-                listOf(repeated, label(ScreenValue.StateRead("selection", "kotlin.String")))
+                listOf(repeated, label(ScreenValue.StateRead("selection", "kotlin.String"))),
             ),
         ),
         listOf(ScreenState("selection", "kotlin.String", ScreenValue.Text("Nothing selected"))),
@@ -673,7 +673,7 @@ class ScreenGeneratorCompileFunctionalTest {
           }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val run = runGradle(projectDir, "test", "--tests", "generated.RepetitionInteractionTest")
     assertThat(run.task(":test")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
@@ -721,11 +721,11 @@ class ScreenGeneratorCompileFunctionalTest {
                       componentId = idOf(components, "Text"),
                       arguments = mapOf("text" to ScreenValue.Text("Second")),
                     ),
-                  )
+                  ),
               ),
             slotItems =
               mapOf(
-                "content" to SlotItem("item", "androidx.compose.foundation.lazy.LazyListScope")
+                "content" to SlotItem("item", "androidx.compose.foundation.lazy.LazyListScope"),
               ),
           ),
       )

@@ -45,7 +45,7 @@ class BtaCompilerGradleParityTest {
               listOf(composePluginJar),
               emptyList(),
               emptySet(),
-            )
+            ),
           ),
         // Gradle uses the project name as the module name; checked below via `kotlin.Metadata`, so
         // a fixture rename shows up as a mismatch.
@@ -60,7 +60,7 @@ class BtaCompilerGradleParityTest {
     val byteEqual = firstDiff < 0 && gradleBytes.size == btaBytes.size
     println(
       "[parity] ok=$byteEqual gradleSize=${gradleBytes.size} btaSize=${btaBytes.size} " +
-        "sizeDelta=${btaBytes.size - gradleBytes.size} firstDiffOffset=$firstDiff"
+        "sizeDelta=${btaBytes.size - gradleBytes.size} firstDiffOffset=$firstDiff",
     )
 
     // (2) Hard requirement: both must carry the Compose-transformed descriptor. The
@@ -118,7 +118,7 @@ class BtaCompilerGradleParityTest {
       System.getProperty("composeai.bta.fixtureGradleClassesDir")
         ?: error(
           "Gradle-parity test needs the fixture-compiled classes dir; " +
-            "build.gradle.kts populates the system property via the test task."
+            "build.gradle.kts populates the system property via the test task.",
         )
     val cls = Path.of(dir, "fixture", "GreetingKt.class")
     assertTrue(

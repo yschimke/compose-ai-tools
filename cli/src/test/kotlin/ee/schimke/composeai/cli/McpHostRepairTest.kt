@@ -74,7 +74,7 @@ class McpHostRepairTest {
     assertTrue(StableLauncher.isVersioned("C:\\x\\compose-preview-2.0.0\\bin\\compose-preview"))
     assertFalse(StableLauncher.isVersioned(stable))
     assertFalse(
-      StableLauncher.isVersioned("/home/u/.claude/skills/compose-preview/bin/compose-preview")
+      StableLauncher.isVersioned("/home/u/.claude/skills/compose-preview/bin/compose-preview"),
     )
   }
 
@@ -114,7 +114,7 @@ class McpHostRepairTest {
       )!!
     assertEquals(stable to listOf("mcp", "serve", "--project=/w/app"), command to args)
     assertNull(
-      McpHostRepair.fix(stable, listOf("mcp", "serve", "--project=/w/app"), stable, false, exists)
+      McpHostRepair.fix(stable, listOf("mcp", "serve", "--project=/w/app"), stable, false, exists),
     )
   }
 
@@ -276,7 +276,7 @@ class McpHostRepairTest {
         openCode = File(tmp, "opencode.json"),
       )
     files.claudeJson.writeText(
-      """{"mcpServers":{"compose-preview-mcp":{"command":"$versioned","args":["mcp","serve","--project=/w"]}}}"""
+      """{"mcpServers":{"compose-preview-mcp":{"command":"$versioned","args":["mcp","serve","--project=/w"]}}}""",
     )
     val healthyAntigravity =
       """{"mcpServers":{"compose-preview-mcp":{"command":"$stable","args":["mcp","serve"]}}}"""

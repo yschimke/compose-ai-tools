@@ -32,7 +32,7 @@ class DeferredReplyModelTest {
              "check": "big?", "source": "https://developer.android.com/b"}
           ]
         }
-        """
+        """,
       )
       .guidelines!!
 

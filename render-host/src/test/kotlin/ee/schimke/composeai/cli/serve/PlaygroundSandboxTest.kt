@@ -130,7 +130,7 @@ class PlaygroundSandboxTest {
       val parent = builder.environment().toMap()
       // `env` in place of `java`: the child prints the environment it was actually started with.
       builder.command(
-        PlaygroundSandbox.NONE.command(paths.copy(workDir = workDir), parent) + listOf("env")
+        PlaygroundSandbox.NONE.command(paths.copy(workDir = workDir), parent) + listOf("env"),
       )
       builder.directory(workDir).redirectErrorStream(true)
       val process = builder.start()
@@ -164,7 +164,7 @@ class PlaygroundSandboxTest {
     // The JDK and every classpath entry are read-only…
     assertTrue(argv.windowed(3).any { it == listOf("--ro-bind-try", "/opt/jdk17", "/opt/jdk17") })
     assertTrue(
-      argv.windowed(3).any { it == listOf("--ro-bind-try", "/cache/m3.jar", "/cache/m3.jar") }
+      argv.windowed(3).any { it == listOf("--ro-bind-try", "/cache/m3.jar", "/cache/m3.jar") },
     )
     // …and the work dir is the ONLY --bind (read-write) in the whole argv.
     val writableBinds = argv.windowed(3).filter { it[0] == "--bind" }
@@ -226,7 +226,7 @@ class PlaygroundSandboxTest {
     assertTrue(
       PlaygroundSandbox.Profile.entries.filter {
         it.declaresEgressBlocked && it.declaresFilesystemContained && it.declaresResourceCaps
-      } == listOf(PlaygroundSandbox.Profile.STRICT)
+      } == listOf(PlaygroundSandbox.Profile.STRICT),
     )
   }
 
@@ -274,7 +274,7 @@ class PlaygroundSandboxTest {
         base = base,
         mavenRepoLocal = "/cache/maven",
         userHome = "/root",
-      ) === base
+      ) === base,
     )
   }
 
@@ -404,7 +404,7 @@ class PlaygroundPublicGateTest {
         repoAccessGated = false,
         sandbox = PlaygroundSandbox.NONE,
         probe = null,
-      ) is PlaygroundPublicGate.Decision.Allow
+      ) is PlaygroundPublicGate.Decision.Allow,
     )
     assertTrue(
       PlaygroundPublicGate.decide(
@@ -412,7 +412,7 @@ class PlaygroundPublicGateTest {
         repoAccessGated = false,
         sandbox = bwrap,
         probe = null,
-      ) is PlaygroundPublicGate.Decision.Allow
+      ) is PlaygroundPublicGate.Decision.Allow,
     )
   }
 
@@ -438,7 +438,7 @@ class PlaygroundPublicGateTest {
         repoAccessGated = false,
         sandbox = bwrap,
         probe = null,
-      )
+      ),
     )
   }
 
@@ -451,7 +451,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = false,
           sandbox = bwrap,
           probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: command not found"),
-        )
+        ),
       )
     assertTrue("bwrap: command not found" in refusal, refusal)
   }
@@ -463,14 +463,14 @@ class PlaygroundPublicGateTest {
     assertTrue("outbound network reachable" in refusal, refusal)
 
     assertRefused(
-      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(filesystemContained = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(filesystemContained = false)),
     )
     assertRefused(
-      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(processIsolated = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(processIsolated = false)),
     )
     // A jail so tight the render can't write its PNG is also a refusal — it would fail every run.
     assertRefused(
-      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(workDirWritable = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(workDirWritable = false)),
     )
   }
 
@@ -515,7 +515,7 @@ class PlaygroundPublicGateTest {
       "a custom jail is admitted on evidence, not on its name",
     )
     assertRefused(
-      PlaygroundPublicGate.decide(true, false, custom, cleanProbe.copy(egressBlocked = false))
+      PlaygroundPublicGate.decide(true, false, custom, cleanProbe.copy(egressBlocked = false)),
     )
   }
 
@@ -531,7 +531,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = true,
           sandbox = PlaygroundSandbox.NONE,
           probe = null,
-        )
+        ),
       )
 
     assertTrue("repo-access-gated" in allow, allow)
@@ -549,7 +549,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = true,
           sandbox = bwrap,
           probe = cleanProbe,
-        )
+        ),
       )
 
     assertTrue("repo-access-gated" in allow, allow)
@@ -566,7 +566,7 @@ class PlaygroundPublicGateTest {
         repoAccessGated = true,
         sandbox = bwrap,
         probe = cleanProbe.copy(egressBlocked = false),
-      )
+      ),
     )
   }
 
@@ -582,7 +582,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = false,
           sandbox = PlaygroundSandbox.NONE,
           probe = null,
-        )
+        ),
       )
 
     assertTrue("--github-auth-repo" in refusal, refusal)
@@ -602,7 +602,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = false,
           sandbox = strict,
           probe = cleanProbe,
-        )
+        ),
       )
 
     assertTrue("ANONYMOUS" in allow, allow)
@@ -620,7 +620,7 @@ class PlaygroundPublicGateTest {
           repoAccessGated = false,
           sandbox = bwrap,
           probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: not found"),
-        )
+        ),
       )
 
     assertTrue("bwrap: not found" in refusal, refusal)
@@ -637,7 +637,7 @@ class PlaygroundPublicGateTest {
         repoAccessGated = true,
         sandbox = bwrap,
         probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: not found"),
-      )
+      ),
     )
   }
 

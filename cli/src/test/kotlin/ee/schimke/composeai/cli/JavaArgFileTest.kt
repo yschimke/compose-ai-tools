@@ -24,7 +24,7 @@ class JavaArgFileTest {
     val java = File(System.getProperty("java.home"), "bin/java").absolutePath
     val command =
       fitJavaCommand(
-        listOf(java, "-Dcomposeai.test=a \"quoted\" \\ value", "-cp", classpath, "-version")
+        listOf(java, "-Dcomposeai.test=a \"quoted\" \\ value", "-cp", classpath, "-version"),
       )
 
     assertEquals(3, command.size)
@@ -32,7 +32,7 @@ class JavaArgFileTest {
     assertEquals(
       command,
       fitJavaCommand(
-        listOf(java, "-Dcomposeai.test=a \"quoted\" \\ value", "-cp", classpath, "-version")
+        listOf(java, "-Dcomposeai.test=a \"quoted\" \\ value", "-cp", classpath, "-version"),
       ),
     )
     assertTrue(command[1].startsWith("@"))

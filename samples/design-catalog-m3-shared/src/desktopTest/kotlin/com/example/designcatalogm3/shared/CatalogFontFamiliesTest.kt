@@ -29,7 +29,7 @@ class CatalogFontFamiliesTest {
     // Insertion order (body before display) must not leak — canonical order is display→…→label.
     val blob =
       serializeCatalogFontFamilies(
-        linkedMapOf("body" to "Space Grotesk", "display" to "Orbitron", "bogus" to "Nope")
+        linkedMapOf("body" to "Space Grotesk", "display" to "Orbitron", "bogus" to "Nope"),
       )
     assertEquals("families:display=Orbitron,body=Space Grotesk", blob)
   }
@@ -48,7 +48,7 @@ class CatalogFontFamiliesTest {
   fun `parse ignores unknown groups and blank families`() {
     val parsed =
       parseCatalogFontFamilies(
-        "families:display=Orbitron,mono=JetBrains Mono,title=,body=Space Grotesk"
+        "families:display=Orbitron,mono=JetBrains Mono,title=,body=Space Grotesk",
       )
     // `mono` is not an M3 role group and `title=` is blank — both dropped; the valid two survive.
     assertEquals(mapOf("display" to "Orbitron", "body" to "Space Grotesk"), parsed)

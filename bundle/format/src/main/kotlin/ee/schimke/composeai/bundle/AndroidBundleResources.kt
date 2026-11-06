@@ -89,7 +89,7 @@ public object AndroidBundleResources {
           if (!applicationPackage.isNullOrBlank()) {
             appendLine("android_custom_package=$applicationPackage")
           }
-        }
+        },
       )
     return root
   }
@@ -201,7 +201,7 @@ public object AndroidBundleResources {
         dest.writeText(stripped)
         System.err.println(
           "[android-bundle] stripped <application android:name> from the daemon manifest " +
-            "(previews run on android.app.Application; the consumer Application is not bootstrapped)"
+            "(previews run on android.app.Application; the consumer Application is not bootstrapped)",
         )
         dest
       }

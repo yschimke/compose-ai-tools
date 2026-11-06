@@ -34,7 +34,7 @@ public fun main(args: Array<String>) {
   if (input == null || output == null || width == null || height == null) {
     System.err.println(
       "usage: RcJvmRenderMain --input <doc.rc> --output <out.png> --width <px> --height <px> " +
-        "[--density <f>] [--fontScale <f>] [--seeds <file>] [--format png|svg] [--theme light|dark]"
+        "[--density <f>] [--fontScale <f>] [--seeds <file>] [--format png|svg] [--theme light|dark]",
     )
     exitProcess(2)
   }

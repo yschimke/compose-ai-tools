@@ -81,7 +81,7 @@ object BundleSource {
           client.prepareGet(uri.toString()).execute { response ->
             if (!response.status.isSuccess()) {
               throw IllegalArgumentException(
-                "could not download bundle from $arg: HTTP ${response.status.value}"
+                "could not download bundle from $arg: HTTP ${response.status.value}",
               )
             }
             fileSystem.sink(tempPath).buffer().use { sink ->

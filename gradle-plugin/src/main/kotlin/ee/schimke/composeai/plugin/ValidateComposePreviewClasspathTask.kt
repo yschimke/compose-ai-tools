@@ -64,7 +64,7 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
       buildString {
         appendLine(
           "Compose Preview desktop classpath contains AndroidX Compose UI artifacts. " +
-            "Use org.jetbrains.compose UI artifacts for Compose Multiplatform desktop classpaths."
+            "Use org.jetbrains.compose UI artifacts for Compose Multiplatform desktop classpaths.",
         )
         offenders.take(8).forEach { appendLine(" - $it") }
         if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
@@ -75,9 +75,9 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
           "If this is a com.android.kotlin.multiplatform.library (:shared) module, add a " +
             "`jvm(\"desktop\")` target to its `kotlin { }` block so androidMain previews render " +
             "through the Compose Multiplatform Desktop pipeline. See " +
-            "compose-preview/references/cmp-shared.md."
+            "compose-preview/references/cmp-shared.md.",
         )
-      }
+      },
     )
   }
 
@@ -104,11 +104,11 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
               "The ${scope.label} classpath resolved more than one skiko version " +
                 "(${scope.versions.joinToString()}). The skiko API jar and its platform native " +
                 "runtime must match — a skew loads a libskiko whose exports the API does not " +
-                "declare, and every render fails at draw time."
+                "declare, and every render fails at draw time.",
             )
           }
           append("Align them through a single Compose Multiplatform version.")
-        }
+        },
       )
     }
     val resolved = scopes.filter { it.versions.isNotEmpty() }
@@ -116,13 +116,13 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
       0 -> Unit
       1 ->
         logger.info(
-          "Compose Preview desktop classpath: skiko ${resolved.first().versions.single()}"
+          "Compose Preview desktop classpath: skiko ${resolved.first().versions.single()}",
         )
       else ->
         logger.info(
           "Compose Preview desktop classpath carries two coherent skiko pairs — " +
             resolved.joinToString { "${it.label} ${it.versions.single()}" } +
-            ". The one earlier on the classpath is the one that loads; the other is shadowed."
+            ". The one earlier on the classpath is the one that loads; the other is shadowed.",
         )
     }
   }

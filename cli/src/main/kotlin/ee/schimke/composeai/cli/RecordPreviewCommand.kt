@@ -90,7 +90,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     if (events.isEmpty()) {
       System.err.println(
         "compose-preview record: warning — script '$scriptPath' contained no events; " +
-          "the recording will be a single static frame."
+          "the recording will be a single static frame.",
       )
     }
 
@@ -110,7 +110,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
           else ->
             fail(
               "multiple preview modules found (${modules.joinToString(", ") { it.gradlePath }}); " +
-                "pass --module to pick one"
+                "pass --module to pick one",
             )
         }
       // `composePreviewDaemonStart` writes daemon-launch.json; both it and the render depend on
@@ -136,7 +136,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     if (!descriptorFile.isFile) {
       fail(
         "daemon descriptor missing at ${descriptorFile.absolutePath}; " +
-          "composePreviewDaemonStart should have written it — re-run with --verbose"
+          "composePreviewDaemonStart should have written it — re-run with --verbose",
       )
     }
     val config =
@@ -164,7 +164,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       if (verbose) {
         System.err.println(
           "[record] captured ${stopped.frameCount} frame(s) covering ${stopped.durationMs}ms " +
-            "(${stopped.frameWidthPx}x${stopped.frameHeightPx}px)"
+            "(${stopped.frameWidthPx}x${stopped.frameHeightPx}px)",
         )
       }
       val encoded =
@@ -184,7 +184,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     val outFile = copyArtifact(outcome.encoded.videoPath, outPath)
     println(
       "Recorded ${target.previewId} → ${outFile.path} " +
-        "(${format.name.lowercase()}, ${outcome.encoded.sizeBytes} bytes)"
+        "(${format.name.lowercase()}, ${outcome.encoded.sizeBytes} bytes)",
     )
 
     // Gate on assertions after the artifact is written (the frames show why). A FAILED assertion
@@ -197,14 +197,14 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       }
     if (failures.isNotEmpty()) {
       System.err.println(
-        "compose-preview record: ${failures.size} assertion(s) failed for ${target.previewId}:"
+        "compose-preview record: ${failures.size} assertion(s) failed for ${target.previewId}:",
       )
       for (f in failures) {
         val statusNote =
           if (f.status == RecordingScriptEventStatus.UNSUPPORTED) " (unsupported by this backend)"
           else ""
         System.err.println(
-          "  - [t=${f.tMs}ms] ${f.kind}$statusNote: ${f.message ?: "assertion not met"}"
+          "  - [t=${f.tMs}ms] ${f.kind}$statusNote: ${f.message ?: "assertion not met"}",
         )
       }
       exitProcess(2)
@@ -225,7 +225,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     } catch (e: Exception) {
       fail(
         "could not parse script '${scriptFile.path}' as a JSON array of RecordingScriptEvent: " +
-          (e.message ?: e.javaClass.simpleName)
+          (e.message ?: e.javaClass.simpleName),
       )
     }
   }
@@ -258,7 +258,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
       ?: run {
         System.err.println(
           "compose-preview record: no --format and unrecognised --out extension '.$ext'; " +
-            "defaulting to apng. Pass --format gif|apng|mp4|webm to choose explicitly."
+            "defaulting to apng. Pass --format gif|apng|mp4|webm to choose explicitly.",
         )
         RecordingFormat.APNG
       }
@@ -332,7 +332,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
           else ->
             fail(
               "unsupported --overrides key '$key'. Supported: touchOverlay, inspectionMode, " +
-                "device, localeTag, fontScale, density, widthPx, heightPx, clockEpochMillis"
+                "device, localeTag, fontScale, density, widthPx, heightPx, clockEpochMillis",
             )
         }
     }

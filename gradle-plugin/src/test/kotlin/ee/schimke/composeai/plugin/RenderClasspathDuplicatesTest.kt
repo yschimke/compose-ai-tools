@@ -374,7 +374,7 @@ class RenderClasspathDuplicatesTest {
           "/w/app/build/intermediates/unit_test_config_directory/debugUnitTest",
           "/opt/android-sdk/platforms/android-36/android.jar",
           "/w/app/build/generated/composeai/render-shards/classes",
-        )
+        ),
       )
 
     assertThat(duplicates).isEmpty()
@@ -450,8 +450,8 @@ class RenderClasspathDuplicatesTest {
       .isEqualTo("ui-android" to "1.9.5")
     assertThat(
         RenderClasspathDuplicates.splitNameVersion(
-          "listenablefuture-9999.0-empty-to-avoid-conflict-with-guava"
-        )
+          "listenablefuture-9999.0-empty-to-avoid-conflict-with-guava",
+        ),
       )
       .isEqualTo("listenablefuture" to "9999.0-empty-to-avoid-conflict-with-guava")
     assertThat(RenderClasspathDuplicates.splitNameVersion("classes")).isNull()

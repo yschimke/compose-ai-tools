@@ -123,7 +123,7 @@ public object BundleVerifier {
     }
     return if (ordered.isEmpty())
       Verdict.Unverified(
-        if (signatures.isEmpty()) "unsigned bundle" else "no trusted signature/branch/provenance"
+        if (signatures.isEmpty()) "unsigned bundle" else "no trusted signature/branch/provenance",
       )
     else Verdict.Trusted(ordered)
   }

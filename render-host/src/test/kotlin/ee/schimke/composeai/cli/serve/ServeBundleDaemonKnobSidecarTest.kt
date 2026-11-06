@@ -59,8 +59,8 @@ class ServeBundleDaemonKnobSidecarTest {
     val rcPayload =
       RemoteComposeDeclarationsPayload(
         listOf(
-          RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
-        )
+          RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF")),
+        ),
       )
     val overridesPayload =
       PreviewOverridesPayload(
@@ -69,8 +69,8 @@ class ServeBundleDaemonKnobSidecarTest {
             key = "label",
             type = "string",
             default = PreviewOverrideValue.StringValue("Filled"),
-          )
-        )
+          ),
+        ),
       )
     val zipBytes =
       zipOf(

@@ -32,7 +32,7 @@ class CliFlagsRegistryTest {
       fail(
         "Flags read via flagValue()/flagValuesAll() but missing from CliFlags: $unclassified. " +
           "Add each to CliFlags.VALUE_FLAGS (value is the next argv token, e.g. --foo bar) or " +
-          "CliFlags.ATTACHED_OR_OPTIONAL_FLAGS (value attached/optional, e.g. --foo=bar)."
+          "CliFlags.ATTACHED_OR_OPTIONAL_FLAGS (value attached/optional, e.g. --foo=bar).",
       )
     }
   }
@@ -82,7 +82,7 @@ class CliFlagsRegistryTest {
     assertEquals(
       2,
       CliFlags.findCommandIndex(
-        arrayOf("--ui-builder-url", "https://preview.example", "mcp", "serve")
+        arrayOf("--ui-builder-url", "https://preview.example", "mcp", "serve"),
       ),
     )
     // --force takes a required reason; the space form must skip the reason (ForceFlagTest pins that

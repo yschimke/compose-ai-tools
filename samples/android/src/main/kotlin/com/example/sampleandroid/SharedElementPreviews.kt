@@ -110,7 +110,7 @@ private fun CollapsedCard(
             )
             .size(48.dp)
             .clip(CircleShape)
-            .background(Color(0xFF6750A4))
+            .background(Color(0xFF6750A4)),
       )
       Spacer(Modifier.size(12.dp))
       Text(
@@ -143,7 +143,7 @@ private fun ExpandedCard(
           .clip(RoundedCornerShape(28.dp))
           .background(Color(0xFFE8DEF8))
           .fillMaxSize()
-          .padding(20.dp)
+          .padding(20.dp),
     ) {
       Box(
         modifier =
@@ -154,7 +154,7 @@ private fun ExpandedCard(
             )
             .size(120.dp)
             .clip(CircleShape)
-            .background(Color(0xFF6750A4))
+            .background(Color(0xFF6750A4)),
       )
       Spacer(Modifier.size(16.dp))
       Text(

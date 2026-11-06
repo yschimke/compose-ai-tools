@@ -32,7 +32,7 @@ class DaemonLaunchBuilderCliTest {
           "/abs/app/previews.json",
           "--out",
           "/abs/app/daemon-launch.json",
-        )
+        ),
       )
 
     assertThat(parsed.modulePath).isEqualTo(":app")
@@ -56,7 +56,7 @@ class DaemonLaunchBuilderCliTest {
   fun `repeated --classpath concatenates`() {
     val parsed =
       DaemonLaunchBuilderCli.parse(
-        baseArgs() + arrayOf("--classpath", "/a", "--classpath", "/b${File.pathSeparator}/c")
+        baseArgs() + arrayOf("--classpath", "/a", "--classpath", "/b${File.pathSeparator}/c"),
       )
     assertThat(parsed.classpath).containsExactly("/a", "/b", "/c").inOrder()
   }
@@ -77,7 +77,7 @@ class DaemonLaunchBuilderCliTest {
             "/w/app/res",
             "--build-file",
             "/w/app/BUILD.bazel",
-          )
+          ),
       )
     assertThat(parsed.sourceWatch)
       .isEqualTo(
@@ -85,7 +85,7 @@ class DaemonLaunchBuilderCliTest {
           sourceDirs = listOf("/w/app/src", "/w/bazel-bin/app/generated"),
           resourceDirs = listOf("/w/app/res"),
           buildFiles = listOf("/w/app/BUILD.bazel"),
-        )
+        ),
       )
     val encoded =
       DaemonLaunchBuilder.encode(
@@ -99,7 +99,7 @@ class DaemonLaunchBuilderCliTest {
           workingDirectory = "/w",
           manifestPath = "/w/previews.json",
           sourceWatch = parsed.sourceWatch,
-        )
+        ),
       )
     assertThat(DaemonLaunchBuilder.decode(encoded).sourceWatch).isEqualTo(parsed.sourceWatch)
   }
@@ -144,7 +144,7 @@ class DaemonLaunchBuilderCliTest {
             "/m",
             "--out",
             "/o",
-          )
+          ),
         )
       }
     assertThat(error.message).contains("--module-path is required")

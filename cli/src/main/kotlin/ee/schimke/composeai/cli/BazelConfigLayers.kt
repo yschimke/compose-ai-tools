@@ -58,7 +58,7 @@ internal fun loadBazelConfigLayers(
           "classpath $BAZEL_DEFAULTS_RESOURCE",
           parse(it, "classpath $BAZEL_DEFAULTS_RESOURCE"),
           defaults = true,
-        )
+        ),
       )
     }
     envConfig
@@ -71,7 +71,7 @@ internal fun loadBazelConfigLayers(
             "\$$BAZEL_CONFIG_ENV ($file)",
             parse(file.readText(), file.path),
             defaults = true,
-          )
+          ),
         )
       }
     workspaceConfig

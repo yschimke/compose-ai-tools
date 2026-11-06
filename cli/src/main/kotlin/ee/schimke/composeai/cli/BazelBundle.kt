@@ -31,9 +31,9 @@ internal fun writeBazelBundle(
         prepared.manifest.previews.map { preview ->
           preview.copy(
             sourceFile =
-              preview.sourceFile?.let { path -> sourcePaths[File(path).canonicalFile] ?: path }
+              preview.sourceFile?.let { path -> sourcePaths[File(path).canonicalFile] ?: path },
           )
-        }
+        },
     )
   return produceBundle(
     artifacts.metadata.target,

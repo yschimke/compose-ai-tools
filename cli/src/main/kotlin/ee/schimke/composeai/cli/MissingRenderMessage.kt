@@ -96,7 +96,7 @@ private fun offenderLines(entry: PreviewDiagnosis): String {
         dating = dating,
         scanned =
           entry.sidecars.any { it.output in outputs && it.discovery == OutputDiscovery.SCANNED },
-      )
+      ),
     )
   }
   return sb.toString()

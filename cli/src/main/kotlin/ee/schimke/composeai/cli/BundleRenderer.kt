@@ -123,8 +123,8 @@ class BundleRenderer(
                 JsonArray(
                   root.getValue("previews").jsonArray.filter {
                     it.jsonObject.getValue("id").jsonPrimitive.content in selectedIds
-                  }
-                ))
+                  },
+                )),
           )
           .toString()
       }
@@ -157,7 +157,7 @@ class BundleRenderer(
         )
       else ->
         throw UnsupportedOperationException(
-          "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')"
+          "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')",
         )
     }
   }
@@ -177,7 +177,7 @@ class BundleRenderer(
       throw IllegalStateException(
         "bundle render: no renderer jars found. Looked in `${bundleSidecarSearchDescription("lib-renderer")}`; " +
           "it is fetched from the compose-preview-daemon release on first use, or set " +
-          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`."
+          "`-Dcomposeai.cli.libRendererDir=<dir>/lib-renderer`.",
       )
     }
     val skikoNative = SkikoNativeProvision.prepare(rendererJars)
@@ -195,7 +195,7 @@ class BundleRenderer(
       )
     val classpathString =
       (listOf(classesDir, skikoNative) + libJars + resolvedJars + rendererJars).joinToString(
-        File.pathSeparator
+        File.pathSeparator,
       ) {
         it.absolutePath
       }
@@ -212,7 +212,7 @@ class BundleRenderer(
       if (ir != null) {
         logSink(
           "compose-preview: skipping ${preview.id} — IR replay (format=${ir.format}) runs in the " +
-            "Android daemon (compose-preview bundle daemon), not the desktop renderer"
+            "Android daemon (compose-preview bundle daemon), not the desktop renderer",
         )
         continue
       }
@@ -255,7 +255,7 @@ class BundleRenderer(
     for (preview in previews.previews.filter { it.id in irIds }) {
       logSink(
         "compose-preview: skipping ${preview.id} — IR replay runs in the Android daemon " +
-          "(compose-preview bundle daemon), not the one-shot renderer"
+          "(compose-preview bundle daemon), not the one-shot renderer",
       )
     }
     val renderable = previews.previews.filter { it.id !in irIds }
@@ -282,7 +282,7 @@ class BundleRenderer(
           "(`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`, fetched from the " +
           "compose-preview-daemon release on first use) or `-Dcomposeai.cli.libRendererAndroidDir=" +
           "<dir>`. Looked in `${androidRendererSearchDescription()}` and " +
-          "`${bundleSidecarSearchDescription("lib-daemon-android")}`."
+          "`${bundleSidecarSearchDescription("lib-daemon-android")}`.",
       )
     }
     val androidJar =
@@ -293,7 +293,7 @@ class BundleRenderer(
         ?: throw IllegalStateException(
           "bundle render: backend=android needs android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
             "pass --android-jar, or run from a project whose local.properties has sdk.dir (no " +
-            "platforms/android-*/android.jar found)."
+            "platforms/android-*/android.jar found).",
         )
 
     // Under the network switch Robolectric needs pre-provisioned android-all; refuse before
@@ -389,7 +389,7 @@ class BundleRenderer(
           add("-cp")
           add(classpath)
           add(ANDROID_RENDERER_LAUNCHER)
-        }
+        },
       )
     return runRenderProcess(ProcessBuilder(command), tailLines = 40)
   }
@@ -513,7 +513,7 @@ class BundleRenderer(
           "-cp",
           classpath,
           "ee.schimke.composeai.renderer.DesktopRendererMainKt",
-        )
+        ),
       )
     val pb = ProcessBuilder(launch + args)
     return runRenderProcess(pb, tailLines = 20)

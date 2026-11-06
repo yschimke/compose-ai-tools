@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * `modifierCapabilities: []`) means "none".
  */
 internal fun UiBuilderComponentPolicy.mergedWith(
-  authored: UiBuilderAuthoredComponent?
+  authored: UiBuilderAuthoredComponent?,
 ): UiBuilderComponentPolicy {
   if (authored == null) return this
   return newBuilder()

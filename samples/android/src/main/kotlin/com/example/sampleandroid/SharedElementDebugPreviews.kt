@@ -180,7 +180,7 @@ private fun DebugCollapsed(
             )
             .size(48.dp)
             .clip(CircleShape)
-            .background(Color(0xFF345CA8))
+            .background(Color(0xFF345CA8)),
       )
       Spacer(Modifier.size(12.dp))
       Text(
@@ -207,7 +207,7 @@ private fun DebugCollapsed(
               )
               .size(20.dp)
               .clip(CircleShape)
-              .background(Color(0xFFEF6C00))
+              .background(Color(0xFFEF6C00)),
         )
       }
     }
@@ -229,7 +229,7 @@ private fun DebugExpanded(
           .clip(RoundedCornerShape(28.dp))
           .background(Color(0xFFD7E3FF))
           .fillMaxSize()
-          .padding(20.dp)
+          .padding(20.dp),
     ) {
       Box(
         modifier =
@@ -240,7 +240,7 @@ private fun DebugExpanded(
             )
             .size(120.dp)
             .clip(CircleShape)
-            .background(Color(0xFF345CA8))
+            .background(Color(0xFF345CA8)),
       )
       Spacer(Modifier.size(16.dp))
       Text(

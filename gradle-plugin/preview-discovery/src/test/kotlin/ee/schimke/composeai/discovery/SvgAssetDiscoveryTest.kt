@@ -27,7 +27,7 @@ class SvgAssetDiscoveryTest {
           projectDirectory = resourceDir,
           failOnEmpty = false,
           resourceDirs = listOf(resourceDir),
-        )
+        ),
       )
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
     return (outcome as PreviewDiscovery.Outcome.Success).manifest
@@ -40,7 +40,7 @@ class SvgAssetDiscoveryTest {
     res
       .resolve("icons/badge.svg")
       .writeText(
-        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120"><rect width="240" height="120"/></svg>"""
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120"><rect width="240" height="120"/></svg>""",
       )
     // A file that ends in `.svg` but carries no `<svg` root — must be skipped.
     res.resolve("not-really.svg").writeText("just some text, not markup")
@@ -69,7 +69,7 @@ class SvgAssetDiscoveryTest {
     res
       .resolve("logo.svg")
       .writeText(
-        """<svg xmlns="http://www.w3.org/2000/svg" width="64px" height="48px" viewBox="0 0 240 120"/>"""
+        """<svg xmlns="http://www.w3.org/2000/svg" width="64px" height="48px" viewBox="0 0 240 120"/>""",
       )
 
     val p = discover(res).previews.single()
@@ -85,7 +85,7 @@ class SvgAssetDiscoveryTest {
     res
       .resolve("icon.svg")
       .writeText(
-        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 12h16"/></svg>"""
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 12h16"/></svg>""",
       )
 
     val p = discover(res).previews.single()

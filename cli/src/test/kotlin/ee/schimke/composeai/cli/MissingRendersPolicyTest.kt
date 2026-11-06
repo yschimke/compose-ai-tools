@@ -98,7 +98,7 @@ class MissingRendersPolicyTest {
     // failure — mirrors NON_PNG_PREVIEW_KINDS in compare-previews.py.
     val results =
       listOf(
-        result("p.Spatial", kind = "XR_SUBSPACE", captures = listOf(CaptureResult(pngPath = null)))
+        result("p.Spatial", kind = "XR_SUBSPACE", captures = listOf(CaptureResult(pngPath = null))),
       )
     assertTrue(previewsMissingPng(results).isEmpty())
     assertTrue("XR_SUBSPACE" in NON_PNG_PREVIEW_KINDS)
@@ -114,7 +114,7 @@ class MissingRendersPolicyTest {
           "p.CatalogSheet",
           kind = "CATALOG",
           captures = listOf(CaptureResult(pngPath = null, optional = true)),
-        )
+        ),
       )
     assertTrue(previewsMissingPng(results).isEmpty())
   }
@@ -127,7 +127,7 @@ class MissingRendersPolicyTest {
           "p.Mixed",
           captures =
             listOf(CaptureResult(pngPath = null, optional = true), CaptureResult(pngPath = null)),
-        )
+        ),
       )
     assertEquals(listOf("p.Mixed"), previewsMissingPng(results).map { it.id })
   }
@@ -143,7 +143,7 @@ class MissingRendersPolicyTest {
               CaptureResult(advanceTimeMillis = 0, pngPath = "/r/a.png", sha256 = "a"),
               CaptureResult(advanceTimeMillis = 500, pngPath = null),
             ),
-        )
+        ),
       )
     assertEquals(listOf("p.FanOut"), previewsMissingPng(results).map { it.id })
   }
@@ -159,7 +159,7 @@ class MissingRendersPolicyTest {
     assertEquals(
       "500ms · scroll end",
       captureCoordLabel(
-        CaptureResult(advanceTimeMillis = 500, scroll = ScrollCapture(mode = "END"))
+        CaptureResult(advanceTimeMillis = 500, scroll = ScrollCapture(mode = "END")),
       ),
     )
     assertEquals(

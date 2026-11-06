@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
       SampleTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
           HomeScreen(
-            onOpenNowPlaying = { startActivity(Intent(this, NowPlayingActivity::class.java)) }
+            onOpenNowPlaying = { startActivity(Intent(this, NowPlayingActivity::class.java)) },
           )
         }
       }

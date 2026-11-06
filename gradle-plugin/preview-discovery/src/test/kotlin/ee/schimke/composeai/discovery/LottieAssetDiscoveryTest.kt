@@ -26,7 +26,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = resourceDir,
           failOnEmpty = false,
           resourceDirs = listOf(resourceDir),
-        )
+        ),
       )
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
     return (outcome as PreviewDiscovery.Outcome.Success).manifest
@@ -102,7 +102,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
@@ -137,7 +137,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = true,
           resourceDirs = listOf(resources),
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
@@ -169,7 +169,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     assertThat(outcome.manifest.previews).hasSize(1)
@@ -202,7 +202,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Failure
 
     val warning = outcome.warnings.joinToString("\n")
@@ -241,7 +241,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
@@ -272,7 +272,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
@@ -308,7 +308,7 @@ class LottieAssetDiscoveryTest {
             "\"\"\"" +
             """
             """
-              .trimIndent()
+              .trimIndent(),
         )
       }
     val resources = project.resolve("resources").apply { mkdirs() }
@@ -325,7 +325,7 @@ class LottieAssetDiscoveryTest {
           projectDirectory = project,
           failOnEmpty = false,
           resourceDirs = listOf(resources),
-        )
+        ),
       ) as PreviewDiscovery.Outcome.Success
 
     assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
@@ -357,7 +357,7 @@ class LottieAssetDiscoveryTest {
               projectDirectory = project,
               failOnEmpty = false,
               resourceDirs = listOf(resources),
-            )
+            ),
           ) as PreviewDiscovery.Outcome.Failure
 
         assertThat(outcome.warnings.joinToString("\n"))

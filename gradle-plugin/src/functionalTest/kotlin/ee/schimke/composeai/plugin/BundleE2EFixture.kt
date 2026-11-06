@@ -40,7 +40,7 @@ internal object BundleE2EFixture {
         rootProject.name = "bundle-e2e"
         include(":app")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val appDir = File(projectDir, "app").apply { mkdirs() }
@@ -67,7 +67,7 @@ internal object BundleE2EFixture {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -98,7 +98,7 @@ internal object BundleE2EFixture {
             Box(modifier = Modifier.size(120.dp).background(Color(0xFF3F51B5)))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

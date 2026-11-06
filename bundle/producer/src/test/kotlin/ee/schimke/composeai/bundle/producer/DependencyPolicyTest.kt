@@ -31,7 +31,7 @@ class DependencyPolicyTest {
       ZipOutputStream(outputStream()).use { zip ->
         entries.forEach { (entry, text) ->
           zip.putNextEntry(
-            ZipEntry(entry).apply { setTimeLocal(LocalDateTime.of(2020, 1, 1, 0, 0)) }
+            ZipEntry(entry).apply { setTimeLocal(LocalDateTime.of(2020, 1, 1, 0, 0)) },
           )
           zip.write(text.toByteArray())
           zip.closeEntry()
@@ -63,7 +63,7 @@ class DependencyPolicyTest {
       policy(
         """{"default":["coordinate-verified","embed"],"allowTransformed":true,"versionStamps":false,
            "rules":[{"match":"androidx.*","policy":["build-target","closest-released","embed"]},
-                    {"match":"com.example:lib","policy":"embed","allowTransformed":true}]}"""
+                    {"match":"com.example:lib","policy":"embed","allowTransformed":true}]}""",
       )
     assertEquals(
       listOf(DependencyPolicyStep.COORDINATE_VERIFIED, DependencyPolicyStep.EMBED),
@@ -92,7 +92,7 @@ class DependencyPolicyTest {
       policy(
         """{"rules":[{"match":"androidx.compose.ui:ui-*","policy":["embed"]},
                      {"match":"androidx.*","policy":["closest-released"]},
-                     {"match":"com.?xample","policy":["coordinate-verified"]}]}"""
+                     {"match":"com.?xample","policy":["coordinate-verified"]}]}""",
       )
     assertEquals(
       "androidx.compose.ui:ui-*",
@@ -160,7 +160,7 @@ class DependencyPolicyTest {
     val perRule =
       policy(
         """{"default":["coordinate-verified","embed"],
-            "rules":[{"match":"org.example","policy":["coordinate-verified"],"allowTransformed":true}]}"""
+            "rules":[{"match":"org.example","policy":["coordinate-verified"],"allowTransformed":true}]}""",
       )
     assertEquals(processed, apply(processed, perRule, listOf(processed)).coordinate)
 
@@ -198,7 +198,7 @@ class DependencyPolicyTest {
     val versions =
       releases(
         "androidx.compose.ui:ui-android" to
-          listOf("1.12.0", "1.13.0-alpha01", "1.13.0-beta01", "1.14.0-SNAPSHOT", "1.14.0")
+          listOf("1.12.0", "1.13.0-alpha01", "1.13.0-beta01", "1.14.0-SNAPSHOT", "1.14.0"),
       )
     val outcome = apply(stamped, chain, releases = versions)
     assertEquals("1.13.0-beta01", outcome.coordinate?.version)
@@ -242,7 +242,7 @@ class DependencyPolicyTest {
   fun `fallbacks are tried in order and recorded, build-target always falls through`() {
     val chain =
       policy(
-        """{"default":["build-target","coordinate-verified","closest-released","coordinate","embed"]}"""
+        """{"default":["build-target","coordinate-verified","closest-released","coordinate","embed"]}""",
       )
     val coordinate = maven("org.example:lib:2.0")
     val outcome = apply(coordinate, chain)
@@ -369,7 +369,7 @@ class DependencyPolicyTest {
           policy =
             policy(
               """{"default":["coordinate-verified","embed"],
-                  "rules":[{"match":"androidx.*","policy":["build-target","closest-released","embed"]}]}"""
+                  "rules":[{"match":"androidx.*","policy":["build-target","closest-released","embed"]}]}""",
             ),
           releasedVersions =
             releases("androidx.compose.ui:ui-android" to listOf("1.13.0-alpha01", "1.13.0-beta01")),
@@ -428,7 +428,7 @@ class DependencyPolicyTest {
     assertTrue(
       manifest.classpath.none {
         it is BundleReader.ClasspathEntry.Maven && it.group.startsWith("androidx")
-      }
+      },
     )
   }
 
@@ -440,7 +440,7 @@ class DependencyPolicyTest {
       fixture.write(
         root.resolve("explicit.png"),
         DependencyResolutionOptions(
-          policy = policy("""{"versionStamps":false,"ownerLabels":false}""")
+          policy = policy("""{"versionStamps":false,"ownerLabels":false}"""),
         ),
       )
     assertEquals(BundleReader.readMetadata(base).manifest, explicit)
@@ -455,7 +455,7 @@ class DependencyPolicyTest {
     assertTrue(
       decisions(fixture, root.resolve("embedded.png")).all {
         it["rule"]!!.jsonPrimitive.content == "embed-deps"
-      }
+      },
     )
   }
 
@@ -587,7 +587,7 @@ class DependencyPolicyTest {
   fun `runtime jar owners are read from the raw artifacts document`() {
     val artifacts =
       Json.parseToJsonElement(
-          """{"schemaVersion":1,"runtimeJarOwners":{"external/maven/ui.jar":"@maven//:ui","/abs/x.jar":"//app:x"}}"""
+          """{"schemaVersion":1,"runtimeJarOwners":{"external/maven/ui.jar":"@maven//:ui","/abs/x.jar":"//app:x"}}""",
         )
         .jsonObject
     val owners = runtimeJarOwners(artifacts, root)

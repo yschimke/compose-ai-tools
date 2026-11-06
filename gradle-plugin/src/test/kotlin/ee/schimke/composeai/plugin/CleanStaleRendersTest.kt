@@ -46,7 +46,7 @@ class CleanStaleRendersTest {
     assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Foo.glimmer.raw.png", expected)).isTrue()
     assertThat(ComposePreviewTasks.isRawSiblingOfExpected("sub/Bar.raw.png", expected)).isTrue()
     assertThat(
-        ComposePreviewTasks.isRawSiblingOfExpected("Animation.raw.gif", setOf("Animation.gif"))
+        ComposePreviewTasks.isRawSiblingOfExpected("Animation.raw.gif", setOf("Animation.gif")),
       )
       .isTrue()
   }
@@ -174,9 +174,9 @@ class CleanStaleRendersTest {
                     kind = "render/scroll/long",
                     output = "data/render-scroll-long/Foo.png",
                     cost = SCROLL_LONG_COST,
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 
@@ -212,9 +212,9 @@ class CleanStaleRendersTest {
                     kind = "render/scroll/long",
                     output = "data/render-scroll-long/Foo.png",
                     cost = SCROLL_LONG_COST,
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 
@@ -245,9 +245,9 @@ class CleanStaleRendersTest {
                   Capture(
                     renderOutput = "renders/com.example.PreviewsKt.SpatialPreview/composite.png",
                     optional = true,
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 

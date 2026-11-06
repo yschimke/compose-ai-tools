@@ -105,7 +105,7 @@ class PreviewWidgetTest {
       PreviewDiscovery.widgetOf(
         preview(kind = PreviewKind.TILE),
         lazy { error("a tile preview has no composition to walk") },
-      )
+      ),
     )
   }
 
@@ -118,7 +118,7 @@ class PreviewWidgetTest {
     assertTrue(
       json
         .encodeToString(PreviewInfo.serializer(), widget)
-        .contains(""""widget":{"host":"wear","profile":"wear-widgets"}""")
+        .contains(""""widget":{"host":"wear","profile":"wear-widgets"}"""),
     )
     assertFalse(json.encodeToString(PreviewInfo.serializer(), preview()).contains("\"widget\""))
   }

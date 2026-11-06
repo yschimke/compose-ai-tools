@@ -46,7 +46,7 @@ class PreviewHistoryManifestTest {
     assertEquals(
       mapOf(
         "renders/samples:wear/Foo_Large_Round.png" to
-          "samples:wear/com.example.PreviewsKt.Foo_Large Round"
+          "samples:wear/com.example.PreviewsKt.Foo_Large Round",
       ),
       lookup,
     )
@@ -81,7 +81,7 @@ class PreviewHistoryManifestTest {
     val log =
       gitLog(
         "Update preview baselines from 27ea28c1" to
-          listOf("renders/samples:wear/Foo_Large_Round.png" to a)
+          listOf("renders/samples:wear/Foo_Large_Round.png" to a),
       )
 
     val manifest =
@@ -196,7 +196,7 @@ class PreviewHistoryManifestTest {
     // Otherwise every publish would show a spurious history.json diff on the delivery branch.
     val log =
       gitLog(
-        "publish" to listOf("renders/m/B.png" to a, "renders/m/A.png" to b, "renders/m/C.png" to a)
+        "publish" to listOf("renders/m/B.png" to a, "renders/m/A.png" to b, "renders/m/C.png" to a),
       )
     val lookup =
       mapOf("renders/m/A.png" to "m/A", "renders/m/B.png" to "m/B", "renders/m/C.png" to "m/C")
@@ -225,7 +225,7 @@ class PreviewHistoryManifestTest {
           timelines(log),
           PreviewHistoryManifest.renderPathsToPreviewIds(baselines),
           generatedFrom = "tip",
-        )
+        ),
       )
 
     assertTrue(

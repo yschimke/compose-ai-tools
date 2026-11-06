@@ -135,7 +135,7 @@ class OpenAiDeepLinksTest {
     assertEquals(
       OpenAiPlugin("cp", "mk"),
       OpenAiPlugin.fromEnvironment(
-        mapOf(OpenAiPlugin.PLUGIN_ID_ENV to "cp", OpenAiPlugin.MARKETPLACE_ENV to "mk")
+        mapOf(OpenAiPlugin.PLUGIN_ID_ENV to "cp", OpenAiPlugin.MARKETPLACE_ENV to "mk"),
       ),
     )
     assertEquals(
@@ -155,7 +155,7 @@ class OpenAiDeepLinksTest {
     assertFalse(missing.message.contains("://"), "guidance must not look like a link")
     // A marketplace alone is not enough.
     assertIs<ShowLinkRequest.Unavailable>(
-      ShowLinkRequest.parse(listOf("--link", "--openai-marketplace", "mk"), emptyMap())
+      ShowLinkRequest.parse(listOf("--link", "--openai-marketplace", "mk"), emptyMap()),
     )
   }
 

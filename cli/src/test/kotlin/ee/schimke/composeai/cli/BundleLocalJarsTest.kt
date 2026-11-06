@@ -66,7 +66,7 @@ class BundleLocalJarsTest {
             |"org.jetbrains.kotlin:kotlin-stdlib":{"version":"1.8.22","shasums":{"jar":"${"0".repeat(64)}"}},
             |"androidx.collection:collection-jvm":{"version":"1.4.4","shasums":{"jar":"${bazelBundleSha(published)}"}}
             |},"version":"2"}"""
-            .trimMargin()
+            .trimMargin(),
         )
       }
     val preview =

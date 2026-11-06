@@ -642,7 +642,7 @@ internal fun autoInjectInitScriptArgs(
     stderr(
       "compose-preview: auto-inject disabled — an included build supplies the " +
         "ee.schimke.composeai.preview plugin (applied via a convention plugin). The CLI will use " +
-        "the plugin your build already applies. Pass --no-auto-inject to silence this note."
+        "the plugin your build already applies. Pass --no-auto-inject to silence this note.",
     )
     return emptyList()
   }
@@ -661,7 +661,7 @@ internal fun autoInjectInitScriptArgs(
     listOf("--init-script", path.absolutePath) + ISOLATED_PROJECTS_OFF_ARGS
   } catch (e: Exception) {
     stderr(
-      "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}"
+      "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}",
     )
     emptyList()
   }

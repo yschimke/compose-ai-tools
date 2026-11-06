@@ -157,7 +157,7 @@ public class AndroidBundleLaunch(
 
     /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
     public fun sdkLevelFromSystemProperty(
-      prop: String? = System.getProperty("composeai.bundle.androidSdk")
+      prop: String? = System.getProperty("composeai.bundle.androidSdk"),
     ): Int = prop?.trim()?.toIntOrNull() ?: DEFAULT_SDK
 
     /**

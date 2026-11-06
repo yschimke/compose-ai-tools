@@ -93,7 +93,7 @@ class AppTourDiscoveryTest {
         ]
       }
       """
-        .trimIndent()
+        .trimIndent(),
     )
     val launcher =
       AppTourDiscovery.parseManifestActivities(manifestXml.byteInputStream()).single { it.launcher }

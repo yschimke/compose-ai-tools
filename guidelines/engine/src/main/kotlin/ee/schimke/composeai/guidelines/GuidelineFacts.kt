@@ -318,7 +318,7 @@ public object GuidelineFacts {
           ATF,
           "The Accessibility Test Framework reported no errors or warnings on this render " +
             "(touch targets and text contrast measured clean).",
-        )
+        ),
       )
     }
     return reported.take(MAX_PER_KIND * 2).map { check ->
@@ -366,17 +366,17 @@ public object GuidelineFacts {
   private val HEX_COLOUR = Regex("""Color\(\s*0x([0-9A-Fa-f]{6,8})\s*\)""")
   private val NAMED_COLOUR =
     Regex(
-      """(?<![\w.])Color\.(Red|Green|Blue|Black|White|Gray|Grey|DarkGray|LightGray|Yellow|Cyan|Magenta)\b"""
+      """(?<![\w.])Color\.(Red|Green|Blue|Black|White|Gray|Grey|DarkGray|LightGray|Yellow|Cyan|Magenta)\b""",
     )
   private val FIXED =
     Regex(
-      """\.(size|width|height|requiredSize|requiredWidth|requiredHeight)\(\s*(\d+(?:\.\d+)?)\s*\.\s*(dp|rdp)"""
+      """\.(size|width|height|requiredSize|requiredWidth|requiredHeight)\(\s*(\d+(?:\.\d+)?)\s*\.\s*(dp|rdp)""",
     )
   private val BUTTON_CALL =
     Regex(
       """(?<![\w.])(Button|FilledTonalButton|OutlinedButton|TextButton|ChildButton|CompactButton|""" +
         """IconButton|FilledIconButton|FilledTonalIconButton|OutlinedIconButton|EdgeButton|""" +
-        """RemoteButton)\s*\("""
+        """RemoteButton)\s*\(""",
     )
   private val TYPOGRAPHY = Regex("""MaterialTheme\.typography\.""")
   private val COLOR_SCHEME = Regex("""MaterialTheme\.colorScheme\.""")

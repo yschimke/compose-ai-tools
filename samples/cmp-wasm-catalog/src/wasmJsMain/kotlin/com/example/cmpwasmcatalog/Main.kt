@@ -69,7 +69,7 @@ fun main() {
     // `?mode=builder` mounts the UI builder over the same catalog and knob lookups.
     if (params["mode"] == "builder") {
       MaterialTheme(
-        colorScheme = if (params["uiMode"] == "dark") darkColorScheme() else lightColorScheme()
+        colorScheme = if (params["uiMode"] == "dark") darkColorScheme() else lightColorScheme(),
       ) {
         ScreenBuilderApp(compileHost = CompileCheck.hostFrom(params))
       }
@@ -176,7 +176,7 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
             data = fetchBytes(base + "Roboto-Medium.ttf"),
             weight = FontWeight.Medium,
           ),
-        )
+        ),
       )
     } catch (e: Throwable) {
       consoleWarn("compose-ai wasm catalog: font load failed (${e.message}); using bundled font")
@@ -193,7 +193,7 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
         ?.let { list -> FontFamily(list.map { load(it) }) }
     } catch (e: Throwable) {
       consoleWarn(
-        "compose-ai wasm catalog: default font load failed (${e.message}); using bundled font"
+        "compose-ai wasm catalog: default font load failed (${e.message}); using bundled font",
       )
       null
     }
@@ -208,7 +208,7 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
       } catch (e: Throwable) {
         consoleWarn(
           "compose-ai wasm catalog: generic family '$name' load failed (${e.message}); " +
-            "using platform fallback"
+            "using platform fallback",
         )
       }
     }
@@ -224,7 +224,7 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
       } catch (e: Throwable) {
         consoleWarn(
           "compose-ai wasm catalog: named family '$name' load failed (${e.message}); " +
-            "using fallback font"
+            "using fallback font",
         )
       }
     }
@@ -284,7 +284,7 @@ private fun flattenFontsManifest(json: String): JsString? =
         });
         return out.join('\u0001');
       } catch (e) { return null; }
-    })()"""
+    })()""",
   )
 
 /**
@@ -301,7 +301,7 @@ private fun fetchAsBase64(url: String, timeoutMs: Int): Promise<JsString> =
         for (var i = 0; i < bytes.length; i += CHUNK)
           chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
         return btoa(chunks.join(''));
-      })"""
+      })""",
   )
 
 /**
@@ -324,7 +324,7 @@ private fun fetchAsText(url: String, timeoutMs: Int): Promise<JsString> =
   js(
     """((window.__cpPrefetchText && window.__cpPrefetchText[url]) ||
       fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }))"""
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }))""",
   )
 
 /** `fetch(url)` → response text; cancellable like [fetchBytes] so timeouts genuinely unblock. */

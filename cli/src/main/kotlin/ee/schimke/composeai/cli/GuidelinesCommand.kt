@@ -260,7 +260,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
   override fun run() {
     if (checker == null) {
       System.err.println(
-        "guidelines: unknown --checker $checkerFlag (expected vision, or the " + "experimental jev)"
+        "guidelines: unknown --checker $checkerFlag (expected vision, or the " +
+          "experimental jev)",
       )
       exitProcess(2)
     }
@@ -268,14 +269,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       System.err.println(
         "guidelines: unknown --reasoning-effort $reasoningEffortFlag (expected one of " +
           (OpenRouterClient.REASONING_EFFORTS + REASONING_DEFAULT).joinToString() +
-          ")"
+          ")",
       )
       exitProcess(2)
     }
     val command = if (review) "review" else "guidelines"
     if (backend !in GuidelinesBackend.ALL) {
       System.err.println(
-        "$command: unknown --backend $backend (expected ${GuidelinesBackend.ALL.joinToString()})"
+        "$command: unknown --backend $backend (expected ${GuidelinesBackend.ALL.joinToString()})",
       )
       exitProcess(2)
     }
@@ -300,14 +301,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     if (backend != GuidelinesBackend.OPENROUTER && checker == GuidelineChecker.JEV) {
       System.err.println(
         "$command: --checker jev asks OpenRouter's decisions API; it needs " +
-          "--backend ${GuidelinesBackend.OPENROUTER}"
+          "--backend ${GuidelinesBackend.OPENROUTER}",
       )
       exitProcess(2)
     }
     if (prompted && handoff) {
       System.err.println(
         "$command: --backend ${GuidelinesBackend.PROMPT} runs in a Gradle project; handoff mode " +
-          "needs a model backend"
+          "needs a model backend",
       )
       exitProcess(2)
     }
@@ -371,7 +372,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
             "$module: no design guidelines" +
               (loaded.problem?.let { " ($it)" }
                 ?: " — the catalog publishes no " +
-                  "${CatalogGuidelinesV1.FILE_NAME}; pass --guidelines <file-or-url>")
+                  "${CatalogGuidelinesV1.FILE_NAME}; pass --guidelines <file-or-url>"),
           )
         }
         continue
@@ -478,7 +479,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           EXIT_UNKNOWN_FAIL_ON
         }
         else -> guidelinesExitCode(incomplete, failed, raw.buildOk)
-      }
+      },
     )
   }
 
@@ -493,7 +494,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       "${waiting.size} review request(s) wait for a reply. For each, read request.md, look at " +
         "every picture it lists, and write only the JSON reply it asks for to reply.json beside " +
         "it (a subagent can take one each). Then run `${rerunCommand()}` again: it reads the " +
-        "replies, and asks again where a reply needs more evidence."
+        "replies, and asks again where a reply needs more evidence.",
     )
     waiting.forEach { out.println("  ${it.path}") }
   }
@@ -537,14 +538,14 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
         ?: run {
           System.err.println(
             "guidelines: --backend ${GuidelinesBackend.OPENAI} needs --base-url, the endpoint " +
-              "before /chat/completions (https://api.openai.com/v1, http://localhost:11434/v1)"
+              "before /chat/completions (https://api.openai.com/v1, http://localhost:11434/v1)",
           )
           exitProcess(2)
         }
     if (modelFlag == null) {
       System.err.println(
         "guidelines: --backend ${GuidelinesBackend.OPENAI} needs --model, the endpoint's own " +
-          "name for a model that reads pictures"
+          "name for a model that reads pictures",
       )
       exitProcess(2)
     }
@@ -562,7 +563,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     if (resolved == null && !OpenAiCompatibleClient.isLoopback(url)) {
       System.err.println(
         "guidelines: no key for $url. Store one with `compose-preview guidelines key set --for " +
-          "$url`, or set ${GuidelineCredentials.MODEL_ENV}. It is never read from the command line."
+          "$url`, or set ${GuidelineCredentials.MODEL_ENV}. It is never read from the command line.",
       )
       exitProcess(2)
     }
@@ -570,7 +571,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     if (maxCostFlag != null) {
       System.err.println(
         "guidelines: an OpenAI-compatible endpoint reports no cost, so --max-cost cannot stop " +
-          "this run; narrow the selection instead"
+          "this run; narrow the selection instead",
       )
     }
     return OpenAiCompatibleClient(
@@ -581,8 +582,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
       NetworkPolicy.noRedirects(
         OpenRouterClient.httpClient(
           requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-            ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
-        )
+            ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT,
+        ),
       ),
     )
   }
@@ -598,7 +599,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           System.err.println(
             "guidelines: no OpenRouter key (openrouter.ai, Settings, then Keys). Store one with " +
               "`compose-preview guidelines key set`, or set $KEY_ENV. It is never read from the " +
-              "command line."
+              "command line.",
           )
           exitProcess(2)
         }
@@ -610,7 +611,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           http =
             OpenRouterClient.httpClient(
               requestTimeoutSeconds?.let { java.time.Duration.ofSeconds(it) }
-                ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT
+                ?: OpenRouterClient.DEFAULT_REQUEST_TIMEOUT,
             ),
         )
         .also {
@@ -668,8 +669,8 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
           previews = previews,
           consumerPreviewIds = consumerIds,
           narrowed = previews.size < consumerIds.size,
-        )
-      )
+        ),
+      ),
     )
     return A11yEvidence(
       nodes = readNodes(report).filterKeys { it in fetched },
@@ -803,7 +804,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     println(
       "$module: ${plan.previews} preview(s) to ask in ${plan.requests} request(s)" +
         (plan.cached.takeIf { it > 0 }?.let { ", $it from cache" } ?: "") +
-        cost
+        cost,
     )
   }
 
@@ -837,13 +838,13 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
     if (run.failedRequests > 0) {
       System.err.println(
         "guidelines: $module: ${run.failedRequests} model request(s) failed; the previews in " +
-          "them were not checked."
+          "them were not checked.",
       )
     }
     if (run.failedEvidence > 0) {
       System.err.println(
         "guidelines: $module: ${run.failedEvidence} evidence fetch(es) failed; the rules waiting " +
-          "on them were not checked."
+          "on them were not checked.",
       )
     }
     return true
@@ -895,7 +896,7 @@ class GuidelinesCommand(args: List<String>, private val review: Boolean = false)
                   scroll?.let { ScrollLimit(it.maxScrollPx, it.atEnd, it.reachedPx, it.axis) },
                 )
               },
-          )
+          ),
         ),
       nodes = nodes.orEmpty().mapIndexedNotNull { index, node -> node.toPreviewNode(index) },
       source = source,
@@ -1075,7 +1076,7 @@ internal object GuidelinesReportRenderer {
     if (checker == GuidelineChecker.JEV) {
       println(
         "$module: checked by Jev (experimental): it sees each render and its text evidence, " +
-          "and leaves a rule it cannot tell unchecked"
+          "and leaves a rule it cannot tell unchecked",
       )
     }
     println(
@@ -1102,7 +1103,7 @@ internal object GuidelinesReportRenderer {
         (run.results
           .sumOf { it.implicitPasses.size }
           .takeIf { it > 0 }
-          ?.let { ", $it rule(s) passed implicitly (not among the reply's findings)" } ?: "")
+          ?.let { ", $it rule(s) passed implicitly (not among the reply's findings)" } ?: ""),
     )
     run.results.forEach { result ->
       val failures = result.failures()
@@ -1113,7 +1114,7 @@ internal object GuidelinesReportRenderer {
         println(
           "    ${rule?.severity ?: "warning"} ${verdict.ruleId} (${(verdict.confidence * 100).toInt()}%)" +
             (if (verdict.nodeIds.isNotEmpty()) " on ${verdict.nodeIds.joinToString()}" else "") +
-            ": ${verdict.reason}"
+            ": ${verdict.reason}",
         )
         rule?.source?.let { println("      $it") }
       }
@@ -1124,7 +1125,7 @@ internal object GuidelinesReportRenderer {
         println(
           "    checked by $served" +
             (result.record.provider?.let { " on $it" } ?: "") +
-            (result.record.routing?.let { " · routed by ${it.router}" } ?: "")
+            (result.record.routing?.let { " · routed by ${it.router}" } ?: ""),
         )
       }
     }
@@ -1171,7 +1172,7 @@ internal fun writeGuidelinesReport(buildDir: File, report: ModuleGuidelines, nar
     } else report
   file.parentFile.mkdirs()
   file.writeText(
-    GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), merged)
+    GuidelinesCommand.REPORT_JSON.encodeToString(ModuleGuidelines.serializer(), merged),
   )
 }
 

@@ -69,7 +69,7 @@ internal class ServeImageUploader(
             Result.Failed(
               "refusing to follow a redirect from $base (to " +
                 "${response.header("Location") ?: "an unnamed location"}): a credential must not " +
-                "travel to a host you did not name."
+                "travel to a host you did not name.",
             )
           !response.isSuccessful -> {
             val detail = response.body.string().trim().take(400)
@@ -78,7 +78,7 @@ internal class ServeImageUploader(
                 // A bodyless 404 or 405 is what a host without `--accept-images` returns (405 when
                 // a catch-all matches the path); say the lane may be off rather than suggest a
                 // typo.
-                if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) IMAGE_LANE_OFF else ""
+                if (response.code in LANE_ABSENT_CODES && detail.isEmpty()) IMAGE_LANE_OFF else "",
             )
           }
           else -> parse(response.body.string())
@@ -227,7 +227,7 @@ internal object AgentGithubToken {
         "\${{ github.token }}, which expires with the job)\n" +
         "  --github-token-file <path>   (a file you already protect)\n" +
         "  gh auth login                (then this reads `gh auth token` for you)\n" +
-        "There is deliberately no --github-token flag: an argument is visible in `ps` and in CI logs."
+        "There is deliberately no --github-token flag: an argument is visible in `ps` and in CI logs.",
     )
   }
 

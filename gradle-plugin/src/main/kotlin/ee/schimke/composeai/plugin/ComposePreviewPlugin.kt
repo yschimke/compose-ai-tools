@@ -116,7 +116,7 @@ constructor(
                 "`com.android.kotlin.multiplatform.library`, so the Desktop renderer was already " +
                 "wired up by the time the Robolectric lane could claim it. The module is " +
                 "rendering on Desktop. Apply the Kotlin Multiplatform plugin before " +
-                "`org.jetbrains.compose` to get the Robolectric lane."
+                "`org.jetbrains.compose` to get the Robolectric lane.",
             )
           }
         }
@@ -154,7 +154,7 @@ constructor(
         "The compose-preview CLI, MCP server, and VS Code extension auto-inject this plugin through " +
         "an init script that configures projects via `allprojects { }`, which Isolated Projects " +
         "rejects — so those tools turn Isolated Projects off for their own invocations. A build you " +
-        "drive yourself with the init script has to do the same."
+        "drive yourself with the init script has to do the same.",
     )
   }
 }

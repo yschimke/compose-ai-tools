@@ -89,6 +89,6 @@ public fun ScreenDocument.setArgument(
 ): ScreenDocument =
   mapNodeAt(index) { node ->
     node.copy(
-      arguments = if (value == null) node.arguments - name else node.arguments + (name to value)
+      arguments = if (value == null) node.arguments - name else node.arguments + (name to value),
     )
   }

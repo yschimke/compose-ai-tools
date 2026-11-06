@@ -57,7 +57,7 @@ class ComponentRecordsTest {
             targets =
               listOf(target("com.example.HomeKt", "HomeScreen", sourceFile = "src/Home.kt")),
           ),
-        )
+        ),
       )
 
     assertThat(file.components.map { it.symbol.origin })
@@ -76,7 +76,7 @@ class ComponentRecordsTest {
         manifest(
           preview("b", componentTargets = listOf(card)),
           preview("a", componentTargets = listOf(card)),
-        )
+        ),
       )
 
     val record = file.components.single()
@@ -97,7 +97,7 @@ class ComponentRecordsTest {
             "a",
             componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
           ),
-        )
+        ),
       )
 
     assertThat(file.components.map { it.canonicalId }).isInOrder()
@@ -115,7 +115,7 @@ class ComponentRecordsTest {
           listOf(
             TargetParameter.Builder(name = "modifier", type = "Modifier")
               .also { b -> b.hasDefault = true }
-              .build()
+              .build(),
           ),
       )
     val withNone = target("androidx.compose.material3.CardKt", "Card")
@@ -125,7 +125,7 @@ class ComponentRecordsTest {
         manifest(
           preview("a", componentTargets = listOf(withNone)),
           preview("b", componentTargets = listOf(withParams)),
-        )
+        ),
       )
 
     assertThat(file.components.single().parameters.map { it.name }).containsExactly("modifier")
@@ -136,7 +136,7 @@ class ComponentRecordsTest {
     // Deriving an import from the JVM owner would print `androidx.compose.material3.ButtonKt`,
     // which does not resolve.
     assertThat(
-        ComponentRecords.callableFqn(target("androidx.compose.material3.ButtonKt", "Button"))
+        ComponentRecords.callableFqn(target("androidx.compose.material3.ButtonKt", "Button")),
       )
       .isEqualTo("androidx.compose.material3.Button")
   }
@@ -167,7 +167,7 @@ class ComponentRecordsTest {
           preview("plain", componentTargets = listOf(card)),
           catalogued("b", "Containment/Card"),
           catalogued("a", "Media/Card"),
-        )
+        ),
       )
 
     val record = file.components.single()
@@ -180,7 +180,7 @@ class ComponentRecordsTest {
     // `com.example.Controls${'$'}Companion.Button` is a JVM binary name; no Kotlin import accepts
     // it.
     assertThat(
-        ComponentRecords.callableFqn(target("com.example.Controls\u0024Companion", "Button"))
+        ComponentRecords.callableFqn(target("com.example.Controls\u0024Companion", "Button")),
       )
       .isEqualTo("com.example.Controls.Companion.Button")
   }
@@ -206,7 +206,7 @@ class ComponentRecordsTest {
               b.composableSlot = true
             }
             .build(),
-        )
+        ),
       )
 
     // `onClick` is function-typed but not `@Composable`: a callback, not a slot.
@@ -243,10 +243,10 @@ class ComponentRecordsTest {
                   "Text",
                   jvmName = "Text-Nvy7gAk",
                   descriptor = "(Ljava/lang/String;JLandroidx/compose/runtime/Composer;I)V",
-                )
+                ),
               ),
-          )
-        )
+          ),
+        ),
       )
 
     val symbol = file.components.single().symbol
@@ -273,7 +273,7 @@ class ComponentRecordsTest {
             "p2",
             targets = listOf(target("com.example.ChipKt", "Chip", descriptor = "(I)V")),
           ),
-        )
+        ),
       )
 
     val symbol = file.components.single().symbol
@@ -321,7 +321,7 @@ class ComponentRecordsTest {
             preview("state", componentTargets = listOf(byState)),
             preview("sticker", componentTargets = listOf(byValue)),
             preview("screen", componentTargets = listOf(byValue)),
-          )
+          ),
         )
         .components
         .single()
@@ -345,7 +345,7 @@ class ComponentRecordsTest {
             preview("p2", targets = listOf(b)),
             preview("p3", targets = listOf(a)),
             preview("p4", targets = listOf(b)),
-          )
+          ),
         )
         .components
         .single()
@@ -370,7 +370,7 @@ class ComponentRecordsTest {
             targets =
               listOf(target("com.example.CardKt", "Card", jvmName = "Card", descriptor = "(I)V")),
           ),
-        )
+        ),
       )
 
     val symbol = file.components.single().symbol
@@ -403,10 +403,10 @@ class ComponentRecordsTest {
                         .build(),
                     ),
                   signatureKnown = true,
-                )
+                ),
               ),
-          )
-        )
+          ),
+        ),
       )
 
     val code = file.components.single().code
@@ -431,13 +431,13 @@ class ComponentRecordsTest {
                   "Icon",
                   parameters =
                     listOf(
-                      TargetParameter.Builder(name = "imageVector", type = "ImageVector").build()
+                      TargetParameter.Builder(name = "imageVector", type = "ImageVector").build(),
                     ),
                   signatureKnown = true,
-                )
+                ),
               ),
-          )
-        )
+          ),
+        ),
       )
 
     val code = file.components.single().code
@@ -455,8 +455,8 @@ class ComponentRecordsTest {
           preview(
             "p1",
             componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(file.components.single().code?.refusedReason).contains("not recovered")
@@ -474,7 +474,7 @@ class ComponentRecordsTest {
             componentTargets = listOf(card),
             builder = BuilderPolicy.Builder().also { b -> b.canvas = "material3/Card" }.build(),
           ),
-        )
+        ),
       )
 
     val record = file.components.single()
@@ -494,7 +494,7 @@ class ComponentRecordsTest {
         manifest(
           preview("p2", componentTargets = listOf(card), builder = policy),
           preview("p1", componentTargets = listOf(card), builder = policy),
-        )
+        ),
       )
 
     val merged = file.components.single().builder!!
@@ -521,7 +521,7 @@ class ComponentRecordsTest {
             componentTargets = listOf(card),
             builder = BuilderPolicy.Builder().also { b -> b.canvas = "a" }.build(),
           ),
-        )
+        ),
       )
 
     val merged = file.components.single().builder!!
@@ -543,8 +543,8 @@ class ComponentRecordsTest {
             componentTargets = listOf(card),
             targets = listOf(card),
             builder = BuilderPolicy.Builder().also { b -> b.canvas = "material3/Card" }.build(),
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(file.components.single().builder?.declaredBy).containsExactly("p1")
@@ -569,8 +569,8 @@ class ComponentRecordsTest {
                   b.canvas = "placeholder"
                 }
                 .build(),
-          )
-        )
+          ),
+        ),
       )
 
     val withPolicy = file.components.filter { it.builder != null }
@@ -599,8 +599,8 @@ class ComponentRecordsTest {
                   b.canvas = "material3/Text"
                 }
                 .build(),
-          )
-        )
+          ),
+        ),
       )
     val subject = named.components.single { it.builder != null }
     assertThat(subject.canonicalId).endsWith("TextKt.Text")
@@ -621,8 +621,8 @@ class ComponentRecordsTest {
                   b.canvas = "p"
                 }
                 .build(),
-          )
-        )
+          ),
+        ),
       )
     assertThat(missing.components.filter { it.builder != null }).isEmpty()
   }
@@ -646,8 +646,8 @@ class ComponentRecordsTest {
                   b.canvas = "p"
                 }
                 .build(),
-          )
-        )
+          ),
+        ),
       )
     assertThat(ambiguous.components.filter { it.builder != null }).isEmpty()
     val orphan = ambiguous.builderOrphans.single()
@@ -668,8 +668,8 @@ class ComponentRecordsTest {
                   b.canvas = "p"
                 }
                 .build(),
-          )
-        )
+          ),
+        ),
       )
     val subject = byFqn.components.single { it.builder != null }
     assertThat(subject.canonicalId).isEqualTo("app/androidx.wear.compose.material3.TextKt.Text")
@@ -697,7 +697,7 @@ class ComponentRecordsTest {
     val plain = preview("p-plain", componentTargets = listOf(wearText))
 
     assertThat(
-        ComponentRecords.from(manifest(orphaning, plain)).builderOrphans.map { it.previewId }
+        ComponentRecords.from(manifest(orphaning, plain)).builderOrphans.map { it.previewId },
       )
       .containsExactly("p-orphan")
     assertThat(ComponentRecords.from(manifest(plain)).builderOrphans).isEmpty()
@@ -711,8 +711,8 @@ class ComponentRecordsTest {
           preview(
             "p1",
             componentTargets = listOf(target("androidx.compose.material3.CardKt", "Card")),
-          )
-        )
+          ),
+        ),
       )
 
     assertThat(file.components.single().builder).isNull()
@@ -775,7 +775,7 @@ class ComponentRecordsTest {
         manifest(
           preview("a", componentTargets = listOf(calling(stateOverload, all))),
           preview("b", componentTargets = listOf(calling(stateOverload, all))),
-        )
+        ),
       ) {
         setOf("value", "enabled", "singleLine", "label")
       }
@@ -793,7 +793,7 @@ class ComponentRecordsTest {
     val all = listOf(stateOverload, valueOverload)
     val record =
       ComponentRecords.select(
-          manifest(preview("a", componentTargets = listOf(calling(stateOverload, all))))
+          manifest(preview("a", componentTargets = listOf(calling(stateOverload, all)))),
         ) {
           setOf("value", "singleLine")
         }
@@ -830,7 +830,7 @@ class ComponentRecordsTest {
     assertThat(
         compact.previews.map { p ->
           p.componentTargets.map { it.overloads.map { o -> o.descriptor } }
-        }
+        },
       )
       .containsExactly(
         listOf(listOf(stateOverload.descriptor, valueOverload.descriptor), emptyList<String>()),
@@ -868,7 +868,7 @@ class ComponentRecordsTest {
       )
     val records =
       ComponentRecords.from(
-          manifest(preview("a", componentTargets = listOf(unread), targets = listOf(project)))
+          manifest(preview("a", componentTargets = listOf(unread), targets = listOf(project))),
         )
         .components
     // An unread signature, and a project composable whose overloads discovery never enumerates:
@@ -887,8 +887,8 @@ class ComponentRecordsTest {
             preview(
               "a",
               componentTargets = listOf(calling(deprecatedValue, all, deprecated = true)),
-            )
-          )
+            ),
+          ),
         )
         .components
         .single()

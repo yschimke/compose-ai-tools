@@ -17,7 +17,7 @@ internal object ComposePreviewFloatEquals {
         require(
           name !in current.mIntegerVariables &&
             name !in current.mVariables &&
-            name !in current.mDeferredVariables
+            name !in current.mDeferredVariables,
         ) {
           "duplicate name '$name'"
         }
@@ -36,7 +36,7 @@ internal object ComposePreviewFloatEquals {
             variable !in current.mIntegerVariables &&
               encoded != null &&
               encoded.isNaN() &&
-              Utils.idFromNan(encoded) in 1 until 0x10000
+              Utils.idFromNan(encoded) in 1 until 0x10000,
           ) {
             "$key: unknown scalar float reference '$value'"
           }

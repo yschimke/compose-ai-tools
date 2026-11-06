@@ -131,7 +131,7 @@ class GradleConnection(
               System.err.println(
                 "Build timed out after ${timeoutSeconds}s, cancelling. " +
                   "If the build was still making progress, rerun with a longer budget: " +
-                  "--timeout ${timeoutSeconds * 2}"
+                  "--timeout ${timeoutSeconds * 2}",
               )
               TerminalProgress.error()
               tokenSource.cancel()
@@ -502,7 +502,7 @@ internal fun inheritedWrapperDistribution(
               "pins distributionSha256Sum, the Tooling API cannot be given a checksum, and " +
               "${redactedDistribution(resolved)} is not in the wrapper cache yet. Run " +
               "./gradlew once from ${props.parentFile?.parentFile?.path} (which verifies and " +
-              "caches it), or give this build its own gradle/wrapper/gradle-wrapper.properties."
+              "caches it), or give this build its own gradle/wrapper/gradle-wrapper.properties.",
           )
           return@runCatching null
         }

@@ -13,8 +13,8 @@ class PreviewRelevantDependencyTest {
   fun `remote material project jars stay on the component inference classpath`() {
     assertThat(
         PreviewDiscovery.isPreviewRelevant(
-          "/checkout/vendor/remote-material3/build/intermediates/full_jar/full.jar"
-        )
+          "/checkout/vendor/remote-material3/build/intermediates/full_jar/full.jar",
+        ),
       )
       .isTrue()
   }

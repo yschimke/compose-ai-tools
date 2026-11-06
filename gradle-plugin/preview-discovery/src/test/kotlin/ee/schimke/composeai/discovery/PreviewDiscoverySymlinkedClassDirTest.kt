@@ -66,7 +66,7 @@ class PreviewDiscoverySymlinkedClassDirTest {
           variantName = "debug",
           projectDirectory = tempDir.root,
           failOnEmpty = true,
-        )
+        ),
       )
 
     assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)

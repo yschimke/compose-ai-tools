@@ -140,7 +140,7 @@ class CliA11yInputsFunctionalTest {
         rootProject.name = "cli-a11y-inputs-test"
         include(":daemon:desktop")
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -163,7 +163,7 @@ class CliA11yInputsFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // The plugin's daemon-bootstrap task expects a `:daemon:desktop` module to attach the
@@ -197,7 +197,7 @@ class CliA11yInputsFunctionalTest {
             Box(modifier = Modifier.size(100.dp).background(Color.Red))
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir

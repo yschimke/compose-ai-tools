@@ -161,7 +161,7 @@ internal fun bazelAndroidSdkLevel(
         // A silent default is how a wrong SDK goes unnoticed; say so, and how to set it.
         log(
           "$prefix no compileSdk from the aspect, the platform metadata or android.jar; " +
-            "rendering on the default SDK $it (set androidCompileSdk in .compose-preview/bazel.json)"
+            "rendering on the default SDK $it (set androidCompileSdk in .compose-preview/bazel.json)",
         )
       }
   val level = requested.coerceIn(AndroidBundleLaunch.MIN_SDK, ceiling)
@@ -170,7 +170,7 @@ internal fun bazelAndroidSdkLevel(
       "$prefix compileSdk $requested${source?.let { " (from $it)" } ?: ""} is outside what " +
         "Robolectric renders here (${AndroidBundleLaunch.MIN_SDK}..$ceiling" +
         (if (ceiling < AndroidBundleLaunch.MAX_SDK) " on JDK $javaMajor" else "") +
-        "); rendering on SDK $level"
+        "); rendering on SDK $level",
     )
   } else {
     log("$prefix rendering on SDK $level${source?.let { " (compileSdk from $it)" } ?: ""}")

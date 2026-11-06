@@ -123,7 +123,7 @@ fun CatalogComponent(id: String) {
             vertical = CatalogSlotSizing.Fixed,
           ) {
             Box(
-              Modifier.size(40.dp).background(catalogOverrideColor("iconColor", Color(0xFF6750A4)))
+              Modifier.size(40.dp).background(catalogOverrideColor("iconColor", Color(0xFF6750A4))),
             )
           }
           Column(Modifier.padding(start = 12.dp)) {

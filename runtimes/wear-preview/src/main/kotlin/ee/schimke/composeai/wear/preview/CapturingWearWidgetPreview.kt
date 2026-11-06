@@ -73,7 +73,7 @@ internal fun CapturingWearWidgetPreviewOnLane(
     remember(params, useSafeFallbackRendererVersion) {
       params.withRendererVersion(
         if (useSafeFallbackRendererVersion) RendererVersion.SAFE_FALLBACK_VERSION
-        else RendererVersion.MAX_RENDERER_VERSION
+        else RendererVersion.MAX_RENDERER_VERSION,
       )
     }
   // Capture once per (params, background, content) — mirrors the memoised `runBlocking` capture in
@@ -94,7 +94,7 @@ internal fun CapturingWearWidgetPreviewOnLane(
       } catch (t: Throwable) {
         System.err.println(
           "CapturingWearWidgetPreview: failed to capture the widget's RemoteCompose document; " +
-            "this render will emit no .rc sidecar. Cause: $t"
+            "this render will emit no .rc sidecar. Cause: $t",
         )
         null
       }
@@ -133,7 +133,7 @@ internal fun CapturingWearWidgetPreviewOnLane(
  * because `WearWidgetParams` is not a data class.
  */
 internal fun WearWidgetParams.withRendererVersion(
-  rendererVersion: RendererVersion
+  rendererVersion: RendererVersion,
 ): WearWidgetParams =
   WearWidgetParams(
     instanceId = instanceId,

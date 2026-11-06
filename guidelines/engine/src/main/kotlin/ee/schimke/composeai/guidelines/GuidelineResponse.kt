@@ -173,7 +173,7 @@ public object GuidelineResponse {
     if (verdicts.isEmpty() && statements == 0) {
       error(
         "the reply held no verdicts and no `others` statement" +
-          (if (strays.isEmpty()) "" else " for this batch's subjects (it named ${strays.take(5)})")
+          (if (strays.isEmpty()) "" else " for this batch's subjects (it named ${strays.take(5)})"),
       )
     }
     GuidelineReply(verdicts, served(completion)).also {

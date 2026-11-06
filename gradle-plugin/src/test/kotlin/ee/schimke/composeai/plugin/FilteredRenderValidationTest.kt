@@ -119,7 +119,7 @@ class FilteredRenderValidationTest {
           tempDir.root,
           isFastTier = false,
           validate = validated,
-        )
+        ),
       )
       .isEmpty()
   }
@@ -147,7 +147,7 @@ class FilteredRenderValidationTest {
           nameFilters = listOf("", "  "),
           idFilters = emptyList(),
           idExcludes = emptyList(),
-        )
+        ),
       )
       .isEqualTo(previews)
   }

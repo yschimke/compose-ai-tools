@@ -43,7 +43,7 @@ class SemanticsDiffCommand(
     }
     if (positionals.size < 2) {
       System.err.println(
-        "diff-semantics: expected <base> and <head> compose-semantics.json paths (or directories)"
+        "diff-semantics: expected <base> and <head> compose-semantics.json paths (or directories)",
       )
       printUsage()
       exitProcess(64)
@@ -59,7 +59,7 @@ class SemanticsDiffCommand(
             semanticsDiffJson.encodeToString(SemanticsDelta.serializer(), outcome.delta)
           } else {
             formatSemanticsDeltaHuman(outcome.delta)
-          }
+          },
         )
         if (failOnChange && !outcome.delta.isEmpty) exitProcess(2)
       }
@@ -81,7 +81,7 @@ class SemanticsDiffCommand(
       --json           Emit the versioned ${ComposeSemanticsDiffSchema.SCHEMA} JSON delta.
       --fail-on-change Exit 2 when the trees differ (for CI gating).
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 }
@@ -173,7 +173,7 @@ internal fun formatSemanticsDeltaHuman(delta: SemanticsDelta): String {
   if (delta.isEmpty) return "No semantic changes."
   return buildString {
     appendLine(
-      "${delta.added.size} added, ${delta.removed.size} removed, ${delta.changed.size} changed"
+      "${delta.added.size} added, ${delta.removed.size} removed, ${delta.changed.size} changed",
     )
     delta.removed.forEach { appendLine("  - removed ${describeNode(it)}") }
     delta.added.forEach { appendLine("  + added ${describeNode(it)}") }

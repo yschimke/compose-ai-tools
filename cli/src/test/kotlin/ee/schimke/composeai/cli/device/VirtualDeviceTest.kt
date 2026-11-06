@@ -82,7 +82,7 @@ class VirtualDeviceTest {
   fun `simulator answers print as a device's commands do`() {
     fun obj(vararg pairs: Pair<String, Any>) =
       JsonObject(
-        pairs.associate { (k, v) -> k to (v as? JsonObject ?: JsonPrimitive(v.toString())) }
+        pairs.associate { (k, v) -> k to (v as? JsonObject ?: JsonPrimitive(v.toString())) },
       )
     assertEquals(
       listOf("Starting: Intent { cmp=com.example/.Main }"),
@@ -145,16 +145,16 @@ class VirtualDeviceTest {
                 listOf(
                   JsonPrimitive("10-30 20:24:54.282     0     0 D Tag: one"),
                   JsonPrimitive("10-30 20:24:54.283     0     0 I Tag: two"),
-                )
-              )
-          )
+                ),
+              ),
+          ),
         ),
       ),
     )
     assertEquals(
       "the app has no tile .X",
       AdbText.error(
-        "java.lang.IllegalArgumentException: the app has no tile .X at ee.schimke.composeai.simulator.TileHost.find(TileHost.java:435)"
+        "java.lang.IllegalArgumentException: the app has no tile .X at ee.schimke.composeai.simulator.TileHost.find(TileHost.java:435)",
       ),
     )
   }

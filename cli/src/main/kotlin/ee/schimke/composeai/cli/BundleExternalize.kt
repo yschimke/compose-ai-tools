@@ -63,7 +63,7 @@ internal object BundleExternalize {
     val appJar =
       readZipEntry(zip, "classes/app.jar")
         ?: throw IllegalArgumentException(
-          "classes/app.jar missing in ${bundleFile.path} — not a packed class-backed bundle"
+          "classes/app.jar missing in ${bundleFile.path} — not a packed class-backed bundle",
         )
 
     resDir.mkdirs()
@@ -166,7 +166,7 @@ internal object BundleExternalize {
             put("path", record.path)
             put("sha256", record.sha256)
             put("size", record.size)
-          }
+          },
         )
       }
     }
@@ -206,7 +206,7 @@ internal class ExternalizeSubcommand(
     if (path == null || resOut == null) {
       System.err.println(
         "Usage: compose-preview bundle externalize <bundle.png | URL> --res-out <dir> " +
-          "[-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]"
+          "[-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]",
       )
       exitProcess(64)
     }
@@ -229,7 +229,7 @@ internal class ExternalizeSubcommand(
       } else if (BundleSource.looksLikeUrl(path)) {
         System.err.println(
           "bundle externalize: the input is a downloaded URL (a temporary file). " +
-            "Pass -o <file.png> so the externalized bundle is written somewhere durable."
+            "Pass -o <file.png> so the externalized bundle is written somewhere durable.",
         )
         exitProcess(64)
       } else {
@@ -260,7 +260,7 @@ internal class ExternalizeSubcommand(
                 put("path", r.path)
                 put("sha256", r.sha256)
                 put("size", r.size)
-              }
+              },
             )
           }
         }
@@ -270,7 +270,7 @@ internal class ExternalizeSubcommand(
       val total = result.externalized.sumOf { it.size }
       println(
         "externalized ${result.externalized.size} resource(s) (${total} bytes) from " +
-          "${target.name} → ${result.resDir.path}/  (bundle now ${target.length()} bytes)"
+          "${target.name} → ${result.resDir.path}/  (bundle now ${target.length()} bytes)",
       )
       for (r in result.externalized) println("  ${r.path}  →  ${r.sha256.take(12)}…  (${r.size} B)")
     }

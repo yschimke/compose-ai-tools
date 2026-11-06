@@ -42,7 +42,7 @@ internal class BazelPreviewSources(
     if (candidates.isEmpty()) {
       log(
         "[bazel] no source under ${skipped.size} matched targets mentions Preview; building them " +
-          "all anyway"
+          "all anyway",
       )
       return targets
     }
@@ -50,7 +50,7 @@ internal class BazelPreviewSources(
     log(
       "[bazel] skipping ${skipped.size} of ${targets.size} matched targets: no source in " +
         packages.joinToString(", ") { "//$it" } +
-        " mentions Preview. Name a target explicitly to build it anyway."
+        " mentions Preview. Name a target explicitly to build it anyway.",
     )
     return candidates
   }

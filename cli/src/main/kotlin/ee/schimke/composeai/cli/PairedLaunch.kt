@@ -43,7 +43,7 @@ internal class PairedLaunch(
               else (deviceOf(line) ?: primary).let { supervisors[it] ?: supervisors[aliases[it]] }
             if (target == null) {
               emit(
-                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are running"}"""
+                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are running"}""",
               )
               continue
             }
@@ -61,7 +61,7 @@ internal class PairedLaunch(
             .map { (_, supervisor) ->
               java.util.concurrent.CompletableFuture.supplyAsync { supervisor.awaitExit() }
             }
-            .toTypedArray()
+            .toTypedArray(),
         )
         .get() as Int
     devices.forEach { (_, supervisor) -> supervisor.destroy() }

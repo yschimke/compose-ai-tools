@@ -87,7 +87,7 @@ internal object AvdFiles {
     file.writeText(
       discovery(config, avdDir, grpcPort, token).joinToString("\n", postfix = "\n") { (k, v) ->
         "$k=$v"
-      }
+      },
     )
     file.deleteOnExit()
     return file

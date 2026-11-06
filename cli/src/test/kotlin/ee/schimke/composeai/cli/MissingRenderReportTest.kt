@@ -93,9 +93,9 @@ class MissingRenderReportTest {
                 functionName = "WearAppPreview",
                 className = "com.example.wear.WearAppKt",
                 captures = listOf(Capture(renderOutput = renderOutput)),
-              )
+              ),
             ),
-        )
+        ),
     )
 
   private fun missingResult(id: String = previewId) =
@@ -184,9 +184,9 @@ class MissingRenderReportTest {
                   captures = listOf(Capture(renderOutput = "")),
                   dataProducts =
                     listOf(PreviewDataProduct(kind = "gif", output = "data/anim/Wear.gif")),
-                )
+                ),
               ),
-          )
+          ),
       )
     writeSidecar("data/anim/Wear.gif")
 
@@ -318,9 +318,9 @@ class MissingRenderReportTest {
                     Capture(advanceTimeMillis = 500, renderOutput = "renders/Wear_500ms.png"),
                     Capture(advanceTimeMillis = 1000, renderOutput = "renders/Wear_1000ms.png"),
                   ),
-              )
+              ),
             ),
-        )
+        ),
     )
 
   private fun fanoutResult() =
@@ -456,9 +456,9 @@ class MissingRenderReportTest {
                 className = "com.example.wear.WearAppKt",
                 params = PreviewParams(kind = "LOTTIE"),
                 captures = listOf(Capture(renderOutput = "lottie-renders/Wear.png")),
-              )
+              ),
             ),
-        )
+        ),
     )
 
   private fun outcomes(vararg entries: Pair<String, GradleTaskDisposition>) =
@@ -642,7 +642,7 @@ class MissingRenderReportTest {
                   className = "com.example.wear.FeatureKt",
                   params = PreviewParams(kind = "LOTTIE"),
                   captures = listOf(Capture(renderOutput = "lottie-renders/Feature.png")),
-                )
+                ),
               ),
           ))
     // `:app`'s Lottie task skipped (stale sidecar); `:feature`'s ran and produced nothing.
@@ -720,9 +720,9 @@ class MissingRenderReportTest {
                   functionName = "WearAppPreview",
                   className = "com.example.wear.WearAppKt",
                   captures = listOf(Capture(renderOutput = "renders/Wear_500ms.png")),
-                )
+                ),
               ),
-          )
+          ),
       )
 
     val entries = diagnoseMissingRenders(listOf(missingResult()), declared)
@@ -754,9 +754,9 @@ class MissingRenderReportTest {
                   captures = listOf(Capture(renderOutput = "")),
                   dataProducts =
                     listOf(PreviewDataProduct(kind = "gif", output = "data/anim/Wear.gif")),
-                )
+                ),
               ),
-          )
+          ),
       )
     writeSidecar("renders/$previewId.png")
 
@@ -785,9 +785,9 @@ class MissingRenderReportTest {
                   functionName = "WearAppPreview",
                   className = "com.example.wear.WearAppKt",
                   captures = listOf(Capture(renderOutput = "renders/Wear_500ms.png"), Capture()),
-                )
+                ),
               ),
-          )
+          ),
       )
     writeSidecar(
       "renders/Wear_500ms.png",
@@ -835,13 +835,17 @@ class MissingRenderReportTest {
                   functionName = "WearAppPreview",
                   className = "com.example.wear.WearAppKt",
                   captures = listOf(Capture(renderOutput = "")),
-                )
+                ),
               ),
-          )
+          ),
       )
 
     assertNotNull(
-      diagnoseMissingRenders(listOf(missingResult()), bare).single().sidecars.firstOrNull()?.sidecar
+      diagnoseMissingRenders(listOf(missingResult()), bare)
+        .single()
+        .sidecars
+        .firstOrNull()
+        ?.sidecar,
     )
 
     // …including for a preview the manifest doesn't describe.
@@ -851,7 +855,7 @@ class MissingRenderReportTest {
       diagnoseMissingRenders(listOf(missingResult(id = unknownId)), manifests())
         .single()
         .sidecars
-        .firstOrNull()
+        .firstOrNull(),
     )
   }
 
@@ -874,7 +878,7 @@ class MissingRenderReportTest {
                   className = "com.example.wear.WearAppKt",
                   params =
                     PreviewParams(
-                      previewParameterProviderClassName = "com.example.wear.NamesProvider"
+                      previewParameterProviderClassName = "com.example.wear.NamesProvider",
                     ),
                   captures = listOf(Capture(renderOutput = "renders/Wear.png")),
                 ),
@@ -886,7 +890,7 @@ class MissingRenderReportTest {
                   captures = listOf(Capture(renderOutput = "renders/Wear_Bob.png")),
                 ),
               ),
-          )
+          ),
       )
     writeSidecar(
       "renders/Wear_Alice.png",
@@ -937,7 +941,7 @@ class MissingRenderReportTest {
                   PreviewParams(previewParameterProviderClassName = "com.example.wear.Names"),
                 captures = listOf(Capture(renderOutput = template)),
                 dataProducts = dataProducts,
-              )
+              ),
             ) +
               siblings.map { (id, output) ->
                 PreviewInfo(
@@ -949,7 +953,7 @@ class MissingRenderReportTest {
                   captures = listOf(Capture(renderOutput = output)),
                 )
               },
-        )
+        ),
     )
 
   @Test
@@ -1020,7 +1024,7 @@ class MissingRenderReportTest {
                 PreviewDataProduct(
                   kind = "render-scroll-long",
                   output = "data/render-scroll-long/Wear.png",
-                )
+                ),
               ),
           ),
         )

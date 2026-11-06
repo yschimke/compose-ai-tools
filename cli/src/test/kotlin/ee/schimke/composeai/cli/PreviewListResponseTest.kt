@@ -52,7 +52,7 @@ class PreviewListResponseTest {
               pngPath = "/abs/A_TIME_0ms.png",
               sha256 = "deadbeef",
               changed = true,
-            )
+            ),
           ),
         counts = PreviewCounts(total = 1, changed = 1, unchanged = 0, missing = 0),
       )
@@ -93,7 +93,7 @@ class PreviewListResponseTest {
             BriefPreviewResult(
               id = "P",
               captures = listOf(BriefCapture(png = "/p.png", sha = "abcdef012345", changed = true)),
-            )
+            ),
           ),
         counts = PreviewCounts(total = 1, changed = 1, unchanged = 0, missing = 0),
       )
@@ -164,9 +164,9 @@ class PreviewListResponseTest {
                     output = "data/render-scroll-long/${long.name}",
                     mediaTypes = listOf("image/png"),
                     scroll = ScrollCapture(mode = "LONG"),
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 
@@ -204,9 +204,9 @@ class PreviewListResponseTest {
                     output = "data/render-scroll-long/${clean.name}",
                     mediaTypes = listOf("image/png"),
                     scroll = ScrollCapture(mode = "LONG"),
-                  )
+                  ),
                 ),
-            )
+            ),
           ),
       )
 

@@ -26,7 +26,7 @@ import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 @Preview(name = "Image Widget Squircle")
 @Composable
 fun ImageWidgetSquirclePreview(
-  @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams
+  @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams,
 ) {
   CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
     RemoteImageWidget()
@@ -37,7 +37,7 @@ fun ImageWidgetSquirclePreview(
 @Preview(name = "Image Widget Squircle Large")
 @Composable
 fun ImageWidgetSquircleLargePreview(
-  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
+  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams,
 ) {
   CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
     RemoteImageWidget()
@@ -51,7 +51,7 @@ fun ImageWidgetSquircleLargePreview(
 @Preview(name = "Image Widget Device Spec", device = "spec:width=1000dp,height=1000dp,dpi=320")
 @Composable
 fun ImageWidgetDeviceSpecPreview(
-  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
+  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams,
 ) {
   CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
     RemoteImageWidget()

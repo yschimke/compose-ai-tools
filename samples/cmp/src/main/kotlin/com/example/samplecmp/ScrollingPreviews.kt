@@ -78,7 +78,7 @@ fun ScrollingListPreview() {
           modifier =
             Modifier.fillMaxWidth()
               .background(if (index % 2 == 0) Color(0xFFEEEEEE) else Color.White)
-              .padding(12.dp)
+              .padding(12.dp),
         ) {
           Text(text = "Row $index", style = MaterialTheme.typography.titleMedium)
           Text(text = "Item content for row $index", style = MaterialTheme.typography.bodyMedium)

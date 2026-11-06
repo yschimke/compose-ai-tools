@@ -120,7 +120,7 @@ private fun printGroupUsage(group: String) {
 
     Run `compose-preview help --all` for the full command + flag reference.
     """
-      .trimIndent()
+      .trimIndent(),
   )
 }
 
@@ -163,7 +163,7 @@ private fun printUsage(full: Boolean = false) {
       --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
       `help --all`.
     """
-      .trimIndent()
+      .trimIndent(),
   )
 }
 
@@ -484,6 +484,6 @@ private fun printFullUsage() {
     Exit codes: 0 success, 1 build/CLI error, 2 render failure or a11y
     threshold tripped, 3 no previews found / matched.
     """
-      .trimIndent()
+      .trimIndent(),
   )
 }

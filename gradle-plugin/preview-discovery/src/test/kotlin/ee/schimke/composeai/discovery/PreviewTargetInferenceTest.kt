@@ -34,7 +34,7 @@ class PreviewTargetInferenceTest {
           "(Ljava/lang/String;)V",
           descriptorOf = Method::descriptor,
           isComposable = Method::composable,
-        )
+        ),
       )
       .isEqualTo(first)
     assertThat(
@@ -43,7 +43,7 @@ class PreviewTargetInferenceTest {
           "(Ljava/lang/String;)V",
           descriptorOf = Method::descriptor,
           isComposable = Method::composable,
-        )
+        ),
       )
       .isNull()
   }
@@ -123,14 +123,14 @@ class PreviewTargetInferenceTest {
         PreviewTargetInference.isPreviewOnlyWrapper(
           "Component",
           "src/debug/kotlin/com/example/catalog/Components.kt",
-        )
+        ),
       )
       .isTrue()
     assertThat(
         PreviewTargetInference.isPreviewOnlyWrapper(
           "Component",
           "src/main/kotlin/com/example/components/Components.kt",
-        )
+        ),
       )
       .isFalse()
   }
@@ -144,7 +144,7 @@ class PreviewTargetInferenceTest {
         PreviewTargetInference.isComponentLibraryOwner(
           "androidx.compose.remote.creation.compose.layout.RemoteTextKt",
           extra,
-        )
+        ),
       )
       .isTrue()
     // Its neighbours in the same package stay scaffolding, and a longer name is not the owner.
@@ -152,14 +152,14 @@ class PreviewTargetInferenceTest {
         PreviewTargetInference.isComponentLibraryOwner(
           "androidx.compose.remote.creation.compose.layout.RemoteBoxKt",
           extra,
-        )
+        ),
       )
       .isFalse()
     assertThat(
         PreviewTargetInference.isComponentLibraryOwner(
           "androidx.compose.remote.creation.compose.layout.RemoteTextKtx",
           extra,
-        )
+        ),
       )
       .isFalse()
   }
@@ -170,7 +170,7 @@ class PreviewTargetInferenceTest {
     assertThat(PreviewTargetInference.isComponentLibraryOwner("com.example.widgets.ChipKt", extra))
       .isTrue()
     assertThat(
-        PreviewTargetInference.isComponentLibraryOwner("com.example.widgetsextra.ChipKt", extra)
+        PreviewTargetInference.isComponentLibraryOwner("com.example.widgetsextra.ChipKt", extra),
       )
       .isFalse()
   }
@@ -179,8 +179,8 @@ class PreviewTargetInferenceTest {
   fun `an unconfigured owner is not a library and the built-ins still are`() {
     assertThat(
         PreviewTargetInference.isComponentLibraryOwner(
-          "androidx.compose.remote.creation.compose.layout.RemoteTextKt"
-        )
+          "androidx.compose.remote.creation.compose.layout.RemoteTextKt",
+        ),
       )
       .isFalse()
     assertThat(PreviewTargetInference.isComponentLibraryOwner("androidx.compose.material3.CardKt"))
@@ -189,7 +189,7 @@ class PreviewTargetInferenceTest {
         PreviewTargetInference.isComponentLibraryOwner(
           "androidx.compose.material3.CardKt",
           listOf("com.example.widgets."),
-        )
+        ),
       )
       .isTrue()
   }
@@ -201,7 +201,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.CardKt",
           "Card",
           returnsUnit = true,
-        )
+        ),
       )
       .isTrue()
     assertThat(
@@ -209,7 +209,7 @@ class PreviewTargetInferenceTest {
           "androidx.xr.glimmer.ButtonKt",
           "Button",
           returnsUnit = true,
-        )
+        ),
       )
       .isTrue()
   }
@@ -225,7 +225,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.MaterialTheme",
           "getColorScheme",
           returnsUnit = false,
-        )
+        ),
       )
       .isFalse()
   }
@@ -237,7 +237,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.MaterialThemeKt",
           "MaterialTheme",
           returnsUnit = true,
-        )
+        ),
       )
       .isFalse()
     assertThat(
@@ -245,7 +245,7 @@ class PreviewTargetInferenceTest {
           "androidx.xr.glimmer.GlimmerThemeKt",
           "GlimmerTheme",
           returnsUnit = true,
-        )
+        ),
       )
       .isFalse()
     // …on every component library the catalogs use, not just the Android one.
@@ -254,7 +254,7 @@ class PreviewTargetInferenceTest {
           "androidx.wear.compose.material3.MaterialThemeKt",
           "MaterialTheme",
           returnsUnit = true,
-        )
+        ),
       )
       .isFalse()
   }
@@ -270,7 +270,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.TextKt",
           "Text",
           returnsUnit = true,
-        )
+        ),
       )
       .isTrue()
   }
@@ -286,7 +286,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.ButtonKt",
           "filled-button",
           returnsUnit = true,
-        )
+        ),
       )
       .isFalse()
   }
@@ -298,7 +298,7 @@ class PreviewTargetInferenceTest {
           "androidx.compose.material3.CardKt",
           "Card\u0024lambda\u00240",
           returnsUnit = true,
-        )
+        ),
       )
       .isFalse()
   }

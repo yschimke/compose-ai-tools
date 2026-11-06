@@ -8,7 +8,7 @@ package ee.schimke.composeai.wear.preview
  */
 enum class WearWidgetPreviewPlayer(
   /** Canonical spelling of this lane: the implementation that draws. */
-  val wire: String
+  val wire: String,
 ) {
   /**
    * The vendored AndroidX embedded `RcPlayer`, interpreting the document into Compose nodes. Falls
@@ -56,7 +56,7 @@ enum class WearWidgetPreviewPlayer(
           "CapturingWearWidgetPreview: -D$PROPERTY=$raw names no player; " +
             "drawing with ${DEFAULT.wire}. Valid values: " +
             entries.joinToString(", ") { it.wire } +
-            "."
+            ".",
         )
       }
       return selected ?: DEFAULT

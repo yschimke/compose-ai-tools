@@ -25,7 +25,7 @@ import org.gradle.work.DisableCachingByDefault
  */
 @DisableCachingByDefault(
   because =
-    "Check depends on live runtime-classpath resolution; caching the verdict across version bumps would silently stale-pass missing tooling."
+    "Check depends on live runtime-classpath resolution; caching the verdict across version bumps would silently stale-pass missing tooling.",
 )
 abstract class ValidatePreviewToolingPresentTask : DefaultTask() {
 
@@ -51,33 +51,33 @@ abstract class ValidatePreviewToolingPresentTask : DefaultTask() {
     throw GradleException(
       buildString {
         appendLine(
-          "compose-preview: no @Preview tooling coord reachable in module '${modulePath.get()}'."
+          "compose-preview: no @Preview tooling coord reachable in module '${modulePath.get()}'.",
         )
         appendLine(
-          "  The runtime classpath was resolved and none of the supported tooling artifacts are present:"
+          "  The runtime classpath was resolved and none of the supported tooling artifacts are present:",
         )
         for ((g, n) in PREVIEW_TOOLING_COORDS) appendLine("    - $g:$n")
         appendLine("  Fix this by either:")
         appendLine(
-          "  - declaring the tooling coord directly on this module (recommended — pins the"
+          "  - declaring the tooling coord directly on this module (recommended — pins the",
         )
         appendLine("    version locally and makes it visible to `compose-preview doctor`):")
         appendLine("      implementation(\"androidx.compose.ui:ui-tooling-preview\")")
         appendLine("      // or, for Compose Multiplatform consumers:")
         appendLine(
-          "      // implementation(\"org.jetbrains.compose.components:components-ui-tooling-preview\")"
+          "      // implementation(\"org.jetbrains.compose.components:components-ui-tooling-preview\")",
         )
         appendLine(
-          "  - dropping `composePreview { failOnMissingPreviewTooling = true }` so render no"
+          "  - dropping `composePreview { failOnMissingPreviewTooling = true }` so render no",
         )
         appendLine(
-          "    longer hard-fails when this module's classpath lacks tooling (the default)."
+          "    longer hard-fails when this module's classpath lacks tooling (the default).",
         )
         appendLine(
-          "  - or setting `composePreview { enforcePreviewToolingDependency = false }` to bypass"
+          "  - or setting `composePreview { enforcePreviewToolingDependency = false }` to bypass",
         )
         appendLine("    the per-module gate entirely (issue #241 / #1549 escape hatch).")
-      }
+      },
     )
   }
 

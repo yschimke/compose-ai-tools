@@ -70,7 +70,11 @@ internal object BazelKeepDaemon {
     val idleMs = idleTimeoutSeconds.coerceAtLeast(1) * 1000L
     val dir =
       cacheRoot.resolve(
-        key(descriptor.readText() + "\n$KEEP_ALIVE_IDLE_MS=$idleMs", launchInputs, previewsManifest)
+        key(
+          descriptor.readText() + "\n$KEEP_ALIVE_IDLE_MS=$idleMs",
+          launchInputs,
+          previewsManifest,
+        ),
       )
     dir.mkdirs()
     val shared =
@@ -80,7 +84,7 @@ internal object BazelKeepDaemon {
             mapOf(
               SOCKET_PATH to dir.resolve("d.sock").absolutePath,
               KEEP_ALIVE_IDLE_MS to idleMs.toString(),
-            )
+            ),
       )
     val sharedDescriptor =
       descriptor.resolveSibling("daemon-launch-shared.json").apply {
@@ -117,7 +121,7 @@ internal object BazelKeepDaemon {
       val previews = runCatching { Json.parseToJsonElement(previewsManifest.readText()) }
       digest.update(
         (previews.getOrNull()?.let(::withoutLines)?.toString() ?: previewsManifest.readText())
-          .toByteArray()
+          .toByteArray(),
       )
     }
     return digest.digest().joinToString("") { "%02x".format(it) }.take(16)

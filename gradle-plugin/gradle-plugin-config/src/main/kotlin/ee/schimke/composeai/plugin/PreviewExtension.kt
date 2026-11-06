@@ -550,7 +550,7 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
           AdaptiveShape.SQUIRCLE,
           AdaptiveShape.ROUNDED_SQUARE,
           AdaptiveShape.SQUARE,
-        )
+        ),
       )
 
   /**

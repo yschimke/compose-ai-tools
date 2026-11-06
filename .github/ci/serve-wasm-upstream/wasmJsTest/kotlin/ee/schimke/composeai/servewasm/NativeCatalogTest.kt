@@ -64,7 +64,7 @@ class NativeCatalogTest {
         previewId = previewId,
         catalogVersion = null,
         nativeCatalogVersion = "1.2.3",
-      )
+      ),
     )
     assertNull(
       nativeCatalogTarget(
@@ -72,7 +72,7 @@ class NativeCatalogTest {
         previewId = previewId,
         catalogVersion = "1.2.4",
         nativeCatalogVersion = "1.2.3",
-      )
+      ),
     )
   }
 

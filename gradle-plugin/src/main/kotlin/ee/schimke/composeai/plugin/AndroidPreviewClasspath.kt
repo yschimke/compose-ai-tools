@@ -65,7 +65,7 @@ internal object AndroidPreviewClasspath {
       from(
         rendererConfig.incoming
           .artifactView { attributes.attribute(artifactType, "android-classes") }
-          .files
+          .files,
       )
       // Directories or jars only: a `zipTree` would add each `.class` as an invalid classpath
       // element (#5562).
@@ -81,7 +81,7 @@ internal object AndroidPreviewClasspath {
         from(
           testConfig.incoming
             .artifactView { attributes.attribute(artifactType, "android-classes") }
-            .files
+            .files,
         )
       }
       // screenshotTest runtime deps are already in the single graph (`rendererConfig` extends that
@@ -93,7 +93,7 @@ internal object AndroidPreviewClasspath {
           from(
             stConfig.incoming
               .artifactView { attributes.attribute(artifactType, "android-classes") }
-              .files
+              .files,
           )
         }
       from(sourceClassDirs)
@@ -121,7 +121,7 @@ internal object AndroidPreviewClasspath {
       val agpTest = project.tasks.findByName(unitTestTaskName) as? Test
       if (agpTest != null) {
         extras.from(
-          buildAgpClasspathExtras(project, agpTest.classpath, testConfig, legacyClasspathUnion)
+          buildAgpClasspathExtras(project, agpTest.classpath, testConfig, legacyClasspathUnion),
         )
       }
     }
@@ -165,7 +165,7 @@ internal object AndroidPreviewClasspath {
               }
             }
             .files
-        }
+        },
       )
     return agpTestClasspath.minus(moduleArtifacts)
   }
@@ -259,7 +259,7 @@ internal object AndroidPreviewClasspath {
         |Classpath JARs scanned (none contained android/app/Application.class):
         |$sample$more
         """
-        .trimMargin()
+        .trimMargin(),
     )
   }
 
@@ -495,7 +495,7 @@ internal fun composeAiSvgBackground(project: Project): org.gradle.api.provider.P
  * `-PcomposePreview.fontsFailOnFallback`, else `"true"`. Mirrors [composeAiSvgEmbedFonts].
  */
 internal fun composeAiFontsFailOnFallback(
-  project: Project
+  project: Project,
 ): org.gradle.api.provider.Provider<String> =
   project.providers
     .systemProperty("composeai.fonts.failOnFallback")

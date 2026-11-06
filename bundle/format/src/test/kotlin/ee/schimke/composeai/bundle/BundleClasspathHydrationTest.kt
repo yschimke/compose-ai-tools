@@ -32,8 +32,8 @@ class BundleClasspathHydrationTest {
           "previews.json" to """{"previews":[{"id":"A"}]}""".encodeToByteArray(),
           "previews/A.png" to "PNG".encodeToByteArray(),
           BundleSigning.SIGNATURES_PATH to "stale".encodeToByteArray(),
-        )
-      )
+        ),
+      ),
     )
 
     val output = File(dir, "complete.png")
@@ -61,8 +61,8 @@ class BundleClasspathHydrationTest {
             """{"schemaVersion":8,"backend":"desktop","previewIds":["A"],"coverPreviewId":"A","classpath":[{"kind":"module","path":"classes/app.jar"}],"modulePath":":app","producedBy":"test","externalClasspath":[{"path":"classes/app.jar","sha256":"$sha","size":${appJar.size}}]}"""
               .encodeToByteArray(),
           "previews.json" to """{"previews":[{"id":"A"}]}""".encodeToByteArray(),
-        )
-      )
+        ),
+      ),
     )
 
     val output = File(dir, "complete.png")
@@ -91,8 +91,8 @@ class BundleClasspathHydrationTest {
           "previews.json" to """{"previews":[{"id":"A"}]}""".encodeToByteArray(),
           "classes/app.jar" to appJar,
           BundleSigning.SIGNATURES_PATH to "stale".encodeToByteArray(),
-        )
-      )
+        ),
+      ),
     )
 
     val output = File(dir, "complete.png")

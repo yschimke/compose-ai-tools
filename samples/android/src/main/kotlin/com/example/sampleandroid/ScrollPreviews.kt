@@ -28,7 +28,7 @@ fun RedToBlueList(count: Int = 40) {
     items((0 until count).toList()) { index ->
       val t = index.toFloat() / (count - 1).toFloat()
       Box(
-        modifier = Modifier.fillMaxWidth().height(60.dp).background(lerp(Color.Red, Color.Blue, t))
+        modifier = Modifier.fillMaxWidth().height(60.dp).background(lerp(Color.Red, Color.Blue, t)),
       )
     }
   }

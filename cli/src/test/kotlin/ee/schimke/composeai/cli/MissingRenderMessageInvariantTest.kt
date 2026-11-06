@@ -47,7 +47,7 @@ class MissingRenderMessageInvariantTest {
             "renders/A_Alice.png",
             sidecar("java.lang.IllegalStateException"),
             OutputDiscovery.SCANNED,
-          )
+          ),
         ),
       // The mixed shape: one output the manifest names, one row only a scan found.
       "declared+scanned" to
@@ -69,7 +69,7 @@ class MissingRenderMessageInvariantTest {
         "LOTTIE",
         mapOf(
           "$module:composePreviewRenderLottie" to
-            GradleTaskOutcome("$module:composePreviewRenderLottie", GradleTaskDisposition.SUCCESS)
+            GradleTaskOutcome("$module:composePreviewRenderLottie", GradleTaskDisposition.SUCCESS),
         ),
       ),
       ownerTaskFor(
@@ -77,7 +77,7 @@ class MissingRenderMessageInvariantTest {
         "SVG",
         mapOf(
           "$module:composePreviewRenderSvg" to
-            GradleTaskOutcome("$module:composePreviewRenderSvg", GradleTaskDisposition.SUCCESS)
+            GradleTaskOutcome("$module:composePreviewRenderSvg", GradleTaskDisposition.SUCCESS),
         ),
       ),
     )
@@ -102,7 +102,7 @@ class MissingRenderMessageInvariantTest {
                 owner = owner,
                 ownerRun = run,
                 sidecars = sidecars,
-              )
+              ),
             )
           }
         }
@@ -156,7 +156,7 @@ class MissingRenderMessageInvariantTest {
       if (licensed > 0) {
         assertTrue(
           message.contains(
-            "$licensed preview(s) rendered and then threw — the build wiring is fine"
+            "$licensed preview(s) rendered and then threw — the build wiring is fine",
           ),
           "verdict counted $licensed entries but said otherwise:\n$message",
         )

@@ -352,7 +352,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val problems = UiBuilderGuidelinesFile.problems(text, catalogId)
     if (problems.isNotEmpty()) {
       logger.warn(
-        "composePreview: ${source.path} is not published: ${problems.joinToString("; ")}."
+        "composePreview: ${source.path} is not published: ${problems.joinToString("; ")}.",
       )
       return
     }
@@ -360,7 +360,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val flat = UiBuilderGuidelinesFile.flatten(text)
     flat.problem?.let {
       logger.warn(
-        "composePreview: ${source.path}'s includes are not resolved ($it); published as written."
+        "composePreview: ${source.path}'s includes are not resolved ($it); published as written.",
       )
     }
     uiBuilderGuidelinesFile.get().asFile.writeText(flat.text)
@@ -393,7 +393,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       .getOrElse { failure ->
         logger.warn(
           "composePreview: ${policyFile.path} could not be read " +
-            "(${failure.message ?: failure::class.simpleName}); no ui-builder.json written."
+            "(${failure.message ?: failure::class.simpleName}); no ui-builder.json written.",
         )
         UiBuilderTemplateLookup.withdraw(out, uiBuilderTemplateDir.get().asFile)
         return record
@@ -432,7 +432,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     unreadable.forEach { (path, file) ->
       logger.warn(
         "composePreview: template design '$path' (${file.path}) is not readable JSON, so it is " +
-          "not copied; the builder catalog names it and the local chooser cannot open it."
+          "not copied; the builder catalog names it and the local chooser cannot open it.",
       )
     }
     val found = usable.associate { (path, file) -> path to file }
@@ -448,7 +448,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     (declared - found.keys).sorted().forEach {
       logger.warn(
         "composePreview: the builder catalog names template design '$it', which is not under " +
-          "ui-builder/ in this module or the repository root; the local builder cannot open it."
+          "ui-builder/ in this module or the repository root; the local builder cannot open it.",
       )
     }
     val unresolved = catalog.diagnostics.size
@@ -456,7 +456,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       "composePreview: wrote ${out.name} for ${catalog.catalog.id} " +
         "(platform ${catalog.catalog.platform}, " +
         "${catalog.statusSemantics.components.size} component policies, " +
-        "${catalog.statusSemantics.builtins.size} builtins, $unresolved diagnostic(s))"
+        "${catalog.statusSemantics.builtins.size} builtins, $unresolved diagnostic(s))",
     )
     return selection.record
   }

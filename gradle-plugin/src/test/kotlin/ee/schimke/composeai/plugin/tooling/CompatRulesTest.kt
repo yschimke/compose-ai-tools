@@ -142,7 +142,7 @@ class CompatRulesTest {
     val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.10.0")
 
     assertNull(
-      CompatRules.evaluate(main, test).firstOrNull { it.id == "old-dep-androidx.compose.ui:ui" }
+      CompatRules.evaluate(main, test).firstOrNull { it.id == "old-dep-androidx.compose.ui:ui" },
     )
   }
 

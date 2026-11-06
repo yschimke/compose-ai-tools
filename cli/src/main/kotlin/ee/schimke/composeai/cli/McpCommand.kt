@@ -151,7 +151,7 @@ internal class McpCommand(
 
       See https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/mcp.md for the full agent flow.
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 
@@ -187,7 +187,7 @@ internal class McpCommand(
         choice,
         downloaded = choice != found,
         label = ReleasedDistribution.MCP.label,
-      )
+      ),
     )
     // Same preflight as `serve`; matters more here since MCP hosts hide stderr, so a JVM mismatch
     // would only look like a server that won't connect.
@@ -209,7 +209,7 @@ internal class McpCommand(
       } catch (t: Throwable) {
         System.err.println(
           "could not start ${choice.binary} (from ${choice.source}): " +
-            "${t.message ?: t.javaClass.name}"
+            "${t.message ?: t.javaClass.name}",
         )
         System.err.println()
         System.err.println(ServerBinaryDiscovery.installationHint(ReleasedDistribution.MCP))
@@ -285,7 +285,7 @@ internal class McpCommand(
       // each.
       System.err.println(
         "==> bootstrapping daemon descriptors for ${modules.size} module(s): " +
-          modules.joinToString(", ") { ":${it.gradlePath}" }
+          modules.joinToString(", ") { ":${it.gradlePath}" },
       )
       // DaemonExtension's `enabled` isn't wired to a Gradle property, so run the task and patch the
       // JSON below.
@@ -295,7 +295,7 @@ internal class McpCommand(
             RenderRequest(
               modules = modules,
               taskFor = { ":${it.gradlePath}:composePreviewDaemonStart" },
-            )
+            ),
           )
           .buildOk
       if (!daemonOk) {
@@ -308,7 +308,7 @@ internal class McpCommand(
         val descriptor = File(module.projectDir, "build/compose-previews/daemon-launch.json")
         if (!descriptor.isFile) {
           System.err.println(
-            "warning: descriptor missing for :${module.gradlePath} (${descriptor})"
+            "warning: descriptor missing for :${module.gradlePath} (${descriptor})",
           )
           null
         } else {
@@ -324,7 +324,7 @@ internal class McpCommand(
             RenderRequest(
               modules = modules,
               taskFor = { ":${it.gradlePath}:composePreviewDiscover" },
-            )
+            ),
           )
           .buildOk
       if (!discoverOk) {
@@ -347,7 +347,7 @@ internal class McpCommand(
                   put("descriptor", JsonPrimitive(it.descriptor.absolutePath))
                   put("enabled", JsonPrimitive(it.enabled))
                 }
-              }
+              },
             ),
           )
         }
@@ -420,7 +420,7 @@ internal class McpCommand(
               put("command", JsonPrimitive(it.command))
               it.note?.let { note -> put("note", JsonPrimitive(note)) }
             }
-          }
+          },
         ),
       )
       put(
@@ -434,7 +434,7 @@ internal class McpCommand(
               it.path?.let { p -> put("path", JsonPrimitive(p)) }
               it.error?.let { e -> put("error", JsonPrimitive(e)) }
             }
-          }
+          },
         ),
       )
     }
@@ -462,7 +462,7 @@ internal class McpCommand(
       if (pluginHints.isNotEmpty()) {
         System.err.println()
         System.err.println(
-          "Detected harness plugins also provide skills and hooks. Install the wiring plugin:"
+          "Detected harness plugins also provide skills and hooks. Install the wiring plugin:",
         )
         System.err.print(AgentMcpConfig.renderPluginHints(pluginHints))
       }
@@ -500,7 +500,7 @@ internal class McpCommand(
         ?: if (anyHost) {
           System.err.println(
             "compose-preview mcp: cannot locate an absolute compose-preview launcher " +
-              "for agent host config"
+              "for agent host config",
           )
           exitProcess(1)
         } else {
@@ -578,7 +578,7 @@ internal class McpCommand(
               val snippet = AgentMcpConfig.openCodeConfigSnippet(launcher, openCodeProject)
               throw IllegalStateException(
                 "$reason; refusing to rewrite ${config.absolutePath}. " +
-                  "Merge this snippet manually:\n$snippet"
+                  "Merge this snippet manually:\n$snippet",
               )
             }
             AgentMcpConfig.mergeOpenCodeConfig(existing, launcher, openCodeProject)
@@ -651,7 +651,7 @@ internal class McpCommand(
                   if (locateOnPath("claude") == null) null
                   else { argv, dir -> runProcess(argv, dir) },
               )
-              .line
+              .line,
           )
         else -> listOf(duplicateClaudeEntry(claude.claudeJson))
       }
@@ -797,7 +797,7 @@ internal class McpCommand(
                   put("level", JsonPrimitive(f.level))
                   put("message", JsonPrimitive(f.message))
                 }
-              }
+              },
             ),
           )
           put(
@@ -819,11 +819,11 @@ internal class McpCommand(
                           put("level", JsonPrimitive(f.level))
                           put("message", JsonPrimitive(f.message))
                         }
-                      }
+                      },
                     ),
                   )
                 }
-              }
+              },
             ),
           )
         }
@@ -849,7 +849,7 @@ internal class McpCommand(
           println()
           println(
             "All checks passed. The supervisor handles classpath drift automatically " +
-              "(`classpathDirty` respawn) — do not re-run `mcp install` or kill daemons."
+              "(`classpathDirty` respawn) — do not re-run `mcp install` or kill daemons.",
           )
         }
       }
@@ -909,7 +909,7 @@ internal class McpCommand(
       scope = scope,
     )
       ?: throw IllegalStateException(
-        "compose-preview mcp install: cannot determine an absolute OpenCode config home"
+        "compose-preview mcp install: cannot determine an absolute OpenCode config home",
       )
 
   private fun isAntigravityEnvironment(): Boolean =

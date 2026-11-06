@@ -90,7 +90,7 @@ val functionalTestAndroidPluginClasspath =
 dependencies {
   functionalTestAndroidPluginClasspath("com.android.tools.build:gradle:${libs.versions.agp.get()}")
   functionalTestAndroidPluginClasspath(
-    "org.jetbrains.kotlin:compose-compiler-gradle-plugin:${libs.versions.kotlin.get()}"
+    "org.jetbrains.kotlin:compose-compiler-gradle-plugin:${libs.versions.kotlin.get()}",
   )
 }
 
@@ -105,9 +105,9 @@ val functionalTestTask =
     jvmArgumentProviders.add(
       CommandLineArgumentProvider {
         listOf(
-          "-Dee.schimke.composeai.functionalTest.androidPluginClasspath=${androidPluginClasspath.asPath}"
+          "-Dee.schimke.composeai.functionalTest.androidPluginClasspath=${androidPluginClasspath.asPath}",
         )
-      }
+      },
     )
 
     // Print full failure messages: these E2Es carry their diagnostics in the message.
@@ -219,7 +219,7 @@ fun siblingPublishedVersion(artifactId: String): String {
     tagVersion = tag,
     publishSet =
       ee.schimke.composeai.buildlogic.PublishedVersions.parsePublishSet(
-        providers.gradleProperty("composeai.publishSet").orNull
+        providers.gradleProperty("composeai.publishSet").orNull,
       ),
     manifestText = manifest,
   )
@@ -268,7 +268,7 @@ val generatePluginVersionResource =
       base.parentFile.mkdirs()
       base.writeText(
         "version=$pluginVersion\npreviewDaemon=$previewDaemon\nthemePinKotlin=$themePinKotlin\n" +
-          "themePinRuntime=$themePinRuntime\nthemePinCompilerPlugin=$themePinCompilerPlugin\n"
+          "themePinRuntime=$themePinRuntime\nthemePinCompilerPlugin=$themePinCompilerPlugin\n",
       )
       val xr =
         outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile
@@ -280,7 +280,7 @@ val generatePluginVersionResource =
           append("arcoreTesting=$xrArcoreTesting\n")
           append("renderer=$xrRenderer\n")
           append("composite=$xrComposite\n")
-        }
+        },
       )
     }
   }

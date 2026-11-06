@@ -65,7 +65,7 @@ internal object LaunchTopology {
         .firstOrNull()
         ?.let {
           throw IllegalArgumentException(
-            "$it is on $device twice: each app on a device is one package"
+            "$it is on $device twice: each app on a device is one package",
           )
         }
     }

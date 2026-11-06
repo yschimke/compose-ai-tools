@@ -101,7 +101,7 @@ class StagedPrepareOriginTest {
         listOf("prepare", "--artifacts", "m.json", "--out", "/tmp/o"),
         workspace,
         resolve,
-      )
+      ),
     )
   }
 
@@ -214,7 +214,7 @@ class StagedPrepareOriginTest {
     // A target the record did not select is this run's own choice.
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//x:y"), staged, fs))
     assertNull(
-      StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//a:lib //x:y"), staged, fs)
+      StagedPrepareOrigin.replayFor(listOf("prepare", "--target", "//a:lib //x:y"), staged, fs),
     )
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--target=//x:y"), staged, fs))
     assertNull(StagedPrepareOrigin.replayFor(listOf("prepare", "--config", "c.json"), staged, fs))

@@ -256,7 +256,7 @@ class PackPreviewIdExclusionsTest {
     assertEquals(
       commaBearingIds,
       PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id-file", f.path))!!.let(
-        PackPreviewIdExclusions::linesOf
+        PackPreviewIdExclusions::linesOf,
       ),
     )
   }
@@ -299,7 +299,7 @@ class PackPreviewIdExclusionsTest {
     assertEquals(
       commaBearingIds,
       PackPreviewIdExclusions.selectedIds(
-        listOf("pack", "--id", "SomethingElse", "--id-file", file.path)
+        listOf("pack", "--id", "SomethingElse", "--id-file", file.path),
       ),
     )
   }
@@ -309,7 +309,7 @@ class PackPreviewIdExclusionsTest {
     assertEquals(
       listOf("Alpha", "Beta", "Gamma"),
       PackPreviewIdExclusions.selectedIds(
-        listOf("pack", "--id", " Alpha , Beta ", "--id", "", "--id", "Gamma")
+        listOf("pack", "--id", " Alpha , Beta ", "--id", "", "--id", "Gamma"),
       ),
     )
   }
@@ -326,7 +326,7 @@ class PackPreviewIdExclusionsTest {
       kotlin
         .runCatching {
           PackPreviewIdExclusions.linesOf(
-            PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id-file", missing.path))!!
+            PackPreviewIdExclusions.idFileFromArgs(listOf("pack", "--id-file", missing.path))!!,
           )
         }
         .exceptionOrNull()
@@ -391,7 +391,7 @@ class PackPreviewIdExclusionsTest {
 
     val lines =
       PackPreviewIdExclusions.reportLines(
-        PackPreviewIdExclusions.matches(ids, listOf("*_Dark", "Nope"))
+        PackPreviewIdExclusions.matches(ids, listOf("*_Dark", "Nope")),
       )
 
     assertEquals(listOf(false, true), lines.map { it.warn })

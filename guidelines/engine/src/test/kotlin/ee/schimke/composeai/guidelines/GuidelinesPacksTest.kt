@@ -196,7 +196,7 @@ class GuidelinesPacksTest {
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
+        .replace("&amp;", "&"),
     )
 
   private fun normalise(text: String): String =
@@ -226,7 +226,7 @@ class GuidelinesPacksTest {
     val OVERRIDES: Map<Pair<String, String>, Set<String>> =
       mapOf(
         ("wear-compose" to "compose-ui") to
-          setOf("compose.sign-in.credential-manager", "compose.input.keyboard-options")
+          setOf("compose.sign-in.credential-manager", "compose.input.keyboard-options"),
       )
 
     /** Words a text-entry or sign-in rule's id carries. */

@@ -293,7 +293,7 @@ class MatrixRenderFetcherTest {
               RejectedRender(
                 id,
                 "coalesced: override-bearing render already in flight for this previewId",
-              )
+              ),
             ),
         )
       }

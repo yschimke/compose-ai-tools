@@ -49,7 +49,7 @@ class ExtensionGateTest {
         """
         {"module":"app","entries":[{"previewId":"Foo","findings":[{"level":"ERROR","type":"TouchTargetSize","message":"small"}]}]}
         """
-          .trimIndent()
+          .trimIndent(),
       )
     val module = PreviewModule("app", projectDir)
     val manifest =
@@ -63,7 +63,7 @@ class ExtensionGateTest {
               functionName = "Foo",
               className = "com.example.PreviewsKt",
               captures = listOf(Capture(renderOutput = "renders/Foo.png")),
-            )
+            ),
           ),
       )
     return module to manifest

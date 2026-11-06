@@ -281,7 +281,7 @@ class GenerateRobolectricPropertiesTaskTest {
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
     task.buildJavaMajor.set(21)
     task.outputDir.set(
-      tmp.newFolder("apptour-out-$useConsumerApplication-$appTourUseConsumerApplication")
+      tmp.newFolder("apptour-out-$useConsumerApplication-$appTourUseConsumerApplication"),
     )
     task.generate()
     return task.outputDir
@@ -381,8 +381,8 @@ class GenerateRobolectricPropertiesTaskTest {
     task.buildJavaMajor.set(buildJavaMajor)
     task.outputDir.set(
       tmp.newFolder(
-        "out-$override-$compileSdk-$useConsumerApplication-$maxSupportedSdkOverride-$buildJavaMajor"
-      )
+        "out-$override-$compileSdk-$useConsumerApplication-$maxSupportedSdkOverride-$buildJavaMajor",
+      ),
     )
     task.generate()
     val file =
@@ -413,7 +413,7 @@ class GenerateRobolectricPropertiesTaskTest {
         .contains(
           "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
             "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl," +
-            "com.example.app.,com.example.lib."
+            "com.example.app.,com.example.lib.",
         )
       assertThat(lines)
         .contains(
@@ -422,19 +422,19 @@ class GenerateRobolectricPropertiesTaskTest {
             "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
             "ee.schimke.composeai.renderer.ShadowPausedClockHardwareRenderer," +
             "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager," +
-            "ee.schimke.composeai.renderer.ShadowConsumerClock"
+            "ee.schimke.composeai.renderer.ShadowConsumerClock",
         )
     }
     // Everything else in those lanes is untouched.
     assertThat(
         lanes.getValue("renderer").lines().filterNot {
           it.startsWith("instrumented") || it.startsWith("shadows=")
-        }
+        },
       )
       .isEqualTo(
         PRE_CLOCK_RENDERER.lines().filterNot {
           it.startsWith("instrumented") || it.startsWith("shadows=")
-        }
+        },
       )
     // The daemon configures its sandbox from `composeai.render.clockPackages` itself.
     assertThat(lanes.getValue("daemon")).isEqualTo(PRE_CLOCK_DAEMON)
@@ -457,8 +457,8 @@ class GenerateRobolectricPropertiesTaskTest {
             "com.example.lib",
             ".",
             "..",
-          )
-        )
+          ),
+        ),
       )
       .containsExactly("com.example.app.", "androidx.", "com.example.lib")
       .inOrder()
@@ -475,14 +475,14 @@ class GenerateRobolectricPropertiesTaskTest {
         project.provider {
           resolved = true
           listOf("com.example.app.", "com.example.lib.")
-        }
+        },
       )
     assertThat(resolved).isFalse()
     assertThat(provider.asArguments())
       .containsExactly("-D$CLOCK_PACKAGES_PROPERTY=com.example.app.,com.example.lib.")
     assertThat(
         AndroidPreviewSupport.ClockPackagesSystemPropProvider(project.provider { emptyList() })
-          .asArguments()
+          .asArguments(),
       )
       .isEmpty()
   }
@@ -505,7 +505,7 @@ class GenerateRobolectricPropertiesTaskTest {
         packages(null) {
           namespace()
           pinAppClock.set(false)
-        }
+        },
       )
       .isEmpty()
     assertThat(packages("composePreview.pinAppClock=false\n", namespace)).isEmpty()
@@ -513,7 +513,7 @@ class GenerateRobolectricPropertiesTaskTest {
         packages("composePreview.pinAppClock=true\n") {
           namespace()
           pinAppClock.set(false)
-        }
+        },
       )
       .containsExactly("com.example.app.")
     // No namespace resolved: nothing is pinned, rather than an empty prefix matching every class.

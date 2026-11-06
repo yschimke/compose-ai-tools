@@ -121,13 +121,13 @@ class BundleDaemonEndToEndFunctionalTest {
 
       val exited = proc.waitFor(30, TimeUnit.SECONDS)
       assertWithMessage(
-          "daemon did not exit after `exit` notification. stderr:\n${stderrFile.readTextOrEmpty()}"
+          "daemon did not exit after `exit` notification. stderr:\n${stderrFile.readTextOrEmpty()}",
         )
         .that(exited)
         .isTrue()
       assertWithMessage(
           "daemon exited with non-zero code ${proc.exitValue()}. stderr:\n" +
-            stderrFile.readTextOrEmpty()
+            stderrFile.readTextOrEmpty(),
         )
         .that(proc.exitValue())
         .isEqualTo(0)
@@ -152,7 +152,7 @@ class BundleDaemonEndToEndFunctionalTest {
     val cli = File(cliBinary)
     assertWithMessage(
         "CLI binary $cliBinary missing — did `:cli:installDist` run? Use " +
-          "`./gradlew functionalTestWithBundleRender`"
+          "`./gradlew functionalTestWithBundleRender`",
       )
       .that(cli.isFile)
       .isTrue()

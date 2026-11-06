@@ -51,7 +51,7 @@ private fun bundledText(resource: String): String =
 private val PREVIOUS_BUCK_BXL_FILES =
   mapOf(
     "compose_preview.bxl" to
-      setOf("d0c77d4d7859528316a7631223ebb8d78088cd61b18e9313bd07fadbad35af82")
+      setOf("d0c77d4d7859528316a7631223ebb8d78088cd61b18e9313bd07fadbad35af82"),
   )
 
 /** Names Buck2 reads a package from by default (`[buildfile] name`). */
@@ -99,7 +99,7 @@ internal fun installBuckBxl(root: File, strict: Boolean = false): List<File> =
   }
 
 internal class BuckBuild(
-  private val execute: (List<String>, File, Long) -> String = BazelProcess::run
+  private val execute: (List<String>, File, Long) -> String = BazelProcess::run,
 ) {
   /**
    * The nearest package at or above [directory], as `//pkg:`; outside any package, everything below

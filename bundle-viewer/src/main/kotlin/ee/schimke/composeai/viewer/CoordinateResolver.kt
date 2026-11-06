@@ -85,7 +85,7 @@ internal object CoordinateResolver {
           return fetched
         warn(
           "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — downloaded copy " +
-            "does not match the bundle's $expected; using it anyway."
+            "does not match the bundle's $expected; using it anyway.",
         )
         return fetched
       }
@@ -95,14 +95,14 @@ internal object CoordinateResolver {
       val fallback = candidates.first()
       warn(
         "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — no local or remote " +
-          "copy matched; using ${fallback.name} anyway, the preview may differ slightly."
+          "copy matched; using ${fallback.name} anyway, the preview may differ slightly.",
       )
       return fallback
     }
     warn(
       "could not resolve ${coord.group}:${coord.artifact}:${coord.version}" +
         "${if (networkEnabled) " from any local or remote repository" else " from a local repository"};" +
-        " the preview may fail if it needs this dependency."
+        " the preview may fail if it needs this dependency.",
     )
     return null
   }

@@ -68,11 +68,11 @@ class CliRouterTest {
     // flag and it takes effect there. A non-launcher really does ignore it.
     assertTrue(
       CliFlagValidation.unknownFlagNote("ui-builder", "--no-project")
-        .contains("forwarded to the compose-preview-server binary")
+        .contains("forwarded to the compose-preview-server binary"),
     )
     assertTrue(
       CliFlagValidation.unknownFlagNote("design", "--bogus")
-        .contains("forwarded to the compose-preview-server binary")
+        .contains("forwarded to the compose-preview-server binary"),
     )
     assertTrue(CliFlagValidation.unknownFlagNote("render", "--fitler").contains("(ignored)"))
   }
@@ -87,7 +87,7 @@ class CliRouterTest {
     )
     assertTrue(
       CliFlagValidation.FORWARDED_TO_SERVER ==
-        setOf("serve", "browse", "ui-builder", "design", "a2ui")
+        setOf("serve", "browse", "ui-builder", "design", "a2ui"),
     )
   }
 

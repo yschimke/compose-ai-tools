@@ -186,7 +186,7 @@ class RemoteComposeJsonTest {
       RemoteComposeJson.compile(
         """{"header":{"width":100,"height":100},"root":[{"canvas":{"modifiers":[{"size":""" +
           """[100.0,100.0]}],"commands":[{"type":"drawPath","path":"M 10 10 L 90 10 L 90 90 Z"}]""" +
-          """}}]}"""
+          """}}]}""",
       )
 
     val path = RemoteComposeJson.dumpToJsonObject(document).find("PathData")!!["path"] as JsonArray
@@ -300,7 +300,7 @@ class RemoteComposeJsonTest {
     assertThat(encoded).contains("\"densityAtGeneration\":\"@42\"")
     val decoded = Json.decodeFromString(RemoteComposeDocumentHeader.serializer(), encoded)
     assertThat(
-        androidx.compose.remote.core.operations.Utils.idFromNan(decoded.densityAtGeneration!!)
+        androidx.compose.remote.core.operations.Utils.idFromNan(decoded.densityAtGeneration!!),
       )
       .isEqualTo(42)
   }

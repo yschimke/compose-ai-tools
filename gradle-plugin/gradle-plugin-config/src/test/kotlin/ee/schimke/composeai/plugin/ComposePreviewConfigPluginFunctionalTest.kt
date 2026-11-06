@@ -48,7 +48,7 @@ class ComposePreviewConfigPluginFunctionalTest {
         }
         rootProject.name = "config-only-test"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Note: NO `kotlin("jvm")`, NO Android, NO Compose plugin — the config-only plugin must stand
@@ -65,7 +65,7 @@ class ComposePreviewConfigPluginFunctionalTest {
             variant.set("release")
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     // Configuration cache + Isolated Projects on by default — the config plugin must be clean under
@@ -76,7 +76,7 @@ class ComposePreviewConfigPluginFunctionalTest {
         org.gradle.configuration-cache=true
         org.gradle.unsafe.isolated-projects=true
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -93,7 +93,7 @@ class ComposePreviewConfigPluginFunctionalTest {
         composePreview.kmpAndroidRobolectric.set(false)
         check(!composePreview.kmpAndroidRobolectric.get())
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     val result =

@@ -143,11 +143,11 @@ class HistoryCommand(private val args: List<String>) {
     println("  preview:   ${entry.previewId}  (${entry.module})")
     println("  timestamp: ${entry.timestamp}   trigger: ${entry.trigger}")
     println(
-      "  png:       ${result.pngPath}  (${entry.pngSize} bytes, sha ${entry.pngHash.take(12)})"
+      "  png:       ${result.pngPath}  (${entry.pngSize} bytes, sha ${entry.pngHash.take(12)})",
     )
     entry.git?.let { g ->
       println(
-        "  git:       ${g.branch ?: "(detached)"}@${g.shortCommit ?: "?"}  dirty=${g.dirty ?: "?"}"
+        "  git:       ${g.branch ?: "(detached)"}@${g.shortCommit ?: "?"}  dirty=${g.dirty ?: "?"}",
       )
     }
     val data = dataProductsOf(entry)
@@ -160,7 +160,7 @@ class HistoryCommand(private val args: List<String>) {
     val mode = args.flagValue("--mode") ?: "metadata"
     if (mode != "metadata" && mode != "pixel" && mode != "semantics" && mode != "data") {
       System.err.println(
-        "history diff: unknown --mode '$mode'. Use metadata (default), pixel, semantics, or data."
+        "history diff: unknown --mode '$mode'. Use metadata (default), pixel, semantics, or data.",
       )
       exitProcess(1)
     }
@@ -188,7 +188,7 @@ class HistoryCommand(private val args: List<String>) {
     }
     if (from.previewId != to.previewId) {
       System.err.println(
-        "history diff: entries are different previews (${from.previewId} vs ${to.previewId})"
+        "history diff: entries are different previews (${from.previewId} vs ${to.previewId})",
       )
       exitProcess(2)
     }
@@ -248,7 +248,7 @@ class HistoryCommand(private val args: List<String>) {
       if (missing != null) {
         System.err.println(
           "history diff: entry '$missing' has no captured compose/semantics snapshot " +
-            "(the render that produced it didn't compute semantics)"
+            "(the render that produced it didn't compute semantics)",
         )
         exitProcess(2)
       }
@@ -385,7 +385,7 @@ class HistoryCommand(private val args: List<String>) {
           OUT.encodeToString(
             HistoryListResponse.serializer(),
             HistoryListResponse(schema = HISTORY_SCHEMA, total = 0, entries = emptyList()),
-          )
+          ),
         )
       } else {
         println("No history found at $dir (no renders archived yet).")
@@ -476,7 +476,7 @@ class HistoryCommand(private val args: List<String>) {
       Common:
         --json         Emit JSON (schema: $HISTORY_SCHEMA)
       """
-        .trimIndent()
+        .trimIndent(),
     )
   }
 
@@ -585,7 +585,7 @@ internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String = buildString
     when (val s = delta.semantics) {
       null -> "  (not captured on both entries)"
       else -> formatSemanticsDeltaHuman(s).prependIndent("  ")
-    }
+    },
   )
   appendLine("a11y:")
   val a = delta.a11y
@@ -595,7 +595,7 @@ internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String = buildString
     appendLine("  No a11y finding changes.")
   } else {
     appendLine(
-      "  ${a.added.size} added, ${a.removed.size} removed, ${a.changed.size} changed".trimEnd()
+      "  ${a.added.size} added, ${a.removed.size} removed, ${a.changed.size} changed".trimEnd(),
     )
     a.removed.forEach {
       appendLine("    - ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")

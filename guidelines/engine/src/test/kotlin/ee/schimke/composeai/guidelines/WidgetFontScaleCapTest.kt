@@ -28,7 +28,7 @@ class WidgetFontScaleCapTest {
         GuidelineSurfaces.checkFontScale(
           GuidelineSurfaces.WIDGET,
           GuidelineSurfaces.WEAR_WIDGETS_PROFILE,
-        )
+        ),
       )
       .isEqualTo(1.24)
     assertThat(GuidelineSurfaces.checkFontScale(GuidelineSurfaces.WIDGET, null)).isEqualTo(1.5)

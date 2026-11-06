@@ -75,7 +75,7 @@ internal class MatrixRenderFetcher(
             onLog(
               "render failed for '$id': " +
                 (params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
-                  ?: "daemon reported renderFailed")
+                  ?: "daemon reported renderFailed"),
             )
           } else {
             // `unchanged` renders still carry a reused pngPath.

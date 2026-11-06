@@ -39,7 +39,7 @@ class RemoteSampleCoralThemeCatalog : PreviewWrapperProvider {
   @Composable
   override fun Wrap(content: @Composable () -> Unit) =
     MaterialTheme(
-      colorScheme = ColorScheme(primary = Color(0xFFFF6F61), secondary = Color(0xFFFFB4A9))
+      colorScheme = ColorScheme(primary = Color(0xFFFF6F61), secondary = Color(0xFFFFB4A9)),
     ) {
       content()
     }

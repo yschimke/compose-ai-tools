@@ -436,7 +436,7 @@ public object PreviewGuidelineRequests {
         expectedReplyTokens(
           guidelines
             .subjectRules(batch.surface, subject.profile, subject.pictures.isNotEmpty())
-            .size
+            .size,
         )
       } + OTHERS_TOKENS + expectedReasoningTokens(reasoningEffort)
     return price.costUsd(input, output)
@@ -581,7 +581,7 @@ public object PreviewGuidelineRequests {
           append("Not rendered here: the catalog's ").append(frames.joinToString())
           append(" picture(s). Each subject has only the pictures listed under it. Where a rule ")
           append(
-            "asks you to look at one of those pictures, judge it on the pictures you have and "
+            "asks you to look at one of those pictures, judge it on the pictures you have and ",
           )
           append("name the one you judged; never cite a picture that is not attached.\n")
         }
@@ -607,7 +607,7 @@ public object PreviewGuidelineRequests {
             append("`off:` lists the edges a node extends past it.\n")
           }
           append(
-            "Accessibility nodes (id | role | label | bounds left,top,right,bottom px | states):\n"
+            "Accessibility nodes (id | role | label | bounds left,top,right,bottom px | states):\n",
           )
           subject.nodes.take(MAX_NODES).forEach { node ->
             append("- ").append(node.id).append(" | ").append(node.role ?: "-").append(" | ")
@@ -884,7 +884,7 @@ public object PreviewGuidelineRequests {
           putJsonArray("bounds") {
             listOf(node.left, node.top, node.right, node.bottom).forEach { add(JsonPrimitive(it)) }
           }
-        }
+        },
       )
     }
   }
@@ -1082,7 +1082,7 @@ public object PreviewGuidelineRequests {
             .groupBy { it.level.uppercase() to it.type }
             .entries
             .sortedWith(compareBy({ it.key.first }, { it.key.second }))
-            .joinToString { (key, list) -> "${list.size} ${key.first} ${key.second}" }
+            .joinToString { (key, list) -> "${list.size} ${key.first} ${key.second}" },
         )
       }
       append(". Ask for `").append(KIND_A11Y).append("` for the nodes and checks.")

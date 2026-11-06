@@ -28,7 +28,7 @@ class GuidelineConcurrencyTest {
                 "check": "ok?", "source": "https://developer.android.com/$it",
                 "surfaces": ["screen"]}"""
           } +
-          "]}"
+          "]}",
       )
       .guidelines!!
 
@@ -57,7 +57,7 @@ class GuidelineConcurrencyTest {
               put("reason", "Clipped.")
               put("needs", buildJsonArray {})
               put("regions", buildJsonArray {})
-            }
+            },
           )
         },
       )
@@ -70,7 +70,7 @@ class GuidelineConcurrencyTest {
                 put("subjectId", "s${it + 1}")
                 put("verdict", "pass")
                 put("confidence", 0.9)
-              }
+              },
             )
           }
         },
@@ -136,7 +136,7 @@ class GuidelineConcurrencyTest {
     val (parallel, four) = timed(4)
     println(
       "bench: 24 screens in 4 batches, 400 ms a request: concurrency 1 took $sequential ms, " +
-        "concurrency 4 took $parallel ms"
+        "concurrency 4 took $parallel ms",
     )
     assertThat(parallel).isLessThan(sequential / 2)
     assertThat(four.results.map { it.record.verdicts })
@@ -193,7 +193,7 @@ class GuidelineConcurrencyTest {
                 "choices",
                 buildJsonArray {
                   add(
-                    buildJsonObject { put("message", buildJsonObject { put("content", content) }) }
+                    buildJsonObject { put("message", buildJsonObject { put("content", content) }) },
                   )
                 },
               )
@@ -223,7 +223,7 @@ class GuidelineConcurrencyTest {
     val afterTokens = tokens.get()
     println(
       "bench: 12 screens x 24 rules end to end at 70 tokens/s: before $beforeTokens tokens " +
-        "written, ~${before / 10} s; after $afterTokens tokens, ~${after / 10} s"
+        "written, ~${before / 10} s; after $afterTokens tokens, ~${after / 10} s",
     )
     assertThat(afterTokens).isLessThan(beforeTokens / 4)
     assertThat(after).isLessThan(before / 4)

@@ -93,7 +93,7 @@ fun LoadingPreview() {
       ManualClockOptions(advanceTimeMillis = 0L),
       ManualClockOptions(advanceTimeMillis = 500L),
       ManualClockOptions(advanceTimeMillis = 1500L),
-    ]
+    ],
 )
 @Composable
 fun SpinnerTimelinePreview() {
@@ -205,7 +205,7 @@ private fun googleFontFamily(
         googleFontProvider,
         weight = androidx.compose.ui.text.font.FontWeight(w),
       )
-    }
+    },
   )
 
 // Four families at their characteristic weights. Roboto Flex's 100 and 900
@@ -260,7 +260,7 @@ private fun deviceFontFamily(
             androidx.compose.ui.text.font.FontStyle.Normal
           },
       )
-    }
+    },
   )
 
 private val deviceRobotoFlexFamily = deviceFontFamily("roboto-flex", listOf(100, 400, 700, 900))

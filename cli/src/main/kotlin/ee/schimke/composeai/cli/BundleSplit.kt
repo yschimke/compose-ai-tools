@@ -142,7 +142,7 @@ internal class SplitCarriageSummary(
               SplitMode.VIEW_ONLY -> "view-only"
               SplitMode.FULL -> "full"
               SplitMode.FULL_SHARED_CLASSPATH -> "full-shared-classpath"
-            }
+            },
           ),
         )
         put("bundles", JsonPrimitive(bundles))
@@ -160,7 +160,7 @@ internal class SplitCarriageSummary(
                 buildJsonObject {
                   put("path", JsonPrimitive(entry.path))
                   put("bytes", JsonPrimitive(entry.bytes))
-                }
+                },
               )
             }
           },
@@ -227,7 +227,7 @@ internal fun forEachSplitPreview(
   val bundleJsonBytes =
     entries["bundle.json"]
       ?: throw IllegalArgumentException(
-        "not a bundle: missing bundle.json (is this a packed sheet?)"
+        "not a bundle: missing bundle.json (is this a packed sheet?)",
       )
   val previewsJsonBytes =
     entries["previews.json"]
@@ -284,7 +284,7 @@ internal fun forEachSplitPreview(
       )
     } else {
       SplitCarriage.NONE
-    }
+    },
   )
 
   var emitted = 0
@@ -401,7 +401,7 @@ private fun perPreviewManifest(
             put("path", JsonPrimitive(sharedClasspath.path))
             put("sha256", JsonPrimitive(sharedClasspath.sha256))
             put("size", JsonPrimitive(sharedClasspath.size))
-          }
+          },
         )
       },
     )
@@ -584,7 +584,7 @@ internal class SplitSubcommand(private val args: List<String>) {
       System.err.println(
         "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> " +
           "[--view-only | --shared-classpath-out <pool-dir>] [--no-crop] " +
-          "[--carriage-report <file.json>]"
+          "[--carriage-report <file.json>]",
       )
       exitProcess(64)
     }
@@ -597,7 +597,8 @@ internal class SplitSubcommand(private val args: List<String>) {
       }
     val outDir =
       File(
-          outDirArg ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-split")
+          outDirArg
+            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-split"),
         )
         .absoluteFile
     outDir.mkdirs()
@@ -647,7 +648,7 @@ internal class SplitSubcommand(private val args: List<String>) {
       }
     if (emitted == 0) {
       System.err.println(
-        "bundle split: no previews with a baked image found in ${file.name} — nothing to split."
+        "bundle split: no previews with a baked image found in ${file.name} — nothing to split.",
       )
       exitProcess(1)
     }
@@ -662,7 +663,7 @@ internal class SplitSubcommand(private val args: List<String>) {
           SplitMode.FULL_SHARED_CLASSPATH -> "full-shared-classpath"
         }})\n" +
         "  total:   $total bytes\n" +
-        "  size:    min ${sizes.minOrNull() ?: 0} / avg ${if (written.isNotEmpty()) total / written.size else 0} / max ${sizes.maxOrNull() ?: 0} bytes"
+        "  size:    min ${sizes.minOrNull() ?: 0} / avg ${if (written.isNotEmpty()) total / written.size else 0} / max ${sizes.maxOrNull() ?: 0} bytes",
     )
     val summary = SplitCarriageSummary(mode, carriage, bundles = written.size, totalBytes = total)
     if (carriageReportOut != null) {
@@ -681,7 +682,7 @@ internal class SplitSubcommand(private val args: List<String>) {
         System.err.println(
           "bundle split: ${over.size} bundle(s) exceed 100 KB " +
             "(largest ${over.maxByOrNull { it.length() }!!.length()} bytes) — usually a full-screen " +
-            "render; the shared carriage is only ${formatPercent(summary.sharePercent)}% of the output."
+            "render; the shared carriage is only ${formatPercent(summary.sharePercent)}% of the output.",
         )
       }
     }

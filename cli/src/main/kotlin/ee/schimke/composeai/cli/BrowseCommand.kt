@@ -57,7 +57,7 @@ class BrowseCommand(private val args: List<String>) {
         Advanced bundle, catalog, deployment and administration options remain under
         `compose-preview serve --help`.
         """
-          .trimIndent()
+          .trimIndent(),
       )
     }
   }

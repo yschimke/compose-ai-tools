@@ -13,11 +13,11 @@ class ResourceCommandsTest {
 
     assertFalse(ResourcePreviewResult("id", ":app", "drawable").anyChanged())
     assertFalse(
-      ResourcePreviewResult("id", ":app", "drawable", captures = listOf(unchanged)).anyChanged()
+      ResourcePreviewResult("id", ":app", "drawable", captures = listOf(unchanged)).anyChanged(),
     )
     assertTrue(
       ResourcePreviewResult("id", ":app", "drawable", captures = listOf(unchanged, changed))
-        .anyChanged()
+        .anyChanged(),
     )
   }
 
@@ -25,17 +25,17 @@ class ResourceCommandsTest {
   fun `show-resources forwards --force as --rerun-tasks`() {
     assertTrue(
       "--rerun-tasks" in
-        ShowResourcesCommand(listOf("--force=refresh icons")).resourceRenderGradleArguments()
+        ShowResourcesCommand(listOf("--force=refresh icons")).resourceRenderGradleArguments(),
     )
     assertFalse(
-      ShowResourcesCommand(emptyList()).resourceRenderGradleArguments().contains("--rerun-tasks")
+      ShowResourcesCommand(emptyList()).resourceRenderGradleArguments().contains("--rerun-tasks"),
     )
   }
 
   @Test
   fun `show resources command accepts the resource-specific filter surface`() {
     ShowResourcesCommand(
-      listOf("--json", "--changed-only", "--module", ":app", "--id", "drawable/icon")
+      listOf("--json", "--changed-only", "--module", ":app", "--id", "drawable/icon"),
     )
   }
 
@@ -55,13 +55,13 @@ class ResourceCommandsTest {
     assertEquals(
       " [no PNG, skipped]",
       resourceStatusTag(
-        ResourcePreviewResult("id", ":app", "drawable", captures = listOf(skipped))
+        ResourcePreviewResult("id", ":app", "drawable", captures = listOf(skipped)),
       ),
     )
     assertEquals(
       " [no PNG]",
       resourceStatusTag(
-        ResourcePreviewResult("id", ":app", "drawable", captures = listOf(skipped, failed))
+        ResourcePreviewResult("id", ":app", "drawable", captures = listOf(skipped, failed)),
       ),
     )
     assertEquals(
@@ -73,7 +73,7 @@ class ResourceCommandsTest {
           "drawable",
           captures = listOf(rendered.copy(changed = true)),
           pngPath = rendered.pngPath,
-        )
+        ),
       ),
     )
   }

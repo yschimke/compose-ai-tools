@@ -111,9 +111,9 @@ class BuildHostCommandTest {
           "\n" +
           "{ not json\n" +
           BuildHostCodec.encode(
-            BuildHostEnvelope(3, request = BuildHostRequest.GradleVariantArgs)
+            BuildHostEnvelope(3, request = BuildHostRequest.GradleVariantArgs),
           ) +
-          "\n"
+          "\n",
       )
 
     assertEquals(3, replies.size, "the host stopped serving after the bad line")
@@ -135,9 +135,9 @@ class BuildHostCommandTest {
           """{"id":2,"request":{"kind":"somethingElse"}}""" +
           "\n" +
           BuildHostCodec.encode(
-            BuildHostEnvelope(3, request = BuildHostRequest.GradleVariantArgs)
+            BuildHostEnvelope(3, request = BuildHostRequest.GradleVariantArgs),
           ) +
-          "\n"
+          "\n",
       )
 
     assertEquals(3, replies.size)
@@ -214,8 +214,8 @@ class BuildHostCommandTest {
     pipe.write(BuildHostCodec.encode(handshake()) + "\n")
     pipe.write(
       BuildHostCodec.encode(
-        BuildHostEnvelope(2, request = BuildHostRequest.RunGradleTasks(listOf("help")))
-      ) + "\n"
+        BuildHostEnvelope(2, request = BuildHostRequest.RunGradleTasks(listOf("help"))),
+      ) + "\n",
     )
     pipe.flush()
     assertTrue(building.await(10, TimeUnit.SECONDS), "the build never started")

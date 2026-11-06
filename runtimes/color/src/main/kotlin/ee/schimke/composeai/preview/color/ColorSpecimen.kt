@@ -108,7 +108,7 @@ internal fun SwatchRow(label: String, color: Color) {
           Modifier.size(40.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(color)
-            .border(1.dp, SwatchBorder, RoundedCornerShape(6.dp))
+            .border(1.dp, SwatchBorder, RoundedCornerShape(6.dp)),
       )
     }
     Column(modifier = Modifier.padding(start = 12.dp)) {

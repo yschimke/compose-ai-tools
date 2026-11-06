@@ -16,7 +16,7 @@ class AarManifestReaderTest {
             <uses-sdk android:minSdkVersion="35" />
         </manifest>
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertEquals("ai.koog.agents", parsed.packageName)
     assertEquals(35, parsed.minSdk)
@@ -26,7 +26,7 @@ class AarManifestReaderTest {
   fun `missing uses-sdk yields null minSdk`() {
     val parsed =
       AarManifestReader.parse(
-        """<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example" />"""
+        """<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example" />""",
       )
     assertEquals("com.example", parsed.packageName)
     assertNull(parsed.minSdk)
@@ -41,7 +41,7 @@ class AarManifestReaderTest {
             <uses-sdk android:minSdkVersion="VanillaIceCream" />
         </manifest>
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertNull(parsed.minSdk)
   }
@@ -62,7 +62,7 @@ class AarManifestReaderTest {
             <uses-sdk android:minSdkVersion="21" />
         </manifest>
         """
-          .trimIndent()
+          .trimIndent(),
       )
     assertNull(parsed.packageName)
     assertEquals(21, parsed.minSdk)

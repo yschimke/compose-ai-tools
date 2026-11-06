@@ -323,7 +323,7 @@ public class RcJvmWorkerPool(
         if (version != PROTOCOL_VERSION) {
           throw IOException(
             "worker speaks protocol $version, this cli speaks $PROTOCOL_VERSION " +
-              "(is the $lane worker stale?)"
+              "(is the $lane worker stale?)",
           )
         }
       } catch (e: Exception) {
@@ -353,7 +353,7 @@ public class RcJvmWorkerPool(
         toWorker.writeInt(spec.heightPx)
         toWorker.writeInt(spec.density.toRawBits())
         toWorker.writeInt(
-          if (format == RcJvmServerRenderer.Format.SVG) WIRE_FORMAT_SVG else WIRE_FORMAT_PNG
+          if (format == RcJvmServerRenderer.Format.SVG) WIRE_FORMAT_SVG else WIRE_FORMAT_PNG,
         )
         // After `format`, matching `RcJvmRenderWorkerMain`; both ship from one build, so no
         // negotiation.

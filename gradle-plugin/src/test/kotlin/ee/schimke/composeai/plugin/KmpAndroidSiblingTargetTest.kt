@@ -10,7 +10,7 @@ class KmpAndroidSiblingTargetTest {
         AndroidPreviewSupport.kmpAndroidSiblingName(
           "androidx.lifecycle",
           "lifecycle-viewmodel-desktop",
-        )
+        ),
       )
       .isEqualTo("lifecycle-viewmodel-android")
   }
@@ -18,7 +18,7 @@ class KmpAndroidSiblingTargetTest {
   @Test
   fun `androidx jvmstubs sibling maps to android sibling`() {
     assertThat(
-        AndroidPreviewSupport.kmpAndroidSiblingName("androidx.savedstate", "savedstate-jvmstubs")
+        AndroidPreviewSupport.kmpAndroidSiblingName("androidx.savedstate", "savedstate-jvmstubs"),
       )
       .isEqualTo("savedstate-android")
   }
@@ -26,7 +26,7 @@ class KmpAndroidSiblingTargetTest {
   @Test
   fun `jetbrains compose desktop sibling maps to android sibling`() {
     assertThat(
-        AndroidPreviewSupport.kmpAndroidSiblingName("org.jetbrains.compose.ui", "ui-desktop")
+        AndroidPreviewSupport.kmpAndroidSiblingName("org.jetbrains.compose.ui", "ui-desktop"),
       )
       .isEqualTo("ui-android")
   }
@@ -37,7 +37,7 @@ class KmpAndroidSiblingTargetTest {
         AndroidPreviewSupport.kmpAndroidSiblingName(
           "org.jetbrains.kotlinx",
           "kotlinx-coroutines-swing-desktop",
-        )
+        ),
       )
       .isNull()
   }
@@ -48,7 +48,7 @@ class KmpAndroidSiblingTargetTest {
         AndroidPreviewSupport.kmpAndroidSiblingName(
           "org.jetbrains.compose.ui",
           "ui-tooling-preview",
-        )
+        ),
       )
       .isNull()
   }

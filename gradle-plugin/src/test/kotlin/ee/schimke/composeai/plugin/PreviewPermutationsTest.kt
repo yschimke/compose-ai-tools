@@ -24,7 +24,7 @@ class PreviewPermutationsTest {
             PreviewDataProduct(
               kind = "render/scroll/long",
               output = "data/scroll/ButtonPreview.png",
-            )
+            ),
           ),
       )
 
@@ -59,7 +59,7 @@ class PreviewPermutationsTest {
         params =
           PreviewParams(
             previewParameterProviderClassName =
-              "androidx.glance.wear.tooling.preview.RoundAllWidgetPreviewParams"
+              "androidx.glance.wear.tooling.preview.RoundAllWidgetPreviewParams",
           ),
         captures = listOf(Capture(renderOutput = "renders/WeatherWidgetRoundPreview.png")),
       )

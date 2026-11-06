@@ -93,7 +93,7 @@ class DaemonLaunchBuilderTest {
 
     val watched =
       DaemonLaunchBuilder.encode(
-        descriptor.copy(sourceWatch = SourceWatch(sourceDirs = listOf("/x/src/main/kotlin")))
+        descriptor.copy(sourceWatch = SourceWatch(sourceDirs = listOf("/x/src/main/kotlin"))),
       )
     assertThat(DaemonLaunchBuilder.decode(watched).sourceWatch?.sourceDirs)
       .containsExactly("/x/src/main/kotlin")

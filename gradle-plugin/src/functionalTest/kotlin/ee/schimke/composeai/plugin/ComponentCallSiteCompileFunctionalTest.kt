@@ -62,7 +62,7 @@ class ComponentCallSiteCompileFunctionalTest {
         }
         rootProject.name = "test-call-site-compile"
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "build.gradle.kts")
@@ -85,7 +85,7 @@ class ComponentCallSiteCompileFunctionalTest {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
@@ -144,7 +144,7 @@ class ComponentCallSiteCompileFunctionalTest {
             OutlinedTextField(state = rememberTextFieldState())
         }
         """
-          .trimIndent()
+          .trimIndent(),
       )
 
     return projectDir
@@ -258,7 +258,7 @@ class ComponentCallSiteCompileFunctionalTest {
           imports.forEach { appendLine("import $it") }
           appendLine()
           appendLine(body)
-        }
+        },
       )
   }
 }

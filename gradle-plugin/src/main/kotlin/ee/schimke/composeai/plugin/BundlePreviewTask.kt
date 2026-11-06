@@ -429,7 +429,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         if (!src.isFile) {
           logger.warn(
             "composePreviewBundle: data-extension '$id' report '$relPath' not found at " +
-              "${src.path} — skipping (the bundle omits this extension's data)."
+              "${src.path} — skipping (the bundle omits this extension's data).",
           )
           continue
         }
@@ -597,7 +597,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  Maven deps listed:    $mavenKept\n" +
         "  Embedded deps:        $embeddedKept (carried in libs/)\n" +
         "  Project deps inlined: $projectInlined\n" +
-        "  deps dropped:         $depsDropped (no reachable classes)"
+        "  deps dropped:         $depsDropped (no reachable classes)",
     )
 
     // Snapshot coordinates age out of their repository (androidx.dev keeps builds for weeks),
@@ -612,7 +612,7 @@ abstract class BundlePreviewTask : DefaultTask() {
           "(${snapshotCoords.take(3).joinToString { "${it.group}:${it.artifact}" }}" +
           "${if (snapshotCoords.size > 3) ", …" else ""}). The bundle records the repositories " +
           "they resolve from, but a snapshot publication is perishable — pack with --embed-deps " +
-          "if this bundle has to keep rendering after the snapshot build ages out."
+          "if this bundle has to keep rendering after the snapshot build ages out.",
       )
     }
 
@@ -623,7 +623,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         "composePreviewBundle: ${outFile.name} is ${sizeBytes / 1_000_000}MB with $embeddedKept " +
           "embedded dep(s). Embedding is an offline fallback — prefer the default detached " +
           "`coordinates` pack (drop `--embed-deps` / `-PbundleEmbedDeps`) so the bundle stays small " +
-          "and resolves its deps at open time."
+          "and resolves its deps at open time.",
       )
     }
   }
@@ -632,7 +632,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     if (ids.isEmpty()) {
       if (manifest.previews.isEmpty()) {
         throw GradleException(
-          "composePreviewBundle: previews.json is empty — nothing to bundle. Run composePreviewDiscover first."
+          "composePreviewBundle: previews.json is empty — nothing to bundle. Run composePreviewDiscover first.",
         )
       }
       return manifest.previews
@@ -641,7 +641,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val resolved = ids.map { id ->
       byId[id]
         ?: throw GradleException(
-          "composePreviewBundle: preview id not found: $id\nAvailable: ${byId.keys.sorted().joinToString()}"
+          "composePreviewBundle: preview id not found: $id\nAvailable: ${byId.keys.sorted().joinToString()}",
         )
     }
     return resolved
@@ -878,7 +878,7 @@ abstract class BundlePreviewTask : DefaultTask() {
    * the bundle well-formed.
    */
   private fun resolveAndroidResources(
-    zipFiles: LinkedHashMap<String, ByteArray>
+    zipFiles: LinkedHashMap<String, ByteArray>,
   ): BundleAndroidResources? {
     // `test_config.properties` is nested in AGP's config directory, so walk the input as a file
     // tree (`.files` only returns the directory). Try the dedicated input, then the unit-test
@@ -891,7 +891,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       logger.warn(
         "composePreviewBundle: no test_config.properties on the unit-test config / runtime-classpath " +
           "inputs — a detached daemon can't resolve app resources (stringResource / tile themes). " +
-          "Run composePreviewRender first so AGP generates it."
+          "Run composePreviewRender first so AGP generates it.",
       )
       return null
     }
@@ -922,7 +922,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       logger.warn(
         "composePreviewBundle: the merged resource APK / manifest from test_config.properties is " +
           "missing (apk='$apkPath', manifest='$manifestPath') — a detached daemon can't resolve app " +
-          "resources (stringResource / tile themes)."
+          "resources (stringResource / tile themes).",
       )
       return null
     }
@@ -948,7 +948,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         "(apk=${prunedApk.bytes.size}B, was ${apkFile.length()}B — dropped " +
         "${prunedApk.droppedEntries} unused file resources / ${prunedApk.bytesSaved}B; " +
         "manifest=${manifestFile.length()}B, " +
-        "rClasses=${if (rClassesJar != null) "${rClassesJar.size}B" else "none"})"
+        "rClasses=${if (rClassesJar != null) "${rClassesJar.size}B" else "none"})",
     )
     return BundleAndroidResources(
       resourceApkPath = ANDROID_RESOURCE_APK_PATH,
@@ -1253,7 +1253,7 @@ abstract class BundlePreviewTask : DefaultTask() {
           "composePreviewBundle: refusing to pack a desktop bundle whose classpath carries " +
             "${offenders.size} Android-only artifact(s). A desktop bundle replays on a host JVM " +
             "with no android.jar, so every render would fail with " +
-            "NoClassDefFoundError: android/os/Parcelable."
+            "NoClassDefFoundError: android/os/Parcelable.",
         )
         offenders.take(8).forEach { appendLine(" - $it") }
         if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
@@ -1262,9 +1262,9 @@ abstract class BundlePreviewTask : DefaultTask() {
           "This means the module's desktop runtime classpath resolved to androidRuntimeClasspath. " +
             "If it is a com.android.kotlin.multiplatform.library (:shared) module, add a " +
             "`jvm(\"desktop\")` target to its `kotlin { }` block. See " +
-            "compose-preview/references/cmp-shared.md."
+            "compose-preview/references/cmp-shared.md.",
         )
-      }
+      },
     )
   }
 
@@ -1609,7 +1609,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       logger.warn(
         "composePreview: the builder catalog names template design '$it', which is not under " +
           "ui-builder/ in this module or the repository root; it will be missing from the bundle " +
-          "and from the delivery branch."
+          "and from the delivery branch.",
       )
     }
     // Parse before carrying, so a broken design is named now rather than advertised and failing
@@ -1621,7 +1621,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     unreadable.forEach { (path, file) ->
       logger.warn(
         "composePreview: template design '$path' (${file.path}) is not readable JSON, so it is " +
-          "not carried in the bundle; the builder catalog names it and it will be missing."
+          "not carried in the bundle; the builder catalog names it and it will be missing.",
       )
     }
     return usable.associate { (path, file) -> path to file.readBytes() }
@@ -1676,7 +1676,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         logger.warn(
           "composePreview: ${policyFile.path} could not be read " +
             "(${failure.message ?: failure::class.simpleName}); the bundle carries no " +
-            "ui-builder.json."
+            "ui-builder.json.",
         )
         return null
       }
@@ -1719,14 +1719,14 @@ abstract class BundlePreviewTask : DefaultTask() {
     val problems = UiBuilderGuidelinesFile.problems(text, catalogId)
     if (problems.isNotEmpty()) {
       logger.warn(
-        "composePreview: ${source.path} is not carried in the bundle: ${problems.joinToString("; ")}."
+        "composePreview: ${source.path} is not carried in the bundle: ${problems.joinToString("; ")}.",
       )
       return null
     }
     val flat = UiBuilderGuidelinesFile.flatten(text)
     flat.problem?.let {
       logger.warn(
-        "composePreview: ${source.path}'s includes are not resolved ($it); bundled as written."
+        "composePreview: ${source.path}'s includes are not resolved ($it); bundled as written.",
       )
     }
     return flat.text.toByteArray(Charsets.UTF_8)
@@ -1911,16 +1911,16 @@ internal fun guidelineResultsEntry(
             kotlinx.serialization.json.JsonObject(
               value.mapValues { (k, v) ->
                 if (k == "previewId") kotlinx.serialization.json.JsonPrimitive(id) else v
-              }
+              },
             )
           else -> value
         }
-      }
+      },
     )
   }
   val rewritten =
     kotlinx.serialization.json.JsonObject(
-      root + ("results" to kotlinx.serialization.json.JsonArray(remapped))
+      root + ("results" to kotlinx.serialization.json.JsonArray(remapped)),
     )
   return Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), rewritten)
     .toByteArray(Charsets.UTF_8)

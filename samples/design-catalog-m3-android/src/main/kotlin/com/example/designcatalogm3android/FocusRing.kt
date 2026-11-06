@@ -40,7 +40,7 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
             RippleConfiguration.Focus.InsetRing(
               outerStrokeColor = colorScheme.primary,
               innerStrokeColor = colorScheme.surface,
-            )
+            ),
         ),
     ) {
       Surface { androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) { content() } }

@@ -38,7 +38,7 @@ object DesktopRenderWorkerPoolStub {
 
     frames.writeInt(DesktopRenderWorkerPool.MAGIC_HELLO)
     frames.writeInt(
-      if (mode == "badVersion") 99 else DesktopRenderWorkerPool.WORKER_PROTOCOL_VERSION
+      if (mode == "badVersion") 99 else DesktopRenderWorkerPool.WORKER_PROTOCOL_VERSION,
     )
     frames.flush()
 

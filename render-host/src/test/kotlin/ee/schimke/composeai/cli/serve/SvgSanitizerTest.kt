@@ -34,9 +34,9 @@ class SvgSanitizerTest {
                <g data-node-id="58548:7249" clip-path="url(#c0)" opacity="0.5">
                  <path d="M0 0 L10 10" fill="url(#g0)" stroke-width="2"/>
                  <text x="1" y="9" font-family="Roboto" font-size="4">Circle</text>
-               </g>"""
-          )
-        )
+               </g>""",
+          ),
+        ),
       )
     assertTrue(out.contains("data-node-id=\"58548:7249\""))
     assertTrue(out.contains("linearGradient"))
@@ -68,7 +68,7 @@ class SvgSanitizerTest {
     // — would keep exactly the payload the removal was for.
     val out =
       assertNotNull(
-        clean(wrap("""<foreignObject><div onclick="alert(1)">hi</div></foreignObject>"""))
+        clean(wrap("""<foreignObject><div onclick="alert(1)">hi</div></foreignObject>""")),
       )
     assertFalse(out.contains("foreignObject"))
     assertFalse(out.contains("div"))
@@ -84,9 +84,9 @@ class SvgSanitizerTest {
         clean(
           wrap(
             """<a href="#x"><set attributeName="href" to="javascript:alert(1)"/>
-               <animate attributeName="fill" to="red"/></a>"""
-          )
-        )
+               <animate attributeName="fill" to="red"/></a>""",
+          ),
+        ),
       )
     assertFalse(out.contains("<a"))
     assertFalse(out.contains("set"))
@@ -105,9 +105,9 @@ class SvgSanitizerTest {
             """<use href="#g0"/>
                <image href="https://example.test/pixel.png" width="1" height="1"/>
                <image href="//example.test/pixel.png" width="1" height="1"/>
-               <image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/>"""
-          )
-        )
+               <image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/>""",
+          ),
+        ),
       )
     assertTrue(out.contains("href=\"#g0\""))
     assertTrue(out.contains("data:image/png;base64"))
@@ -120,9 +120,9 @@ class SvgSanitizerTest {
       assertNotNull(
         clean(
           wrap(
-            """<image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" width="1" height="1"/>"""
-          )
-        )
+            """<image href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" width="1" height="1"/>""",
+          ),
+        ),
       )
     assertFalse(out.contains("svg+xml"))
   }
@@ -135,9 +135,9 @@ class SvgSanitizerTest {
           wrap(
             """<rect width="1" height="1" style="mix-blend-mode:multiply"/>
                <rect width="2" height="2" style="fill:url(https://example.test/x)"/>
-               <rect width="3" height="3" style="filter:url(#f0)"/>"""
-          )
-        )
+               <rect width="3" height="3" style="filter:url(#f0)"/>""",
+          ),
+        ),
       )
     assertTrue(out.contains("mix-blend-mode:multiply"))
     assertTrue(out.contains("filter:url(#f0)"))

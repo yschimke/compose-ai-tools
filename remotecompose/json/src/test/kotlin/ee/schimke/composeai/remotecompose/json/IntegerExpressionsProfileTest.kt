@@ -20,7 +20,7 @@ class IntegerExpressionsProfileTest {
           .put(
             JSONObject()
               .put("type", "resources")
-              .put("integers", JSONObject().put("page", Int.MIN_VALUE))
+              .put("integers", JSONObject().put("page", Int.MIN_VALUE)),
           )
           .put(JSONObject().put("type", "box").put("children", JSONArray(expressions.toList()))),
       )
@@ -37,7 +37,7 @@ class IntegerExpressionsProfileTest {
         JSONObject()
           .put("type", "stateLayout")
           .put("indexId", "@index")
-          .put("children", JSONArray().put(JSONObject().put("type", "box")))
+          .put("children", JSONArray().put(JSONObject().put("type", "box"))),
       )
     val bytes = RemoteComposeJson.compile(document.toString())
     val dump = RemoteComposeJson.dump(bytes)
@@ -53,7 +53,7 @@ class IntegerExpressionsProfileTest {
     document.remove("compilerProfile")
     val buffer =
       androidx.compose.remote.creation.json.RemoteComposeJsonParser.parseToByteBuffer(
-        document.toString()
+        document.toString(),
       )
     val expected = ByteArray(buffer.remaining()).also { buffer.get(it) }
     assertThat(RemoteComposeJson.compile(document.toString())).isEqualTo(expected)

@@ -148,7 +148,7 @@ public class GuidelineResultCache(private val directory: File) {
 
   @Deprecated(
     "Keyed only on the render and the rules' version, so a source-only edit or changed rule " +
-      "text returns a stale verdict. Use get(subject, guidelines, model)."
+      "text returns a stale verdict. Use get(subject, guidelines, model).",
   )
   public fun get(
     previewId: String,
@@ -170,7 +170,7 @@ public class GuidelineResultCache(private val directory: File) {
   }
 
   @Deprecated(
-    "Keyed only on the render and the rules' version. Use put(result, subject, guidelines, model)."
+    "Keyed only on the render and the rules' version. Use put(result, subject, guidelines, model).",
   )
   public fun put(result: PreviewGuidelineResult, rulesVersion: Int, model: String) {
     val file = fileFor(result.previewId, result.renderHash, rulesVersion, model) ?: return
@@ -184,7 +184,7 @@ public class GuidelineResultCache(private val directory: File) {
       GUIDELINES_JSON.encodeToString(
         PreviewGuidelineResult.serializer(),
         result.copy(fromCache = false).withBodyOf(result),
-      )
+      ),
     )
     if (!temp.renameTo(file)) {
       file.delete()
@@ -256,7 +256,7 @@ public class GuidelineResultCache(private val directory: File) {
       subject.nodes.forEach { node ->
         part(
           "${node.id}|${node.role}|${node.label}|${node.left},${node.top},${node.right},${node.bottom}" +
-            "|${node.states.joinToString(",")}"
+            "|${node.states.joinToString(",")}",
         )
       }
       subject.checks.forEach { check ->

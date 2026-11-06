@@ -57,7 +57,7 @@ class PreviewRowResultSelectionTest {
       params =
         PreviewParams(
           previewParameterProviderClassName =
-            if (parameterized) "com.example.SwatchProvider" else null
+            if (parameterized) "com.example.SwatchProvider" else null,
         ),
       captures = listOf(Capture(renderOutput = "renders/$id.png")),
     )
@@ -75,7 +75,7 @@ class PreviewRowResultSelectionTest {
         json.encodeToString(
           PreviewManifest.serializer(),
           PreviewManifest(module = module.gradlePath, variant = "debug", previews = previews),
-        )
+        ),
       )
     renders.forEach { dir.resolve("renders/$it").writeBytes(it.toByteArray()) }
     return PreviewResultBuilder.build(listOf(module to PreviewResultBuilder.readManifest(module)!!))
@@ -180,13 +180,13 @@ class PreviewRowResultSelectionTest {
       listOf("Swatch_PARAM_1"),
       rowIds(
         FilteringCommand(listOf("--id", "Swatch_PARAM_1", "--filter", "Swatch"))
-          .filter(swatchResults())
+          .filter(swatchResults()),
       ),
     )
     assertTrue(
       FilteringCommand(listOf("--id", "Swatch_PARAM_1", "--filter", "Unrelated"))
         .filter(swatchResults())
-        .isEmpty()
+        .isEmpty(),
     )
   }
 

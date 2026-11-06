@@ -79,8 +79,8 @@ class M3PaletteScreenTest {
                       "column",
                       arguments = mapOf("modifier" to modifier("padding(16)")),
                       slots = mapOf("content" to listOf(text("Library: Hello"))),
-                    )
-                  )
+                    ),
+                  ),
               ),
           ),
       )
@@ -128,14 +128,14 @@ class M3PaletteScreenTest {
                                 arguments =
                                   mapOf(
                                     "contentPadding" to
-                                      M3Palette.paddingValues(horizontal = 16, vertical = 8)
+                                      M3Palette.paddingValues(horizontal = 16, vertical = 8),
                                   ),
                                 slots = mapOf("content" to listOf(text("Grant camera access"))),
                               ),
-                            )
+                            ),
                         ),
-                    )
-                  )
+                    ),
+                  ),
               ),
           ),
       )
@@ -170,7 +170,7 @@ class M3PaletteScreenTest {
                     ScreenNode(
                       "top-app-bar",
                       slots = mapOf("title" to listOf(text("Inbox"))),
-                    )
+                    ),
                   ),
                 "floatingActionButton" to
                   listOf(ScreenNode("fab", slots = mapOf("content" to listOf(text("+"))))),
@@ -200,9 +200,9 @@ class M3PaletteScreenTest {
                                     "supportingContent" to listOf(text("Specs are up")),
                                   ),
                               ),
-                            )
+                            ),
                         ),
-                    )
+                    ),
                   ),
               ),
           ),

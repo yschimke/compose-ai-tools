@@ -24,7 +24,7 @@ val generateNativeCatalogVersion =
 
       internal const val NATIVE_CATALOG_VERSION = "$nativeVersion"
       """
-          .trimIndent() + "\n"
+          .trimIndent() + "\n",
       )
     }
   }
@@ -70,8 +70,8 @@ tasks.register<Sync>("wasmFrontendDist") {
   }
   from(
     rootProject.layout.projectDirectory.file(
-      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
-    )
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js",
+    ),
   )
   // The typefaces the native catalog lane composes with (#4821, ported from
   // compose-preview-server's `wasm-ui`). Staged from `:samples:cmp-wasm-catalog`'s own resources —
@@ -86,8 +86,8 @@ tasks.register<Sync>("wasmFrontendDist") {
   // `check-serve-wasm-fork.py` compares.
   from(
     rootProject.layout.projectDirectory.dir(
-      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts"
-    )
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts",
+    ),
   ) {
     include("*.ttf", "fonts.json", "*OFL.txt", "LICENSE.txt")
     into("fonts")
