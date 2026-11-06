@@ -60,7 +60,7 @@ dependencies {
   // graphics-path 1.1.0 converts conics with androidx.collection's FloatFloatPair.
   testImplementation(libs.androidx.collection)
   // Robolectric's runner reads `@Config` outside the sandbox, which needs the framework's classes.
-  testImplementation("org.robolectric:android-all:17-robolectric-15733970")
+  testImplementation("org.robolectric:android-all:17-robolectric-16653203")
 }
 
 /** `classes.jar` out of each AAR in [from], since a plain JVM build cannot consume an AAR. */
