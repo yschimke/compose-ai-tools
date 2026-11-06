@@ -24,7 +24,7 @@ kotlin = "2.4.21"
 # `configureKotlinCompatibility(...)`; remove the flag (and bump this to
 # `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
-agp = "9.4.1"
+agp = "9.5.0"
 ktfmt = "0.27.0"
 tapmoc = "0.5.0"
 # Released versions only. Robolectric publishes `4.17-SNAPSHOT` to Sonatype, and Renovate ranks it
@@ -234,7 +234,7 @@ horologist = "0.7.15"
 #    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
 #    its trailing `Context` arg. Expect the same class of fix when these pins
 #    move — verify a render, not just a compile.
-compose-remote = "1.0.0-alpha22"
+compose-remote = "1.0.0-alpha23"
 # `org.json`. Not a choice so much as a consequence: `RemoteComposeJsonParser` is written against
 # `org.json.JSONObject`, which Android ships in the platform and a plain JVM does not, and
 # `remote-creation-core` neither shades nor declares it. `:remotecompose-json` therefore supplies
@@ -261,7 +261,7 @@ androidx-core = "1.19.1"
 # `androidx.compose.remote.foundation:foundation`, which used to exist only on the
 # androidx-main snapshot line and now publishes to Google Maven — that is what
 # unblocked the move back to released coordinates.
-wear-compose-remote = "1.0.0-alpha14"
+wear-compose-remote = "1.0.0-alpha15"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:wear-widget` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
@@ -269,7 +269,7 @@ wear-compose-remote = "1.0.0-alpha14"
 # `remote-creation*` itself (alpha21 declares alpha21), so a skewed pin risks exactly
 # the creation/player drift the Remote Compose comment describes — bump it with
 # the two pins above.
-glance-wear = "1.0.0-alpha21"
+glance-wear = "1.0.0-alpha22"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -305,6 +305,7 @@ maven-publish = "0.37.0"
 # driving Google's own `validate*ScreenshotTest` tasks. Still alpha —
 # re-check compatibility when bumping AGP.
 android-compose-screenshot = "0.0.1-alpha16"
+android-screenshot-validation = "0.0.1-alpha17"
 # Checker Framework qualifier annotations. ATF (`accessibility-test-framework`,
 # pulled in transitively by `roborazzi-accessibility-check`) annotates its
 # nullable getters with `@org.checkerframework.checker.nullness.qual.Nullable`.
@@ -323,10 +324,10 @@ checker-qual = "4.3.1"
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
-metro = "1.5.0"
+metro = "1.5.1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
-ktor = "3.6.0"
+ktor = "3.6.1"
 okhttp = "5.5.1"
 # Pure-Java mDNS/DNS-SD (Bonjour) responder used by `compose-preview serve --lan` to advertise the
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
@@ -554,7 +555,7 @@ composeai-preview-daemon = "3.27.2"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.22.0"
+rcplayers = "2.25.0"
 
 [libraries]
 android-emulator-proto = { module = "com.android.tools.emulator:proto", version.ref = "android-emulator-proto" }
@@ -650,7 +651,7 @@ rcplayer-js-dist = { module = "ee.schimke.composeai:remote-compose-player-js-dis
 # `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
 # fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version
 # is pinned to the plugin's own so the annotation and the JUnit engine reading it can't skew.
-android-screenshot-validation-api = { module = "com.android.tools.screenshot:screenshot-validation-api", version.ref = "android-compose-screenshot" }
+android-screenshot-validation-api = { module = "com.android.tools.screenshot:screenshot-validation-api", version.ref = "android-screenshot-validation" }
 # Ktor HTTP client (OkHttp engine) — backs the `:cli` / `:bundle-viewer` bundle downloader. Same
 # `ktor` version ref as the server below so the two can't skew and re-trip the strict slf4j pin in
 # :cli. (The `ktor-client-websockets` entry was dropped when the session-viewer clients — its only
