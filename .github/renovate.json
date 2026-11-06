@@ -221,6 +221,43 @@
         "at any time"
       ],
       "minimumReleaseAge": null
+    },
+    {
+      "description": "`ee.schimke.composeai:rc-player-wasm` is a GitHub release asset resolved through the `rcPlayerWasmRelease` ivy repository in `settings.gradle.kts`, not a Maven Central artifact ( causing the Dependency Dashboard's `no-result` lookup failure). It shares its `rcplayers` version ref with `rc-players-bom`, so the BOM update moves it in the same edit.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "ee.schimke.composeai:rc-player-wasm"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The `xr-composite` pin (`yschimke/compose-preview-xr`) is a first-party release train like the BOMs and export driver; exempt it from the 7-day third-party `minimumReleaseAge` so new compositor releases arrive immediately.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "yschimke/compose-preview-xr"
+      ],
+      "schedule": [
+        "at any time"
+      ],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "Keep `engines` constraints (such as `node >=22` in `design-map/package.json`) as ranges rather than pinning them under the preset's `rangeStrategy: pin`.",
+      "matchDepTypes": [
+        "engines"
+      ],
+      "rangeStrategy": "auto"
+    },
+    {
+      "description": "`site/Gemfile` has no lockfile committed; replace `~>` ranges in-place instead of failing on `rangeStrategy: pin`.",
+      "matchManagers": [
+        "bundler"
+      ],
+      "rangeStrategy": "replace"
     }
   ],
   "customManagers": [
