@@ -340,6 +340,19 @@ on:
         required: false
         type: boolean
         default: false
+      allow-lost-font-families:
+        description: >-
+          Pass --allow-lost-font-families to every `bundle pack`, primary and extra module alike. By
+          default a pack FAILS when a preview's editable figma-svg export could not name a font
+          family the render drew (its text would export as missing-glyph boxes): loud in the
+          vector, silent in the log. That is the right default, but it blocks the whole catalog for
+          a defect in one optional export, e.g. a custom face loaded from an Android `R.font`
+          resource. Set this to publish anyway: the PNG is unaffected, and each degraded preview
+          still carries previews/<id>.figma-fonts.warnings.json naming the face it lost. Off by
+          default.
+        required: false
+        type: boolean
+        default: false
       split-per-preview:
         description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only unless extra-split-mode says otherwise. Live modes require publish-live-bundle (see split-mode).'
         required: false
@@ -801,6 +814,7 @@ env:
   INPUT_RENDER_SHARDS: ${{ inputs.render-shards }}
   INPUT_DESKTOP_RENDER: ${{ inputs.desktop-render }}
   INPUT_EMBED_DEPS: ${{ inputs.embed-deps }}
+  INPUT_ALLOW_LOST_FONT_FAMILIES: ${{ inputs.allow-lost-font-families }}
   INPUT_RENDER_TIMEOUT: ${{ inputs.render-timeout }}
   INPUT_SPEC: ${{ inputs.spec }}
   INPUT_DESIGN_PAGES_CONFIG: ${{ inputs.design-pages-config }}
@@ -2714,6 +2728,7 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          lost_fonts=(); if [ "$INPUT_ALLOW_LOST_FONT_FAMILIES" = "true" ]; then lost_fonts=(--allow-lost-font-families); fi
           variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # The shard's own partition, plus the import-wide exclusions. Unreachable today — the
           # driver refuses import + render-shards > 1, because the planner does not know about
@@ -2730,7 +2745,7 @@ jobs:
           fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
-            "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+            "${variant[@]}" "${embed[@]}" "${lost_fonts[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       - name: Save downloadable-font cache
@@ -4431,6 +4446,7 @@ jobs:
             fi
           }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          lost_fonts=(); if [ "$INPUT_ALLOW_LOST_FONT_FAMILIES" = "true" ]; then lost_fonts=(--allow-lost-font-families); fi
           variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # Two scopes, deliberately not one list. The import exclusions are import-wide and must
           # reach every module; the per-mode ids belong to the PRIMARY module only, for the same
@@ -4482,17 +4498,17 @@ jobs:
               # failure this guards, reintroduced by the fallback path.
               if [ "$index" -eq 0 ]; then
                 run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${variant[@]}" "${embed[@]}" "${lost_fonts[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               else
                 run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${variant[@]}" "${embed[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
+                  "${variant[@]}" "${embed[@]}" "${lost_fonts[@]}" "${import_exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               fi
               index=$((index + 1))
             done < "$GITHUB_WORKSPACE/preview-modules.txt"
             cp "$GITHUB_WORKSPACE/module-bundles/0000.png" "$GITHUB_WORKSPACE/bundle.png"
           else
             run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
-              "${variant[@]}" "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+              "${variant[@]}" "${embed[@]}" "${lost_fonts[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
               --timeout "$INPUT_RENDER_TIMEOUT"
           fi
 
@@ -4567,6 +4583,7 @@ jobs:
           set -euo pipefail
           run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          lost_fonts=(); if [ "$INPUT_ALLOW_LOST_FONT_FAMILIES" = "true" ]; then lost_fonts=(--allow-lost-font-families); fi
           variant=(); if [ -n "${INPUT_VARIANT:-}" ]; then variant=(--variant "$INPUT_VARIANT"); fi
           # An extra module is still the imported project, so the app lanes stay excluded here too.
           import_exclude=()
@@ -4574,7 +4591,7 @@ jobs:
             import_exclude=(--exclude-preview-id-file "$IMPORT_EXCLUDE_PREVIEW_IDS_FILE")
           fi
           run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
-            "${variant[@]}" "${embed[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
+            "${variant[@]}" "${embed[@]}" "${lost_fonts[@]}" "${import_exclude[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
             --timeout $INPUT_RENDER_TIMEOUT
 
       # A failing render reports only "There were failing tests. See the results at: file:///…",
