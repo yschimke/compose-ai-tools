@@ -27,10 +27,10 @@ import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.wear.compose.remote.material3.RemoteBorderStroke
 import androidx.wear.compose.remote.material3.RemoteButton
 import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
 import androidx.wear.compose.remote.material3.RemoteText
-import androidx.wear.compose.remote.material3.buttonSizeModifier
 
 // Pure-remote composables mirroring upstream's `remote-material3/samples` (the button variants that
 // need no image fixtures). `Previews.kt` wraps them both ways: a wrapper call inside the `@Preview`
@@ -39,6 +39,10 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 
 // `hostAction(...)` is Remote Compose's `onClick = { ... }`: a remote string payload and a
 // remote-float handler id.
+//
+// No size modifier on the buttons: since wear-compose-remote 1.0.0-alpha15 `RemoteButton` applies
+// the Material button size itself (`buttonSizeModifier()` became internal), and the border is one
+// `RemoteBorderStroke` rather than separate width and colour parameters.
 private val testAction = hostAction("testAction".rs, 1.rf)
 
 @Composable
@@ -46,7 +50,6 @@ private val testAction = hostAction("testAction".rs, 1.rf)
 fun RemoteButtonEnabled() {
   RemoteButton(
     onClick = testAction,
-    modifier = RemoteModifier.buttonSizeModifier(),
     enabled = true.rb,
     content = { RemoteText("Enabled".rs) },
   )
@@ -57,9 +60,7 @@ fun RemoteButtonEnabled() {
 fun RemoteButtonWithBorder() {
   RemoteButton(
     onClick = testAction,
-    modifier = RemoteModifier.buttonSizeModifier(),
-    border = 8.rdp,
-    borderColor = RemoteColor(Color.Green),
+    border = RemoteBorderStroke(width = 8.rdp, color = RemoteColor(Color.Green)),
   ) {
     RemoteText("Bordered".rs)
   }
@@ -75,7 +76,6 @@ fun RemoteButtonWithNamedLabel() {
   val label = rememberNamedRemoteString("label", "Tap me")
   RemoteButton(
     onClick = testAction,
-    modifier = RemoteModifier.buttonSizeModifier(),
     content = { RemoteText(label) },
   )
 }
@@ -85,7 +85,6 @@ fun RemoteButtonWithNamedLabel() {
 fun RemoteButtonWithShape() {
   RemoteButton(
     onClick = testAction,
-    modifier = RemoteModifier.buttonSizeModifier(),
     shape = RemoteRoundedCornerShape(4.rdp),
     content = { RemoteText("Custom shape".rs) },
   )
