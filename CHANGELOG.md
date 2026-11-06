@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.87.0](https://github.com/yschimke/compose-ai-tools/compare/v2.86.0...v2.87.0) (2026-11-06)
+
+
+### Features
+
+* **design-artifacts:** add an allow-lost-font-families input ([#6462](https://github.com/yschimke/compose-ai-tools/issues/6462)) ([1f09e1f](https://github.com/yschimke/compose-ai-tools/commit/1f09e1f2ed69c970e10cce46157f7bac8fefb2d9))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.android.tools.screenshot:screenshot-validation-api to v0.0.1-alpha17 ([#6458](https://github.com/yschimke/compose-ai-tools/issues/6458)) ([c04a2cf](https://github.com/yschimke/compose-ai-tools/commit/c04a2cf7d5c66d7a37244e04f766fea90fed832f))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.24.0 ([#6459](https://github.com/yschimke/compose-ai-tools/issues/6459)) ([14e917e](https://github.com/yschimke/compose-ai-tools/commit/14e917e49b5433b51a1dcccc21ab9cbc824bccd2))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.25.0 ([#6463](https://github.com/yschimke/compose-ai-tools/issues/6463)) ([9d27563](https://github.com/yschimke/compose-ai-tools/commit/9d27563c029a6b435287531718991b2727d84731))
+
 ## [2.86.0](https://github.com/yschimke/compose-ai-tools/compare/v2.85.0...v2.86.0) (2026-11-05)
 
 
