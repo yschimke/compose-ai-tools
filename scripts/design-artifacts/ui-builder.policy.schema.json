@@ -587,7 +587,8 @@
         "label": { "type": "string" },
         "order": { "type": "integer", "description": "Ascending position among the chooser's catalogs." },
         "description": { "type": "string", "description": "The chip's second line, saying what the catalog makes (`Dashboard cards and widgets`)." },
-        "primary": { "type": "boolean", "description": "Whether the chip sits among the primary design types (true) or under Other design types (false). Absent leaves it to the builder." }
+        "primary": { "type": "boolean", "description": "Whether the chip sits among the primary design types (true) or under Other design types (false). Absent leaves it to the builder." },
+        "device": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "What the catalog's designs are for, as a WORD: `phone`, `watch`, `widget`, `glasses`, `smart-home`, `agent`, or one of the catalog's own. The chooser asks for the device first when its catalogs span more than one. Unlike `platform` it decides nothing about rendering. Absent leaves the builder to infer it from the catalog's label and platform." }
       }
     },
     "colorTokens": {
