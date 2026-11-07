@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.88.0](https://github.com/yschimke/compose-ai-tools/compare/v2.87.0...v2.88.0) (2026-11-07)
+
+
+### Features
+
+* publish a catalog's new-design device ([#6485](https://github.com/yschimke/compose-ai-tools/issues/6485)) ([b67e46b](https://github.com/yschimke/compose-ai-tools/commit/b67e46bb51daea8aeda66aee58c80263de7616e2))
+
+
+### Bug Fixes
+
+* **ci:** bootstrap depot_tools in build-angle.sh and tune renovate rules ([#6464](https://github.com/yschimke/compose-ai-tools/issues/6464)) ([39e3069](https://github.com/yschimke/compose-ai-tools/commit/39e3069a007174af990f8d7152d45816c6faf2c6))
+* **ci:** install MetalToolchain in build-angle.sh when missing ([#6481](https://github.com/yschimke/compose-ai-tools/issues/6481)) ([a2f3475](https://github.com/yschimke/compose-ai-tools/commit/a2f347592cf4be740e3c61c7d95d8cecefef2d06))
+* **deps:** update dependency androidx.compose.material3:material3 to v1.5.0-rc01 ([#6469](https://github.com/yschimke/compose-ai-tools/issues/6469)) ([847f4a2](https://github.com/yschimke/compose-ai-tools/commit/847f4a28975096ce4757a3c5c313fd853586454d))
+* **deps:** update dependency com.android.tools.emulator:proto to v32.5.1 ([#6471](https://github.com/yschimke/compose-ai-tools/issues/6471)) ([ef9a8c8](https://github.com/yschimke/compose-ai-tools/commit/ef9a8c8fe990802e6da7c1f5610c7e820cf72bba))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.26.0 ([#6484](https://github.com/yschimke/compose-ai-tools/issues/6484)) ([a688f48](https://github.com/yschimke/compose-ai-tools/commit/a688f480814136c283976ae052521739c404c52c))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.27.0 ([#6486](https://github.com/yschimke/compose-ai-tools/issues/6486)) ([c77a08d](https://github.com/yschimke/compose-ai-tools/commit/c77a08d6539188ba2ef26647352f35fabd33dcf9))
+* **deps:** update dependency io.github.classgraph:classgraph to v5.0.2 ([#6472](https://github.com/yschimke/compose-ai-tools/issues/6472)) ([f514c4b](https://github.com/yschimke/compose-ai-tools/commit/f514c4b46e5bb1707de95dc441434c165306ba1e))
+* **deps:** update dependency org.checkerframework:checker-qual to v4.4.0 ([#6477](https://github.com/yschimke/compose-ai-tools/issues/6477)) ([cf9ef3d](https://github.com/yschimke/compose-ai-tools/commit/cf9ef3dc1fb959535543ab0024cdc98f771360f7))
+* **deps:** update dependency org.conscrypt:conscrypt-android to v2.9.0 ([#6478](https://github.com/yschimke/compose-ai-tools/issues/6478)) ([90d2944](https://github.com/yschimke/compose-ai-tools/commit/90d2944a3d49bf4d8d4885c138c86df0b74d22a1))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.9.0 ([#6479](https://github.com/yschimke/compose-ai-tools/issues/6479)) ([d3a3144](https://github.com/yschimke/compose-ai-tools/commit/d3a3144292dd0fb29ccb4df4154211275e892a01))
+* **deps:** update dependency org.jetbrains.skiko:skiko-awt to v0.156.1 ([#6473](https://github.com/yschimke/compose-ai-tools/issues/6473)) ([cd5817e](https://github.com/yschimke/compose-ai-tools/commit/cd5817e56a9e33c45df5753d1cb528951c6a2162))
+* **deps:** update dependency org.jmdns:jmdns to v3.6.5 ([#6474](https://github.com/yschimke/compose-ai-tools/issues/6474)) ([9bfbeea](https://github.com/yschimke/compose-ai-tools/commit/9bfbeea3f6208fcc02c38ec3b3fc039beecd6b79))
+* **deps:** update dependency org.robolectric:android-all to v17-robolectric-16653203 ([#6475](https://github.com/yschimke/compose-ai-tools/issues/6475)) ([2be8af2](https://github.com/yschimke/compose-ai-tools/commit/2be8af28aa126ded1065a550328e51960421d329))
+* **deps:** update ktfmt to v0.28.0 ([#6480](https://github.com/yschimke/compose-ai-tools/issues/6480)) ([48df4b1](https://github.com/yschimke/compose-ai-tools/commit/48df4b1d26eaccd78fefe1a8e3a97ed397443ccb))
+* **deps:** update metro to v1.5.2 ([#6476](https://github.com/yschimke/compose-ai-tools/issues/6476)) ([eeefe2f](https://github.com/yschimke/compose-ai-tools/commit/eeefe2f3b7f76cf6c44ef1a9be10a29fc4e92505))
+
 ## [2.87.0](https://github.com/yschimke/compose-ai-tools/compare/v2.86.0...v2.87.0) (2026-11-06)
 
 
