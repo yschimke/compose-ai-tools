@@ -648,7 +648,7 @@ runs:
           case "$base" in
             _baselines|_base_sha|_baseline_skew.json|_pr_renders|_figma_refs.json|\
             _previews.json|_resources.json|_resource_baselines|_resource_base_sha|\
-            _pr_resource_renders|_a11y_renders|_a11y_comment.md|_notification_renders|\
+            _pr_resource_renders|_a11y_renders|_a11y_comment.md|_a11y_baseline_findings.json|_notification_renders|\
             _notification_comment.md|_notification_baseline_findings.json|_guidelines|\
             _pipelines|_scope_modules|_pr_number|_ab_config) ;;
             *)
@@ -1413,7 +1413,7 @@ runs:
         # cached design against the old import.
         for f in _baselines _base_sha _baseline_skew.json _pr_renders _figma_refs.json \
                  _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
-                 _a11y_renders _a11y_comment.md \
+                 _a11y_renders _a11y_comment.md _a11y_baseline_findings.json \
                  _notification_renders _notification_comment.md \
                  _notification_baseline_findings.json _guidelines; do
           [ -e "$f" ] || continue
@@ -1842,16 +1842,47 @@ runs:
         REPO: ${{ inputs.artifact-repository || github.repository }}
         A11Y_PR_BRANCH: 'compose-preview/a11y/pr'
         HEAD_SHA: ${{ steps.push-a11y.outputs.head_sha }}
+        GH_TOKEN: ${{ github.token }}
+        COMMENTS_REPO: ${{ github.repository }}
+        A11Y_BASELINE: ${{ inputs.a11y-baseline }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -euo pipefail
         # Earlier comment-gen used the branch name; rewrite with the just-
         # pushed SHA so the image URLs survive PR merge.
         HEAD_REF="${HEAD_SHA:-$A11Y_PR_BRANCH}"
+        args=()
+        # Same baseline the pipeline compared against; without it the re-render
+        # reported every finding as new.
+        if [ "${A11Y_BASELINE:-false}" = true ] && [ -f _a11y_baseline_findings.json ]; then
+          args+=(--baseline _a11y_baseline_findings.json)
+        fi
+        # The previous build's sticky comment embeds what it reported, so this
+        # one folds those findings into a single line instead of repeating them.
+        # Only the github-actions bot's own comment: nobody else can edit it.
+        pr="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        : > _a11y_prev_comment.md
+        if [[ "$pr" =~ ^[0-9]{1,9}$ ]]; then
+          if ids=$(gh api "repos/${COMMENTS_REPO}/issues/${pr}/comments" --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith("<!-- a11y-report -->")) | .id'); then
+            id=$(head -1 <<<"$ids")
+            if [ -n "$id" ]; then
+              gh api "repos/${COMMENTS_REPO}/issues/comments/${id}" --jq '.body' > _a11y_prev_comment.md \
+                || : > _a11y_prev_comment.md
+            fi
+          else
+            echo "a11y: could not list the PR's comments; reporting every finding."
+          fi
+        fi
+        if [ -s _a11y_prev_comment.md ]; then args+=(--previous _a11y_prev_comment.md); fi
         python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
           _a11y_renders/findings.json \
           --repo "$REPO" \
           --head-ref "$HEAD_REF" \
+          "${args[@]}" \
           > _a11y_comment.md
+        rm -f _a11y_prev_comment.md
 
     - name: Upsert a11y PR comment
       if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != '')

@@ -743,6 +743,7 @@ class CommentTest(unittest.TestCase):
         baseline_status=None,
         unchecked_previews=None,
         changed_previews=False,
+        previous=None,
     ):
         findings_path = self.tmp / "findings.json"
         current_payload: dict = {"entries": current_entries}
@@ -768,8 +769,75 @@ class CommentTest(unittest.TestCase):
                 head_ref="abc123",
                 baseline=str(baseline_path) if baseline_path else None,
                 changed_previews=changed_previews,
+                previous=previous,
             ))
         return buf.getvalue()
+
+    def _previous(self, body: str) -> str:
+        path = self.tmp / "previous.md"
+        path.write_text(body)
+        return str(path)
+
+    def test_findings_sharing_a_rule_are_one_row(self):
+        # Every preview used to get its own heading, image and one-row table;
+        # the same rule across many previews is now one row of links.
+        entries = [
+            self._entry(function=f"P{i}", preview_id=f"x.P{i}",
+                        findings=[_finding(level="INFO", rule="DuplicateSpeakableTextCheck")])
+            for i in range(10)
+        ]
+        body = self._run_comment(entries, changed_previews=True)
+        self.assertEqual(body.count("DuplicateSpeakableTextCheck"), 1)
+        self.assertIn("and 2 more", body)
+        self.assertNotIn("<img", body)
+        self.assertIn("https://github.com/org/repo/blob/abc123/README.md", body)
+
+    def test_findings_already_reported_by_the_previous_build_are_folded(self):
+        old = self._entry(function="Old", preview_id="x.Old", findings=[_finding(level="ERROR")])
+        first = self._run_comment([old], changed_previews=True)
+        self.assertIn(ar.STATE_PREFIX, first)
+
+        new = self._entry(function="New", preview_id="x.New", findings=[_finding(level="WARNING")])
+        second = self._run_comment([old, new], changed_previews=True,
+                                   previous=self._previous(first))
+        new_section, _, folded = second.partition("<details>")
+        self.assertIn("**New since the previous build**", new_section)
+        self.assertIn("`New`", new_section)
+        self.assertNotIn("`Old`", new_section)
+        self.assertIn("Already reported: 1 finding(s) on 1 preview(s)", folded)
+
+    def test_nothing_new_since_the_previous_build_says_so(self):
+        entry = self._entry(findings=[_finding(level="ERROR")])
+        first = self._run_comment([entry], changed_previews=True)
+        second = self._run_comment([entry], changed_previews=True,
+                                   previous=self._previous(first))
+        self.assertIn("No new findings since the previous build.", second)
+        self.assertNotIn("**New since", second)
+
+    def test_a_preview_fixed_since_the_previous_build_is_named(self):
+        bad = self._entry(findings=[_finding(level="ERROR")])
+        first = self._run_comment([bad], changed_previews=True)
+        second = self._run_comment([self._entry(findings=[])], changed_previews=True,
+                                   previous=self._previous(first))
+        self.assertIn("Fixed: `Bad`.", second)
+        self.assertIn(ar.CLEAN_MARKER, second)
+
+    def test_unchecked_previews_keep_their_previous_state(self):
+        # Build 2 does not check A; build 3 does, with the same finding: still
+        # "already reported", not new.
+        a = self._entry(function="A", preview_id="x.A", findings=[_finding(level="ERROR")])
+        b = self._entry(function="B", preview_id="x.B", findings=[_finding(level="ERROR")])
+        first = self._run_comment([a], changed_previews=True)
+        second = self._run_comment([b], changed_previews=True, previous=self._previous(first))
+        third = self._run_comment([a, b], changed_previews=True, previous=self._previous(second))
+        self.assertIn("No new findings since the previous build.", third)
+
+    def test_unreadable_previous_state_reports_everything(self):
+        entry = self._entry(findings=[_finding(level="ERROR")])
+        body = self._run_comment([entry], changed_previews=True,
+                                 previous=self._previous(ar.STATE_PREFIX + "!!! -->"))
+        self.assertIn("| ERROR |", body)
+        self.assertNotIn("Already reported", body)
 
     def test_changed_previews_without_a_baseline_reports_their_findings(self):
         # The apply action's PR default: only the previews the PR changed were
@@ -780,7 +848,7 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment([bad, ok], changed_previews=True)
         self.assertIn("across 2 preview(s) checked (changed renders, plus previews in files this PR edits).", body)
         self.assertIn("ERROR", body)
-        self.assertIn("<summary>No findings (1 preview(s))</summary>", body)
+        self.assertIn("_No findings: 1 preview(s)._", body)
         self.assertNotIn("Unchanged", body)
         self.assertNotIn(ar.CLEAN_MARKER, body)
 
@@ -790,10 +858,10 @@ class CommentTest(unittest.TestCase):
         bad = self._entry(findings=[_finding(level="ERROR")])
         clean = [
             self._entry(function=f"Clean{i}", preview_id=f"x.Clean{i}")
-            for i in range(ar.ROSTER_LIST_MAX + 1)
+            for i in range(31)
         ]
         body = self._run_comment([bad] + clean, changed_previews=True)
-        self.assertIn(f"_No findings: {ar.ROSTER_LIST_MAX + 1} preview(s)._", body)
+        self.assertIn("_No findings: 31 preview(s)._", body)
         self.assertNotIn("`Clean0`", body)
 
     def test_scope_recorded_in_findings_words_the_comment(self):
@@ -975,12 +1043,11 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment(
             [kept, added], baseline_entries=[baseline_kept, baseline_added]
         )
-        # The changed preview gets its own h3 block + table.
-        self.assertIn("### `Added`", body)
-        # The unchanged preview is only listed as a name inside <details>.
-        self.assertIn("<summary>Unchanged (1 preview(s))</summary>", body)
-        self.assertIn("- `Kept`", body)
-        self.assertNotIn("### `Kept`", body)
+        # The changed preview gets a row linking its render.
+        self.assertIn("| WARNING | TouchTargetSizeCheck | [`Added`]", body)
+        # The unchanged one is only counted.
+        self.assertIn("_Unchanged vs the baseline: 1 finding(s) on 1 preview(s)._", body)
+        self.assertNotIn("`Kept`", body)
 
     def test_new_clean_preview_stays_silent(self):
         # Adding a brand-new preview that has no findings is not an a11y
@@ -1035,7 +1102,7 @@ class CommentTest(unittest.TestCase):
         current = self._entry(findings=[moved])
         body = self._run_comment([current], baseline_entries=[baseline])
         self.assertIn("<!-- a11y-report -->", body)
-        self.assertIn("### `Bad`", body)
+        self.assertIn("| ERROR | TouchTargetSizeCheck | [`Bad`]", body)
 
     def test_distinct_same_signature_findings_not_collapsed(self):
         # Two findings that share rule/element/message but sit far apart (e.g.
