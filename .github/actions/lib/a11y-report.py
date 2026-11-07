@@ -22,10 +22,12 @@ readme
 
 comment
     Render ``findings.json`` to a PR-comment Markdown body with the
-    ``<!-- a11y-report -->`` marker the action upserts on. Diffs against the
-    baseline ``findings.json`` and surfaces only the previews whose findings
-    changed (collapsing the rest into a roster); stays silent when nothing
-    a reviewer cares about changed.
+    ``<!-- a11y-report -->`` marker the action upserts on. Brief: one row per
+    (level, rule) linking the previews' annotated renders, plus a link to the
+    README. Diffs against the baseline ``findings.json`` (stays silent when
+    nothing a reviewer cares about changed) and against the previous build's
+    comment (``--previous``, via its embedded ``<!-- a11y-state -->``), so
+    findings already reported are folded instead of repeated.
 """
 
 from __future__ import annotations
@@ -96,8 +98,6 @@ CLEAN_MARKER: str = "<!-- a11y-report:clean -->"
 CHANGED_PREVIEWS_SCOPE: str = "changed-previews"
 # How a scoped PR comment names the set it checked (the count line in the comment).
 SCOPED_SET_DESCRIPTION = "checked (changed renders, plus previews in files this PR edits)"
-# Above this many entries a roster states a count instead of listing names.
-ROSTER_LIST_MAX = 30
 
 
 def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
@@ -881,15 +881,49 @@ def cmd_comment(args: argparse.Namespace) -> int:
         sys.stdout.write("\n".join(lines).rstrip() + "\n")
         return 0
 
+    # Against the previous build's sticky comment (`--previous`): a preview whose findings are the
+    # same as the last report's is folded into one collapsed line instead of being listed again, so
+    # consecutive pushes to a PR only surface what moved. A preview this run did not check keeps
+    # its previous state, so it is not reported as new when a later push checks it again.
+    previous_state = _read_state(getattr(args, "previous", None))
+    have_previous = previous_state is not None
+    previous_state = previous_state or {}
+
+    new_entries: list[dict] = []
+    repeated: list[dict] = []
+    fixed: list[dict] = []
+    for entry in changed:
+        prev = previous_state.get(_state_key(entry))
+        findings = entry.get("findings", [])
+        if prev is not None and _state_equivalent(findings, prev):
+            if findings:
+                repeated.append(entry)
+            continue
+        if findings:
+            new_entries.append(entry)
+        elif prev or baseline_loaded:
+            # Clean now, and either the last report or the baseline flagged it.
+            fixed.append(entry)
+    for entry in unchanged:
+        # Clean and unchanged vs the baseline (or no baseline at all), but the last report flagged it.
+        if not entry.get("findings") and previous_state.get(_state_key(entry)):
+            fixed.append(entry)
+    fixed_keys = {_state_key(e) for e in fixed}
+
+    err, warn, info = _level_counts(entries)
+    findings_count = err + warn + info
+
     # A scoped run checks the previews whose render this PR changed AND every preview in a source
     # file it edits, so its count is routinely larger than the preview diff's; say which set it is
     # rather than calling them all "changed".
     scope_text = SCOPED_SET_DESCRIPTION if scoped else ""
-    lines.extend([
+    summary = (
         f"{err} error(s) · {warn} warning(s) · {info} info "
-        f"across {len(entries)} preview(s){' ' + scope_text if scope_text else ''}.",
-        "",
-    ])
+        f"across {len(entries)} preview(s){' ' + scope_text if scope_text else ''}."
+    )
+    if findings_count:
+        summary += f" [Full report with annotated renders]({_readme_url(args.repo, args.head_ref)})"
+    lines.extend([summary, ""])
 
     if findings_count == 0:
         lines.append(
@@ -897,49 +931,193 @@ def cmd_comment(args: argparse.Namespace) -> int:
             if scoped else "No accessibility findings."
         )
         lines.append("")
-        if not resolved:
-            # Lets the action tell a clean report apart: it updates an
-            # existing sticky comment with it, but does not post a new one.
-            lines.append(CLEAN_MARKER)
-            lines.append("")
 
-    # Changed / new previews, grouped by module — these get the full block.
-    changed_by_module: dict[str, list[dict]] = {}
-    for entry in changed:
-        changed_by_module.setdefault(entry["module"], []).append(entry)
-    for module, module_entries in sorted(changed_by_module.items()):
-        lines.append(f"### {module}")
+    if new_entries:
+        if have_previous:
+            lines.extend(["**New since the previous build**", ""])
+        lines.extend(_grouped_table(new_entries, args.repo, args.head_ref))
         lines.append("")
-        for entry in sorted(module_entries, key=lambda e: e["functionName"]):
-            lines.extend(_entry_block(entry, args.head_ref, args.repo, image_width=240))
+    elif have_previous and findings_count:
+        lines.extend(["No new findings since the previous build.", ""])
+
+    if repeated:
+        n = sum(len(e["findings"]) for e in repeated)
+        lines.extend([
+            "<details>",
+            f"<summary>Already reported: {n} finding(s) on {len(repeated)} preview(s), "
+            "unchanged since the previous build</summary>",
+            "",
+        ])
+        lines.extend(_grouped_table(repeated, args.repo, args.head_ref))
+        lines.extend(["", "</details>", ""])
+
+    if fixed:
+        lines.append(f"Fixed: {_name_list(fixed)}.")
+        lines.append("")
 
     if resolved:
-        lines.append(f"### Resolved ({len(resolved)} preview(s) no longer present)")
-        lines.append("")
-        for entry in sorted(resolved, key=lambda e: (e["module"], e["functionName"])):
-            lines.append(f"- `{entry['functionName']}` ({entry['module']})")
+        lines.append(
+            f"Resolved ({len(resolved)} preview(s) no longer present): {_name_list(resolved)}."
+        )
         lines.append("")
 
-    if unchanged:
-        # Collapse everything that didn't change into a names-only roster so
-        # reviewers can still confirm the tool covered the full preview set
-        # without scrolling past 100+ unchanged tables.
-        label = "Unchanged" if baseline_loaded or not scoped else "No findings"
-        if len(unchanged) <= ROSTER_LIST_MAX:
-            lines.append("<details>")
-            lines.append(f"<summary>{label} ({len(unchanged)} preview(s))</summary>")
-            lines.append("")
-            for entry in sorted(unchanged, key=lambda e: (e["module"], e["functionName"])):
-                lines.append(f"- `{entry['functionName']}`")
-            lines.append("")
-            lines.append("</details>")
-        else:
-            # A whole catalog's roster is most of the comment and nobody reads it.
-            lines.append(f"_{label}: {len(unchanged)} preview(s)._")
+    clean = [e for e in unchanged if not e.get("findings") and _state_key(e) not in fixed_keys]
+    flagged_unchanged = [e for e in unchanged if e.get("findings")]
+    if flagged_unchanged:
+        n = sum(len(e["findings"]) for e in flagged_unchanged)
+        lines.append(
+            f"_Unchanged vs the baseline: {n} finding(s) on {len(flagged_unchanged)} preview(s)._"
+        )
+    if clean:
+        lines.append(f"_No findings: {len(clean)} preview(s)._")
+    if flagged_unchanged or clean:
         lines.append("")
+
+    if findings_count == 0 and not resolved:
+        # Lets the action tell a clean report apart: it updates an
+        # existing sticky comment with it, but does not post a new one.
+        lines.append(CLEAN_MARKER)
+        lines.append("")
+
+    state = dict(previous_state)
+    for entry in entries:
+        state[_state_key(entry)] = _state_findings(entry.get("findings", []))
+    marker_line = _write_state(state)
+    if marker_line:
+        lines.append(marker_line)
 
     sys.stdout.write("\n".join(lines).rstrip() + "\n")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# brief comment rendering + previous-build state
+# ---------------------------------------------------------------------------
+
+#: Previews linked per rule row before the rest are counted ("and 4 more").
+PREVIEW_LINKS_MAX = 8
+#: Names listed in a fixed / resolved line before the rest are counted.
+NAME_LIST_MAX = 10
+#: Encoded state larger than this is left out of the comment (GitHub caps a comment at 65,536
+#: characters); the next build then reports every finding as new, as before this existed.
+STATE_MAX_CHARS = 30000
+STATE_PREFIX = "<!-- a11y-state:v1:"
+_LEVEL_ORDER = {"ERROR": 0, "WARNING": 1, "INFO": 2}
+
+
+def _readme_url(repo: str, ref: str) -> str:
+    return f"https://github.com/{repo}/blob/{ref}/README.md"
+
+
+def _preview_link(entry: dict, repo: str, ref: str) -> str:
+    fn = entry["functionName"]
+    basename = entry.get("annotatedBasename") or entry.get("cleanBasename")
+    if not basename:
+        return f"`{fn}`"
+    module = entry.get("rendersDir") or entry["module"]
+    return f"[`{fn}`]({_image_url(repo, ref, module, basename)})"
+
+
+def _grouped_table(entries: list[dict], repo: str, ref: str) -> list[str]:
+    """One row per (level, rule), naming the previews that carry it as links to their renders."""
+    groups: dict[tuple[str, str], dict[tuple[str, str], list]] = {}
+    for entry in entries:
+        for f in entry.get("findings", []):
+            key = (f.get("level") or "", f.get("type") or "")
+            per_preview = groups.setdefault(key, {})
+            slot = per_preview.setdefault(_state_key(entry), [entry, 0])
+            slot[1] += 1
+    lines = ["| Level | Rule | Previews |", "|---|---|---|"]
+    for (level, rule), per_preview in sorted(
+        groups.items(), key=lambda kv: (_LEVEL_ORDER.get(kv[0][0], 9), kv[0][1])
+    ):
+        items = sorted(per_preview.values(), key=lambda s: s[0]["functionName"])
+        links = [
+            _preview_link(e, repo, ref) + (f" ×{count}" if count > 1 else "")
+            for e, count in items[:PREVIEW_LINKS_MAX]
+        ]
+        if len(items) > PREVIEW_LINKS_MAX:
+            links.append(f"and {len(items) - PREVIEW_LINKS_MAX} more")
+        lines.append(f"| {level} | {rule} | {', '.join(links)} |")
+    return lines
+
+
+def _name_list(entries: list[dict]) -> str:
+    names = sorted(f"`{e['functionName']}`" for e in entries)
+    shown = ", ".join(names[:NAME_LIST_MAX])
+    if len(names) > NAME_LIST_MAX:
+        shown += f" and {len(names) - NAME_LIST_MAX} more"
+    return shown
+
+
+def _state_key(entry: dict) -> str:
+    return f"{entry['module']}\t{entry['previewId']}"
+
+
+def _state_findings(findings: list[dict]) -> list[str]:
+    """A finding as ``<signature hash>@<bounds>``: enough to compare, small enough to embed."""
+    import hashlib
+
+    out = []
+    for f in findings:
+        digest = hashlib.sha1(
+            json.dumps(_finding_signature(f), sort_keys=True).encode("utf-8")
+        ).hexdigest()[:10]
+        out.append(f"{digest}@{f.get('boundsInScreen') or ''}")
+    return out
+
+
+def _as_comparable(state_findings: list[str]) -> list[dict]:
+    result = []
+    for item in state_findings:
+        sig, _, bounds = item.partition("@")
+        result.append({"type": sig, "boundsInScreen": bounds or None})
+    return result
+
+
+def _state_equivalent(findings: list[dict], previous: list[str]) -> bool:
+    return _findings_equivalent(
+        _as_comparable(_state_findings(findings)), _as_comparable(previous)
+    )
+
+
+def _write_state(state: dict[str, list[str]]) -> str | None:
+    import base64
+    import zlib
+
+    raw = json.dumps(state, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = base64.b64encode(zlib.compress(raw, 9)).decode("ascii")
+    if len(encoded) > STATE_MAX_CHARS:
+        return None
+    return f"{STATE_PREFIX}{encoded} -->"
+
+
+def _read_state(path: str | None) -> dict[str, list[str]] | None:
+    """The state the previous build's comment embedded, or ``None`` when there is none."""
+    import base64
+    import re
+    import zlib
+
+    if not path:
+        return None
+    try:
+        body = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(re.escape(STATE_PREFIX) + r"([A-Za-z0-9+/=]+) -->", body)
+    if not match:
+        return None
+    try:
+        state = json.loads(zlib.decompress(base64.b64decode(match.group(1))))
+    except (ValueError, zlib.error):
+        return None
+    if not isinstance(state, dict):
+        return None
+    return {
+        str(k): [str(x) for x in v]
+        for k, v in state.items()
+        if isinstance(v, list)
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -998,6 +1176,11 @@ def main() -> int:
         help="The findings cover only the previews this PR changed (the apply "
              "action's PR scope): say so, and roster clean previews as clean "
              "rather than unchanged when there is no baseline.",
+    )
+    cm.add_argument(
+        "--previous", default=None,
+        help="The previous build's sticky comment body. Findings it already "
+             "reported are folded into one collapsed line instead of listed again.",
     )
 
     args = ap.parse_args()

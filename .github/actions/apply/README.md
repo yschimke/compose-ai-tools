@@ -182,9 +182,13 @@ pipelines) in one job gets this with no configuration. Without the compose
 pipeline in the same job there is no visual diff, and the run falls back to
 every preview of the affected modules; so does `scope: full`.
 
-The sticky `<!-- a11y-report -->` comment is about those previews: their
-findings, each with its annotated render, and the clean ones rostered by name.
-A report with no findings updates an existing a11y comment (so a fixed finding
+The sticky `<!-- a11y-report -->` comment is about those previews, and brief:
+one table row per level and rule, naming the previews that carry it as links to
+their annotated renders, a link to the full report (the README gallery on the
+PR renders branch), and a count of the clean ones. The comment embeds what it
+reported in a hidden `<!-- a11y-state:… -->` marker, so the next build lists only
+findings that are new since then, folds the ones already reported into one
+collapsed line, and names the previews fixed in between. A report with no findings updates an existing a11y comment (so a fixed finding
 does not stay listed) but is never posted as a new one.
 
 **Baselines are opt-in.** By default (`a11y-baseline: false`) a push to the
