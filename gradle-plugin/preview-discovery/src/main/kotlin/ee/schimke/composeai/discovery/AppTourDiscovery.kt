@@ -12,7 +12,8 @@ import kotlinx.serialization.json.Json
 /**
  * App-level discovery, putting the app itself in front of reviewers:
  * - [parseManifestActivities] / [buildActivityPreviews]: enabled manifest activities become
- *   [PreviewKind.ACTIVITY] previews; the launcher's is the hero image.
+ *   [PreviewKind.ACTIVITY] previews; the launcher's is the hero image. An activity opts out with
+ *   `composePreview.excludeActivities` or a [SKIP_PREVIEW_META_DATA] `<meta-data>` entry.
  * - [parseTourSpec] / [buildTourPreviews]: `compose-previews/tours/<name>.json` scripts become
  *   [PreviewKind.APP_TOUR] previews, one PNG per step.
  *
@@ -24,6 +25,14 @@ object AppTourDiscovery {
   private val SANITIZE_STEM = Regex("[^A-Za-z0-9._-]")
 
   private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+  /**
+   * `<meta-data android:name="…" android:value="true"/>` inside an `<activity>` that keeps it out
+   * of [buildActivityPreviews], for screens that can never render under Robolectric (e.g. a Meta
+   * Spatial SDK `AppSystemActivity`). The activity stays in [PreviewManifest.activities] and can
+   * still start a tour.
+   */
+  const val SKIP_PREVIEW_META_DATA = "ee.schimke.composeai.preview.skip"
 
   /**
    * Activity prefixes manifest-merger injects from libraries (Glance trampolines, ui-tooling,
@@ -96,6 +105,15 @@ object AppTourDiscovery {
                   }
               }
               "intent-filter" -> if (current != null) currentFilter = FilterBuilder()
+              "meta-data" ->
+                current?.let { a ->
+                  if (
+                    readAttr(reader, ANDROID_NS, "name") == SKIP_PREVIEW_META_DATA &&
+                      readAttr(reader, ANDROID_NS, "value")?.trim()?.toBooleanStrictOrNull() == true
+                  ) {
+                    a.skipPreview = true
+                  }
+                }
               "action" ->
                 currentFilter?.let { f ->
                   readAttr(reader, ANDROID_NS, "name")?.let(f.actions::add)
@@ -144,17 +162,12 @@ object AppTourDiscovery {
     val exported: Boolean,
     val label: String?,
     val filters: MutableList<FilterBuilder> = mutableListOf(),
+    var skipPreview: Boolean = false,
   ) {
     fun build(packageName: String?): ManifestActivity {
-      val fqcn =
-        when {
-          rawName.startsWith(".") -> packageName?.let { it + rawName } ?: rawName
-          !rawName.contains(".") -> packageName?.let { "$it.$rawName" } ?: rawName
-          else -> rawName
-        }
       val intentFilters = filters.map { it.build() }
       return ManifestActivity(
-        className = fqcn,
+        className = resolveActivityClassName(rawName, packageName),
         exported = exported,
         launcher =
           intentFilters.any {
@@ -163,7 +176,23 @@ object AppTourDiscovery {
           },
         label = label,
         intentFilters = intentFilters,
+        skipPreview = skipPreview,
       )
+    }
+  }
+
+  /**
+   * Resolves an activity name the way the manifest does: `.Relative` and bare `Simple` names are
+   * prefixed with [packageName]; anything else is already fully qualified. Also used for
+   * `composePreview.excludeActivities` entries, against the module's namespace.
+   */
+  fun resolveActivityClassName(rawName: String, packageName: String?): String {
+    val name = rawName.trim()
+    val pkg = packageName?.trim()?.takeIf { it.isNotEmpty() } ?: return name
+    return when {
+      name.startsWith(".") -> pkg + name
+      !name.contains(".") -> "$pkg.$name"
+      else -> name
     }
   }
 
@@ -200,39 +229,47 @@ object AppTourDiscovery {
    * One [PreviewKind.ACTIVITY] preview per activity. The launcher's capture is required; others are
    * `optional`, since they may need extras or state discovery can't supply. Sized to
    * [DeviceDimensions.DEFAULT], or the Wear default on watch modules.
+   *
+   * Activities named in [excludeActivities] (fully qualified class names) or carrying the
+   * [SKIP_PREVIEW_META_DATA] flag get no preview. Exclusion is about the auto-discovered capture
+   * only: the activity stays in [PreviewManifest.activities], and a tour that starts it, explicitly
+   * or as the default launcher start, still runs.
    */
   fun buildActivityPreviews(
     activities: List<ManifestActivity>,
     isWear: Boolean,
+    excludeActivities: Set<String> = emptySet(),
   ): List<PreviewInfo> {
     val device = if (isWear) DeviceDimensions.DEFAULT_WEAR else DeviceDimensions.DEFAULT
-    return activities.map { activity ->
-      val simpleName = activity.className.substringAfterLast('.')
-      val stem = "activity__" + simpleName.replace(SANITIZE_STEM, "_")
-      PreviewInfo(
-        id = stem,
-        functionName = simpleName,
-        className = activity.className,
-        params =
-          PreviewParams(
-            name = simpleName,
-            kind = PreviewKind.ACTIVITY,
-            widthDp = device.widthDp,
-            heightDp = device.heightDp,
-            density = device.density,
-            // The hero should look like the app on a device: draw system bars for context.
-            showSystemUi = !isWear,
-          ),
-        captures =
-          listOf(
-            Capture(
-              renderOutput = "renders/$stem.png",
-              optional = !activity.launcher,
-              cost = ACTIVITY_LAUNCH_COST,
+    return activities
+      .filterNot { it.skipPreview || it.className in excludeActivities }
+      .map { activity ->
+        val simpleName = activity.className.substringAfterLast('.')
+        val stem = "activity__" + simpleName.replace(SANITIZE_STEM, "_")
+        PreviewInfo(
+          id = stem,
+          functionName = simpleName,
+          className = activity.className,
+          params =
+            PreviewParams(
+              name = simpleName,
+              kind = PreviewKind.ACTIVITY,
+              widthDp = device.widthDp,
+              heightDp = device.heightDp,
+              density = device.density,
+              // The hero should look like the app on a device: draw system bars for context.
+              showSystemUi = !isWear,
             ),
-          ),
-      )
-    }
+          captures =
+            listOf(
+              Capture(
+                renderOutput = "renders/$stem.png",
+                optional = !activity.launcher,
+                cost = ACTIVITY_LAUNCH_COST,
+              ),
+            ),
+        )
+      }
   }
 
   /** One committed tour script — the JSON shape of `compose-previews/tours/<name>.json`. */

@@ -154,6 +154,13 @@ object PreviewDiscovery {
      */
     val tourSpecFiles: List<File> = emptyList(),
     /**
+     * Fully qualified activity class names that get no [PreviewKind.ACTIVITY] preview. From
+     * `excludeActivities`, with `.Relative` entries already resolved against the namespace. Tours
+     * and [PreviewManifest.activities] are unaffected; see
+     * [AppTourDiscovery.buildActivityPreviews].
+     */
+    val excludeActivities: Set<String> = emptySet(),
+    /**
      * Whether the backend honours `@AnimatedPreview(format = Apng)`. The Gradle plugin passes
      * `true` for both backends (Android since daemon 3.13.0). `false` (default for non-Gradle
      * callers) records and names the output as GIF. See [resolveAnimationFormat].
@@ -741,7 +748,11 @@ object PreviewDiscovery {
       if (input.mergedManifest == null) {
         emptyList()
       } else {
-        AppTourDiscovery.buildActivityPreviews(manifestActivities, input.isWear) +
+        AppTourDiscovery.buildActivityPreviews(
+          manifestActivities,
+          input.isWear,
+          excludeActivities = input.excludeActivities,
+        ) +
           AppTourDiscovery.buildTourPreviews(
             input.tourSpecFiles,
             launcherActivity = manifestActivities.firstOrNull { it.launcher },

@@ -994,6 +994,7 @@ internal fun bazelDiscoveryKey(input: PreviewDiscovery.Input, cache: BazelHostCa
         "animatedPreviewApngSupported=${input.animatedPreviewApngSupported}",
         "isWear=${input.isWear} retargetWear=${input.retargetWearPreviews}",
         "componentLibraryPrefixes=${input.componentLibraryPrefixes}",
+        "excludeActivities=${input.excludeActivities.sorted()}",
         "classDirs=${input.classDirs.map { it.absolutePath }}",
         "resourceDirs=${input.resourceDirs.map { it.absolutePath }}",
         "tours=${input.tourSpecFiles.map { it.absolutePath + "=" + content(it) }}",

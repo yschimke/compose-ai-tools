@@ -23,6 +23,34 @@ real entry points with their intent-filters (launcher, deep-link schemes/hosts, 
 agent can see **which screens exist and the ways to launch between them** without parsing the
 manifest, and can author tour specs from it.
 
+## Excluding an activity
+
+Some activities can never render under Robolectric — a Meta Spatial SDK `AppSystemActivity` is the
+standing example — and would otherwise surface as a render failure on every run. Opt one out in the
+module's build script, by fully qualified class name or by a `.Relative` name resolved against the
+module's `namespace`:
+
+```kotlin
+composePreview {
+  excludeActivities.add("com.example.quest.QuestActivity")
+}
+```
+
+or on the activity itself, which keeps the opt-out next to the declaration and travels with a
+library that ships such an activity in its own manifest:
+
+```xml
+<activity android:name=".QuestActivity">
+  <meta-data android:name="ee.schimke.composeai.preview.skip" android:value="true" />
+</activity>
+```
+
+Either way only the `kind=ACTIVITY` preview is dropped. The activity stays in the `activities`
+index, and a tour that starts it — explicitly, or as the default launcher start — still runs: a tour
+is authored on purpose, so discovery does not second-guess it. `excludeActivities` is a
+`composePreviewDiscover` input, so changing it re-runs discovery and invalidates the configuration
+cache like any other `composePreview { }` setting.
+
 ## Tour spec format
 
 `<module>/compose-previews/tours/<name>.json`:

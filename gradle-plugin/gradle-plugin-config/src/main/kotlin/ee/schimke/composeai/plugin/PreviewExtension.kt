@@ -155,6 +155,32 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(true)
 
   /**
+   * Manifest activities that get no auto-discovered `kind=ACTIVITY` preview
+   * (`renders/activity__<Name>.png`), for screens that can never render under Robolectric, such as
+   * a Meta Spatial SDK `AppSystemActivity`. Each entry is a fully qualified class name, or a
+   * `.Relative` name resolved against the module's `namespace`:
+   * ```kotlin
+   * composePreview {
+   *   excludeActivities.add("com.example.quest.QuestActivity")
+   * }
+   * ```
+   *
+   * The same opt-out can live on the activity itself, which keeps it next to the declaration and
+   * travels with a library that ships such an activity:
+   * ```xml
+   * <activity android:name=".QuestActivity">
+   *   <meta-data android:name="ee.schimke.composeai.preview.skip" android:value="true" />
+   * </activity>
+   * ```
+   *
+   * Only the activity preview is dropped. The activity stays in `previews.json`'s `activities`
+   * index, and an app tour that starts it (explicitly, or as the default launcher start) still
+   * runs: a tour is authored on purpose, so it isn't second-guessed. Android only.
+   */
+  val excludeActivities: ListProperty<String> =
+    objects.listProperty(String::class.java).convention(emptyList())
+
+  /**
    * When `true`, `composePreviewDiscover` fails the build on zero `@Preview` functions and logs
    * diagnostics (class dirs, dependency jars, scan summary, observed annotation FQNs). Default
    * `false`. Intended for CI and for triaging "0 previews discovered".

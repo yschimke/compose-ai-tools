@@ -76,6 +76,18 @@ internal object AndroidPreviewSupport {
    * and the CLI's `XrCompositeProvision.platformToken`. `null` when no asset is published (e.g.
    * linux-arm64). Parameters rather than `System.getProperty` for testability.
    */
+  /**
+   * `composePreview.excludeActivities` as fully qualified class names: `.Relative` and bare entries
+   * resolve against [namespace], exactly as `android:name` does in a source manifest.
+   */
+  internal fun resolvedExcludeActivities(
+    extension: PreviewExtension,
+    namespace: Provider<String>,
+  ): Provider<List<String>> =
+    extension.excludeActivities.zip(namespace.orElse("")) { names, ns ->
+      names.map { AppTourDiscovery.resolveActivityClassName(it, ns) }.distinct()
+    }
+
   internal fun xrCompositePlatformToken(osName: String, osArch: String): String? {
     val os = osName.lowercase()
     val arch = osArch.lowercase()
@@ -1037,6 +1049,9 @@ internal object AndroidPreviewSupport {
         svgRenderSubdir.set(SVG_RENDER_SUBDIR)
         // Lets discovery detect Wear modules (#1985) and drives activity discovery.
         mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
+        // `.Relative` entries resolve against the namespace, as `android:name` does in source
+        // manifests. Lazy: AGP refuses to read the namespace mid-configuration (#6039).
+        excludeActivities.set(resolvedExcludeActivities(extension, variant.namespace))
         // Committed tour scripts: each `compose-previews/tours/<name>.json` becomes a synthetic
         // `kind=APP_TOUR` preview whose captures are the tour's steps (launch → click/intent/back).
         tourSpecFiles.from(
