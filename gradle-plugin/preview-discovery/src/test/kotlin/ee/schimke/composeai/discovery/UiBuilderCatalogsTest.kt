@@ -2742,6 +2742,7 @@ class UiBuilderCatalogsTest {
                 b.order = 2
                 b.description = "Screens for a watch"
                 b.primary = false
+                b.device = "watch"
               }
               .build()
           b3.templates =
@@ -2766,6 +2767,7 @@ class UiBuilderCatalogsTest {
     assertThat(chooser.label).isEqualTo("Wear app")
     assertThat(chooser.description).isEqualTo("Screens for a watch")
     assertThat(chooser.primary).isFalse()
+    assertThat(chooser.device).isEqualTo("watch")
     assertThat(chooser.templates.map { it.id })
       .containsExactly("wear-screen", "wear-list")
       .inOrder()
