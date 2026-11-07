@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.89.0](https://github.com/yschimke/compose-ai-tools/compare/v2.88.0...v2.89.0) (2026-11-07)
+
+
+### Features
+
+* let consumers exclude activities from activity previews ([#6494](https://github.com/yschimke/compose-ai-tools/issues/6494)) ([0b70bd4](https://github.com/yschimke/compose-ai-tools/commit/0b70bd4fa5f71c88ff8e0e23e4274817a88a9058))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.41.0 ([#6489](https://github.com/yschimke/compose-ai-tools/issues/6489)) ([aa5c29e](https://github.com/yschimke/compose-ai-tools/commit/aa5c29e01359e75429453a23c6cb723639936659))
+
 ## [2.88.0](https://github.com/yschimke/compose-ai-tools/compare/v2.87.0...v2.88.0) (2026-11-07)
 
 
