@@ -1505,6 +1505,9 @@ internal object ComposePreviewTasks {
           .orElse(extension.retargetWearPreviews),
       )
       componentLibraryPrefixes.set(extension.componentLibraryPrefixes)
+      // Android re-sets this in [configureDeps] with `.Relative` names resolved against the
+      // namespace.
+      excludeActivities.set(extension.excludeActivities)
       // No per-extension opt-in: a11y is daemon-only, so `dataExtensionReports` is empty here.
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       componentsFile.set(previewOutputDir.map { it.file("components.json") })

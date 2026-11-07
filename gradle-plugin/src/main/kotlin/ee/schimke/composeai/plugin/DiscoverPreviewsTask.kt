@@ -219,6 +219,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val componentLibraryPrefixes: ListProperty<String>
 
   /**
+   * Activities that get no `kind=ACTIVITY` preview, from `excludeActivities`. Fully qualified on
+   * Android, where `.Relative` entries are resolved against the variant namespace.
+   */
+  @get:Input abstract val excludeActivities: ListProperty<String>
+
+  /**
    * The merged `AndroidManifest.xml`: detects Wear modules and drives app-level discovery
    * (activities, ACTIVITY previews, default tour start). Absent on desktop: non-Wear, no app-level
    * previews.
@@ -289,6 +295,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         componentLibraryPrefixes = componentLibraryPrefixes.getOrElse(emptyList()),
         mergedManifest = mergedManifest.orNull?.asFile?.takeIf { it.exists() },
         tourSpecFiles = tourSpecFiles.files.filter { it.isFile },
+        excludeActivities = excludeActivities.getOrElse(emptyList()).toSet(),
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.discovery
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * Which @Preview flavour the entry came from; drives renderer selection. [COMPOSE] previews are
@@ -432,6 +433,12 @@ data class ManifestActivity(
   val label: String? = null,
   /** The activity's `<intent-filter>` declarations — the advertised ways to launch it. */
   val intentFilters: List<ActivityIntentFilter> = emptyList(),
+  /**
+   * The activity carries `<meta-data android:name="ee.schimke.composeai.preview.skip"
+   * android:value="true"/>`, so it gets no [PreviewKind.ACTIVITY] preview. Discovery-internal: not
+   * written to `previews.json`, whose `activities` index lists every entry point regardless.
+   */
+  @Transient val skipPreview: Boolean = false,
 )
 
 /** One `<intent-filter>` on a [ManifestActivity]. */

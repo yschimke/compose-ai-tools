@@ -213,4 +213,140 @@ class AppTourDiscoveryTest {
       activities.map { it.className },
     )
   }
+
+  private val spatialManifestXml =
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        package="com.example.quest">
+        <application>
+            <activity android:name=".QuestActivity" android:exported="true">
+                <meta-data android:name="com.meta.spatial.sdk.Theme" android:value="true" />
+                <intent-filter>
+                    <action android:name="android.intent.action.MAIN" />
+                    <category android:name="android.intent.category.LAUNCHER" />
+                </intent-filter>
+            </activity>
+            <activity android:name=".SpatialPanelActivity">
+                <meta-data android:name="ee.schimke.composeai.preview.skip" android:value="true" />
+            </activity>
+            <activity android:name=".NotSkippedActivity">
+                <meta-data android:name="ee.schimke.composeai.preview.skip" android:value="false" />
+            </activity>
+            <activity android:name="com.example.quest.SettingsActivity" />
+        </application>
+    </manifest>
+    """
+      .trimIndent()
+
+  @Test
+  fun `skip meta-data drops the activity preview but keeps the activity`() {
+    val activities = AppTourDiscovery.parseManifestActivities(spatialManifestXml.byteInputStream())
+
+    assertEquals(4, activities.size)
+    assertTrue(activities.single { it.className.endsWith(".SpatialPanelActivity") }.skipPreview)
+    // Only the skip key opts out; other meta-data and an explicit `false` don't.
+    assertFalse(activities.single { it.className.endsWith(".QuestActivity") }.skipPreview)
+    assertFalse(activities.single { it.className.endsWith(".NotSkippedActivity") }.skipPreview)
+
+    val previews = AppTourDiscovery.buildActivityPreviews(activities, isWear = false)
+    assertEquals(
+      listOf(
+        "activity__QuestActivity",
+        "activity__NotSkippedActivity",
+        "activity__SettingsActivity",
+      ),
+      previews.map { it.id },
+    )
+  }
+
+  @Test
+  fun `excludeActivities drops matching activity previews, launcher included`() {
+    val activities = AppTourDiscovery.parseManifestActivities(spatialManifestXml.byteInputStream())
+
+    val previews =
+      AppTourDiscovery.buildActivityPreviews(
+        activities,
+        isWear = false,
+        excludeActivities =
+          setOf("com.example.quest.QuestActivity", "com.example.quest.NotInTheManifest"),
+      )
+
+    assertEquals(
+      listOf("activity__NotSkippedActivity", "activity__SettingsActivity"),
+      previews.map { it.id },
+    )
+  }
+
+  @Test
+  fun `the skip flag is not written to previews json`() {
+    val activity = ManifestActivity(className = "com.example.A", skipPreview = true)
+    val encoded =
+      kotlinx.serialization.json
+        .Json { encodeDefaults = true }
+        .encodeToString(ManifestActivity.serializer(), activity)
+
+    assertFalse(encoded, encoded.contains("skipPreview"))
+  }
+
+  @Test
+  fun `resolveActivityClassName resolves relative and bare names against the package`() {
+    val pkg = "com.example.quest"
+    assertEquals(
+      "com.example.quest.QuestActivity",
+      AppTourDiscovery.resolveActivityClassName(".QuestActivity", pkg),
+    )
+    assertEquals(
+      "com.example.quest.QuestActivity",
+      AppTourDiscovery.resolveActivityClassName("QuestActivity", pkg),
+    )
+    assertEquals(
+      "com.example.other.QuestActivity",
+      AppTourDiscovery.resolveActivityClassName(" com.example.other.QuestActivity ", pkg),
+    )
+    assertEquals(".QuestActivity", AppTourDiscovery.resolveActivityClassName(".QuestActivity", ""))
+    assertEquals(
+      ".QuestActivity",
+      AppTourDiscovery.resolveActivityClassName(".QuestActivity", null),
+    )
+  }
+
+  @Test
+  fun `discovery honours excludeActivities and still tours an excluded launcher`() {
+    val dir = createTempDirectory("exclude-activities").toFile()
+    val manifest = File(dir, "AndroidManifest.xml").apply { writeText(spatialManifestXml) }
+    val tour =
+      File(dir, "home.json").apply {
+        writeText("""{ "steps": [ { "label": "back", "back": true } ] }""")
+      }
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = emptyList(),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":quest",
+          variantName = "debug",
+          projectDirectory = dir,
+          failOnEmpty = false,
+          mergedManifest = manifest,
+          tourSpecFiles = listOf(tour),
+          excludeActivities = setOf("com.example.quest.QuestActivity"),
+        ),
+      )
+
+    val result = outcome as PreviewDiscovery.Outcome.Success
+    val ids = result.manifest.previews.map { it.id }
+    assertFalse(ids.toString(), "activity__QuestActivity" in ids)
+    assertFalse(ids.toString(), "activity__SpatialPanelActivity" in ids)
+    assertTrue(ids.toString(), "activity__SettingsActivity" in ids)
+    // The index keeps every entry point, and the tour's default start is still the launcher.
+    assertEquals(4, result.manifest.activities.size)
+    val tourPreview = result.manifest.previews.single { it.id == "apptour__home" }
+    assertEquals(
+      "com.example.quest.QuestActivity",
+      tourPreview.params.launchIntent?.activityClassName,
+    )
+  }
 }
