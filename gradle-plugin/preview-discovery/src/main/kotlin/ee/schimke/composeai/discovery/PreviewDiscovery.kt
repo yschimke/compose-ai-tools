@@ -3831,7 +3831,8 @@ object PreviewDiscovery {
         runCatching { ScrollAxis.valueOf(it) }.getOrNull()
       } ?: ScrollAxis.VERTICAL
     val maxScrollPx = (pv.getValue("maxScrollPx") as? Int)?.coerceAtLeast(0) ?: 0
-    val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: true
+    // Matches the annotation default: stills keep Wear's edge transforms, as a watch does.
+    val reduceMotion = (pv.getValue("reduceMotion") as? Boolean) ?: false
     // Carried into every [ScrollCapture] for a uniform shape; `0` means the renderer default.
     val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.coerceAtLeast(0) ?: 0
     // De-dup (`[END, END]` would collide) and sort by ordinal so TOP is captured before the
@@ -3844,7 +3845,8 @@ object PreviewDiscovery {
           mode = mode,
           axis = axis,
           maxScrollPx = maxScrollPx,
-          reduceMotion = reduceMotion,
+          // A LONG stitch always flattens Wear motion in the renderer, so record that.
+          reduceMotion = mode == ScrollMode.LONG || reduceMotion,
           frameIntervalMs = frameIntervalMs,
         )
       }
