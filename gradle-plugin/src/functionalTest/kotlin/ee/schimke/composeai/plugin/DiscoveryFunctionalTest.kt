@@ -569,7 +569,7 @@ class DiscoveryFunctionalTest {
         annotation class ScrollingPreview(
             val modes: Array<ScrollMode> = [ScrollMode.END],
             val maxScrollPx: Int = 0,
-            val reduceMotion: Boolean = true,
+            val reduceMotion: Boolean = false,
             val axis: ScrollAxis = ScrollAxis.VERTICAL,
             val frameIntervalMs: Int = 80,
         )
@@ -3107,7 +3107,7 @@ class DiscoveryFunctionalTest {
         annotation class ScrollingPreview(
             val modes: Array<ScrollMode> = [ScrollMode.END],
             val maxScrollPx: Int = 0,
-            val reduceMotion: Boolean = true,
+            val reduceMotion: Boolean = false,
             val axis: ScrollAxis = ScrollAxis.VERTICAL,
             val frameIntervalMs: Int = 80,
         )
@@ -3220,7 +3220,7 @@ class DiscoveryFunctionalTest {
             mode = ScrollMode.END,
             axis = ScrollAxis.VERTICAL,
             maxScrollPx = 0,
-            reduceMotion = true,
+            reduceMotion = false,
             frameIntervalMs = 80,
           ),
         )
@@ -3235,7 +3235,8 @@ class DiscoveryFunctionalTest {
           mode = ScrollMode.LONG,
           axis = ScrollAxis.HORIZONTAL,
           maxScrollPx = 4000,
-          reduceMotion = false,
+          // The fixture sets reduceMotion = false, but LONG always flattens and records true.
+          reduceMotion = true,
           frameIntervalMs = 80,
         ),
       )
@@ -3270,7 +3271,7 @@ class DiscoveryFunctionalTest {
           mode = ScrollMode.GIF,
           axis = ScrollAxis.VERTICAL,
           maxScrollPx = 0,
-          reduceMotion = true,
+          reduceMotion = false,
           frameIntervalMs = 120,
         ),
       )
@@ -3328,7 +3329,7 @@ class DiscoveryFunctionalTest {
         annotation class ScrollingPreview(
             val modes: Array<ScrollMode> = [ScrollMode.END],
             val maxScrollPx: Int = 0,
-            val reduceMotion: Boolean = true,
+            val reduceMotion: Boolean = false,
             val axis: ScrollAxis = ScrollAxis.VERTICAL,
             val frameIntervalMs: Int = 80,
         )
