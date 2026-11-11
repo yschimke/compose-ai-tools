@@ -48,6 +48,13 @@ class RenderCasesCommand(args: List<String>) : Command(args) {
         System.err.println("render-cases: ${e.message}")
         exitProcess(64)
       }
+    RemoteDocumentCases.pathCollisions(cases, reserved = setOf(CONTACT_SHEET, SUMMARY)).let {
+      clashes ->
+      if (clashes.isNotEmpty()) {
+        clashes.forEach { System.err.println("render-cases: $it") }
+        exitProcess(64)
+      }
+    }
     if (cases.isEmpty()) {
       System.err.println("render-cases: ${casesFile.path} has no cases")
       exitProcess(64)
@@ -88,6 +95,8 @@ class RenderCasesCommand(args: List<String>) : Command(args) {
             previewRef = previewRef,
             className = p.className,
             functionName = p.functionName,
+            ids = idFileIds,
+            function = functionSelector,
           )
         }
     if (matched.size != 1) {

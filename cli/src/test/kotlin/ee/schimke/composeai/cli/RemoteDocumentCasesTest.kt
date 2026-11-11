@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The cases file `render-cases` reads: one Remote Compose document per case with its named values,
@@ -122,5 +123,23 @@ class RemoteDocumentCasesTest {
     )
     assertEquals("_/_/x.png", RemoteDocumentCases.pngPath("../../x"))
     assertEquals("case_1.png", RemoteDocumentCases.pngPath("case#1"))
+  }
+
+  @Test
+  fun `cases that would share an image, or overwrite the contact sheet, are found`() {
+    fun case(id: String) =
+      DocumentCase(id, byteArrayOf(), 1, 1, null, null, emptyMap(), emptyList())
+    val clashes =
+      RemoteDocumentCases.pathCollisions(
+        listOf(case("case#1"), case("case_1"), case("contact-sheet"), case("ok")),
+        reserved = setOf("contact-sheet.png"),
+      )
+    assertEquals(2, clashes.size, clashes.toString())
+    assertTrue(clashes.any { "'case#1', 'case_1'" in it })
+    assertTrue(clashes.any { "contact-sheet.png" in it })
+    assertEquals(
+      emptyList(),
+      RemoteDocumentCases.pathCollisions(listOf(case("a"), case("b")), setOf("contact-sheet.png")),
+    )
   }
 }

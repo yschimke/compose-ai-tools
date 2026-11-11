@@ -219,6 +219,25 @@ internal object RemoteDocumentCases {
     json.encodeToJsonElement(RemoteComposeProfile.serializer(), this).jsonPrimitive.content
 
   /**
+   * Why some cases can't each have a PNG of their own: two ids that sanitise to one [pngPath]
+   * (`case#1` and `case_1`), or one that would be written over by an output in [reserved] (the
+   * contact sheet). Empty when every case's image is its own.
+   */
+  internal fun pathCollisions(cases: List<DocumentCase>, reserved: Set<String>): List<String> {
+    val byPath = cases.groupBy { pngPath(it.id) }
+    return byPath
+      .filterValues { it.size > 1 }
+      .map { (path, same) ->
+        "cases ${same.joinToString { "'${it.id}'" }} would all be written to $path; give them distinct ids"
+      } +
+      byPath.keys
+        .filter { it in reserved }
+        .map { path ->
+          "case '${byPath.getValue(path).first().id}' would be written to $path, which render-cases writes itself"
+        }
+  }
+
+  /**
    * [id] as a relative PNG path: each `/`-separated segment kept to `[A-Za-z0-9._-]`, never `..`.
    */
   internal fun pngPath(id: String): String =
