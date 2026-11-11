@@ -214,6 +214,9 @@ internal object CliFlags {
       // render-matrix axes, parsed bespoke; listed so global-position use detects the command
       // correctly.
       "--device",
+      // render-cases
+      "--player",
+      "--density",
       "--locale",
       "--ui-mode",
       "--font-scale",

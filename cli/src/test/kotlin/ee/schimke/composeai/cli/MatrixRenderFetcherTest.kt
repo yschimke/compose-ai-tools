@@ -151,7 +151,7 @@ class MatrixRenderFetcherTest {
     writeDescriptor(projectDir)
     val fetcher = MatrixRenderFetcher(factory = FakeFactory(throwOnRender = true))
 
-    var outcome: MatrixRenderFetcher.Outcome? = null
+    var outcome: MatrixRenderFetcher.Outcome<MatrixCell>? = null
     val elapsedMs =
       kotlin.system.measureTimeMillis {
         outcome =

@@ -195,7 +195,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
   private fun report(
     module: PreviewModule,
     previewId: String,
-    cells: List<MatrixRenderFetcher.CellResult>,
+    cells: List<MatrixRenderFetcher.CellResult<MatrixCell>>,
   ) {
     val cellFiles = if (cellsDirRequested) writeCells(module, previewId, cells) else emptyMap()
 
@@ -233,7 +233,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
   private fun writeCells(
     module: PreviewModule,
     previewId: String,
-    cells: List<MatrixRenderFetcher.CellResult>,
+    cells: List<MatrixRenderFetcher.CellResult<MatrixCell>>,
   ): Map<MatrixCell, File> {
     val dirPath =
       cellsDirExplicitPath?.toPath()
@@ -255,7 +255,7 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
   private fun writeContactSheet(
     module: PreviewModule,
     previewId: String,
-    cells: List<MatrixRenderFetcher.CellResult>,
+    cells: List<MatrixRenderFetcher.CellResult<MatrixCell>>,
   ): File? {
     val tiles = cells.mapNotNull { cr -> cr.png?.let { ContactSheet.Cell(cr.cell.label, it) } }
     if (tiles.isEmpty()) {

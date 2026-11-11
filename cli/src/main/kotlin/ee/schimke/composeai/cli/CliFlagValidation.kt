@@ -256,6 +256,9 @@ internal object CliFlagValidation {
             "--contact-sheet",
             "--cells-dir",
           ),
+      "render-cases" to
+        commandBase +
+          setOf("--json", "--help", "-h", "--player", "--density", "--out", "--contact-sheet"),
       "record" to
         commandBase +
           setOf(

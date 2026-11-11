@@ -13,6 +13,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "list" to { a -> runProjectPreviewCommand("list", a) },
     "render" to { a -> runProjectPreviewCommand("render", a) },
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
+    "render-cases" to { a -> RenderCasesCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
     "launch" to { a -> LaunchCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
