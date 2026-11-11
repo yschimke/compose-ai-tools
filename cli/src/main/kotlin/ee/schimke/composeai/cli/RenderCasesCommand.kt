@@ -124,13 +124,6 @@ class RenderCasesCommand(args: List<String>) : Command(args) {
       exitProcess(2)
     }
 
-    cases
-      .filter { it.skipped.isNotEmpty() }
-      .forEach {
-        System.err.println(
-          "render-cases: ${it.id}: no daemon type for ${it.skipped.joinToString()}, left at the document's default",
-        )
-      }
     val fetched =
       MatrixRenderFetcher(onLog = { System.err.println("[daemon render-cases] $it") })
         .fetchCells(
@@ -192,8 +185,6 @@ class RenderCasesCommand(args: List<String>) : Command(args) {
                   },
                 )
               }
-              if (r.cell.skipped.isNotEmpty())
-                putJsonArray("skippedValues") { r.cell.skipped.forEach { add(it) } }
             },
           )
         }
@@ -231,9 +222,10 @@ class RenderCasesCommand(args: List<String>) : Command(args) {
       Each case is replayed in place of the host preview's content, so the host is any Remote
       Compose preview in a module with the Remote Compose connector on its render classpath.
 
-      The cases file: { "cases": [ { "id", "document" (relative to the file), "widthDp",
-      "heightDp", "dark", "profile" or "target", "values": { name: { "type", "value" } } } ] }.
-      Livery's renderLiveryPreviews writes one (cases.json).
+      The cases file is compose-preview-contracts' RemoteDocumentCasesV1
+      (compose-preview/remote-document-cases/v1): each case's id, document (relative to the
+      file), widthDp, heightDp, dark, profile and namedValues. Livery's renderLiveryPreviews
+      writes one (remote-document-cases.json).
 
       Options:
 
