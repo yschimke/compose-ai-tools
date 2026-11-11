@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.matrix.MatrixCell
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -19,9 +20,10 @@ import okio.Path.Companion.toPath
 
 /**
  * Drives a short-lived [ee.schimke.composeai.render.session.RenderSession] for one module,
- * rendering one preview across every cell of a display-axis matrix and returning PNG bytes per cell
- * (for `render-matrix`). Cells render serially, each waiting for its terminal event, since they
- * share a preview id with different overrides.
+ * rendering one preview once per cell and returning PNG bytes per cell. A cell is anything with a
+ * label and [PreviewOverrides]: a display-axis [MatrixCell] for `render-matrix` ([fetch]), or a
+ * carried Remote Compose document for `render-cases` ([fetchCells]). Cells render serially, each
+ * waiting for its terminal event, since they share a preview id with different overrides.
  *
  * @param factory render-session factory; defaults to the subprocess backend, tests inject a fake.
  */
@@ -40,7 +42,30 @@ internal class MatrixRenderFetcher(
     previewId: String,
     cells: List<MatrixCell>,
     workspaceRoot: File = projectDir,
-  ): Outcome {
+  ): Outcome<MatrixCell> =
+    fetchCells(
+      projectDir,
+      moduleName,
+      previewId,
+      cells,
+      { it.label },
+      { it.toOverrides() },
+      workspaceRoot,
+    )
+
+  /**
+   * Render [previewId] once per cell of [cells], each with the overrides [overridesOf] gives it,
+   * named by [labelOf] in logs and the render reason.
+   */
+  fun <T> fetchCells(
+    projectDir: File,
+    moduleName: String,
+    previewId: String,
+    cells: List<T>,
+    labelOf: (T) -> String,
+    overridesOf: (T) -> PreviewOverrides,
+    workspaceRoot: File = projectDir,
+  ): Outcome<T> {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) return Outcome.DescriptorMissing(descriptorFile)
 
@@ -84,8 +109,9 @@ internal class MatrixRenderFetcher(
           pending.get()?.countDown()
         }
         .use {
-          val results = mutableListOf<CellResult>()
+          val results = mutableListOf<CellResult<T>>()
           for (cell in cells) {
+            val label = labelOf(cell)
             // The daemon clears its override-in-flight flag just after `renderFinished`, so the
             // next cell can be rejected as coalesced; retry with the same bounded backoff as
             // ServeRenderHost.
@@ -102,13 +128,13 @@ internal class MatrixRenderFetcher(
                 try {
                   live.renderNow(
                     previewIds = listOf(previewId),
-                    reason = "render-matrix ${cell.label}",
-                    overrides = cell.toOverrides(),
+                    reason = "render $label",
+                    overrides = overridesOf(cell),
                     timeout = RENDER_ACK_TIMEOUT,
                   )
                 } catch (e: RenderSessionException) {
                   // Nothing was queued, so don't wait for a terminal event.
-                  failed = "renderNow failed for cell '${cell.label}': ${e.message}"
+                  failed = "renderNow failed for cell '$label': ${e.message}"
                   break
                 }
 
@@ -118,7 +144,7 @@ internal class MatrixRenderFetcher(
                   Thread.sleep(COALESCED_RETRY_BACKOFF_MS)
                   continue
                 }
-                failed = "render rejected for cell '${cell.label}': ${rejected.reason}"
+                failed = "render rejected for cell '$label': ${rejected.reason}"
                 break
               }
               queued = true
@@ -132,7 +158,7 @@ internal class MatrixRenderFetcher(
             }
 
             if (!latch.await(RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-              onLog("timed out waiting for render of cell '${cell.label}'")
+              onLog("timed out waiting for render of cell '$label'")
               results += CellResult(cell, png = null)
               continue
             }
@@ -143,7 +169,7 @@ internal class MatrixRenderFetcher(
                 ?.toPath()
                 ?.takeIf { fileSystem.exists(it) }
                 ?.let { p -> fileSystem.read(p) { readByteArray() } }
-            if (bytes == null) onLog("no PNG produced for cell '${cell.label}'")
+            if (bytes == null) onLog("no PNG produced for cell '$label'")
             results += CellResult(cell, png = bytes)
           }
           Outcome.Ok(cells = results)
@@ -151,16 +177,18 @@ internal class MatrixRenderFetcher(
     }
   }
 
-  /** One rendered cell: its [cell] coordinates and the rendered [png] bytes (null on failure). */
-  class CellResult(val cell: MatrixCell, val png: ByteArray?)
+  /**
+   * One rendered cell: the [cell] it was asked for and the rendered [png] bytes (null on failure).
+   */
+  class CellResult<out T>(val cell: T, val png: ByteArray?)
 
-  sealed interface Outcome {
+  sealed interface Outcome<out T> {
     /** Session opened and every cell attempted, in input order; failed cells have a null PNG. */
-    data class Ok(val cells: List<CellResult>) : Outcome
+    data class Ok<out T>(val cells: List<CellResult<T>>) : Outcome<T>
 
-    data class DescriptorMissing(val expected: File) : Outcome
+    data class DescriptorMissing(val expected: File) : Outcome<Nothing>
 
-    data class OpenFailed(val reason: String) : Outcome
+    data class OpenFailed(val reason: String) : Outcome<Nothing>
   }
 
   private companion object {

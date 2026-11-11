@@ -37,7 +37,16 @@ compose-preview render    # render every @Preview to PNG
 compose-preview browse    # Storybook-like local component browser
 compose-preview render-matrix --id com.example.MyPreview \
     --ui-mode light,dark --font-scale 1.0,2.0   # one preview across a grid
+compose-preview render-cases cases.json --id com.example.MyRemotePreview \
+    --contact-sheet                             # Remote Compose documents with their data
 ```
+
+`render-cases` draws Remote Compose documents someone else produced, each with its own named values,
+size and light or dark mode, on the Android lane, so each plays on the platform's own player under
+Robolectric. Each case replays in place of a host Remote Compose preview, so `--id` names one in a
+module with the Remote Compose connector on its render classpath. Livery's `renderLiveryPreviews`
+writes a `cases.json` for every template in a catalog; `--player` picks `androidx-embedded` (the
+default), `androidx-view` or `cmp-android`.
 
 `browse` scans every valid preview module and starts a loopback-only server. When a conventional
 executable CMP Wasm browser project owns the previews or depends on their module (including the
