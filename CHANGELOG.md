@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.90.0](https://github.com/yschimke/compose-ai-tools/compare/v2.89.0...v2.90.0) (2026-11-11)
+
+
+### Features
+
+* **cli:** render-cases draws Remote Compose documents with their data on the Android lane ([#6511](https://github.com/yschimke/compose-ai-tools/issues/6511)) ([21cfe87](https://github.com/yschimke/compose-ai-tools/commit/21cfe876a220238046549855665930a8d3dfcdc9))
+
+
+### Bug Fixes
+
+* **action:** warn instead of failing when the fallback fonts can't be installed ([#6512](https://github.com/yschimke/compose-ai-tools/issues/6512)) ([637d02d](https://github.com/yschimke/compose-ai-tools/commit/637d02d0f2f3e5719da6594f5f339691b9cc2928))
+* **deps:** update compose-preview-daemon to 3.27.5 ([#6514](https://github.com/yschimke/compose-ai-tools/issues/6514)) ([ed98409](https://github.com/yschimke/compose-ai-tools/commit/ed9840930569bd7fdd50e542ac7a7c53ab953d87))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.42.0 ([#6499](https://github.com/yschimke/compose-ai-tools/issues/6499)) ([2a398d6](https://github.com/yschimke/compose-ai-tools/commit/2a398d671affc34840afc88ca5084c602b22bf56))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.27.3 ([#6495](https://github.com/yschimke/compose-ai-tools/issues/6495)) ([4ae1795](https://github.com/yschimke/compose-ai-tools/commit/4ae1795cca7e5c1e67a344575822349c97023b8e))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.27.4 ([#6505](https://github.com/yschimke/compose-ai-tools/issues/6505)) ([cf1b7e0](https://github.com/yschimke/compose-ai-tools/commit/cf1b7e0a201076a8762ce2b17dc2fbfed4fddc9f))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.28.0 ([#6498](https://github.com/yschimke/compose-ai-tools/issues/6498)) ([227285a](https://github.com/yschimke/compose-ai-tools/commit/227285a4e5507bbb9a5ccb202c8df5ba95aa4caa))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.29.0 ([#6500](https://github.com/yschimke/compose-ai-tools/issues/6500)) ([85b7707](https://github.com/yschimke/compose-ai-tools/commit/85b77073b3c4eebd12ae08bc48eb9724126203c1))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.31.0 ([#6502](https://github.com/yschimke/compose-ai-tools/issues/6502)) ([dfe2d09](https://github.com/yschimke/compose-ai-tools/commit/dfe2d09eda246dbc6c3355699e8e55c37eb13f24))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.32.0 ([#6507](https://github.com/yschimke/compose-ai-tools/issues/6507)) ([7f8cc68](https://github.com/yschimke/compose-ai-tools/commit/7f8cc6834c54d90563eb858543587720353ce269))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.32.1 ([#6508](https://github.com/yschimke/compose-ai-tools/issues/6508)) ([490a8b0](https://github.com/yschimke/compose-ai-tools/commit/490a8b035e51724e83853bb039a48655bd299049))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v2.33.0 ([#6510](https://github.com/yschimke/compose-ai-tools/issues/6510)) ([1b69cd1](https://github.com/yschimke/compose-ai-tools/commit/1b69cd17c5c3703d4f1e8c5bffd5f462d03e8426))
+* **discovery:** default @ScrollingPreview reduceMotion to false ([#6504](https://github.com/yschimke/compose-ai-tools/issues/6504)) ([31848e7](https://github.com/yschimke/compose-ai-tools/commit/31848e7fcf294b8918846067dc343d5032aef40b))
+
 ## [2.89.0](https://github.com/yschimke/compose-ai-tools/compare/v2.88.0...v2.89.0) (2026-11-07)
 
 
