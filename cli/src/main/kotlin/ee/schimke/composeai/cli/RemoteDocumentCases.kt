@@ -145,7 +145,27 @@ internal object RemoteDocumentCases {
         .filter { it in reserved }
         .map { path ->
           "case '${byPath.getValue(path).first().id}' would be written to $path, which render-cases writes itself"
-        }
+        } +
+      nested(byPath.keys, reserved).map { (file, under) ->
+        val owner = byPath[file]?.first()?.id?.let { "case '$it'" } ?: "render-cases' own $file"
+        "case '${byPath.getValue(under).first().id}' would need $file as a directory, but $owner writes it as a file"
+      }
+  }
+
+  /**
+   * Pairs (file, path) where a case's [path] lies under a directory that is another output's file:
+   * ids `a` and `a.png/b` both need `a.png`, once as a file and once as a directory, and an id
+   * under `render-cases.json/` would shadow the summary.
+   */
+  private fun nested(casePaths: Set<String>, reserved: Set<String>): List<Pair<String, String>> {
+    val files = casePaths + reserved
+    return casePaths.flatMap { path ->
+      val segments = path.split('/')
+      (1 until segments.size)
+        .map { segments.take(it).joinToString("/") }
+        .filter { it in files }
+        .map { it to path }
+    }
   }
 
   /**

@@ -129,4 +129,18 @@ class RemoteDocumentCasesTest {
       RemoteDocumentCases.pathCollisions(listOf(case("a"), case("b")), setOf("contact-sheet.png")),
     )
   }
+
+  @Test
+  fun `a case that needs another output's file as a directory is found`() {
+    fun case(id: String) = DocumentCase(id, byteArrayOf(), 1, 1, null, null, emptyMap())
+    val reserved = setOf("contact-sheet.png", "render-cases.json")
+    val clashes =
+      RemoteDocumentCases.pathCollisions(
+        listOf(case("a"), case("a.png/b"), case("render-cases.json/c"), case("d/e")),
+        reserved,
+      )
+    assertEquals(2, clashes.size, clashes.toString())
+    assertTrue(clashes.any { "'a.png/b'" in it && "case 'a'" in it }, clashes.toString())
+    assertTrue(clashes.any { "'render-cases.json/c'" in it && "render-cases.json" in it })
+  }
 }
