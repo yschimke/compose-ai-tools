@@ -32,9 +32,24 @@ prev_sans="$(generic_family sans-serif 'DejaVu Sans')"
 prev_serif="$(generic_family serif 'DejaVu Serif')"
 prev_mono="$(generic_family monospace 'DejaVu Sans Mono')"
 
-"${root[@]}" apt-get update -qq
-"${root[@]}" apt-get install -y -qq --no-install-recommends \
-  fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji "$@"
+# The Noto set is best effort: without it some scripts draw as tofu, which a render can live
+# with, but an apt mirror that can't be reached (a runner's DNS outage) must not fail the whole
+# job. The packages a caller passes are what it needs to run, so those stay required.
+warn() {
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then echo "::warning::$*"; else echo "warning: $*" >&2; fi
+}
+
+if ! "${root[@]}" apt-get update -qq; then
+  warn "apt-get update failed; installing from the package lists already on this machine"
+fi
+if [[ $# -gt 0 ]]; then
+  "${root[@]}" apt-get install -y -qq --no-install-recommends "$@"
+fi
+if ! "${root[@]}" apt-get install -y -qq --no-install-recommends \
+  fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji; then
+  warn "could not install the Noto fallback fonts; renders may show tofu for Arabic, Indic, Thai, CJK and emoji text"
+  exit 0
+fi
 
 conf_dir="${FONTCONFIG_CONF_DIR:-/etc/fonts/conf.d}"
 conf_file="${conf_dir}/99-composeai-preserve-generic-fonts.conf"
