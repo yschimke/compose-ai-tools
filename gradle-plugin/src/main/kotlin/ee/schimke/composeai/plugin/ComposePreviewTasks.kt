@@ -84,6 +84,126 @@ internal object ComposePreviewTasks {
     return rendererConfig
   }
 
+  /**
+   * Cheap, IP-safe source check for Declarative Watch Face (`<WatchFace>`) XML files under `src/`.
+   * Gating `composePreviewDwfRenderer` dependency attachment on this keeps synthetic projects
+   * without DWF sources from resolving `rc-render-jvm`.
+   */
+  internal fun hasDwfXmlSources(project: Project): Boolean {
+    val srcRoot = project.projectDir.resolve("src")
+    if (!srcRoot.isDirectory) return false
+    return srcRoot
+      .walkTopDown()
+      .onEnter { dir -> dir.name != "build" && !dir.name.startsWith(".") }
+      .any { file ->
+        file.isFile &&
+          file.extension.equals("xml", ignoreCase = true) &&
+          runCatching { file.readText().contains("<WatchFace") }.getOrDefault(false)
+      }
+  }
+
+  internal fun hostSkikoPlatformToken(
+    osName: String = System.getProperty("os.name").orEmpty(),
+    osArch: String = System.getProperty("os.arch").orEmpty(),
+  ): String? {
+    val os = osName.lowercase()
+    val arch = osArch.lowercase()
+    return when {
+      os.contains("linux") && (arch == "x86_64" || arch == "amd64") -> "linux-x64"
+      os.contains("linux") && (arch == "aarch64" || arch == "arm64") -> "linux-arm64"
+      (os.contains("mac") || os.contains("darwin")) && (arch == "x86_64" || arch == "amd64") ->
+        "macos-x64"
+      (os.contains("mac") || os.contains("darwin")) && (arch == "aarch64" || arch == "arm64") ->
+        "macos-arm64"
+      os.contains("windows") && (arch == "x86_64" || arch == "amd64") -> "windows-x64"
+      os.contains("windows") && (arch == "aarch64" || arch == "arm64") -> "windows-arm64"
+      else -> null
+    }
+  }
+
+  /**
+   * Builds a self-contained classpath for [DwfRenderTask] carrying `:rc-render-jvm` (or its
+   * published coordinate) plus the exact matching `org.jetbrains.skiko:skiko-awt-runtime-<host>`
+   * native jar, isolated from `:renderer-desktop` so Skiko versions never skew.
+   */
+  internal fun ensureDwfRendererClasspath(
+    project: Project,
+    configName: String,
+    hasDwfSources: Boolean,
+  ): FileCollection {
+    val dwfConfig =
+      project.configurations.maybeCreate(configName).apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+      }
+    val skikoConfig =
+      project.configurations.maybeCreate("${configName}Skiko").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+      }
+    if (!hasDwfSources) {
+      return project.files()
+    }
+    val rcJvmProjectDir = project.rootDir.resolve("rc-render-jvm")
+    val useLocalRcJvm =
+      rcJvmProjectDir.resolve("build.gradle.kts").exists() ||
+        rcJvmProjectDir.resolve("build.gradle").exists()
+    project.afterEvaluate {
+      if (dwfConfig.dependencies.isEmpty()) {
+        if (useLocalRcJvm) {
+          try {
+            project.dependencies.add(
+              configName,
+              project.dependencies.project(mapOf("path" to ":rc-render-jvm")),
+            )
+          } catch (e: org.gradle.api.UnknownProjectException) {
+            project.logger.debug(
+              "compose-ai-tools: :rc-render-jvm project not found, falling back to Maven",
+              e,
+            )
+            project.dependencies.add(
+              configName,
+              "ee.schimke.composeai:rc-render-jvm:${PluginVersion.rcRenderJvm}",
+            )
+          }
+        } else {
+          project.dependencies.add(
+            configName,
+            "ee.schimke.composeai:rc-render-jvm:${PluginVersion.rcRenderJvm}",
+          )
+        }
+      }
+    }
+    skikoConfig.withDependencies {
+      val hostPlatform = hostSkikoPlatformToken()
+      if (hostPlatform != null && isEmpty()) {
+        val skikoVersion =
+          dwfConfig.incoming.resolutionResult.allComponents
+            .asSequence()
+            .mapNotNull { comp ->
+              val id = comp.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier
+              if (id != null && id.group == "org.jetbrains.skiko" && id.module == "skiko-awt") {
+                id.version
+              } else {
+                null
+              }
+            }
+            .firstOrNull()
+        if (!skikoVersion.isNullOrBlank()) {
+          add(
+            project.dependencies.create(
+              "org.jetbrains.skiko:skiko-awt-runtime-$hostPlatform:$skikoVersion",
+            ),
+          )
+        }
+      }
+    }
+    return project.files(
+      dwfConfig.incoming.artifactView {}.files,
+      skikoConfig.incoming.artifactView {}.files,
+    )
+  }
+
   private val consumerArtifactTypeAttribute: Attribute<String> =
     Attribute.of("artifactType", String::class.java)
 
@@ -376,11 +496,49 @@ internal object ComposePreviewTasks {
         onlyIf { extension.enabled.get() }
         // Lazy matching so compile tasks registered later are still wired.
         dependsOn(optionalTaskDependencies(project, DESKTOP_COMPILE_TASK_CANDIDATES))
-        // Lottie assets from processed resources (desktop only).
+        // Lottie, SVG, and DWF assets from processed/source resources (desktop only).
         resourceDirs.from(sourceResourceDirs)
+        dwfResourceDirs.from(
+          project.files(
+            project.layout.projectDirectory.dir("src/main/resources"),
+            project.layout.projectDirectory.dir("src/commonMain/resources"),
+            project.layout.projectDirectory.dir("src/jvmMain/resources"),
+            project.layout.projectDirectory.dir("src/desktopMain/resources"),
+          ),
+        )
         dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
+
+    val hasDwfSources = hasDwfXmlSources(project)
+    val dwfRendererClasspath =
+      ensureDwfRendererClasspath(project, "composePreviewDwfRenderer", hasDwfSources)
+    val dwfRenderTask =
+      project.tasks.register("composePreviewRenderDwf", DwfRenderTask::class.java) {
+        group = "compose preview"
+        description = "Compile and render Declarative Watch Face XML previews to PNG and .rc"
+        onlyIf { extension.enabled.get() && hasDwfSources }
+        projectDirectory.set(project.layout.projectDirectory)
+        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+        outputDir.set(previewOutputDir.map { it.dir(AndroidPreviewSupport.DWF_RENDER_SUBDIR) })
+        this.dwfRendererClasspath.from(dwfRendererClasspath)
+        resourceDirs.from(sourceResourceDirs)
+        resourceDirs.from(
+          project.files(
+            project.layout.projectDirectory.dir("src/main/resources"),
+            project.layout.projectDirectory.dir("src/commonMain/resources"),
+            project.layout.projectDirectory.dir("src/jvmMain/resources"),
+            project.layout.projectDirectory.dir("src/desktopMain/resources"),
+          ),
+        )
+        desktopRenderJavaExecutable(project, extension)?.let { renderJavaExecutable.set(it) }
+        tier.set(tierProperty(project))
+        previewFilters.convention(previewFilterProperty(project))
+        previewIdFilters.convention(previewIdFilterProperty(project))
+        previewIdExcludes.convention(previewIdExcludeProperty(project))
+        dependsOn(discoverTask)
+        dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
+      }
 
     val rendererConfig = ensureRendererDesktopConfig(project, "composePreviewRenderer")
     // Resolve the renderer in the consumer's graph so one Skiko / Compose version wins (#1844). See
@@ -445,6 +603,9 @@ internal object ComposePreviewTasks {
         dependsOn(optionalTaskDependencies(project, DESKTOP_RESOURCE_TASK_CANDIDATES))
       }
     registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+    if (hasDwfSources) {
+      project.tasks.named("composePreviewRenderAll").configure { dependsOn(dwfRenderTask) }
+    }
 
     registerBundleTask(
       project = project,
@@ -576,6 +737,7 @@ internal object ComposePreviewTasks {
       // as empty.
       renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.SVG_RENDER_SUBDIR) })
       renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.LOTTIE_RENDER_SUBDIR) })
+      renderFiles.from(previewOutputDir.map { it.dir(AndroidPreviewSupport.DWF_RENDER_SUBDIR) })
       // Catalog-token sidecars live outside `renderFiles`' tree; track them separately.
       catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
       // A `compose-preview guidelines` run's results, carried so a hosting server can serve them.
@@ -635,6 +797,7 @@ internal object ComposePreviewTasks {
       // `composePreviewRenderAll composePreviewBundle` in one invocation fails validation. By type,
       // so it stays lazy and empty on desktop.
       mustRunAfter(project.tasks.withType(RenderPreviewsTask::class.java))
+      mustRunAfter(project.tasks.withType(DwfRenderTask::class.java))
       dependsOn(discoverTaskName)
       // Package processed resources into `classes/app.jar`: without this ordering, a clean build
       // can pack before `processResources`, and a live re-render from the bundle fails on missing
@@ -1490,6 +1653,8 @@ internal object ComposePreviewTasks {
       lottieRenderSubdir.convention("renders")
       // Same for SVG.
       svgRenderSubdir.convention("renders")
+      // Disjoint on both desktop and Android so DwfRenderTask never overlaps composePreviewRender.
+      dwfRenderSubdir.convention(AndroidPreviewSupport.DWF_RENDER_SUBDIR)
       // The Gradle property wins over the extension.
       failOnEmpty.set(
         project.providers

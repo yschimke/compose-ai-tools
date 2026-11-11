@@ -636,6 +636,7 @@ rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace" }
 rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol" }
 rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime" }
 rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose" }
+rcplayer-creation-dwf = { module = "ee.schimke.composeai:rc-creation-dwf" }
 # The browser bundle `compose-preview serve` stages into `rc-player-wasm/`: the `rc-player-wasm.zip`
 # asset on each yschimke/rc-players GitHub Release, resolved through the `rcPlayerWasmRelease` ivy
 # repository in `settings.gradle.kts`. Releases through 2.17.x also published it to Central as

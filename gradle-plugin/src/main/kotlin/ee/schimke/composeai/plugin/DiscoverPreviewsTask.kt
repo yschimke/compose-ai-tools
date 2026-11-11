@@ -194,6 +194,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   /** See [PreviewDiscovery.Input.svgRenderSubdir]; Android sets a disjoint dir. */
   @get:Input abstract val svgRenderSubdir: Property<String>
 
+  /** Resource roots scanned for Declarative Watch Face (`<WatchFace>`) XML files. */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val dwfResourceDirs: ConfigurableFileCollection
+
+  /** See [PreviewDiscovery.Input.dwfRenderSubdir]; Android sets a disjoint dir. */
+  @get:Input abstract val dwfRenderSubdir: Property<String>
+
   /**
    * Whether the backend can draw `@ColorCatalog` sheets; `false` on desktop (#2135) marks `CATALOG`
    * captures `optional`.
@@ -286,6 +295,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         resourceDirs = resourceDirs.files.toList(),
         lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
         svgRenderSubdir = svgRenderSubdir.getOrElse("renders"),
+        dwfResourceDirs = dwfResourceDirs.files.toList(),
+        dwfRenderSubdir = dwfRenderSubdir.getOrElse("renders"),
         projectClassJars = scopedClassJars,
         activeClassDirs = activeClassDirs.files.toList(),
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),

@@ -47,6 +47,15 @@ internal object AndroidPreviewSupport {
   internal const val SVG_RENDER_SUBDIR: String = "svg-renders"
 
   /**
+   * Output subdirectory for Declarative Watch Face (`<WatchFace>`) renders, disjoint from
+   * `renders/` so `composePreviewRenderDwf` and `composePreviewRender` stay independently
+   * cacheable.
+   */
+  internal const val DWF_RENDER_SUBDIR: String = "dwf-renders"
+
+  private val lenientManifestJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+  /**
    * Module-root directory of committed app-tour scripts; each `*.json` becomes a `kind=APP_TOUR`
    * preview (see `AppTourDiscovery`).
    */
@@ -844,6 +853,7 @@ internal object AndroidPreviewSupport {
   ): Boolean =
     hasDirectPreviewDependency(project) ||
       moduleDeclaresXrCompose(project) ||
+      ComposePreviewTasks.hasDwfXmlSources(project) ||
       (isComposeModule(project) && hasAnyProjectDependency(project))
 
   /**
@@ -1021,6 +1031,13 @@ internal object AndroidPreviewSupport {
           "compile${capVariant}ScreenshotTestKotlin",
           "compile${capVariant}ScreenshotTestJavaWithJavac",
         )
+    val hasDwfSources = ComposePreviewTasks.hasDwfXmlSources(project)
+    val androidDwfResDirs =
+      project.files().apply {
+        variant.sources.res?.all?.let { from(it) }
+        variant.sources.resources?.all?.let { from(it) }
+        from(androidLottieResourceDirs(project))
+      }
     val discoverTask =
       ComposePreviewTasks.registerDiscoverTask(
         project,
@@ -1044,9 +1061,11 @@ internal object AndroidPreviewSupport {
         // Compottie. Source dirs rather than AGP's version-specific `java_res` intermediates; the
         // same dirs go on `composePreviewRenderLottie`'s classpath.
         resourceDirs.from(androidLottieResourceDirs(project))
+        dwfResourceDirs.from(androidDwfResDirs)
         // Disjoint from `renders/` to keep both render tasks cacheable.
         lottieRenderSubdir.set(LOTTIE_RENDER_SUBDIR)
         svgRenderSubdir.set(SVG_RENDER_SUBDIR)
+        dwfRenderSubdir.set(DWF_RENDER_SUBDIR)
         // Lets discovery detect Wear modules (#1985) and drives activity discovery.
         mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
         // `.Relative` entries resolve against the namespace, as `android:name` does in source
@@ -2043,10 +2062,55 @@ internal object AndroidPreviewSupport {
         explicitOverride = renderJavaOverride,
       )
 
+    val robolectricManifestRegularFile = previewOutputDir.map {
+      it.file("previews-robolectric.json")
+    }
+    val prepareRobolectricManifestTask =
+      if (hasDwfSources) {
+        project.tasks.register(
+          "composePreviewPrepareRobolectricManifest",
+          PrepareRobolectricManifestTask::class.java,
+        ) {
+          group = "compose preview"
+          description =
+            "Rewrite previews.json for Robolectric so DWF watch face entries are skipped cleanly"
+          previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+          outputFile.set(robolectricManifestRegularFile)
+          dependsOn(discoverTask)
+        }
+      } else null
+    val effectiveRobolectricManifestPath =
+      if (hasDwfSources) robolectricManifestRegularFile.map { it.asFile.absolutePath }
+      else manifestFile
+
     val renderTask =
       project.tasks.register("composePreviewRender", RobolectricRenderTask::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
+        if (hasDwfSources) {
+          onlyIf("Robolectric has at least one non-DWF/non-asset preview to render") { task ->
+            val render = task as RobolectricRenderTask
+            val file = robolectricManifestRegularFile.get().asFile
+            if (!file.isFile) return@onlyIf true
+            val manifest =
+              lenientManifestJson.decodeFromString(
+                ee.schimke.composeai.discovery.PreviewManifest.serializer(),
+                file.readText(),
+              )
+            val selected =
+              ComposePreviewTasks.selectFilteredPreviews(
+                manifest.previews,
+                nameFilters = render.previewFilters.getOrElse(emptyList()),
+                idFilters = render.previewIdFilters.getOrElse(emptyList()),
+                idExcludes = render.previewIdExcludes.getOrElse(emptyList()),
+              )
+            selected.any {
+              it.params.kind != PreviewKind.XR_SUBSPACE &&
+                it.params.kind != PreviewKind.LOTTIE &&
+                it.params.kind != PreviewKind.SVG
+            }
+          }
+        }
         // Preview filters (#2066 / #2966 / #2977) from the same properties as desktop; this task's
         // CLI options override them. Forwarded as `composeai.preview.*` system properties for
         // `PreviewFilter`, including the row filter since this backend expands `@PreviewParameter`
@@ -2158,7 +2222,7 @@ internal object AndroidPreviewSupport {
         // Static system properties live in [AndroidPreviewClasspath.buildSystemProperties], shared
         // with the daemon; dynamic ones use lazy providers below.
         AndroidPreviewClasspath.buildSystemProperties(
-            manifestPath = manifestFile.get(),
+            manifestPath = effectiveRobolectricManifestPath.get(),
             rendersDir = rendersDir.get(),
             fontsCacheDir = fontsCacheDir,
             fontsOffline = fontsOffline.get(),
@@ -2235,6 +2299,7 @@ internal object AndroidPreviewSupport {
         }
 
         dependsOn(discoverTask)
+        prepareRobolectricManifestTask?.let { dependsOn(it) }
         dependsOn(generateRobolectricPropertiesTask)
         if (useLocalRenderer) {
           dependsOn(":renderer-android:compile${capVariant}Kotlin")
@@ -2653,11 +2718,38 @@ internal object AndroidPreviewSupport {
         dependsOn(discoverTask)
       }
 
+    val dwfRendererClasspath =
+      ComposePreviewTasks.ensureDwfRendererClasspath(
+        project,
+        "composePreviewAndroidDwfRenderer$capVariant",
+        hasDwfSources,
+      )
+    val dwfRenderTask =
+      project.tasks.register("composePreviewRenderDwf", DwfRenderTask::class.java) {
+        group = "compose preview"
+        description =
+          "Compile and render Declarative Watch Face (<WatchFace>) XML previews via rc-creation-dwf"
+        onlyIf { extension.enabled.get() && hasDwfSources }
+        projectDirectory.set(project.layout.projectDirectory)
+        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+        dwfRendererClasspath.let { this.dwfRendererClasspath.from(it) }
+        resourceDirs.from(androidDwfResDirs)
+        outputDir.set(previewOutputDir.map { it.dir(DWF_RENDER_SUBDIR) })
+        tier.set(resolveTier(project))
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
+        dependsOn(discoverTask)
+      }
+
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
     // Render Lottie stills before the missing-render gate.
     project.tasks.named("composePreviewRenderAll").configure { dependsOn(lottieRenderTask) }
     // Same for the JVM SVG render — a `kind=SVG` asset's PNG must exist before the gate validates.
     project.tasks.named("composePreviewRenderAll").configure { dependsOn(svgRenderTask) }
+    if (hasDwfSources) {
+      project.tasks.named("composePreviewRenderAll").configure { dependsOn(dwfRenderTask) }
+    }
     // XR render + composite run before renderAll's validation/clean, so composites count and are
     // kept.
     if (xrPreviewsEnabled) {
@@ -2703,7 +2795,12 @@ internal object AndroidPreviewSupport {
 
     // Asset IR from the Android resource source roots: AGP doesn't stage them into
     // `build/resources/main`.
-    bundleTask.configure { moduleResourceRoots.from(androidLottieResourceDirs(project)) }
+    bundleTask.configure {
+      moduleResourceRoots.from(androidLottieResourceDirs(project))
+      if (hasDwfSources) {
+        moduleResourceRoots.from(androidDwfResDirs)
+      }
+    }
     if (xrPreviewsEnabled) {
       // `renderFiles` tracks the shared renders tree including XR scenes; order after both XR
       // writers.

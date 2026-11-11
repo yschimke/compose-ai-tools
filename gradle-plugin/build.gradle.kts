@@ -250,9 +250,11 @@ val generatePluginVersionResource =
     // The theme-pin pair's own published versions; see [siblingPublishedVersion].
     val themePinRuntime = siblingPublishedVersion("theme-pin-runtime")
     val themePinCompilerPlugin = siblingPublishedVersion("theme-pin-compiler-plugin")
+    val rcRenderJvm = siblingPublishedVersion("rc-render-jvm")
     inputs.property("version", pluginVersion)
     inputs.property("themePinRuntime", themePinRuntime)
     inputs.property("themePinCompilerPlugin", themePinCompilerPlugin)
+    inputs.property("rcRenderJvm", rcRenderJvm)
     inputs.property("previewDaemon", previewDaemon)
     inputs.property("themePinKotlin", themePinKotlin)
     inputs.property("xrCompose", xrCompose)
@@ -268,7 +270,8 @@ val generatePluginVersionResource =
       base.parentFile.mkdirs()
       base.writeText(
         "version=$pluginVersion\npreviewDaemon=$previewDaemon\nthemePinKotlin=$themePinKotlin\n" +
-          "themePinRuntime=$themePinRuntime\nthemePinCompilerPlugin=$themePinCompilerPlugin\n",
+          "themePinRuntime=$themePinRuntime\nthemePinCompilerPlugin=$themePinCompilerPlugin\n" +
+          "rcRenderJvm=$rcRenderJvm\n",
       )
       val xr =
         outputDir.get().file("ee/schimke/composeai/plugin/xr-fake-versions.properties").asFile

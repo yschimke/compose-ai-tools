@@ -14,6 +14,10 @@
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
 
+        <property
+            android:name="com.google.wear.watchface.format.version"
+            android:value="2" />
+
         <activity
             android:name="com.example.samplewear.MainActivity"
             android:exported="true"

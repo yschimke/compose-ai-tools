@@ -616,6 +616,12 @@ data class PreviewParams(
    * inside the preview body).
    */
   val captureGutter: CaptureGutterDp? = null,
+  /**
+   * Declarative Watch Face (Watch Face Format `<WatchFace>`) XML previews only: resource-root
+   * relative path (for example `raw/watchface.xml`), compiled to `.rc` and rendered via
+   * `rc-render-jvm`.
+   */
+  val dwfAssetPath: String? = null,
 )
 
 /**
