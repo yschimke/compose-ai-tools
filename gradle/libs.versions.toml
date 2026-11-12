@@ -514,8 +514,16 @@ composeai-contracts = "3.42.0"
 # and honours scripted rotary distance and swipe timing (#409).
 # 3.27.5 passes the module's class directory as a friend path to the warm compiler, so an edit
 # calling another file's `internal` function compiles in process instead of failing and moving the
-# module to Gradle for good (compose-preview-daemon#465).
-composeai-preview-daemon = "3.27.6"
+# module to Gradle for good (compose-preview-daemon#465). But 3.27.5 published no `daemon-core`:
+# its BOM still pins 3.27.4, so the fix reached nobody.
+# 3.27.6 republishes `daemon-core` with it (compose-preview-daemon#469 taught the release to count a
+# bundled, unpublished project as part of the module that bundles it). `benchWarmEditLoop`
+# (edit-loop.yml) gates that the pinned daemon's warm compile answers `ok`, and caught 3.27.6
+# still failing on Android: AGP's unit-test class path carries a jar of the module's own classes
+# ahead of the class directory, and the first copy wins.
+# 3.27.7 puts the class directory first on the warm compiler's class path
+# (compose-preview-daemon#471).
+composeai-preview-daemon = "3.27.7"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

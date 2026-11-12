@@ -34,7 +34,17 @@ that would re-introduce the same problem.
   `benchPreviewLatency` first — the verdict reuses its stage-0
   `render,warm-after-1-line-edit` median as the render baseline.
 
-Both bench tasks run weekly (and on demand) via
+- `./gradlew :samples:android-daemon-bench:benchWarmEditLoop` — the **gating** warm edit loop.
+  Launches this module's daemon at the pinned `composeai-preview-daemon`, warms its in-process
+  compiler, then edits `editloop/EditLoopTarget.kt` (which calls an `internal` declaration of
+  `editloop/EditLoopSupport.kt`) and times `compileSources` for `-PeditLoopCycles` cycles (default
+  6). Fails when a warm compile is not `ok`, when the warm-up finds nothing to warm, or when the
+  median warm compile exceeds `-PeditLoopBudgetMs` (default 2500). Runs on PRs that move the daemon
+  pin or this harness, and nightly, via
+  [`.github/workflows/edit-loop.yml`](../../.github/workflows/edit-loop.yml). The two `editloop/`
+  files are not previews, so the five-preview workload above is unchanged.
+
+The two latency bench tasks above run weekly (and on demand) via
 [`.github/workflows/daemon-bench.yml`](../../.github/workflows/daemon-bench.yml),
 which uploads the CSV + verdict as artifacts. That job is **non-blocking** — it
 never gates a PR.
