@@ -199,6 +199,22 @@ class McpDoctorTest {
   }
 
   @Test
+  fun `doctor check is silent when the descriptor has no btaCompile to judge by`() {
+    val absent =
+      writeDescriptor(
+        newTempDir(),
+        """{"enabled": true, "schemaVersion": $EXPECTED_DESCRIPTOR_SCHEMA_VERSION}""",
+      )
+    assertEquals(null, inProcessCompileCheck(":app", absent))
+    val explicitNull =
+      writeDescriptor(
+        newTempDir(),
+        """{"enabled": true, "schemaVersion": $EXPECTED_DESCRIPTOR_SCHEMA_VERSION, "btaCompile": null}""",
+      )
+    assertEquals(null, inProcessCompileCheck(":app", explicitNull))
+  }
+
+  @Test
   fun `doctor check is silent before mcp install writes a descriptor`() {
     assertEquals(null, inProcessCompileCheck(":app", File(newTempDir(), "daemon-launch.json")))
   }

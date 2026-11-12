@@ -56,6 +56,10 @@ internal fun inProcessCompileCheck(
     } catch (_: Exception) {
       return null
     }
+  // No `btaCompile` block (an older plugin, or one that could not assemble the compiler's inputs):
+  // the daemon falls back to Gradle for a reason the descriptor does not record, so say nothing
+  // rather than a wrong "compiles in process".
+  if (descriptor["btaCompile"] !is JsonObject) return null
   val id = "project.${modulePath.trimStart(':').ifEmpty { "root" }}.in-process-compile"
   val reason =
     inProcessCompileBlocker(descriptor)
