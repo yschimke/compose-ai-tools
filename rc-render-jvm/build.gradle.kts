@@ -44,6 +44,13 @@ dependencies {
   @Suppress("DEPRECATION") testRuntimeOnly(compose.desktop.currentOs)
 }
 
+val bundledRobotoFlex =
+  layout.projectDirectory.file(
+    "../samples/design-catalog-m3/src/main/resources/fonts/RobotoFlex.ttf",
+  )
+
+tasks.named<ProcessResources>("processResources") { from(bundledRobotoFlex) { into("dwf-fonts") } }
+
 tasks.withType<Test>().configureEach {
   jvmArgs("--enable-native-access=ALL-UNNAMED")
   System.getProperty("dwf.validation.exportDir")?.let {

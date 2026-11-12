@@ -14,15 +14,20 @@ import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.rccreation.dwf.DwfComplicationSeed
 import ee.schimke.composeai.rccreation.dwf.DwfDocument
 import ee.schimke.composeai.rccreation.dwf.DwfParser
 import ee.schimke.composeai.rccreation.dwf.DwfRenderOptions
 import ee.schimke.composeai.rccreation.dwf.DwfSceneNode
 import ee.schimke.composeai.rccreation.dwf.DwfUserConfiguration
 import ee.schimke.composeai.rccreation.dwf.DwfVariables
+import ee.schimke.composeai.rccreation.dwf.DwfWeatherSeed
 import ee.schimke.composeai.rccreation.dwf.captureDwfRemoteDocumentBytes
+import ee.schimke.composeai.rccreation.dwf.parseDwfColorArgb
 import ee.schimke.composeai.rcplayer.compose.LocalRcTimeSource
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
+import ee.schimke.composeai.rcplayer.compose.RcManifestTypefaceLoader
+import ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
@@ -33,6 +38,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSnapshot
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSource
 import java.io.File
+import java.time.LocalDate
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -65,6 +71,170 @@ private data class DwfPreviewParamsDto(
 )
 
 @Serializable private data class DwfCaptureDto(val renderOutput: String = "")
+
+/**
+ * Deterministic fake host data for DWF preview rendering (`--fakes-json <file>` or
+ * `<watchface>.fakes.json` beside the watch face XML). Removes complication, sensor, flavor, clock,
+ * and weather discrepancies during preview and reference validation.
+ */
+@Serializable
+public data class DwfFakesConfig(
+  val flavor: String? = null,
+  val previewTime: String? = null,
+  val year: Int? = null,
+  val month: Int? = null,
+  val dayOfMonth: Int? = null,
+  val isAmbient: Boolean? = null,
+  val is24Hour: Boolean? = null,
+  val isDst: Boolean? = null,
+  val batteryPercent: Float? = null,
+  val batteryCharging: Boolean? = null,
+  val unreadNotifications: Int? = null,
+  val stepCount: Int? = null,
+  val stepGoal: Float? = null,
+  val heartRate: Float? = null,
+  val calories: Float? = null,
+  val distance: Float? = null,
+  val floors: Float? = null,
+  val configurations: Map<String, String> = emptyMap(),
+  val complications: Map<Int, DwfFakeComplication> = emptyMap(),
+  val weather: DwfFakeWeather? = null,
+) {
+  public fun toRenderOptions(base: DwfRenderOptions = DwfRenderOptions()): DwfRenderOptions =
+    base.copy(
+      isAmbientDefault = isAmbient ?: base.isAmbientDefault,
+      is24HourDefault = is24Hour ?: base.is24HourDefault,
+      isDstDefault = isDst ?: base.isDstDefault,
+      batteryPercentDefault = batteryPercent ?: base.batteryPercentDefault,
+      batteryChargingDefault = batteryCharging ?: base.batteryChargingDefault,
+      unreadNotificationsDefault = unreadNotifications ?: base.unreadNotificationsDefault,
+      stepCountDefault = stepCount ?: base.stepCountDefault,
+      stepGoalDefault = stepGoal ?: base.stepGoalDefault,
+      heartRateDefault = heartRate ?: base.heartRateDefault,
+      caloriesDefault = calories ?: base.caloriesDefault,
+      distanceDefault = distance ?: base.distanceDefault,
+      floorsDefault = floors ?: base.floorsDefault,
+      flavorDefault = flavor ?: base.flavorDefault,
+      configurationDefaults = base.configurationDefaults + configurations,
+      complicationDefaults =
+        base.complicationDefaults + complications.mapValues { (_, c) -> c.toSeed() },
+      weatherDefault = weather?.toSeed() ?: base.weatherDefault,
+    )
+}
+
+@Serializable
+public data class DwfFakeComplication(
+  val type: String = "SHORT_TEXT",
+  val text: String = "",
+  val title: String = "",
+  val value: Float = 0f,
+  val min: Float = 0f,
+  val max: Float = 100f,
+  val monochromaticImage: String? = null,
+  val smallImage: String? = null,
+  val photoImage: String? = null,
+  val rangedValueColors: List<String> = emptyList(),
+  val rangedValueColorsInterpolate: Boolean = false,
+  val goalProgressColors: List<String> = emptyList(),
+  val goalProgressColorsInterpolate: Boolean = false,
+  val weightedElementsColors: List<String> = emptyList(),
+  val weightedElementsWeights: List<Float> = emptyList(),
+) {
+  public fun toSeed(): DwfComplicationSeed =
+    DwfComplicationSeed(
+      type = type,
+      text = text,
+      title = title,
+      value = value,
+      min = min,
+      max = max,
+      monochromaticImage = monochromaticImage,
+      smallImage = smallImage,
+      photoImage = photoImage,
+      rangedValueColors = rangedValueColors.mapNotNull { parseDwfColorArgb(it) },
+      rangedValueColorsInterpolate = rangedValueColorsInterpolate,
+      goalProgressColors = goalProgressColors.mapNotNull { parseDwfColorArgb(it) },
+      goalProgressColorsInterpolate = goalProgressColorsInterpolate,
+      weightedElementsColors = weightedElementsColors.mapNotNull { parseDwfColorArgb(it) },
+      weightedElementsWeights = weightedElementsWeights,
+    )
+}
+
+@Serializable
+public data class DwfFakeWeather(
+  val isAvailable: Boolean = true,
+  val isDay: Boolean = true,
+  val condition: Int = 14,
+  val conditionName: String = "Partly Cloudy",
+  val temperature: Float = 22f,
+  val temperatureLow: Float? = null,
+  val temperatureHigh: Float? = null,
+  val temperatureUnit: Int = 1,
+  val chanceOfPrecipitation: Int = 15,
+  val uvIndex: Int = 5,
+  val lastUpdatedText: String = "",
+  val hours: Map<Int, DwfFakeWeatherHour> = emptyMap(),
+  val days: Map<Int, DwfFakeWeatherDay> = emptyMap(),
+) {
+  public fun toSeed(): DwfWeatherSeed =
+    DwfWeatherSeed(
+      isAvailable = isAvailable,
+      isDay = isDay,
+      condition = condition,
+      conditionName = conditionName,
+      temperature = temperature,
+      temperatureLow = temperatureLow,
+      temperatureHigh = temperatureHigh,
+      temperatureUnit = temperatureUnit,
+      chanceOfPrecipitation = chanceOfPrecipitation,
+      uvIndex = uvIndex,
+      lastUpdatedText = lastUpdatedText,
+      hours =
+        hours.mapValues { (_, h) ->
+          DwfWeatherSeed.Hour(
+            isAvailable = h.isAvailable,
+            isDay = h.isDay,
+            condition = h.condition,
+            temperature = h.temperature,
+            uvIndex = h.uvIndex,
+            chanceOfPrecipitation = h.chanceOfPrecipitation,
+          )
+        },
+      days =
+        days.mapValues { (_, d) ->
+          DwfWeatherSeed.Day(
+            isAvailable = d.isAvailable,
+            conditionDay = d.conditionDay,
+            conditionNight = d.conditionNight,
+            temperatureHigh = d.temperatureHigh,
+            temperatureLow = d.temperatureLow,
+            chanceOfPrecipitation = d.chanceOfPrecipitation,
+            chanceOfPrecipitationNight = d.chanceOfPrecipitationNight,
+          )
+        },
+    )
+}
+
+@Serializable
+public data class DwfFakeWeatherHour(
+  val isAvailable: Boolean = true,
+  val isDay: Boolean = true,
+  val condition: Int = 14,
+  val temperature: Float = 22f,
+  val uvIndex: Int = 4,
+  val chanceOfPrecipitation: Int = 10,
+)
+
+@Serializable
+public data class DwfFakeWeatherDay(
+  val isAvailable: Boolean = true,
+  val conditionDay: Int = 8,
+  val conditionNight: Int = 1,
+  val temperatureHigh: Float = 25f,
+  val temperatureLow: Float = 16f,
+  val chanceOfPrecipitation: Int = 15,
+  val chanceOfPrecipitationNight: Int = 10,
+)
 
 /** Input entry written by `ApkDwfExtractor` for `--compile-apk-dwf-dir`. */
 @Serializable
@@ -126,10 +296,10 @@ public data class CompiledApkDwfConfigOption(
 
 /**
  * CLI entrypoint for two DWF workflows:
- * 1. **Preview mode** (`--previews-json <file> --output-dir <dir> [--resource-dir <dir>]...`):
- *    compiles discovered `<WatchFace>` XML assets to `<stem>.rc`, writes
+ * 1. **Preview mode** (`--previews-json <file> --output-dir <dir> [--resource-dir <dir>]...
+ *    [--fakes-json <file>]`): compiles discovered `<WatchFace>` XML assets to `<stem>.rc`, writes
  *    `<stem>.remotecompose.json` knob declarations (`capturePlayer = "cmp-jvm"`), and renders
- *    deterministic `<stem>.png` stills.
+ *    deterministic `<stem>.png` stills using Wear OS `Roboto Flex` typography.
  * 2. **APK simulator compile mode** (`--compile-apk-dwf-dir <dir>`): compiles extracted APK watch
  *    face XMLs against `<dir>/res` into `.rc` documents + `compiled-manifest.json` for
  *    `compose-preview launch`.
@@ -138,6 +308,7 @@ public fun main(args: Array<String>) {
   var previewsJsonPath: String? = null
   var outputDirPath: String? = null
   var compileApkDirPath: String? = null
+  var fakesJsonPath: String? = null
   val resourceDirs = mutableListOf<File>()
   val filters = mutableListOf<String>()
   val idFilters = mutableListOf<String>()
@@ -149,6 +320,7 @@ public fun main(args: Array<String>) {
       "--previews-json" -> previewsJsonPath = args[++i]
       "--output-dir" -> outputDirPath = args[++i]
       "--compile-apk-dwf-dir" -> compileApkDirPath = args[++i]
+      "--fakes-json" -> fakesJsonPath = args[++i]
       "--resource-dir" -> resourceDirs += File(args[++i])
       "--filter" -> filters += args[++i]
       "--id-filter" -> idFilters += args[++i]
@@ -163,7 +335,7 @@ public fun main(args: Array<String>) {
 
   try {
     if (compileApkDirPath != null) {
-      compileApkWatchFaces(File(compileApkDirPath))
+      compileApkWatchFaces(File(compileApkDirPath), fakesJsonPath?.let(::File))
       return
     }
 
@@ -177,6 +349,7 @@ public fun main(args: Array<String>) {
       filters = filters,
       idFilters = idFilters,
       idExcludes = idExcludes,
+      fakesJson = fakesJsonPath?.let(::File),
     )
   } catch (t: Throwable) {
     System.err.println("DwfRenderMain failed: ${t.message}")
@@ -192,6 +365,7 @@ public fun renderDwfPreviews(
   filters: List<String> = emptyList(),
   idFilters: List<String> = emptyList(),
   idExcludes: List<String> = emptyList(),
+  fakesJson: File? = null,
 ): Int {
   if (!previewsJson.isFile) return 0
   val manifest = dwfJson.decodeFromString<DwfPreviewManifestDto>(previewsJson.readText())
@@ -214,6 +388,8 @@ public fun renderDwfPreviews(
   outputDir.mkdirs()
   val previewsRoot = outputDir.parentFile ?: previewsJson.parentFile ?: outputDir
   val resolver = DwfResourceDirectoryResolver(resourceDirs)
+  val explicitFakes =
+    fakesJson?.takeIf(File::isFile)?.let { dwfJson.decodeFromString<DwfFakesConfig>(it.readText()) }
 
   var rendered = 0
   for (entry in selected) {
@@ -221,11 +397,14 @@ public fun renderDwfPreviews(
     val xmlFile =
       resolveDwfXmlFile(relPath, resourceDirs, previewsRoot)
         ?: error("DwfRenderMain: could not locate DWF XML '$relPath' in $resourceDirs")
+    val sidecarFakes = findSidecarFakes(xmlFile)
+    val activeFakes = explicitFakes ?: sidecarFakes
     val xml = xmlFile.readText()
     val doc = DwfParser.parse(xml, resolver)
-    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions()) }
+    val options = activeFakes?.toRenderOptions() ?: DwfRenderOptions()
+    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
     val declarationsPayload = extractDwfDeclarationsPayload(doc, rcBytes)
-    val (hour, minute, second) = parsePreviewHms(doc.previewTime)
+    val (hour, minute, second) = parsePreviewHms(activeFakes?.previewTime ?: doc.previewTime)
     val pngBytes =
       renderDwfDocumentToPng(
         bytes = rcBytes,
@@ -234,6 +413,9 @@ public fun renderDwfPreviews(
         hour = hour,
         minute = minute,
         second = second,
+        year = activeFakes?.year ?: 2026,
+        month = activeFakes?.month ?: 11,
+        dayOfMonth = activeFakes?.dayOfMonth ?: 18,
       )
 
     for (capture in entry.captures.ifEmpty { listOf(DwfCaptureDto()) }) {
@@ -268,9 +450,16 @@ public fun renderDwfPreviews(
   return rendered
 }
 
-public fun compileApkWatchFaces(workDir: File): CompiledApkDwfManifest {
+public fun compileApkWatchFaces(
+  workDir: File,
+  fakesJson: File? = null,
+): CompiledApkDwfManifest {
   val resDir = File(workDir, "res")
   val resolver = DwfResourceDirectoryResolver(listOfNotNull(resDir.takeIf(File::isDirectory)))
+  val explicitFakes =
+    (fakesJson ?: File(workDir, "fakes.json")).takeIf(File::isFile)?.let {
+      dwfJson.decodeFromString<DwfFakesConfig>(it.readText())
+    }
   val inputFile = File(workDir, "watchfaces-input.json")
   val inputs: List<ApkDwfWatchFaceInput> =
     if (inputFile.isFile) {
@@ -298,12 +487,14 @@ public fun compileApkWatchFaces(workDir: File): CompiledApkDwfManifest {
     val xml = xmlFile.readText()
     if (!DwfParser.isDwfXml(xml)) continue
     val doc = DwfParser.parse(xml, resolver)
-    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions()) }
+    val activeFakes = explicitFakes ?: findSidecarFakes(xmlFile)
+    val options = activeFakes?.toRenderOptions() ?: DwfRenderOptions()
+    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
     val safeId = item.id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     val rcFileName = "$safeId.rc"
     File(workDir, rcFileName).writeBytes(rcBytes)
 
-    val (hour, minute, second) = parsePreviewHms(doc.previewTime)
+    val (hour, minute, second) = parsePreviewHms(activeFakes?.previewTime ?: doc.previewTime)
     val slots = collectComplicationSlots(doc.scene.children)
     val configs =
       doc.userConfigurations.map { cfg ->
@@ -384,7 +575,15 @@ public fun renderDwfDocumentToPng(
   minute: Int = 10,
   second: Int = 30,
   seeds: Map<String, RcNamedValue> = emptyMap(),
+  year: Int = 2026,
+  month: Int = 11,
+  dayOfMonth: Int = 18,
+  typefaces: RcTypefaceLoader? = dwfTypefaces(),
 ): ByteArray {
+  val date = runCatching {
+    LocalDate.of(year, month, dayOfMonth)
+  }
+    .getOrElse { LocalDate.of(2026, 11, 18) }
   val fixedTime =
     object : RcTimeSource {
       override fun currentTimeMillis(): Long = 1_763_460_630_000L
@@ -392,14 +591,14 @@ public fun renderDwfDocumentToPng(
       override fun snapshot(epochMillis: Long): RcTimeSnapshot =
         RcTimeSnapshot(
           epochMillis = epochMillis,
-          year = 2026,
-          month = 11,
-          dayOfMonth = 18,
-          dayOfYear = 322,
+          year = date.year,
+          month = date.monthValue,
+          dayOfMonth = date.dayOfMonth,
+          dayOfYear = date.dayOfYear,
           hour = hour,
           minute = minute,
           second = second,
-          isoDayOfWeek = 3,
+          isoDayOfWeek = date.dayOfWeek.value,
           offsetSeconds = 0,
         )
     }
@@ -408,7 +607,6 @@ public fun renderDwfDocumentToPng(
     val stateMap = mutableStateMapOf<String, RcNamedValue>().apply { putAll(seeds) }
     scene.setContent {
       CompositionLocalProvider(LocalRcTimeSource provides fixedTime) {
-        val typefaces = rcTypefaces()
         if (typefaces == null) {
           RcComposePlayer(bytes = bytes, modifier = Modifier.fillMaxSize(), namedValues = stateMap)
         } else {
@@ -429,6 +627,35 @@ public fun renderDwfDocumentToPng(
   } finally {
     scene.close()
   }
+}
+
+/**
+ * Resolves the typeface loader for DWF renders: explicit `-Dcomposeai.rcjvm.fontsDir` when set,
+ * otherwise the bundled `Roboto Flex` variable family (`dwf-fonts/fonts.json`) matching Wear OS's
+ * `SYNC_TO_DEVICE` system font across all weights `100..900`.
+ */
+internal fun dwfTypefaces(): RcTypefaceLoader? = rcTypefaces() ?: bundledDwfTypefaces
+
+private val bundledDwfTypefaces: RcTypefaceLoader? by lazy {
+  val classLoader = DwfPreviewManifestDto::class.java.classLoader
+  runCatching {
+    runBlocking {
+      RcManifestTypefaceLoader { path ->
+          checkNotNull(classLoader.getResourceAsStream(path)) { "Missing DWF font resource: $path" }
+            .use { it.readAllBytes() }
+        }
+        .load("dwf-fonts")
+    }
+  }
+    .getOrNull()
+}
+
+private fun findSidecarFakes(xmlFile: File): DwfFakesConfig? {
+  val dir = xmlFile.parentFile ?: return null
+  val stem = xmlFile.nameWithoutExtension
+  val candidate = File(dir, "$stem.fakes.json")
+  if (!candidate.isFile) return null
+  return runCatching { dwfJson.decodeFromString<DwfFakesConfig>(candidate.readText()) }.getOrNull()
 }
 
 internal fun extractDwfDeclarationsPayload(

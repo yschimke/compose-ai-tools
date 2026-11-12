@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "families": [
+    {
+      "name": "Roboto Flex",
+      "role": "default",
+      "fonts": [
+        { "file": "RobotoFlex.ttf", "weight": 100 },
+        { "file": "RobotoFlex.ttf", "weight": 200 },
+        { "file": "RobotoFlex.ttf", "weight": 300 },
+        { "file": "RobotoFlex.ttf", "weight": 400 },
+        { "file": "RobotoFlex.ttf", "weight": 500 },
+        { "file": "RobotoFlex.ttf", "weight": 600 },
+        { "file": "RobotoFlex.ttf", "weight": 700 },
+        { "file": "RobotoFlex.ttf", "weight": 800 },
+        { "file": "RobotoFlex.ttf", "weight": 900 },
+        { "file": "RobotoFlex.ttf", "weight": 100, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 200, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 300, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 400, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 500, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 600, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 700, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 800, "style": "italic" },
+        { "file": "RobotoFlex.ttf", "weight": 900, "style": "italic" }
+      ]
+    }
+  ]
+}

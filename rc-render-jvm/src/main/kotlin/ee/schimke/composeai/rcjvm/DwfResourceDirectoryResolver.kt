@@ -76,8 +76,36 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
   }
 
   override fun resolveFontFamily(name: String): String? {
-    val key = normalizeDwfResourceKey(name)
-    return key.takeIf { it.isNotEmpty() }
+    val trimmed = name.trim()
+    when (trimmed.uppercase()) {
+      "SYNC_TO_DEVICE",
+      "DEFAULT",
+      "SANS-SERIF",
+      "SANS_SERIF",
+      "ROBOTO",
+      "ROBOTO_FLEX",
+      "ROBOTO FLEX",
+      "MONOSPACE",
+      "SERIF",
+      "" -> return null
+    }
+    if (trimmed.startsWith("@font/")) {
+      val key = normalizeDwfResourceKey(trimmed)
+      return key.takeIf { it.isNotEmpty() }
+    }
+    val key = normalizeDwfResourceKey(trimmed)
+    if (key.isEmpty()) return null
+    val hasFontFile = resourceDirs.any { resDir ->
+      val fontDirs =
+        resDir
+          .listFiles()
+          ?.filter { it.isDirectory && (it.name == "font" || it.name.startsWith("font-")) }
+          .orEmpty()
+      fontDirs.any { dir ->
+        listOf("ttf", "otf", "ttc", "xml").any { ext -> File(dir, "$key.$ext").isFile }
+      }
+    }
+    return key.takeIf { hasFontFile }
   }
 
   private fun loadValueEntries(tagName: String): Map<String, String> {

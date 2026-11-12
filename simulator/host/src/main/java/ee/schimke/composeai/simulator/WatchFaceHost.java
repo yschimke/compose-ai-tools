@@ -126,12 +126,18 @@ final class WatchFaceHost {
       case "unset":
         return unset();
       case "complication":
+        if (!c.has("component") || c.isNull("component") || c.optString("component").isEmpty()) {
+          return fakeComplication(c);
+        }
         return complication(
             resolve(c.getString("component")),
             c.has("watchface") ? c.getString("watchface") : null,
             c.optInt("slot", -1),
-            c.getInt("type"));
+            DwfWatchFaceClient.parseWireComplicationType(c.opt("type")));
       case "uncomplication":
+        if (!c.has("component") && c.has("slot")) {
+          return uncomplicationSlot(c.getInt("slot"));
+        }
         return uncomplication(c.has("component") ? resolve(c.getString("component")) : null);
       case "status":
         return describe();
@@ -278,6 +284,57 @@ final class WatchFaceHost {
     }
   }
 
+  /**
+   * Injects fake complication values directly into a slot (`{"cmd":"watchface","op":"complication",
+   * "slot":0,"type":"SHORT_TEXT","text":"60","title":"Steps","value":60,"min":0,"max":100}`)
+   * without requiring a bound {@code ComplicationDataSourceService}.
+   */
+  JSONObject fakeComplication(JSONObject c) throws JSONException {
+    if (c.has("watchface") && !c.isNull("watchface")) {
+      setByName(c.getString("watchface"));
+    }
+    int defaultSlot = activeSlots().isEmpty() ? 0 : activeSlots().get(0).id;
+    DwfWatchFaceClient.FakeComplication fake =
+        DwfWatchFaceClient.FakeComplication.fromJson(c, defaultSlot);
+    if (dwfFace != null) {
+      if (!activeSlots().isEmpty()) checkSlot(fake.slot, fake.wireType);
+      for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
+        Source s = it.next();
+        if (s.slot == fake.slot && s.appFace) {
+          s.client.release();
+          it.remove();
+        }
+      }
+      rendering = true;
+      dwfFace.setFakeComplication(fake.slot, fake, ambient);
+      return describe().put("complication", fake.toJson()).put("host", "app");
+    }
+    if (!hosting()) {
+      display.builtInComplication(fake.text);
+      return describe().put("complication", fake.toJson()).put("host", "built-in");
+    }
+    throw new IllegalStateException(
+        "Direct fake complication values require a declarative (Watch Face Format) or built-in watch face");
+  }
+
+  JSONObject uncomplicationSlot(int slot) {
+    for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
+      Source s = it.next();
+      if (s.slot == slot) {
+        s.client.release();
+        it.remove();
+        if (s.appFace && face != null) face.complication(s.slot, null, ambient);
+      }
+    }
+    if (dwfFace != null) {
+      rendering = true;
+      dwfFace.setFakeComplication(slot, null, ambient);
+    } else {
+      showBuiltInComplication();
+    }
+    return describe();
+  }
+
   /** Unbinds [source]'s complications, or every one with null. */
   JSONObject uncomplication(ComponentName source) {
     for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
@@ -290,6 +347,10 @@ final class WatchFaceHost {
           dwfFace.complication(s.slot, s.client.type, null, ambient);
         }
       }
+    }
+    if (source == null && dwfFace != null) {
+      rendering = true;
+      dwfFace.clearFakeComplications(ambient);
     }
     showBuiltInComplication();
     return describe();
@@ -420,6 +481,20 @@ final class WatchFaceHost {
   JSONObject describe() {
     JSONArray complications = new JSONArray();
     for (Source s : sources) complications.put(slotJson(s));
+    if (dwfFace != null) {
+      for (DwfWatchFaceClient.FakeComplication fake : dwfFace.fakeComplications().values()) {
+        boolean alreadyListed = false;
+        for (Source s : sources) {
+          if (s.appFace && s.slot == fake.slot) {
+            alreadyListed = true;
+            break;
+          }
+        }
+        if (!alreadyListed) {
+          complications.put(fake.toJson());
+        }
+      }
+    }
     String activeName =
         dwfFace != null
             ? dwfFace.id()

@@ -41,12 +41,89 @@ final class DwfWatchFaceClient {
   static final class ConfigOption {
     final String id;
     final String displayName;
-    final List<String> colors;
+    final List<Integer> colorArgbs;
 
-    ConfigOption(String id, String displayName, List<String> colors) {
+    ConfigOption(String id, String displayName, List<Integer> colorArgbs) {
       this.id = id;
       this.displayName = displayName;
-      this.colors = colors;
+      this.colorArgbs = colorArgbs;
+    }
+  }
+
+  static final class FakeComplication {
+    final int slot;
+    final int wireType;
+    final int dwfTypeCode;
+    final String text;
+    final String title;
+    final Float value;
+    final Float min;
+    final Float max;
+    final Boolean hasMonochromaticImage;
+    final Boolean hasSmallImage;
+    final Boolean hasPhotoImage;
+
+    FakeComplication(
+        int slot,
+        int wireType,
+        int dwfTypeCode,
+        String text,
+        String title,
+        Float value,
+        Float min,
+        Float max,
+        Boolean hasMonochromaticImage,
+        Boolean hasSmallImage,
+        Boolean hasPhotoImage) {
+      this.slot = slot;
+      this.wireType = wireType;
+      this.dwfTypeCode = dwfTypeCode;
+      this.text = text;
+      this.title = title;
+      this.value = value;
+      this.min = min;
+      this.max = max;
+      this.hasMonochromaticImage = hasMonochromaticImage;
+      this.hasSmallImage = hasSmallImage;
+      this.hasPhotoImage = hasPhotoImage;
+    }
+
+    static FakeComplication fromJson(JSONObject c, int defaultSlot) throws JSONException {
+      int slot = c.optInt("slot", defaultSlot);
+      Object rawType = c.opt("type");
+      int wireType = parseWireComplicationType(rawType);
+      int dwfTypeCode = parseDwfComplicationTypeCode(rawType, wireType);
+      String text = c.has("text") && !c.isNull("text") ? c.getString("text") : null;
+      String title = c.has("title") && !c.isNull("title") ? c.getString("title") : null;
+      Float value = c.has("value") && !c.isNull("value") ? (float) c.getDouble("value") : null;
+      Float min = c.has("min") && !c.isNull("min") ? (float) c.getDouble("min") : null;
+      Float max = c.has("max") && !c.isNull("max") ? (float) c.getDouble("max") : null;
+      Boolean hasMono =
+          c.has("hasMonochromaticImage")
+              ? Boolean.valueOf(c.getBoolean("hasMonochromaticImage"))
+              : null;
+      Boolean hasSmall =
+          c.has("hasSmallImage") ? Boolean.valueOf(c.getBoolean("hasSmallImage")) : null;
+      Boolean hasPhoto =
+          c.has("hasPhotoImage") ? Boolean.valueOf(c.getBoolean("hasPhotoImage")) : null;
+      return new FakeComplication(
+          slot, wireType, dwfTypeCode, text, title, value, min, max, hasMono, hasSmall, hasPhoto);
+    }
+
+    JSONObject toJson() {
+      Protocol.Json json =
+          new Protocol.Json()
+              .put("slot", slot)
+              .put("source", "fake")
+              .put("face", "app")
+              .put("type", wireType)
+              .put("dwfType", dwfTypeCode);
+      if (text != null) json.put("text", text);
+      if (title != null) json.put("title", title);
+      if (value != null) json.put("value", value.doubleValue());
+      if (min != null) json.put("min", min.doubleValue());
+      if (max != null) json.put("max", max.doubleValue());
+      return json.object();
     }
   }
 
@@ -108,8 +185,7 @@ final class DwfWatchFaceClient {
   private final Entry entry;
   private final Listener listener;
   private final Map<String, String> configValues = new LinkedHashMap<>();
-  private final Map<Integer, String> complicationTexts = new LinkedHashMap<>();
-  private final Map<Integer, Integer> complicationTypes = new LinkedHashMap<>();
+  private final Map<Integer, FakeComplication> complications = new LinkedHashMap<>();
 
   private byte[] document;
   private View player;
@@ -181,10 +257,14 @@ final class DwfWatchFaceClient {
                 JSONObject optObj = optArr.getJSONObject(o);
                 String optId = optObj.getString("id");
                 String optName = optObj.optString("displayName", optId);
-                List<String> colors = new ArrayList<>();
+                List<Integer> colors = new ArrayList<>();
                 JSONArray colArr = optObj.optJSONArray("colors");
                 if (colArr != null) {
-                  for (int k = 0; k < colArr.length(); k++) colors.add(colArr.getString(k));
+                  for (int k = 0; k < colArr.length(); k++) {
+                    Object rawCol = colArr.get(k);
+                    Integer parsed = parseArgbColor(rawCol);
+                    if (parsed != null) colors.add(parsed);
+                  }
                 }
                 options.add(new ConfigOption(optId, optName, colors));
               }
@@ -197,6 +277,121 @@ final class DwfWatchFaceClient {
       return result;
     } catch (IOException | JSONException e) {
       return Collections.emptyList();
+    }
+  }
+
+  private static Integer parseArgbColor(Object raw) {
+    if (raw instanceof Number) {
+      return Integer.valueOf(((Number) raw).intValue());
+    }
+    if (raw instanceof String) {
+      String s = ((String) raw).trim();
+      if (s.startsWith("#")) s = s.substring(1);
+      else if (s.startsWith("0x") || s.startsWith("0X")) s = s.substring(2);
+      try {
+        if (s.length() == 6) return Integer.valueOf((int) (0xFF000000L | Long.parseLong(s, 16)));
+        if (s.length() == 8) return Integer.valueOf((int) Long.parseUnsignedLong(s, 16));
+      } catch (NumberFormatException ignored) {
+      }
+    }
+    return null;
+  }
+
+  static int parseWireComplicationType(Object raw) {
+    if (raw instanceof Number) return ((Number) raw).intValue();
+    if (raw instanceof String) {
+      String s = ((String) raw).trim().toUpperCase();
+      if (s.startsWith("COMPLICATION_TYPE_")) s = s.substring("COMPLICATION_TYPE_".length());
+      switch (s) {
+        case "SHORT_TEXT":
+          return 3;
+        case "LONG_TEXT":
+          return 4;
+        case "RANGED_VALUE":
+          return 5;
+        case "MONOCHROMATIC_IMAGE":
+        case "ICON":
+          return 6;
+        case "SMALL_IMAGE":
+          return 7;
+        case "PHOTO_IMAGE":
+        case "LARGE_IMAGE":
+          return 8;
+        case "NO_PERMISSION":
+          return 9;
+        case "NO_DATA":
+          return 10;
+        case "GOAL_PROGRESS":
+          return 13;
+        case "WEIGHTED_ELEMENTS":
+          return 14;
+        case "EMPTY":
+          return 0;
+        default:
+          try {
+            return Integer.parseInt(s);
+          } catch (NumberFormatException ignored) {
+            return 3;
+          }
+      }
+    }
+    return 3;
+  }
+
+  static int parseDwfComplicationTypeCode(Object raw, int wireType) {
+    if (raw instanceof String) {
+      String s = ((String) raw).trim().toUpperCase();
+      if (s.startsWith("COMPLICATION_TYPE_")) s = s.substring("COMPLICATION_TYPE_".length());
+      switch (s) {
+        case "EMPTY":
+        case "NO_DATA":
+        case "NO_PERMISSION":
+          return 0;
+        case "SHORT_TEXT":
+          return 1;
+        case "LONG_TEXT":
+          return 2;
+        case "RANGED_VALUE":
+          return 3;
+        case "MONOCHROMATIC_IMAGE":
+        case "ICON":
+          return 4;
+        case "SMALL_IMAGE":
+          return 5;
+        case "PHOTO_IMAGE":
+        case "LARGE_IMAGE":
+          return 6;
+        case "GOAL_PROGRESS":
+          return 7;
+        case "WEIGHTED_ELEMENTS":
+          return 8;
+        default:
+          break;
+      }
+    }
+    return wireTypeToDwfTypeCode(wireType);
+  }
+
+  static int wireTypeToDwfTypeCode(int wireType) {
+    switch (wireType) {
+      case 3:
+        return 1; // SHORT_TEXT
+      case 4:
+        return 2; // LONG_TEXT
+      case 5:
+        return 3; // RANGED_VALUE
+      case 6:
+        return 4; // MONOCHROMATIC_IMAGE
+      case 7:
+        return 5; // SMALL_IMAGE
+      case 8:
+        return 6; // PHOTO_IMAGE
+      case 13:
+        return 7; // GOAL_PROGRESS
+      case 14:
+        return 8; // WEIGHTED_ELEMENTS
+      default:
+        return 0; // EMPTY
     }
   }
 
@@ -220,15 +415,19 @@ final class DwfWatchFaceClient {
     return entry.slots;
   }
 
+  Map<Integer, FakeComplication> fakeComplications() {
+    return Collections.unmodifiableMap(complications);
+  }
+
   JSONArray describeConfigurations() {
     JSONArray out = new JSONArray();
     for (ConfigSpec cfg : entry.configurations) {
       JSONArray opts = new JSONArray();
       for (ConfigOption opt : cfg.options) {
         Protocol.Json o = new Protocol.Json().put("id", opt.id).put("displayName", opt.displayName);
-        if (!opt.colors.isEmpty()) {
+        if (!opt.colorArgbs.isEmpty()) {
           JSONArray cols = new JSONArray();
-          for (String col : opt.colors) cols.put(col);
+          for (Integer col : opt.colorArgbs) cols.put(String.format("#%08X", col));
           o.put("colors", cols);
         }
         opts.put(o.object());
@@ -274,15 +473,40 @@ final class DwfWatchFaceClient {
     }
   }
 
-  void complication(int slot, int type, Object data, boolean ambient) {
+  void complication(int slot, int wireType, Object data, boolean ambient) {
     if (data == null) {
-      complicationTexts.remove(slot);
-      complicationTypes.remove(slot);
+      complications.remove(slot);
     } else {
       String text = ComplicationSourceClient.text(data, app.getResources());
-      if (text != null) complicationTexts.put(slot, text);
-      complicationTypes.put(slot, type);
+      complications.put(
+          slot,
+          new FakeComplication(
+              slot,
+              wireType,
+              wireTypeToDwfTypeCode(wireType),
+              text,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null));
     }
+    render(ambient);
+  }
+
+  void setFakeComplication(int slot, FakeComplication fake, boolean ambient) {
+    if (fake == null) {
+      complications.remove(slot);
+    } else {
+      complications.put(slot, fake);
+    }
+    render(ambient);
+  }
+
+  void clearFakeComplications(boolean ambient) {
+    complications.clear();
     render(ambient);
   }
 
@@ -382,44 +606,94 @@ final class DwfWatchFaceClient {
       registerNames();
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
-    setUserInt("dwf.is_ambient", ambient ? 1 : 0);
-    setUserInt("USER:dwf.is_ambient", ambient ? 1 : 0);
+    setBothInt("dwf.is_ambient", ambient ? 1 : 0);
 
     for (ConfigSpec cfg : entry.configurations) {
       String rawVal = configValues.getOrDefault(cfg.id, cfg.defaultValue);
       if ("BOOLEAN".equalsIgnoreCase(cfg.kind)) {
         int b = ("true".equalsIgnoreCase(rawVal) || "1".equals(rawVal)) ? 1 : 0;
-        setUserInt("dwf.config." + cfg.id, b);
-        setUserInt("USER:dwf.config." + cfg.id, b);
+        setBothInt("dwf.config." + cfg.id, b);
       } else {
-        int optionIndex = 0;
+        int optionIndex = -1;
         for (int i = 0; i < cfg.options.size(); i++) {
           if (cfg.options.get(i).id.equals(rawVal)) {
             optionIndex = i;
             break;
           }
         }
-        try {
-          optionIndex = Integer.parseInt(rawVal);
-        } catch (NumberFormatException ignored) {
+        if (optionIndex < 0) {
+          try {
+            optionIndex = Integer.parseInt(rawVal);
+          } catch (NumberFormatException ignored) {
+            optionIndex = 0;
+          }
         }
-        setUserInt("dwf.config." + cfg.id, optionIndex);
-        setUserInt("USER:dwf.config." + cfg.id, optionIndex);
+        setBothInt("dwf.config." + cfg.id, optionIndex);
+        if ("COLOR".equalsIgnoreCase(cfg.kind)
+            && optionIndex >= 0
+            && optionIndex < cfg.options.size()) {
+          List<Integer> colors = cfg.options.get(optionIndex).colorArgbs;
+          for (int cIdx = 0; cIdx < colors.size(); cIdx++) {
+            setBothColor("dwf.color." + cfg.id + "." + cIdx, colors.get(cIdx).intValue());
+          }
+        }
       }
     }
 
-    for (Map.Entry<Integer, String> comp : complicationTexts.entrySet()) {
-      int slot = comp.getKey();
-      String text = comp.getValue();
-      setUserString("dwf.complication." + slot + ".TEXT", text);
-      setUserString("USER:dwf.complication." + slot + ".TEXT", text);
+    for (FakeComplication comp : complications.values()) {
+      int slot = comp.slot;
+      setBothInt("dwf.complication." + slot + ".type", comp.dwfTypeCode);
+      if (comp.text != null) {
+        setBothString("dwf.complication." + slot + ".text", comp.text);
+      }
+      if (comp.title != null) {
+        setBothString("dwf.complication." + slot + ".title", comp.title);
+      }
+      if (comp.value != null) {
+        setBothFloat("dwf.complication." + slot + ".value", comp.value.floatValue());
+      }
+      if (comp.min != null) {
+        setBothFloat("dwf.complication." + slot + ".min", comp.min.floatValue());
+      }
+      if (comp.max != null) {
+        setBothFloat("dwf.complication." + slot + ".max", comp.max.floatValue());
+      }
+      if (comp.hasMonochromaticImage != null) {
+        setBothInt(
+            "dwf.complication." + slot + ".has_monochromatic_image",
+            comp.hasMonochromaticImage.booleanValue() ? 1 : 0);
+      }
+      if (comp.hasSmallImage != null) {
+        setBothInt(
+            "dwf.complication." + slot + ".has_small_image",
+            comp.hasSmallImage.booleanValue() ? 1 : 0);
+      }
+      if (comp.hasPhotoImage != null) {
+        setBothInt(
+            "dwf.complication." + slot + ".has_photo_image",
+            comp.hasPhotoImage.booleanValue() ? 1 : 0);
+      }
     }
-    for (Map.Entry<Integer, Integer> compType : complicationTypes.entrySet()) {
-      int slot = compType.getKey();
-      int type = compType.getValue();
-      setUserInt("dwf.complication." + slot + ".TYPE", type);
-      setUserInt("USER:dwf.complication." + slot + ".TYPE", type);
-    }
+  }
+
+  private void setBothInt(String key, int value) {
+    setUserInt(key, value);
+    setUserInt("USER:" + key, value);
+  }
+
+  private void setBothFloat(String key, float value) {
+    setUserFloat(key, value);
+    setUserFloat("USER:" + key, value);
+  }
+
+  private void setBothString(String key, String value) {
+    setUserString(key, value);
+    setUserString("USER:" + key, value);
+  }
+
+  private void setBothColor(String key, int argb) {
+    setUserColor(key, argb);
+    setUserColor("USER:" + key, argb);
   }
 
   private void setUserInt(String name, int value) {
@@ -430,6 +704,28 @@ final class DwfWatchFaceClient {
           .invoke(player, name, value);
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
+  }
+
+  private void setUserFloat(String name, float value) {
+    try {
+      player
+          .getClass()
+          .getMethod("setUserLocalFloat", String.class, float.class)
+          .invoke(player, name, value);
+    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+  }
+
+  private void setUserColor(String name, int argb) {
+    try {
+      player
+          .getClass()
+          .getMethod("setUserLocalColor", String.class, int.class)
+          .invoke(player, name, argb);
+      return;
+    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+    setUserInt(name, argb);
   }
 
   private void setUserString(String name, String value) {

@@ -1,17 +1,21 @@
 package ee.schimke.composeai.rcjvm
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.rccreation.dwf.DwfComplicationSeed
 import ee.schimke.composeai.rccreation.dwf.DwfParser
 import ee.schimke.composeai.rccreation.dwf.DwfRenderOptions
-import ee.schimke.composeai.rccreation.dwf.DwfVariables
+import ee.schimke.composeai.rccreation.dwf.DwfWeatherSeed
 import ee.schimke.composeai.rccreation.dwf.captureDwfRemoteDocumentBytes
+import ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.junit.Test
 
 class DwfWearOsSamplesValidationTest {
@@ -31,7 +35,12 @@ class DwfWearOsSamplesValidationTest {
     hour: Int,
     minute: Int,
     second: Int,
+    year: Int = 2026,
+    month: Int = 11,
+    dayOfMonth: Int = 18,
+    options: DwfRenderOptions = DwfRenderOptions(),
     seeds: Map<String, RcNamedValue> = emptyMap(),
+    exportArtifacts: Boolean = true,
   ): Pair<BufferedImage, BufferedImage> {
     val resDir = sampleResDir(sampleName)
     val xmlFile = File(resDir, "raw/watchface.xml")
@@ -41,7 +50,7 @@ class DwfWearOsSamplesValidationTest {
 
     val resolver = DwfResourceDirectoryResolver(listOf(resDir))
     val doc = DwfParser.parse(xmlFile.readText(), resolver)
-    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions()) }
+    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
     assertThat(rcBytes.size).isGreaterThan(128)
 
     val pngBytes =
@@ -53,6 +62,9 @@ class DwfWearOsSamplesValidationTest {
         minute = minute,
         second = second,
         seeds = seeds,
+        year = year,
+        month = month,
+        dayOfMonth = dayOfMonth,
       )
     val rendered = checkNotNull(ImageIO.read(ByteArrayInputStream(pngBytes)))
     val rawReference = checkNotNull(ImageIO.read(refFile))
@@ -61,9 +73,29 @@ class DwfWearOsSamplesValidationTest {
     assertThat(rendered.height).isEqualTo(reference.height)
 
     val exportDir = System.getProperty("dwf.validation.exportDir")?.takeIf { it.isNotBlank() }
-    if (exportDir != null) {
+    if (exportDir != null && exportArtifacts) {
       val outDir = File(exportDir).apply { mkdirs() }
       ImageIO.write(rendered, "PNG", File(outDir, "matched__$sampleName.png"))
+      val defaultRcBytes = runBlocking {
+        captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions())
+      }
+      val (defHour, defMinute, defSecond) = parsePreviewHms(doc.previewTime)
+      val defaultPngBytes =
+        renderDwfDocumentToPng(
+          bytes = defaultRcBytes,
+          widthPx = doc.width.coerceAtLeast(1),
+          heightPx = doc.height.coerceAtLeast(1),
+          hour = defHour,
+          minute = defMinute,
+          second = defSecond,
+        )
+      File(outDir, "dwf__$sampleName.png").writeBytes(defaultPngBytes)
+      val sim28 = computePixelSimilarity(rendered, reference, channelTolerance = 28)
+      val sim32 = computePixelSimilarity(rendered, reference, channelTolerance = 32)
+      val sim48 = computePixelSimilarity(rendered, reference, channelTolerance = 48)
+      println(
+        "DWF_METRIC sample=$sampleName sim28=${"%.4f".format(sim28)} sim32=${"%.4f".format(sim32)} sim48=${"%.4f".format(sim48)}",
+      )
     }
     return rendered to reference
   }
@@ -85,6 +117,41 @@ class DwfWearOsSamplesValidationTest {
   }
 
   @Test
+  fun bundledRobotoFlexTypefaceIsLoadedAndChangesRenderedGlyphs() {
+    val loader = checkNotNull(dwfTypefaces()) { "Expected bundled dwf-fonts Roboto Flex loader" }
+    assertThat(loader.families).contains("default")
+    assertThat(loader.families).contains("roboto flex")
+    assertThat(loader.typeface("default")).isNotNull()
+
+    val resDir = sampleResDir("SimpleDigital")
+    val resolver = DwfResourceDirectoryResolver(listOf(resDir))
+    val doc = DwfParser.parse(File(resDir, "raw/watchface.xml").readText(), resolver)
+    val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions()) }
+
+    val robotoPng =
+      renderDwfDocumentToPng(
+        bytes = rcBytes,
+        widthPx = 450,
+        heightPx = 450,
+        hour = 8,
+        minute = 7,
+        second = 0,
+        typefaces = loader,
+      )
+    val fallbackPng =
+      renderDwfDocumentToPng(
+        bytes = rcBytes,
+        widthPx = 450,
+        heightPx = 450,
+        hour = 8,
+        minute = 7,
+        second = 0,
+        typefaces = RcTypefaceLoader.Empty,
+      )
+    assertThat(robotoPng.toList()).isNotEqualTo(fallbackPng.toList())
+  }
+
+  @Test
   fun photosMaskMatchesOfficialReferenceRender() {
     val (rendered, reference) =
       compileAndRenderSample(
@@ -92,12 +159,10 @@ class DwfWearOsSamplesValidationTest {
         hour = 10,
         minute = 8,
         second = 0,
-        seeds = mapOf(DwfVariables.IS_24_HOUR to RcNamedValue.Integer(0)),
+        options = DwfRenderOptions(is24HourDefault = false),
       )
     val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 28)
-    assertThat(similarity).isAtLeast(0.92)
-    // Verify the hexagon mask clips the corners of the photo box (e.g. (110, 110) is pure black)
-    // while the center of the photo (225, 225) matches the default_image.png content.
+    assertThat(similarity).isAtLeast(0.95)
     assertRgbNear(reference.getRGB(110, 110), rendered.getRGB(110, 110), tolerance = 8)
     assertRgbNear(reference.getRGB(225, 225), rendered.getRGB(225, 225), tolerance = 20)
   }
@@ -110,11 +175,10 @@ class DwfWearOsSamplesValidationTest {
         hour = 10,
         minute = 8,
         second = 0,
-        seeds = mapOf(DwfVariables.IS_24_HOUR to RcNamedValue.Integer(0)),
+        options = DwfRenderOptions(is24HourDefault = false),
       )
     val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 28)
-    assertThat(similarity).isAtLeast(0.92)
-    // Center of photo at (225, 225) and outside border at (60, 225) match reference
+    assertThat(similarity).isAtLeast(0.95)
     assertRgbNear(reference.getRGB(225, 225), rendered.getRGB(225, 225), tolerance = 20)
     assertRgbNear(reference.getRGB(60, 225), rendered.getRGB(60, 225), tolerance = 8)
   }
@@ -130,9 +194,7 @@ class DwfWearOsSamplesValidationTest {
       )
     val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 24)
     assertThat(similarity).isAtLeast(0.93)
-    // Annulus purple ring at (225, 65) matches reference (#411C75)
     assertRgbNear(reference.getRGB(225, 65), rendered.getRGB(225, 65), tolerance = 6)
-    // Inner cutout hole at (225, 150) is pure black (#000000) just like reference
     assertRgbNear(reference.getRGB(225, 150), rendered.getRGB(225, 150), tolerance = 4)
   }
 
@@ -146,8 +208,7 @@ class DwfWearOsSamplesValidationTest {
         second = 0,
       )
     val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 28)
-    assertThat(similarity).isAtLeast(0.85)
-    // Both time band (y=130..195) and greeting band (y=240..280) contain bright white glyphs
+    assertThat(similarity).isAtLeast(0.92)
     assertThat(countBrightPixelsInBand(rendered, 130, 195)).isGreaterThan(1500)
     assertThat(countBrightPixelsInBand(reference, 130, 195)).isGreaterThan(1500)
     assertThat(countBrightPixelsInBand(rendered, 240, 280)).isGreaterThan(600)
@@ -162,48 +223,107 @@ class DwfWearOsSamplesValidationTest {
         hour = 2,
         minute = 11,
         second = 0,
-        seeds =
-          mapOf(
-            DwfVariables.IS_24_HOUR to RcNamedValue.Integer(0),
-            DwfVariables.configKey("themeColor") to RcNamedValue.Integer(2),
-            DwfVariables.colorThemeKey("themeColor", 0) to RcNamedValue.Color(0xFFD65780.toInt()),
-            DwfVariables.colorThemeKey("themeColor", 1) to RcNamedValue.Color(0xFFEE9480.toInt()),
-            DwfVariables.colorThemeKey("themeColor", 2) to RcNamedValue.Color(0xFFEFD2CB.toInt()),
-            DwfVariables.configKey("clockAppearance") to RcNamedValue.Integer(2),
-            DwfVariables.configKey("showHr") to RcNamedValue.Integer(1),
-            DwfVariables.HEART_RATE to RcNamedValue.FloatValue(0f),
-            DwfVariables.complicationTextKey(0) to RcNamedValue.Text("60"),
+        options =
+          DwfRenderOptions(
+            is24HourDefault = false,
+            flavorDefault = "flavorTwo",
+            heartRateDefault = -1f,
+            complicationDefaults =
+              mapOf(
+                0 to
+                  DwfComplicationSeed(
+                    type = "SHORT_TEXT",
+                    title = "Steps",
+                    text = "60",
+                  ),
+              ),
           ),
       )
     val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 32)
-    assertThat(similarity).isAtLeast(0.88)
-    // Both rendered and reference have the pink/salmon HR band (y=75..140), pink clock band
-    // (y=170..260),
-    // and bottom complication circle (y=280..392)
-    assertThat(countNonBlackPixelsInBand(rendered, 75, 140)).isGreaterThan(300)
+    assertThat(similarity).isAtLeast(0.95)
+    assertThat(countNonBlackPixelsInBand(rendered, 75, 140)).isGreaterThan(250)
     assertThat(countNonBlackPixelsInBand(rendered, 170, 260)).isGreaterThan(1500)
     assertThat(countNonBlackPixelsInBand(rendered, 280, 392)).isGreaterThan(400)
   }
 
   @Test
-  fun complicationsMatchesOfficialReferenceRender() {
+  fun complicationsWithFakeComplicationValuesMatchesOfficialReferenceRender() {
+    val defaultWithoutFakes =
+      compileAndRenderSample(
+          sampleName = "Complications",
+          hour = 10,
+          minute = 8,
+          second = 32,
+          options = DwfRenderOptions(),
+          exportArtifacts = false,
+        )
+        .first
     val (rendered, reference) =
       compileAndRenderSample(
         sampleName = "Complications",
         hour = 10,
         minute = 8,
         second = 32,
+        options =
+          DwfRenderOptions(
+            complicationDefaults =
+              mapOf(
+                0 to
+                  DwfComplicationSeed(
+                    type = "PHOTO_IMAGE",
+                    photoImage = "builtin:photo_aquarium",
+                    text = "",
+                    title = "",
+                  ),
+                1 to
+                  DwfComplicationSeed(
+                    type = "RANGED_VALUE",
+                    title = "Title",
+                    text = "w/Title",
+                    value = 60f,
+                    min = 0f,
+                    max = 100f,
+                    rangedValueColors = listOf(0xFF00FFFF.toInt(), 0xFF00FF00.toInt()),
+                    rangedValueColorsInterpolate = true,
+                  ),
+                2 to
+                  DwfComplicationSeed(
+                    type = "SMALL_IMAGE",
+                    smallImage = "builtin:watch_board",
+                    text = "",
+                    title = "",
+                  ),
+                3 to
+                  DwfComplicationSeed(
+                    type = "WEIGHTED_ELEMENTS",
+                    text = "w/Icon",
+                    title = "",
+                    monochromaticImage = "builtin:battery",
+                    weightedElementsColors =
+                      listOf(0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFF0000FF.toInt()),
+                    weightedElementsWeights = listOf(3f, 3f, 2f),
+                  ),
+                4 to
+                  DwfComplicationSeed(
+                    type = "LONG_TEXT",
+                    title = "Long Title",
+                    text = "Text w/ Icon & Title",
+                    monochromaticImage = "builtin:battery",
+                  ),
+              ),
+          ),
       )
-    // Top complication slot (x=169, y=45, w=113, h=113) ring stroke at (225, 47) uses #DBBBF5
-    // (themeColor.0) and matches between rendered and reference
-    assertThat(countNonBlackPixelsInBand(rendered, 45, 158)).isGreaterThan(1000)
-    assertThat(countNonBlackPixelsInBand(reference, 45, 158)).isGreaterThan(1000)
-    // Middle band (left/right complications + digital clock, y=169..282)
-    assertThat(countNonBlackPixelsInBand(rendered, 169, 282)).isGreaterThan(2000)
-    assertThat(countNonBlackPixelsInBand(reference, 169, 282)).isGreaterThan(2000)
-    // Bottom long-text complication slot (y=310..380)
-    assertThat(countNonBlackPixelsInBand(rendered, 310, 380)).isGreaterThan(800)
-    assertThat(countNonBlackPixelsInBand(reference, 310, 380)).isGreaterThan(800)
+
+    val withoutFakesSim =
+      computePixelSimilarity(defaultWithoutFakes, reference, channelTolerance = 48)
+    val withFakesSim = computePixelSimilarity(rendered, reference, channelTolerance = 48)
+    println(
+      "DWF_METRIC sample=Complications_delta withoutFakes=${"%.4f".format(withoutFakesSim)} withFakes=${"%.4f".format(withFakesSim)}",
+    )
+    assertThat(withFakesSim).isGreaterThan(withoutFakesSim)
+    assertThat(countNonBlackPixelsInBand(rendered, 45, 158)).isGreaterThan(1500)
+    assertThat(countNonBlackPixelsInBand(rendered, 169, 282)).isGreaterThan(3000)
+    assertThat(countNonBlackPixelsInBand(rendered, 310, 380)).isGreaterThan(1200)
   }
 
   @Test
@@ -214,19 +334,45 @@ class DwfWearOsSamplesValidationTest {
         hour = 14,
         minute = 31,
         second = 48,
-        seeds =
-          mapOf(
-            DwfVariables.IS_24_HOUR to RcNamedValue.Integer(0),
-            DwfVariables.WEATHER_TEMPERATURE_UNIT to RcNamedValue.Integer(0),
-            DwfVariables.WEATHER_CONDITION to RcNamedValue.Integer(8),
-            DwfVariables.WEATHER_CONDITION_NAME to RcNamedValue.Text("Sunny"),
-            DwfVariables.WEATHER_TEMPERATURE to RcNamedValue.FloatValue(70f),
+        year = 2026,
+        month = 6,
+        dayOfMonth = 29,
+        options =
+          DwfRenderOptions(
+            is24HourDefault = false,
+            weatherDefault =
+              DwfWeatherSeed(
+                isAvailable = true,
+                isDay = true,
+                condition = 8,
+                conditionName = "Sunny",
+                temperature = 50f,
+                temperatureUnit = 0,
+                lastUpdatedText = "14:28",
+                hours =
+                  mapOf(
+                    1 to DwfWeatherSeed.Hour(condition = 8, temperature = 52f, isDay = true),
+                    2 to DwfWeatherSeed.Hour(condition = 8, temperature = 55f, isDay = true),
+                    3 to DwfWeatherSeed.Hour(condition = 8, temperature = 57f, isDay = true),
+                    4 to DwfWeatherSeed.Hour(condition = 8, temperature = 60f, isDay = true),
+                  ),
+                days =
+                  mapOf(
+                    1 to
+                      DwfWeatherSeed.Day(
+                        conditionDay = 8,
+                        conditionNight = 1,
+                        temperatureHigh = 64f,
+                        temperatureLow = 47f,
+                        chanceOfPrecipitation = 0,
+                        chanceOfPrecipitationNight = 0,
+                      ),
+                  ),
+              ),
           ),
       )
-    // Verify all 6 vertical layout bands of Weather (date header, large time, current condition +
-    // icon,
-    // 4-column hourly forecast icons + temps, daily high/low pill, and footer) are populated just
-    // like reference
+    val similarity = computePixelSimilarity(rendered, reference, channelTolerance = 32)
+    assertThat(similarity).isAtLeast(0.88)
     val bands = listOf(35 to 68, 70 to 175, 185 to 235, 240 to 335, 345 to 385, 390 to 425)
     for ((y0, y1) in bands) {
       val refCount = countNonBlackPixelsInBand(reference, y0, y1)
@@ -234,8 +380,6 @@ class DwfWearOsSamplesValidationTest {
       assertThat(refCount).isGreaterThan(200)
       assertThat(renCount).isGreaterThan(200)
     }
-    // Verify current weather condition icon in center (x=205..255, y=185..232) has non-black icon
-    // pixels
     var iconPixels = 0
     for (y in 185..232) {
       for (x in 205..255) {
@@ -247,6 +391,62 @@ class DwfWearOsSamplesValidationTest {
       }
     }
     assertThat(iconPixels).isGreaterThan(200)
+  }
+
+  @Test
+  fun renderDwfPreviewsAppliesFakesJsonConfiguration() {
+    val tmp = Files.createTempDirectory("dwf-fakes-test-").toFile()
+    try {
+      val resDir = sampleResDir("Flavors")
+      val previewsJson = File(tmp, "previews.json")
+      previewsJson.writeText(
+        """
+        {
+          "previews": [
+            {
+              "id": "flavors_test",
+              "functionName": "flavors",
+              "params": { "name": "Flavors", "dwfAssetPath": "raw/watchface.xml" },
+              "captures": [ { "renderOutput": "renders/flavors_test.png" } ]
+            }
+          ]
+        }
+        """
+          .trimIndent(),
+      )
+      val fakesFile = File(tmp, "fakes.json")
+      val fakes =
+        DwfFakesConfig(
+          flavor = "flavorTwo",
+          previewTime = "02:11:00",
+          is24Hour = false,
+          heartRate = -1f,
+          complications =
+            mapOf(
+              0 to
+                DwfFakeComplication(
+                  type = "SHORT_TEXT",
+                  title = "Steps",
+                  text = "60",
+                ),
+            ),
+        )
+      fakesFile.writeText(Json.encodeToString(DwfFakesConfig.serializer(), fakes))
+
+      val outWithoutFakes = File(tmp, "renders-default")
+      val outWithFakes = File(tmp, "renders-fakes")
+      assertThat(renderDwfPreviews(previewsJson, outWithoutFakes, listOf(resDir))).isEqualTo(1)
+      assertThat(
+          renderDwfPreviews(previewsJson, outWithFakes, listOf(resDir), fakesJson = fakesFile),
+        )
+        .isEqualTo(1)
+
+      val defaultBytes = File(outWithoutFakes, "flavors_test.png").readBytes()
+      val fakesBytes = File(outWithFakes, "flavors_test.png").readBytes()
+      assertThat(fakesBytes.toList()).isNotEqualTo(defaultBytes.toList())
+    } finally {
+      tmp.deleteRecursively()
+    }
   }
 
   private fun computePixelSimilarity(
