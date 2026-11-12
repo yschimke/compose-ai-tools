@@ -145,4 +145,61 @@ class McpDoctorTest {
     assertEquals("run-mcp-install", aggregateVerdict(listOf(ok, install)))
     assertEquals("run-mcp-install", aggregateVerdict(listOf(install)))
   }
+
+  private fun descriptorWithBta(reason: String?): String {
+    val value = reason?.let { "\"$it\"" } ?: "null"
+    return """
+      {"enabled": true, "schemaVersion": $EXPECTED_DESCRIPTOR_SCHEMA_VERSION,
+       "btaCompile": {"moduleName": "shared", "ineligibilityReason": $value}}
+      """
+  }
+
+  @Test
+  fun `a KSP module is reported as compiling through Gradle without changing the verdict`() {
+    val reason = "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet)"
+    val state =
+      inspectDescriptor("shared", writeDescriptor(newTempDir(), descriptorWithBta(reason)))
+    assertEquals("ok", state.verdict)
+    val finding = state.findings.single { it.id == "compile.in-process" }
+    assertEquals("warning", finding.level)
+    assertTrue(finding.message.contains(reason))
+    assertTrue(finding.message.contains("annotation processors"))
+  }
+
+  @Test
+  fun `a module that compiles in process gets no in-process finding`() {
+    val state = inspectDescriptor("app", writeDescriptor(newTempDir(), descriptorWithBta(null)))
+    assertTrue(state.findings.none { it.id == "compile.in-process" })
+  }
+
+  @Test
+  fun `a descriptor without btaCompile gets no in-process finding`() {
+    val f =
+      writeDescriptor(
+        newTempDir(),
+        """{"enabled": true, "schemaVersion": $EXPECTED_DESCRIPTOR_SCHEMA_VERSION}""",
+      )
+    assertTrue(inspectDescriptor("app", f).findings.none { it.id == "compile.in-process" })
+  }
+
+  @Test
+  fun `doctor check warns for a KSP module and passes an eligible one`() {
+    val ksp =
+      inProcessCompileCheck(
+        ":shared",
+        writeDescriptor(newTempDir(), descriptorWithBta("com.google.devtools.ksp plugin applied")),
+      )
+    assertNotNull(ksp)
+    assertEquals("warning", ksp.status)
+    assertEquals("project.shared.in-process-compile", ksp.id)
+
+    val ok = inProcessCompileCheck(":app", writeDescriptor(newTempDir(), descriptorWithBta(null)))
+    assertNotNull(ok)
+    assertEquals("ok", ok.status)
+  }
+
+  @Test
+  fun `doctor check is silent before mcp install writes a descriptor`() {
+    assertEquals(null, inProcessCompileCheck(":app", File(newTempDir(), "daemon-launch.json")))
+  }
 }

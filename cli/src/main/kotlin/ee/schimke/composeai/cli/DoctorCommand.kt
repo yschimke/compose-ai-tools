@@ -648,6 +648,8 @@ class DoctorCommand(
       checkRenderPreviewsTask(modulePath, info)
       checkModuleCompat(modulePath, info)
       checkErrorSignatures(projectDir, modulePath)
+      inProcessCompileCheck(modulePath, daemonDescriptorFile(projectDir, modulePath))
+        ?.let(::addCheck)
     }
 
     if (checkDaemon) {
