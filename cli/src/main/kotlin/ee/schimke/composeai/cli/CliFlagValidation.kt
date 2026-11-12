@@ -278,6 +278,7 @@ internal object CliFlagValidation {
           "--hide-agent",
           "--launcher",
           "--tile",
+          "--watchface",
           "--qualifiers",
           "--device",
           "--display",

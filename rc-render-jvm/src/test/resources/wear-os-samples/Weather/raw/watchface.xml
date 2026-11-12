@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<WatchFace height="450" width="450">
+  <BitmapFonts>
+    <!--
+      Define set of icons to be used as bitmap fonts.
+      Each character uses 96x96 pixels which is
+      resource dimensions and represent weather CONDITION
+
+      This enables us to use the [WEATHER.CONDITION] enum value as an index into
+      a BitmapFont definition, for a convenient way of showing the appropriate
+      weather icon.
+
+      The [WEATHER.CONDITION] value can be used in other ways too such as in
+      Condition expressions, see:
+      https://developer.android.com/training/wearables/wff/common/condition
+     -->
+    <!-- Icon set for day, [WEATHER.IS_DAY] == 1 -->
+    <BitmapFont name="weather_icons_day">
+      <Character name="0" resource="ic_unknown" width="96" height="96" />
+      <Character name="1" resource="ic_clear" width="96" height="96" />
+      <Character name="2" resource="ic_cloudy" width="96" height="96" />
+      <Character name="3" resource="ic_fog" width="96" height="96" />
+      <Character name="4" resource="ic_heavy_rain" width="96" height="96" />
+      <Character name="5" resource="ic_heavy_snow" width="96" height="96" />
+      <Character name="6" resource="ic_rain" width="96" height="96" />
+      <Character name="7" resource="ic_snow" width="96" height="96" />
+      <Character name="8" resource="ic_sunny" width="96" height="96" />
+      <Character name="9" resource="ic_thunderstorm" width="96" height="96" />
+      <Word name="10" resource="ic_sleet" width="96" height="96" />
+      <Word name="11" resource="ic_snow" width="96" height="96" />
+      <Word name="12" resource="ic_rain" width="96" height="96" />
+      <Word name="13" resource="ic_mist" width="96" height="96" />
+      <Word name="14" resource="ic_partly_cloudy_day" width="96" height="96" />
+      <Word name="15" resource="ic_windy" width="96" height="96" />
+    </BitmapFont>
+    <!-- Icon set for night, [WEATHER.IS_DAY] == 0 -->
+    <BitmapFont name="weather_icons_night">
+      <Character name="0" resource="ic_unknown" width="96" height="96" />
+      <Character name="1" resource="ic_clear" width="96" height="96" />
+      <Character name="2" resource="ic_cloudy" width="96" height="96" />
+      <Character name="3" resource="ic_fog" width="96" height="96" />
+      <Character name="4" resource="ic_heavy_rain" width="96" height="96" />
+      <Character name="5" resource="ic_heavy_snow" width="96" height="96" />
+      <Character name="6" resource="ic_rain" width="96" height="96" />
+      <Character name="7" resource="ic_snow" width="96" height="96" />
+      <Character name="8" resource="ic_sunny" width="96" height="96" />
+      <Character name="9" resource="ic_thunderstorm" width="96" height="96" />
+      <Word name="10" resource="ic_sleet" width="96" height="96" />
+      <Word name="11" resource="ic_snow" width="96" height="96" />
+      <Word name="12" resource="ic_rain" width="96" height="96" />
+      <Word name="13" resource="ic_mist" width="96" height="96" />
+      <Word name="14" resource="ic_partly_cloudy_night" width="96" height="96" />
+      <Word name="15" resource="ic_windy" width="96" height="96" />
+    </BitmapFont>
+  </BitmapFonts>
+  <Scene>
+    <Group height="450" name="Root" width="450" x="0" y="0">
+      <PartDraw height="450" name="BackgroundContour" width="450" x="0" y="0">
+        <Ellipse height="450.0" width="450.0" x="0.0" y="0.0">
+          <Stroke color="#ff888888" thickness="10.0"/>
+          <Fill color="#ff0c0c0c"/>
+        </Ellipse>
+      </PartDraw>
+      <Group height="430" name="BackgroundWrapper" width="430" x="10" y="10">
+        <Group height="27" name="null" width="100" x="175" y="30">
+          <PartText height="27" width="100" x="0" y="0">
+            <Localization calendar="GREGORIAN" timeZone="SYNC_TO_DEVICE"/>
+            <Text>
+              <Font family="SYNC_TO_DEVICE" size="27">
+                <Template><![CDATA[%s %s]]>
+                  <Parameter expression="[DAY_OF_WEEK_S]"/>
+                  <Parameter expression="[DAY_Z]"/>
+                </Template>
+              </Font>
+            </Text>
+          </PartText>
+        </Group>
+        <DigitalClock height="140" width="270" x="90" y="45">
+          <Localization calendar="GREGORIAN" timeZone="SYNC_TO_DEVICE"/>
+          <TimeText format="hh" height="140" width="180" x="0" y="0">
+            <Font family="SYNC_TO_DEVICE" size="140"/>
+          </TimeText>
+          <TimeText format="mm" height="75" width="85" x="185" y="7">
+            <Font family="SYNC_TO_DEVICE" size="75"/>
+          </TimeText>
+        </DigitalClock>
+        <Group height="140" name="Seconds_And_Separator" width="270" x="90" y="45">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <PartDraw height="1" tintColor="#ffb3b3b3" width="70" x="192" y="75">
+            <Rectangle height="1.0" width="70.0" x="0.0" y="0.0">
+              <Fill color="#ff888888"/>
+            </Rectangle>
+          </PartDraw>
+          <PartText height="75" width="100" x="185" y="70">
+            <Localization calendar="GREGORIAN" timeZone="SYNC_TO_DEVICE"/>
+            <Text>
+              <Font family="SYNC_TO_DEVICE" size="27">
+                <Template><![CDATA[%s]]>
+                  <Parameter expression="[SECOND_Z]"/>
+                </Template>
+              </Font>
+            </Text>
+          </PartText>
+        </Group>
+        <Group height="255" name="Weather_Condition" width="410" x="10" y="175">
+          <Condition>
+            <Expressions>
+              <Expression name="is_weather_available">[WEATHER.IS_AVAILABLE]</Expression>
+            </Expressions>
+            <Compare expression="is_weather_available">
+              <Group height="255" name="Weather_Available_View" width="410" x="0" y="0">
+                <Group height="47" name="CurrentCondition" width="205" x="0" y="0">
+                  <PartDraw height="47" width="205" x="0" y="0">
+                    <RoundRectangle cornerRadiusX="23.5" cornerRadiusY="23.5" height="47.0" width="205.0" x="0.0" y="0.0">
+                      <Fill color="#ff888888"/>
+                    </RoundRectangle>
+                  </PartDraw>
+                  <PartText height="37" width="195" x="5" y="5">
+                    <Text>
+                      <Font family="SYNC_TO_DEVICE" size="31">
+                        <Template><![CDATA[%s]]>
+                          <Parameter expression="[WEATHER.CONDITION_NAME]"/>
+                        </Template>
+                      </Font>
+                    </Text>
+                  </PartText>
+                </Group>
+                <Group height="47" name="CurrentConditionIcon" width="47" x="215" y="0">
+                  <Condition>
+                    <Expressions>
+                      <Expression name="is_day">[WEATHER.IS_DAY]</Expression>
+                    </Expressions>
+                    <Compare expression="is_day">
+                      <PartText name="current_condition_icon" height="47" width="47" x="0" y="0">
+                        <Text>
+                          <BitmapFont family="weather_icons_day" size="47">
+                            <Template><![CDATA[%s]]>
+                              <Parameter expression="[WEATHER.CONDITION] &lt;= 15 ? [WEATHER.CONDITION] : 0"/>
+                            </Template>
+                          </BitmapFont>
+                        </Text>
+                      </PartText>
+                    </Compare>
+                    <Default>
+                      <PartText name="current_condition_icon" height="47" width="47" x="0" y="0">
+                        <Text>
+                          <BitmapFont family="weather_icons_night" size="47">
+                            <Template><![CDATA[%s]]>
+                              <Parameter expression="[WEATHER.CONDITION] &lt;= 15 ? [WEATHER.CONDITION] : 0"/>
+                            </Template>
+                          </BitmapFont>
+                        </Text>
+                      </PartText>
+                    </Default>
+                  </Condition>
+                </Group>
+                <Group height="47" name="CurrentTemp" width="137" x="273" y="0">
+                  <PartDraw height="47" width="137" x="0" y="0">
+                    <RoundRectangle cornerRadiusX="23.5" cornerRadiusY="23.5" height="47.0" width="137.0" x="0.0" y="0.0">
+                      <Fill color="#ff888888"/>
+                    </RoundRectangle>
+                  </PartDraw>
+                  <PartText height="37" width="127" x="5" y="5">
+                    <Text>
+                      <Font family="SYNC_TO_DEVICE" size="31">
+                        <Template><![CDATA[%s° %s]]>
+                          <Parameter expression="[WEATHER.TEMPERATURE]"/>
+                          <Parameter expression="[WEATHER.TEMPERATURE_UNIT] == 1 ? &quot;C&quot; : &quot;F&quot;"/>
+                        </Template>
+                      </Font>
+                    </Text>
+                  </PartText>
+                </Group>
+                <!--Up to 8 hours can be queried, with indexed from 1 to 8. Each hour must be checked via the IS_AVAILABLE field before being used-->
+                <Group height="100" name="Hour_1_Root" width="60" x="70" y="50">
+                  <Condition>
+                    <Expressions>
+                      <Expression name="is_weather_forecast_1_available">[WEATHER.HOURS.1.IS_AVAILABLE]</Expression>
+                    </Expressions>
+                    <Compare expression="is_weather_forecast_1_available">
+                      <Condition>
+                        <Expressions>
+                          <Expression name="hours_1_is_day">[WEATHER.HOURS.1.IS_DAY]</Expression>
+                        </Expressions>
+                        <Compare expression="hours_1_is_day">
+                          <PartText name="hours_1_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_day" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.1.CONDITION] &lt;= 15 ? [WEATHER.HOURS.1.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText name="hours_1_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_night" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.1.CONDITION] &lt;= 15 ? [WEATHER.HOURS.1.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                      <PartText height="20" width="60" x="0" y="60">
+                        <Text>
+                          <Font family="SYNC_TO_DEVICE" size="18">
+                            <Template><![CDATA[%s°]]>
+                              <Parameter expression="[WEATHER.HOURS.1.TEMPERATURE]"/>
+                            </Template>
+                          </Font>
+                        </Text>
+                      </PartText>
+                      <Condition>
+                        <Expressions>
+                          <Expression name="is_24_mode">[IS_24_HOUR_MODE]</Expression>
+                        </Expressions>
+                        <Compare expression="is_24_mode">
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s:00]]>
+                                  <Parameter expression="([HOUR_0_23] + 1) % 24"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s%s]]>
+                                  <Parameter expression="([HOUR_0_23] + 1) % 24 &lt;= 12 ? ([HOUR_0_23] + 1) % 24 : ([HOUR_0_23] + 1) % 24 - 12"/>
+                                  <Parameter expression="([HOUR_0_23] + 1) % 24 &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                    </Compare>
+                  </Condition>
+                </Group>
+                <Group height="100" name="Hour_2_Root" width="60" x="140" y="50">
+                  <Condition>
+                    <Expressions>
+                      <Expression name="is_weather_forecast_2_available">[WEATHER.HOURS.2.IS_AVAILABLE]</Expression>
+                    </Expressions>
+                    <Compare expression="is_weather_forecast_2_available">
+                      <Condition>
+                        <Expressions>
+                          <Expression name="hours_2_is_day">[WEATHER.HOURS.2.IS_DAY]</Expression>
+                        </Expressions>
+                        <Compare expression="hours_2_is_day">
+                          <PartText name="hours_2_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_day" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.2.CONDITION] &lt;= 15 ? [WEATHER.HOURS.2.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText name="hours_2_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_night" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.2.CONDITION] &lt;= 15 ? [WEATHER.HOURS.2.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                      <PartText height="20" width="60" x="0" y="60">
+                        <Text>
+                          <Font family="SYNC_TO_DEVICE" size="18">
+                            <Template><![CDATA[%s°]]>
+                              <Parameter expression="[WEATHER.HOURS.2.TEMPERATURE]"/>
+                            </Template>
+                          </Font>
+                        </Text>
+                      </PartText>
+                      <Condition>
+                        <Expressions>
+                          <Expression name="is_24_mode">[IS_24_HOUR_MODE]</Expression>
+                        </Expressions>
+                        <Compare expression="is_24_mode">
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s:00]]>
+                                  <Parameter expression="([HOUR_0_23] + 2) % 24"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s%s]]>
+                                  <Parameter expression="([HOUR_0_23] + 2) % 24 &lt;= 12 ? ([HOUR_0_23] + 2) % 24 : ([HOUR_0_23] + 2) % 24 - 12"/>
+                                  <Parameter expression="([HOUR_0_23] + 2) % 24 &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                    </Compare>
+                  </Condition>
+                </Group>
+                <Group height="100" name="Hour_3_Root" width="60" x="210" y="50">
+                  <Condition>
+                    <Expressions>
+                      <Expression name="is_weather_forecast_3_available">[WEATHER.HOURS.3.IS_AVAILABLE]</Expression>
+                    </Expressions>
+                    <Compare expression="is_weather_forecast_3_available">
+                      <Condition>
+                        <Expressions>
+                          <Expression name="hours_3_is_day">[WEATHER.HOURS.3.IS_DAY]</Expression>
+                        </Expressions>
+                        <Compare expression="hours_3_is_day">
+                          <PartText name="hours_3_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_day" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.3.CONDITION] &lt;= 15 ? [WEATHER.HOURS.3.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText name="hours_3_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_night" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.3.CONDITION] &lt;= 15 ? [WEATHER.HOURS.3.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                      <PartText height="20" width="60" x="0" y="60">
+                        <Text>
+                          <Font family="SYNC_TO_DEVICE" size="18">
+                            <Template><![CDATA[%s°]]>
+                              <Parameter expression="[WEATHER.HOURS.3.TEMPERATURE]"/>
+                            </Template>
+                          </Font>
+                        </Text>
+                      </PartText>
+                      <Condition>
+                        <Expressions>
+                          <Expression name="is_24_mode">[IS_24_HOUR_MODE]</Expression>
+                        </Expressions>
+                        <Compare expression="is_24_mode">
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s:00]]>
+                                  <Parameter expression="([HOUR_0_23] + 3) % 24"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s%s]]>
+                                  <Parameter expression="([HOUR_0_23] + 3) % 24 &lt;= 12 ? ([HOUR_0_23] + 3) % 24 : ([HOUR_0_23] + 3) % 24 - 12"/>
+                                  <Parameter expression="([HOUR_0_23] + 3) % 24 &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                    </Compare>
+                  </Condition>
+                </Group>
+                <Group height="100" name="Hour_4_Root" width="60" x="280" y="50">
+                  <Condition>
+                    <Expressions>
+                      <Expression name="is_weather_forecast_4_available">[WEATHER.HOURS.4.IS_AVAILABLE]</Expression>
+                    </Expressions>
+                    <Compare expression="is_weather_forecast_4_available">
+                      <Condition>
+                        <Expressions>
+                          <Expression name="hours_4_is_day">[WEATHER.HOURS.4.IS_DAY]</Expression>
+                        </Expressions>
+                        <Compare expression="hours_4_is_day">
+                          <PartText name="hours_4_condition_icon" height="60" width="60" x="0" y="0">
+                            <Text>
+                              <BitmapFont family="weather_icons_day" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.4.CONDITION] &lt;= 15 ? [WEATHER.HOURS.4.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText name="hours_4_condition_icon" height="60" width="60" x="0" y="0"><Text>
+                              <BitmapFont family="weather_icons_night" size="60">
+                                <Template><![CDATA[%s]]>
+                                  <Parameter expression="[WEATHER.HOURS.4.CONDITION] &lt;= 15 ? [WEATHER.HOURS.4.CONDITION] : 0"/>
+                                </Template>
+                              </BitmapFont>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                      <PartText height="20" width="60" x="0" y="60">
+                        <Text>
+                          <Font family="SYNC_TO_DEVICE" size="18">
+                            <Template><![CDATA[%s°]]>
+                              <Parameter expression="[WEATHER.HOURS.4.TEMPERATURE]"/>
+                            </Template>
+                          </Font>
+                        </Text>
+                      </PartText>
+                      <Condition>
+                        <Expressions>
+                          <Expression name="is_24_mode">[IS_24_HOUR_MODE]</Expression>
+                        </Expressions>
+                        <Compare expression="is_24_mode">
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s:00]]>
+                                  <Parameter expression="([HOUR_0_23] + 4) % 24"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Compare>
+                        <Default>
+                          <PartText height="20" width="60" x="0" y="80">
+                            <Text>
+                              <Font family="SYNC_TO_DEVICE" size="17">
+                                <Template><![CDATA[%s%s]]>
+                                  <Parameter expression="([HOUR_0_23] + 4) % 24 &lt;= 12 ? ([HOUR_0_23] + 4) % 24 : ([HOUR_0_23] + 4) % 24 - 12"/>
+                                  <Parameter expression="([HOUR_0_23] + 4) % 24 &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;"/>
+                                </Template>
+                              </Font>
+                            </Text>
+                          </PartText>
+                        </Default>
+                      </Condition>
+                    </Compare>
+                  </Condition>
+                </Group>
+                <!--Up to 5 days can be queried, with indexes from 1 to 5. Each day must be checked via IS_AVAILABLE before being used-->
+                <Condition>
+                  <Expressions>
+                    <Expression name="is_day_1_available">[WEATHER.DAYS.1.IS_AVAILABLE]</Expression>
+                  </Expressions>
+                  <Compare expression="is_day_1_available">
+                    <Group height="40" name="Day_Forecast_1" width="287" x="61" y="160">
+                      <PartDraw height="40" width="287" x="0" y="0">
+                        <RoundRectangle cornerRadiusX="20.0" cornerRadiusY="20.0" height="40.0" width="287.0" x="0.0" y="0.0">
+                          <Fill color="#ff888888"/>
+                        </RoundRectangle>
+                      </PartDraw>
+                      <Group height="30" name="Day_Forecast_1_inner" width="267" x="10" y="5">
+                        <PartText height="30" width="20" x="0" y="0">
+                          <Text>
+                            <Font family="SYNC_TO_DEVICE" size="20">
+                              <Template><![CDATA[%s:]]>
+                                <Parameter expression="(1 + [DAY_0_30]) % [DAYS_IN_MONTH] + 1"/>
+                              </Template>
+                            </Font>
+                          </Text>
+                        </PartText>
+                        <PartText name="day_1_condition_icon_day" height="30" width="30" x="25" y="0">
+                          <Text>
+                            <BitmapFont family="weather_icons_day" size="30">
+                              <Template><![CDATA[%s]]>
+                                <Parameter expression="[WEATHER.DAYS.1.CONDITION_DAY] &lt;= 15 ? [WEATHER.DAYS.1.CONDITION_DAY] : 0"/>
+                              </Template>
+                            </BitmapFont>
+                          </Text>
+                        </PartText>
+                        <PartText height="30" width="70" x="60" y="0">
+                          <Text>
+                            <Font family="SYNC_TO_DEVICE" size="20">
+                              <Template><![CDATA[%s° %s%%]]>
+                                <Parameter expression="[WEATHER.DAYS.1.TEMPERATURE_HIGH]"/>
+                                <Parameter expression="[WEATHER.DAYS.1.CHANCE_OF_PRECIPITATION]"/>
+                              </Template>
+                            </Font>
+                          </Text>
+                        </PartText>
+                        <PartText name="day_1_condition_icon_night" height="30" width="30" x="135" y="0">
+                          <Text>
+                            <BitmapFont family="weather_icons_night" size="30">
+                              <Template><![CDATA[%s]]>
+                                <Parameter expression="[WEATHER.DAYS.1.CONDITION_NIGHT] &lt;= 15 ? [WEATHER.DAYS.1.CONDITION_NIGHT] : 0"/>
+                              </Template>
+                            </BitmapFont>
+                          </Text>
+                        </PartText>
+                        <PartText height="30" width="70" x="170" y="0">
+                          <Text>
+                            <Font family="SYNC_TO_DEVICE" size="20">
+                              <Template><![CDATA[%s° %s%%]]>
+                                <Parameter expression="[WEATHER.DAYS.1.TEMPERATURE_LOW]"/>
+                                <Parameter expression="[WEATHER.DAYS.1.CHANCE_OF_PRECIPITATION_NIGHT]"/>
+                              </Template>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </Group>
+                    </Group>
+                  </Compare>
+                </Condition>
+                <Condition>
+                  <Expressions>
+                    <Expression name="is_24_h_mode">[IS_24_HOUR_MODE]</Expression>
+                  </Expressions>
+                  <Compare expression="is_24_h_mode">
+                    <PartText height="40" width="410" x="0" y="200">
+                      <Text>
+                        <Font family="SYNC_TO_DEVICE" size="22">
+                          <Template><![CDATA[Last updated: %s]]>
+                            <!--The icuText can accept a secondary argument, which can be any expression evaluating to a UTC timestamp in milliseconds.-->
+                            <Parameter expression="icuText(&quot;HH:mm&quot;, [WEATHER.LAST_UPDATED])"/>
+                          </Template>
+                        </Font>
+                      </Text>
+                    </PartText>
+                  </Compare>
+                  <Default>
+                    <PartText height="40" width="410" x="0" y="200">
+                      <Text>
+                        <Font family="SYNC_TO_DEVICE" size="22">
+                          <Template><![CDATA[Last updated: %s]]>
+                            <!--The icuText can accept a secondary argument, which can be any expression evaluating to a UTC timestamp in milliseconds.-->
+                            <Parameter expression="icuText(&quot;hh:mm&quot;, [WEATHER.LAST_UPDATED])"/>
+                          </Template>
+                        </Font>
+                      </Text>
+                    </PartText>
+                  </Default>
+                </Condition>
+              </Group>
+            </Compare>
+            <Default>
+              <Group height="255" name="Not_Available_Wrapper" width="410" x="0" y="0">
+                <PartText height="255" width="410" x="0" y="0">
+                  <Text>
+                    <Font family="SYNC_TO_DEVICE" size="30">Weather data is not available</Font>
+                  </Text>
+                </PartText>
+              </Group>
+            </Default>
+          </Condition>
+        </Group>
+      </Group>
+    </Group>
+  </Scene>
+</WatchFace>

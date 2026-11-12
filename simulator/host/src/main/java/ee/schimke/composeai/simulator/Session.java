@@ -685,11 +685,10 @@ final class Session {
 
   /**
    * The version the simulated system UI answers to {@code DEBUG_SURFACE --es operation version},
-   * which Android Studio asks before every Wear launch and refuses below 2. 3 is the version its
-   * tile, Wear Widget and complication launches recommend; 4, which only declarative (Watch Face
-   * Format) watch faces need, is not claimed: only androidx watch faces are hosted.
+   * which Android Studio asks before every Wear launch and refuses below 2. 4 is the version its
+   * tile, Wear Widget, complication, and declarative (Watch Face Format) watch face launches use.
    */
-  static final int DEBUG_SURFACE_VERSION = 3;
+  static final int DEBUG_SURFACE_VERSION = 4;
 
   /**
    * The Wear system app that draws Wear Widgets on a watch. Android Studio's Wear Widget launch
@@ -783,11 +782,12 @@ final class Session {
       case "set-watchface":
         if (wear == null) throw new IllegalStateException("set-watchface needs the Wear system UI");
         if (!c.has("component")) {
-          // `--es watchFaceId <package>`: a Watch Face Format face, which needs Wear's runtime.
-          throw new IllegalArgumentException(
-              "DEBUG_SURFACE set-watchface --es watchFaceId is a declarative (Watch Face Format)"
-                  + " watch face, which is not simulated: only androidx.wear.watchface faces are"
-                  + " hosted");
+          return run(
+              "watchface",
+              new Protocol.Json()
+                  .put("op", "set")
+                  .put("watchFaceId", c.optString("watchFaceId", app.getPackageName()))
+                  .object());
         }
         return run(
             "watchface",

@@ -171,6 +171,7 @@ final class WearSystemUi {
             .setComponent(new ComponentName(app.getPackageName(), WearHome.class.getName()));
     home = navigator.startHome(new WearHome(), intent);
     tiles.addFromLaunch(protocol);
+    watchFaces.setFromLaunch();
   }
 
   /** One cycle: the clock, timers in ongoing activities, and the heads-up card's timeout. */

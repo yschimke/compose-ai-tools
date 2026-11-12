@@ -44,7 +44,12 @@ dependencies {
   @Suppress("DEPRECATION") testRuntimeOnly(compose.desktop.currentOs)
 }
 
-tasks.withType<Test>().configureEach { jvmArgs("--enable-native-access=ALL-UNNAMED") }
+tasks.withType<Test>().configureEach {
+  jvmArgs("--enable-native-access=ALL-UNNAMED")
+  System.getProperty("dwf.validation.exportDir")?.let {
+    systemProperty("dwf.validation.exportDir", it)
+  }
+}
 
 publishing.publications.withType<MavenPublication>().configureEach {
   versionMapping { allVariants { fromResolutionResult() } }

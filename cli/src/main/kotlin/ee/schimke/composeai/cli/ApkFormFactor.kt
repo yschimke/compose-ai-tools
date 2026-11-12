@@ -92,7 +92,12 @@ internal enum class ApkFormFactor(
     private val DEX = Regex("""classes\d*\.dex""")
 
     internal fun classify(signals: ManifestSignals, dex: Sequence<ByteArray>): ApkFormFactor {
-      if (WATCH_FEATURE in signals.requiredFeatures) return WEAR
+      if (
+        WATCH_FEATURE in signals.requiredFeatures ||
+          WATCH_FACE_FORMAT_PROPERTY in signals.properties
+      ) {
+        return WEAR
+      }
       if (signals.projectedActivities.isNotEmpty()) return GLIMMER
       val xrFeature = signals.features.any { it.startsWith(XR_FEATURE_PREFIX) }
       var glimmer = false
@@ -112,6 +117,7 @@ internal enum class ApkFormFactor(
     }
 
     const val WATCH_FEATURE = "android.hardware.type.watch"
+    const val WATCH_FACE_FORMAT_PROPERTY = "com.google.wear.watchface.format.version"
     const val XR_FEATURE_PREFIX = "android.software.xr.api."
     /** Jetpack XR's two spellings of the projected (glasses) display category. */
     val XR_PROJECTED = setOf("android.hardware.display.category.XR_PROJECTED", "xr_projected")
@@ -153,6 +159,8 @@ internal data class ManifestSignals(
   val projectedActivities: List<String> = emptyList(),
   /** The manifest's `package`; empty when it has none. */
   val packageName: String = "",
+  /** `<property android:name="…">` names declared in the manifest. */
+  val properties: Set<String> = emptySet(),
 ) {
   companion object {
     private const val RES_STRING_POOL_TYPE = 0x0001
@@ -175,6 +183,7 @@ internal data class ManifestSignals(
       val features = linkedSetOf<String>()
       val required = linkedSetOf<String>()
       val projected = mutableListOf<String>()
+      val properties = linkedSetOf<String>()
       var packageName = ""
       var strings: List<String> = emptyList()
       var resourceIds = IntArray(0)
@@ -195,6 +204,7 @@ internal data class ManifestSignals(
             if (
               element == "manifest" ||
                 element == "uses-feature" ||
+                element == "property" ||
                 element == "activity" ||
                 element == "activity-alias"
             ) {
@@ -232,9 +242,14 @@ internal data class ManifestSignals(
                 features += name
                 if (isRequired) required += name
               }
+              if (element == "property" && name != null) {
+                properties += name
+              }
               if (element == "manifest") packageName = manifestPackage ?: ""
               if (
-                element != "uses-feature" && name != null && category in ApkFormFactor.XR_PROJECTED
+                (element == "activity" || element == "activity-alias") &&
+                  name != null &&
+                  category in ApkFormFactor.XR_PROJECTED
               ) {
                 projected += qualify(packageName, name)
               }
@@ -243,7 +258,7 @@ internal data class ManifestSignals(
         }
         offset += size
       }
-      return ManifestSignals(features, required, projected, packageName)
+      return ManifestSignals(features, required, projected, packageName, properties)
     }
 
     /** An activity name as the manifest writes it (`.Glasses`, `Glasses`, or qualified). */
