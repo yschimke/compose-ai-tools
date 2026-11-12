@@ -798,3 +798,56 @@ tasks.register<BenchCompileStagesTask>("benchCompileStages") {
 // this module from bit-rotting; nothing in CI invokes `check`. This hook is a local convenience
 // only — don't wire it onto a PR-path task.
 tasks.named("check") { dependsOn("composePreviewRender") }
+
+// --- Warm edit loop (regression gate) ----------------------------------------------------------
+//
+// `benchWarmEditLoop` launches this module's daemon at the pinned `composeai-preview-daemon` and
+// times the warm edit -> `compileSources` loop on `editloop/EditLoopTarget.kt`, which calls an
+// `internal` declaration of another file. It FAILS when a warm compile is not `ok`, when the
+// compiler warm-up finds nothing to warm, or when the median warm compile exceeds the budget
+// (`-PeditLoopBudgetMs`, default 2500). Unlike `benchCompileStages` above, it gates: CI runs it on
+// every PR that moves the daemon pin or this harness (`.github/workflows/edit-loop.yml`).
+val editLoopRunner =
+  configurations.create("editLoopRunner") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
+dependencies { add("editLoopRunner", project(":samples:daemon-edit-loop-runner")) }
+
+tasks.register<JavaExec>("benchWarmEditLoop") {
+  group = "verification"
+  description =
+    "Times the warm edit -> compileSources loop against the pinned daemon, and gates it."
+  dependsOn("composePreviewDaemonStart", "compileDebugKotlin")
+  classpath = editLoopRunner
+  mainClass.set("ee.schimke.composeai.editloop.EditLoopBenchKt")
+  val moduleDir = layout.projectDirectory
+  val buildDir = layout.buildDirectory
+  val budget = providers.gradleProperty("editLoopBudgetMs").orElse("2500")
+  val cycles = providers.gradleProperty("editLoopCycles").orElse("6")
+  argumentProviders.add(
+    CommandLineArgumentProvider {
+      listOf(
+        "--descriptor",
+        buildDir.file("compose-previews/daemon-launch.json").get().asFile.path,
+        "--workspace",
+        moduleDir.asFile.parentFile.parentFile.path,
+        "--edit",
+        moduleDir
+          .file("src/main/kotlin/com/example/daemonbench/editloop/EditLoopTarget.kt")
+          .asFile
+          .path,
+        "--marker",
+        "edit-loop-marker",
+        "--cycles",
+        cycles.get(),
+        "--budget-ms",
+        budget.get(),
+        "--report",
+        buildDir.file("daemon-bench/warm-edit-loop.md").get().asFile.path,
+      )
+    },
+  )
+  outputs.upToDateWhen { false }
+}

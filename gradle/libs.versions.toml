@@ -379,7 +379,7 @@ coil3 = "3.5.0"
 # reader is no longer a writer-only exemption in scripts/daemon-launch-schema-allowlist.json.
 # 3.40.0 carries a catalog's new-design `device` on the authored policy and the published
 # `statusSemantics.newDesign`.
-composeai-contracts = "3.42.0"
+composeai-contracts = "3.43.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
@@ -512,7 +512,18 @@ composeai-contracts = "3.42.0"
 # applies or warns on unconsumed `overrides.remoteCompose.namedValues` (#406, #401); renders a Wear
 # widget preview in its carousel slot (#405, #402); exposes `preview/rows` on the clients (#404);
 # and honours scripted rotary distance and swipe timing (#409).
-composeai-preview-daemon = "3.27.4"
+# 3.27.5 passes the module's class directory as a friend path to the warm compiler, so an edit
+# calling another file's `internal` function compiles in process instead of failing and moving the
+# module to Gradle for good (compose-preview-daemon#465). But 3.27.5 published no `daemon-core`:
+# its BOM still pins 3.27.4, so the fix reached nobody.
+# 3.27.6 republishes `daemon-core` with it (compose-preview-daemon#469 taught the release to count a
+# bundled, unpublished project as part of the module that bundles it). `benchWarmEditLoop`
+# (edit-loop.yml) gates that the pinned daemon's warm compile answers `ok`, and caught 3.27.6
+# still failing on Android: AGP's unit-test class path carries a jar of the module's own classes
+# ahead of the class directory, and the first copy wins.
+# 3.27.7 puts the class directory first on the warm compiler's class path
+# (compose-preview-daemon#471).
+composeai-preview-daemon = "3.27.7"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #

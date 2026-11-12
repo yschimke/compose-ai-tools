@@ -282,6 +282,9 @@ include(":samples:android-screenshot-test")
 
 include(":samples:android-daemon-bench")
 
+// Times the warm edit -> compile loop against the pinned daemon; driven by the bench above.
+include(":samples:daemon-edit-loop-runner")
+
 // Fixture for the Android (Robolectric) serve-lane e2e: its merged manifest names an `Application`
 // the render classpath doesn't carry. The lane lives in compose-preview-server; the fixture stays
 // here because it samples this repository's render classpath.

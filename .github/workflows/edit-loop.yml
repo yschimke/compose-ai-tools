@@ -1,0 +1,81 @@
+name: Warm Edit Loop
+
+# Gates the warm edit -> compile loop against the daemon this repository pins.
+#
+# `:samples:android-daemon-bench:benchWarmEditLoop` launches the bench module's preview daemon at
+# `composeai-preview-daemon`, warms its in-process compiler, then edits a file that calls another
+# file's `internal` declaration and times `compileSources` over several cycles. It fails when a warm
+# compile is not `ok`, when the warm-up finds nothing to warm, or when the median warm compile
+# exceeds EDIT_LOOP_BUDGET_MS.
+#
+# compose-preview-daemon 3.27.5 regressed this twice over and no check here noticed: the warm
+# compiler could not see `internal` declarations (compose-preview-daemon#465), and the release that
+# fixed it published no `daemon-core` (compose-preview-daemon#469). Running against the published
+# pin, not a source build, is what catches the second.
+#
+# Unlike the weekly `daemon-bench.yml`, this one gates: it runs on PRs that touch the version
+# catalog (where the daemon pin lives), the plugin's daemon launch code or this harness, on pushes
+# to main for the same paths, and nightly so a re-published coordinate cannot drift unnoticed.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/**'
+      # The Android warm-compile inputs (unit-test class path, output dir) are wired here.
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt'
+      - 'gradle-plugin/daemon-launch-builder/**'
+      - 'samples/android-daemon-bench/**'
+      - 'samples/daemon-edit-loop-runner/**'
+      - '.github/workflows/edit-loop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/**'
+      # The Android warm-compile inputs (unit-test class path, output dir) are wired here.
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt'
+      - 'gradle-plugin/daemon-launch-builder/**'
+      - 'samples/android-daemon-bench/**'
+      - 'samples/daemon-edit-loop-runner/**'
+      - '.github/workflows/edit-loop.yml'
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Median warm compile budget. Warm compiles measured 0.5-0.8 s in a cloud sandbox; the Gradle
+  # fallback this guards against costs 1.4 s and up before Gradle's own overhead. Tighten as the
+  # loop gets faster, never loosen to get a red run green without a written reason.
+  EDIT_LOOP_BUDGET_MS: '2500'
+
+jobs:
+  android:
+    name: Warm edit loop (android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Warm edit loop against the pinned daemon
+        run: ./gradlew :samples:android-daemon-bench:benchWarmEditLoop -PeditLoopBudgetMs="${EDIT_LOOP_BUDGET_MS}"
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: warm-edit-loop-android
+          path: samples/android-daemon-bench/build/daemon-bench/warm-edit-loop.md
+          if-no-files-found: warn
+          retention-days: 90
