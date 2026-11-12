@@ -518,8 +518,12 @@ composeai-contracts = "3.42.0"
 # its BOM still pins 3.27.4, so the fix reached nobody.
 # 3.27.6 republishes `daemon-core` with it (compose-preview-daemon#469 taught the release to count a
 # bundled, unpublished project as part of the module that bundles it). `benchWarmEditLoop`
-# (edit-loop.yml) gates that the pinned daemon's warm compile answers `ok`.
-composeai-preview-daemon = "3.27.6"
+# (edit-loop.yml) gates that the pinned daemon's warm compile answers `ok`, and caught 3.27.6
+# still failing on Android: AGP's unit-test class path carries a jar of the module's own classes
+# ahead of the class directory, and the first copy wins.
+# 3.27.7 puts the class directory first on the warm compiler's class path
+# (compose-preview-daemon#471).
+composeai-preview-daemon = "3.27.7"
 
 # compose-preview-server is NOT pinned here, and deliberately carries no version ref at all.
 #
