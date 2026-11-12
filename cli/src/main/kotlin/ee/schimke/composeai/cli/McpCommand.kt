@@ -1220,6 +1220,11 @@ internal fun inspectDescriptor(
       )
   }
 
+  // A warning, not an error: nothing `mcp install` can fix, and the module still renders.
+  inProcessCompileBlocker(obj)?.let { reason ->
+    findings += DoctorFinding("compile.in-process", "warning", inProcessCompileMessage(reason))
+  }
+
   val errorCount = findings.count { it.level == "error" }
   val verdict = if (errorCount > 0) "run-mcp-install" else "ok"
   val status =
