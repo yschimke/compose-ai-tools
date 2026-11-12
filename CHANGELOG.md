@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.90.1](https://github.com/yschimke/compose-ai-tools/compare/v2.90.0...v2.90.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** update compose-preview-daemon to 3.27.7, and gate the warm edit loop ([#6521](https://github.com/yschimke/compose-ai-tools/issues/6521)) ([6c77421](https://github.com/yschimke/compose-ai-tools/commit/6c77421e48a41c9a667a0c7d06a979ecd990d8fd))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.27.6 ([#6518](https://github.com/yschimke/compose-ai-tools/issues/6518)) ([ae50e01](https://github.com/yschimke/compose-ai-tools/commit/ae50e01d77378fbdb040959ecdae64be8c388f07))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3 ([#6513](https://github.com/yschimke/compose-ai-tools/issues/6513)) ([730720f](https://github.com/yschimke/compose-ai-tools/commit/730720f8a1216f5e3db126b4d82819cfc55ba3fd))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.1.0 ([#6519](https://github.com/yschimke/compose-ai-tools/issues/6519)) ([96ff32a](https://github.com/yschimke/compose-ai-tools/commit/96ff32acbc2e34b1ac8c47e7bdadcee7d7bcd1b9))
+
 ## [2.90.0](https://github.com/yschimke/compose-ai-tools/compare/v2.89.0...v2.90.0) (2026-11-11)
 
 
