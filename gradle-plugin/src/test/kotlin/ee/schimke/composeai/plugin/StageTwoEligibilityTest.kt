@@ -83,4 +83,25 @@ class StageTwoEligibilityTest {
     assertThat(reason).isNotNull()
     assertThat(reason).contains("kotlin-allopen-compiler-plugin-embeddable-2.3.20.jar")
   }
+
+  @Test
+  fun `the Kotlin JVM plugin's default scripting class path does not block the daemon`() {
+    // `kotlinCompilerPluginClasspathMain` of a plain kotlin("jvm") + Compose module, as KGP 2.4
+    // resolves it: the scripting plugin and its libraries ride along on every JVM compilation.
+    assertThat(
+        ComposePreviewTasks.unsupportedCompilerPlugins(
+          listOf(
+            "kotlin-compose-compiler-plugin-embeddable-2.4.21.jar",
+            "kotlin-scripting-compiler-embeddable-2.4.21.jar",
+            "kotlin-scripting-compiler-impl-embeddable-2.4.21.jar",
+            "kotlin-scripting-jvm-2.4.21.jar",
+            "kotlin-scripting-common-2.4.21.jar",
+            "kotlin-stdlib-2.4.21.jar",
+            "kotlin-script-runtime-2.4.21.jar",
+            "annotations-13.0.jar",
+          ),
+        ),
+      )
+      .isNull()
+  }
 }
