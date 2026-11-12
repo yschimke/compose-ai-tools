@@ -1107,11 +1107,29 @@ internal object ComposePreviewTasks {
     )
 
   /**
+   * What the Kotlin Gradle plugin puts on every Kotlin/JVM compilation's plugin class path by
+   * default: the scripting plugin, which only acts on script files, and the libraries it brings.
+   * Counting them as unsupported plugins kept every plain Kotlin/JVM (Compose Desktop) module off
+   * the in-process compile; AGP's built-in Kotlin adds none of them, which is why Android modules
+   * were unaffected.
+   */
+  private val KGP_DEFAULT_PLUGIN_CLASSPATH =
+    listOf(
+      "kotlin-scripting-",
+      "kotlin-script-runtime-",
+      "kotlin-stdlib-",
+      "annotations-13.0",
+    )
+
+  /**
    * Why a module whose Kotlin compile loads [pluginJars] (file names) cannot compile in the daemon,
    * or null when the daemon can apply every one of them.
    */
   internal fun unsupportedCompilerPlugins(pluginJars: List<String>): String? {
-    val unknown = pluginJars.filter { jar -> DAEMON_COMPILER_PLUGINS.none { jar.startsWith(it) } }
+    val unknown = pluginJars.filter { jar ->
+      DAEMON_COMPILER_PLUGINS.none { jar.startsWith(it) } &&
+        KGP_DEFAULT_PLUGIN_CLASSPATH.none { jar.startsWith(it) }
+    }
     if (unknown.isEmpty()) return null
     return "Kotlin compiler plugin ${unknown.joinToString(", ")} applied (stage 2 applies only " +
       "Compose, kotlinx-serialization and parcelize, which take no options it cannot pass)"
