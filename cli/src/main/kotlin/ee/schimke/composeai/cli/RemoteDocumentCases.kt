@@ -4,13 +4,16 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
+import ee.schimke.composeai.daemon.protocol.RemoteDocumentCasesV1
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import java.io.File
 import java.util.Base64
 import kotlin.math.roundToInt
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * One Remote Compose document to render with its own data: the input of `render-cases`. A producer
@@ -79,38 +82,28 @@ internal data class DocumentCase(
  * ```
  *
  * Values are [RemoteNamedValue]s and the profile a [RemoteComposeProfile], decoded with their own
- * serializers. Unknown fields are ignored, so a producer may carry its own. [CasesFile] mirrors the
- * contract's envelope until a released contracts version carries `RemoteDocumentCasesV1`.
+ * serializers. Unknown fields are ignored, so a producer may carry its own.
  */
 internal object RemoteDocumentCases {
-  const val SCHEMA = "compose-preview/remote-document-cases/v1"
+  const val SCHEMA = RemoteDocumentCasesV1.SCHEMA
 
   private val json = Json { ignoreUnknownKeys = true }
 
   class Invalid(message: String) : Exception(message)
 
-  @Serializable private class CasesFile(val schema: String? = null, val cases: List<CaseJson>)
-
-  @Serializable
-  private class CaseJson(
-    val id: String,
-    val document: String,
-    val widthDp: Int,
-    val heightDp: Int,
-    val dark: Boolean? = null,
-    val profile: RemoteComposeProfile? = null,
-    val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
-    val background: String? = null,
-  )
-
   fun read(file: File): List<DocumentCase> {
+    val element = runCatching {
+      json.parseToJsonElement(file.readText())
+    }
+      .getOrElse { throw Invalid("${file.path} is not JSON: ${it.message}") }
+    // The contract defaults `schema`, so check that the file itself names it.
+    val schema =
+      (element as? JsonObject)?.get("schema")?.let { (it as? JsonPrimitive)?.contentOrNull }
+    if (schema != SCHEMA) throw Invalid("${file.path} is \"$schema\", not $SCHEMA")
     val parsed = runCatching {
-      json.decodeFromString(CasesFile.serializer(), file.readText())
+      json.decodeFromJsonElement(RemoteDocumentCasesV1.serializer(), element)
     }
       .getOrElse { throw Invalid("${file.path} is not a $SCHEMA file: ${it.message}") }
-    if (parsed.schema != SCHEMA) {
-      throw Invalid("${file.path} is \"${parsed.schema}\", not $SCHEMA")
-    }
     val base = file.absoluteFile.parentFile
     return parsed.cases.map { c ->
       if (c.id.isBlank()) throw Invalid("a case has a blank id")

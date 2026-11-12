@@ -379,7 +379,7 @@ coil3 = "3.5.0"
 # reader is no longer a writer-only exemption in scripts/daemon-launch-schema-allowlist.json.
 # 3.40.0 carries a catalog's new-design `device` on the authored policy and the published
 # `statusSemantics.newDesign`.
-composeai-contracts = "3.42.0"
+composeai-contracts = "3.43.0"
 
 # The render daemons, the three renderers, the preview annotations and data API, and the data
 # extractors — the 70 modules yschimke/compose-preview-daemon publishes since its 3.0.0 (this
