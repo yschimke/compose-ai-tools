@@ -87,6 +87,17 @@ class DwfPreviewBundleTest {
     val rewritten = json.decodeFromString(PreviewManifest.serializer(), outFile.readText())
     assertThat(rewritten.previews[0].params.kind).isEqualTo(PreviewKind.SVG)
     assertThat(rewritten.previews[1].params.kind).isEqualTo(PreviewKind.COMPOSE)
+
+    val expanded = PreviewPermutations.expand(manifest.previews, listOf("accessibility"))
+    assertThat(expanded.map { it.id })
+      .containsExactly(
+        "dwf__raw_watchface",
+        "com.example.WearKt.CardPreview",
+        "com.example.WearKt.CardPreview_dark",
+        "com.example.WearKt.CardPreview_rtl",
+        "com.example.WearKt.CardPreview_fontscale-2x",
+      )
+      .inOrder()
   }
 
   @Test

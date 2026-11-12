@@ -26,6 +26,7 @@ internal object ApkDwfExtractor {
 
   private const val TYPE_STRING = 0x03
   private const val TYPE_FLOAT = 0x04
+  private const val TYPE_DIMENSION = 0x05
   private const val TYPE_INT_DEC = 0x10
   private const val TYPE_INT_HEX = 0x11
   private const val TYPE_INT_BOOLEAN = 0x12
@@ -141,8 +142,18 @@ internal object ApkDwfExtractor {
         ) {
           val target = File(resDir, subPath)
           target.parentFile?.mkdirs()
-          zip.getInputStream(entry).use { input ->
-            target.outputStream().use { out -> input.copyTo(out) }
+          if (subPath.endsWith(".xml", ignoreCase = true)) {
+            val rawBytes = zip.getInputStream(entry).use { it.readBytes() }
+            val decoded = decodeXmlOrNull(rawBytes)
+            if (decoded != null) {
+              target.writeText(decoded, Charsets.UTF_8)
+            } else {
+              target.writeBytes(rawBytes)
+            }
+          } else {
+            zip.getInputStream(entry).use { input ->
+              target.outputStream().use { out -> input.copyTo(out) }
+            }
           }
         }
       }
@@ -185,6 +196,44 @@ internal object ApkDwfExtractor {
       )
     }
     return workDir
+  }
+
+  /**
+   * Extracts `res/raw/` `<WatchFace>` XMLs and supporting `res/` drawables/fonts from [apk] into
+   * [workDir], decoding compiled `aapt2` binary XML (`AXML`) drawables back into UTF-8 text XML so
+   * `DwfResourceDirectoryResolver` can parse `<vector>` drawables offline.
+   */
+  internal fun extractResourcesToDirectory(apk: File, resDir: File) {
+    ZipFile(apk).use { zip ->
+      val entries = zip.entries()
+      while (entries.hasMoreElements()) {
+        val entry = entries.nextElement()
+        if (entry.isDirectory || !entry.name.startsWith("res/")) continue
+        val subPath = entry.name.removePrefix("res/")
+        if (
+          subPath.startsWith("drawable") ||
+            subPath.startsWith("mipmap") ||
+            subPath.startsWith("font") ||
+            subPath.startsWith("raw")
+        ) {
+          val target = File(resDir, subPath)
+          target.parentFile?.mkdirs()
+          if (subPath.endsWith(".xml", ignoreCase = true)) {
+            val rawBytes = zip.getInputStream(entry).use { it.readBytes() }
+            val decoded = decodeXmlOrNull(rawBytes)
+            if (decoded != null) {
+              target.writeText(decoded, Charsets.UTF_8)
+            } else {
+              target.writeBytes(rawBytes)
+            }
+          } else {
+            zip.getInputStream(entry).use { input ->
+              target.outputStream().use { out -> input.copyTo(out) }
+            }
+          }
+        }
+      }
+    }
   }
 
   private fun isRawXmlEntry(name: String): Boolean =
@@ -258,12 +307,16 @@ internal object ApkDwfExtractor {
                 dataType == TYPE_STRING -> strings.getOrNull(data)
                 dataType == TYPE_INT_BOOLEAN -> if (data != 0) "true" else "false"
                 dataType == TYPE_FLOAT -> java.lang.Float.intBitsToFloat(data).toString()
-                dataType == TYPE_INT_HEX -> "0x${Integer.toUnsignedString(data, 16)}"
+                dataType == TYPE_DIMENSION -> decodeDimension(data)
+                dataType == TYPE_INT_HEX ->
+                  decodeEnumAttributeOrNull(attrName, data)
+                    ?: "0x${Integer.toUnsignedString(data, 16)}"
                 dataType == TYPE_INT_COLOR_ARGB8 || dataType == TYPE_INT_COLOR_ARGB4 ->
                   "#%08X".format(data)
                 dataType == TYPE_INT_COLOR_RGB8 || dataType == TYPE_INT_COLOR_RGB4 ->
                   "#%06X".format(data and 0xFFFFFF)
-                dataType == TYPE_INT_DEC -> data.toString()
+                dataType == TYPE_INT_DEC ->
+                  decodeEnumAttributeOrNull(attrName, data) ?: data.toString()
                 else -> data.toString()
               }.orEmpty()
             sb.append(' ').append(attrName).append("=\"").append(escapeXml(attrValue)).append('"')
@@ -285,6 +338,60 @@ internal object ApkDwfExtractor {
     }
     return sb.toString()
   }
+
+  private fun decodeDimension(data: Int): String {
+    val mantissa = (data shr 8).toFloat()
+    val scale =
+      when ((data ushr 4) and 0x3) {
+        0 -> 1f
+        1 -> 1f / 128f
+        2 -> 1f / 32768f
+        else -> 1f / 8388608f
+      }
+    val value = mantissa * scale
+    val formatted =
+      if (value % 1f == 0f) {
+        value.toInt().toString()
+      } else {
+        value.toString()
+      }
+    val unit =
+      when (data and 0xf) {
+        0 -> "px"
+        1 -> "dp"
+        2 -> "sp"
+        3 -> "pt"
+        4 -> "in"
+        5 -> "mm"
+        else -> "px"
+      }
+    return "$formatted$unit"
+  }
+
+  private fun decodeEnumAttributeOrNull(attrName: String, data: Int): String? =
+    when (attrName.substringAfterLast(':')) {
+      "fillType" ->
+        when (data) {
+          0 -> "nonZero"
+          1 -> "evenOdd"
+          else -> null
+        }
+      "strokeLineCap" ->
+        when (data) {
+          0 -> "butt"
+          1 -> "round"
+          2 -> "square"
+          else -> null
+        }
+      "strokeLineJoin" ->
+        when (data) {
+          0 -> "miter"
+          1 -> "round"
+          2 -> "bevel"
+          else -> null
+        }
+      else -> null
+    }
 
   private fun escapeXml(s: String): String =
     buildString(s.length) {

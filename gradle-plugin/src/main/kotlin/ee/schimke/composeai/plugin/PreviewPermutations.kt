@@ -24,8 +24,13 @@ internal object PreviewPermutations {
   fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
     if (!expandsAccessibility(values)) return previews
     return previews.flatMap { preview ->
-      if (preview.params.kind != PreviewKind.COMPOSE) listOf(preview)
-      else
+      if (
+        preview.params.kind != PreviewKind.COMPOSE ||
+          preview.params.dwfAssetPath != null ||
+          preview.className.isEmpty()
+      ) {
+        listOf(preview)
+      } else
         listOf(
           preview,
           preview.accessibilityVariant(

@@ -1087,6 +1087,7 @@ object PreviewDiscovery {
               functionName = file.nameWithoutExtension,
               className = "",
               sourceFile = relSource,
+              includeInA11y = false,
               params =
                 PreviewParams(
                   name = file.nameWithoutExtension,

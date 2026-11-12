@@ -435,7 +435,7 @@ providers.gradleProperty("composeai.rcPlayersDir").orNull?.let { dir ->
           "rc-player-protocol" to ":rc-player-protocol",
           "rc-player-runtime" to ":rc-player-runtime",
           "rc-player-compose" to ":rc-player-compose",
-          "rc-creation-dwf" to ":rc-creation-dwf",
+          "rc-creation-compose" to ":rc-creation-compose",
           "third-party-rc-embedded-player" to ":third-party-rc-embedded-player",
         )
         .forEach { (artifact, path) ->

@@ -682,41 +682,43 @@ internal fun extractDwfDeclarationsPayload(
       DwfVariables.BATTERY_IS_LOW,
     ) + booleanConfigKeys
 
-  val declarations = LinkedHashMap<String, RemoteComposeKnobDeclaration>()
   for (op in rcDoc.operations) {
     when (op) {
       is RcTextData -> texts[op.id] = op.text
       is RcFloatConstant -> floats[op.id] = op.value.value
       is RcIntegerConstant -> ints[op.id] = op.value
       is RcColorConstant -> colors[op.id] = op.argb
-      is RcNamedVariable -> {
-        val rawName = op.name
-        if (rawName.contains(':') && !rawName.startsWith("USER:")) continue
-        val cleanName = rawName.removePrefix("USER:")
-        if (cleanName.isBlank() || cleanName in declarations) continue
-        val defaultVal: RemoteNamedValue? =
-          when (op.type) {
-            RcNamedVariable.STRING_TYPE -> RemoteNamedValue.StringValue(texts[op.id].orEmpty())
-            RcNamedVariable.FLOAT_TYPE -> RemoteNamedValue.FloatValue(floats[op.id] ?: 0f)
-            RcNamedVariable.INT_TYPE -> {
-              val v = ints[op.id] ?: 0
-              if (cleanName in knownBooleanKeys) {
-                RemoteNamedValue.BooleanValue(v != 0)
-              } else {
-                RemoteNamedValue.IntValue(v)
-              }
-            }
-            RcNamedVariable.COLOR_TYPE -> {
-              val argb = colors[op.id] ?: 0xFFFFFFFF.toInt()
-              RemoteNamedValue.ColorValue("#%08X".format(argb))
-            }
-            else -> null
-          }
-        if (defaultVal != null) {
-          declarations[cleanName] = RemoteComposeKnobDeclaration(cleanName, defaultVal)
-        }
-      }
       else -> {}
+    }
+  }
+
+  val declarations = LinkedHashMap<String, RemoteComposeKnobDeclaration>()
+  for (op in rcDoc.operations) {
+    if (op !is RcNamedVariable) continue
+    val rawName = op.name
+    if (rawName.contains(':') && !rawName.startsWith("USER:")) continue
+    val cleanName = rawName.removePrefix("USER:")
+    if (cleanName.isBlank() || cleanName in declarations) continue
+    val defaultVal: RemoteNamedValue? =
+      when (op.type) {
+        RcNamedVariable.STRING_TYPE -> RemoteNamedValue.StringValue(texts[op.id].orEmpty())
+        RcNamedVariable.FLOAT_TYPE -> RemoteNamedValue.FloatValue(floats[op.id] ?: 0f)
+        RcNamedVariable.INT_TYPE -> {
+          val v = ints[op.id] ?: 0
+          if (cleanName in knownBooleanKeys) {
+            RemoteNamedValue.BooleanValue(v != 0)
+          } else {
+            RemoteNamedValue.IntValue(v)
+          }
+        }
+        RcNamedVariable.COLOR_TYPE -> {
+          val argb = colors[op.id] ?: 0xFFFFFFFF.toInt()
+          RemoteNamedValue.ColorValue("#%08X".format(argb))
+        }
+        else -> null
+      }
+    if (defaultVal != null) {
+      declarations[cleanName] = RemoteComposeKnobDeclaration(cleanName, defaultVal)
     }
   }
 

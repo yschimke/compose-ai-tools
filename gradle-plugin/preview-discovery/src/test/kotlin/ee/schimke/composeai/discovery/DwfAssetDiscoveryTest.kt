@@ -59,6 +59,7 @@ class DwfAssetDiscoveryTest {
     assertThat(preview.id).isEqualTo("dwf__raw_chrono_face")
     assertThat(preview.functionName).isEqualTo("chrono_face")
     assertThat(preview.className).isEmpty()
+    assertThat(preview.includeInA11y).isFalse()
     assertThat(preview.params.kind).isEqualTo(PreviewKind.COMPOSE)
     assertThat(preview.params.dwfAssetPath).isEqualTo("raw/chrono_face.xml")
     assertThat(preview.params.widthDp).isEqualTo(450)

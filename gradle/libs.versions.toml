@@ -557,7 +557,7 @@ composeai-preview-daemon = "3.27.4"
 # geometry (rc-players#644), so canvases drawn from their own size (the pressure gauge's ring and
 # needle) draw instead of collapsing into the corner. `lib-rcjvm`, the compose-preview-server's
 # cmp-jvm render worker, is built from this pin.
-rcplayers = "2.33.0"
+rcplayers = "3.1.0"
 
 [libraries]
 android-emulator-proto = { module = "com.android.tools.emulator:proto", version.ref = "android-emulator-proto" }
@@ -636,7 +636,7 @@ rcplayer-trace = { module = "ee.schimke.composeai:rc-player-trace" }
 rcplayer-protocol = { module = "ee.schimke.composeai:rc-player-protocol" }
 rcplayer-runtime = { module = "ee.schimke.composeai:rc-player-runtime" }
 rcplayer-compose = { module = "ee.schimke.composeai:rc-player-compose" }
-rcplayer-creation-dwf = { module = "ee.schimke.composeai:rc-creation-dwf" }
+rcplayer-creation-compose = { module = "ee.schimke.composeai:rc-creation-compose" }
 # The browser bundle `compose-preview serve` stages into `rc-player-wasm/`: the `rc-player-wasm.zip`
 # asset on each yschimke/rc-players GitHub Release, resolved through the `rcPlayerWasmRelease` ivy
 # repository in `settings.gradle.kts`. Releases through 2.17.x also published it to Central as

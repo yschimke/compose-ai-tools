@@ -18,8 +18,10 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -186,6 +188,7 @@ final class DwfWatchFaceClient {
   private final Listener listener;
   private final Map<String, String> configValues = new LinkedHashMap<>();
   private final Map<Integer, FakeComplication> complications = new LinkedHashMap<>();
+  private final Set<Integer> touchedSlots = new LinkedHashSet<>();
 
   private byte[] document;
   private View player;
@@ -474,12 +477,13 @@ final class DwfWatchFaceClient {
   }
 
   void complication(int slot, int wireType, Object data, boolean ambient) {
+    touchedSlots.add(Integer.valueOf(slot));
     if (data == null) {
-      complications.remove(slot);
+      complications.remove(Integer.valueOf(slot));
     } else {
       String text = ComplicationSourceClient.text(data, app.getResources());
       complications.put(
-          slot,
+          Integer.valueOf(slot),
           new FakeComplication(
               slot,
               wireType,
@@ -497,17 +501,28 @@ final class DwfWatchFaceClient {
   }
 
   void setFakeComplication(int slot, FakeComplication fake, boolean ambient) {
-    if (fake == null) {
-      complications.remove(slot);
-    } else {
-      complications.put(slot, fake);
-    }
+    putFakeComplication(slot, fake);
     render(ambient);
   }
 
+  void putFakeComplication(int slot, FakeComplication fake) {
+    touchedSlots.add(Integer.valueOf(slot));
+    if (fake == null) {
+      complications.remove(Integer.valueOf(slot));
+    } else {
+      complications.put(Integer.valueOf(slot), fake);
+    }
+  }
+
   void clearFakeComplications(boolean ambient) {
+    touchedSlots.addAll(complications.keySet());
     complications.clear();
     render(ambient);
+  }
+
+  void clearFakeComplicationEntries() {
+    touchedSlots.addAll(complications.keySet());
+    complications.clear();
   }
 
   void render(boolean ambient) {
@@ -606,13 +621,18 @@ final class DwfWatchFaceClient {
       registerNames();
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
-    setBothInt("dwf.is_ambient", ambient ? 1 : 0);
+    applyVariablesTo(player, ambient);
+  }
+
+  void applyVariablesTo(Object target, boolean ambient) {
+    if (target == null) return;
+    setBothInt(target, "dwf.is_ambient", ambient ? 1 : 0);
 
     for (ConfigSpec cfg : entry.configurations) {
       String rawVal = configValues.getOrDefault(cfg.id, cfg.defaultValue);
       if ("BOOLEAN".equalsIgnoreCase(cfg.kind)) {
         int b = ("true".equalsIgnoreCase(rawVal) || "1".equals(rawVal)) ? 1 : 0;
-        setBothInt("dwf.config." + cfg.id, b);
+        setBothInt(target, "dwf.config." + cfg.id, b);
       } else {
         int optionIndex = -1;
         for (int i = 0; i < cfg.options.size(); i++) {
@@ -628,112 +648,129 @@ final class DwfWatchFaceClient {
             optionIndex = 0;
           }
         }
-        setBothInt("dwf.config." + cfg.id, optionIndex);
+        setBothInt(target, "dwf.config." + cfg.id, optionIndex);
         if ("COLOR".equalsIgnoreCase(cfg.kind)
             && optionIndex >= 0
             && optionIndex < cfg.options.size()) {
           List<Integer> colors = cfg.options.get(optionIndex).colorArgbs;
           for (int cIdx = 0; cIdx < colors.size(); cIdx++) {
-            setBothColor("dwf.color." + cfg.id + "." + cIdx, colors.get(cIdx).intValue());
+            setBothColor(target, "dwf.color." + cfg.id + "." + cIdx, colors.get(cIdx).intValue());
           }
         }
       }
     }
 
-    for (FakeComplication comp : complications.values()) {
-      int slot = comp.slot;
-      setBothInt("dwf.complication." + slot + ".type", comp.dwfTypeCode);
-      if (comp.text != null) {
-        setBothString("dwf.complication." + slot + ".text", comp.text);
+    for (Integer slotObj : touchedSlots) {
+      if (!complications.containsKey(slotObj)) {
+        resetComplicationVariables(target, slotObj.intValue());
       }
-      if (comp.title != null) {
-        setBothString("dwf.complication." + slot + ".title", comp.title);
-      }
-      if (comp.value != null) {
-        setBothFloat("dwf.complication." + slot + ".value", comp.value.floatValue());
-      }
-      if (comp.min != null) {
-        setBothFloat("dwf.complication." + slot + ".min", comp.min.floatValue());
-      }
-      if (comp.max != null) {
-        setBothFloat("dwf.complication." + slot + ".max", comp.max.floatValue());
-      }
-      if (comp.hasMonochromaticImage != null) {
-        setBothInt(
-            "dwf.complication." + slot + ".has_monochromatic_image",
-            comp.hasMonochromaticImage.booleanValue() ? 1 : 0);
-      }
-      if (comp.hasSmallImage != null) {
-        setBothInt(
-            "dwf.complication." + slot + ".has_small_image",
-            comp.hasSmallImage.booleanValue() ? 1 : 0);
-      }
-      if (comp.hasPhotoImage != null) {
-        setBothInt(
-            "dwf.complication." + slot + ".has_photo_image",
-            comp.hasPhotoImage.booleanValue() ? 1 : 0);
-      }
+    }
+
+    for (Map.Entry<Integer, FakeComplication> mapEntry : complications.entrySet()) {
+      int slot = mapEntry.getKey().intValue();
+      FakeComplication comp = mapEntry.getValue();
+      setBothInt(target, "dwf.complication." + slot + ".type", comp.dwfTypeCode);
+      setBothString(
+          target, "dwf.complication." + slot + ".text", comp.text != null ? comp.text : "");
+      setBothString(
+          target, "dwf.complication." + slot + ".title", comp.title != null ? comp.title : "");
+      setBothFloat(
+          target,
+          "dwf.complication." + slot + ".value",
+          comp.value != null ? comp.value.floatValue() : 0f);
+      setBothFloat(
+          target,
+          "dwf.complication." + slot + ".min",
+          comp.min != null ? comp.min.floatValue() : 0f);
+      setBothFloat(
+          target,
+          "dwf.complication." + slot + ".max",
+          comp.max != null ? comp.max.floatValue() : 100f);
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_monochromatic_image",
+          comp.hasMonochromaticImage != null && comp.hasMonochromaticImage.booleanValue() ? 1 : 0);
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_small_image",
+          comp.hasSmallImage != null && comp.hasSmallImage.booleanValue() ? 1 : 0);
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_photo_image",
+          comp.hasPhotoImage != null && comp.hasPhotoImage.booleanValue() ? 1 : 0);
     }
   }
 
-  private void setBothInt(String key, int value) {
-    setUserInt(key, value);
-    setUserInt("USER:" + key, value);
+  private void resetComplicationVariables(Object target, int slot) {
+    setBothInt(target, "dwf.complication." + slot + ".type", 0);
+    setBothString(target, "dwf.complication." + slot + ".text", "");
+    setBothString(target, "dwf.complication." + slot + ".title", "");
+    setBothFloat(target, "dwf.complication." + slot + ".value", 0f);
+    setBothFloat(target, "dwf.complication." + slot + ".min", 0f);
+    setBothFloat(target, "dwf.complication." + slot + ".max", 100f);
+    setBothInt(target, "dwf.complication." + slot + ".has_monochromatic_image", 0);
+    setBothInt(target, "dwf.complication." + slot + ".has_small_image", 0);
+    setBothInt(target, "dwf.complication." + slot + ".has_photo_image", 0);
   }
 
-  private void setBothFloat(String key, float value) {
-    setUserFloat(key, value);
-    setUserFloat("USER:" + key, value);
+  private void setBothInt(Object target, String key, int value) {
+    setUserInt(target, key, value);
+    setUserInt(target, "USER:" + key, value);
   }
 
-  private void setBothString(String key, String value) {
-    setUserString(key, value);
-    setUserString("USER:" + key, value);
+  private void setBothFloat(Object target, String key, float value) {
+    setUserFloat(target, key, value);
+    setUserFloat(target, "USER:" + key, value);
   }
 
-  private void setBothColor(String key, int argb) {
-    setUserColor(key, argb);
-    setUserColor("USER:" + key, argb);
+  private void setBothString(Object target, String key, String value) {
+    setUserString(target, key, value);
+    setUserString(target, "USER:" + key, value);
   }
 
-  private void setUserInt(String name, int value) {
+  private void setBothColor(Object target, String key, int argb) {
+    setUserColor(target, key, argb);
+    setUserColor(target, "USER:" + key, argb);
+  }
+
+  private void setUserInt(Object target, String name, int value) {
     try {
-      player
+      target
           .getClass()
           .getMethod("setUserLocalInt", String.class, int.class)
-          .invoke(player, name, value);
+          .invoke(target, name, value);
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
   }
 
-  private void setUserFloat(String name, float value) {
+  private void setUserFloat(Object target, String name, float value) {
     try {
-      player
+      target
           .getClass()
           .getMethod("setUserLocalFloat", String.class, float.class)
-          .invoke(player, name, value);
+          .invoke(target, name, value);
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
   }
 
-  private void setUserColor(String name, int argb) {
+  private void setUserColor(Object target, String name, int argb) {
     try {
-      player
+      target
           .getClass()
           .getMethod("setUserLocalColor", String.class, int.class)
-          .invoke(player, name, argb);
+          .invoke(target, name, argb);
       return;
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
-    setUserInt(name, argb);
+    setUserInt(target, name, argb);
   }
 
-  private void setUserString(String name, String value) {
+  private void setUserString(Object target, String name, String value) {
     try {
-      player
+      target
           .getClass()
           .getMethod("setUserLocalString", String.class, String.class)
-          .invoke(player, name, value);
+          .invoke(target, name, value);
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
   }

@@ -29,8 +29,13 @@ internal object PreviewPermutationsCli {
   fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
     if (clean(values).none { it.equals(ACCESSIBILITY, ignoreCase = true) }) return previews
     return previews.flatMap { preview ->
-      if (preview.params.kind != "COMPOSE") listOf(preview)
-      else
+      if (
+        preview.params.kind != "COMPOSE" ||
+          preview.className.isEmpty() ||
+          preview.id.startsWith("dwf__")
+      ) {
+        listOf(preview)
+      } else
         listOf(
           preview,
           preview.accessibilityVariant(

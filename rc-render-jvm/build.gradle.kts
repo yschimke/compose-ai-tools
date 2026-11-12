@@ -24,7 +24,7 @@ dependencies {
   implementation(libs.rcplayer.compose)
   implementation(libs.rcplayer.runtime)
   implementation(libs.rcplayer.protocol)
-  implementation(libs.rcplayer.creation.dwf)
+  implementation(libs.rcplayer.creation.compose)
 
   implementation(libs.jetbrains.compose.runtime)
   implementation(libs.jetbrains.compose.ui)
@@ -39,8 +39,11 @@ dependencies {
   implementation(libs.composeai.data.layoutinspector.connector)
   implementation(libs.composeai.data.layoutinspector.core)
 
+  testImplementation(kotlin("test"))
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.compose.remote.core)
   @Suppress("DEPRECATION") testRuntimeOnly(compose.desktop.currentOs)
 }
 
