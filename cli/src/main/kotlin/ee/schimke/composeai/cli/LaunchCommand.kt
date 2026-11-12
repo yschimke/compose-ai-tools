@@ -83,6 +83,15 @@ internal class LaunchCommand(private val args: List<String>) {
         }
     if (apk != null && !apk.isFile) fail("no such APK: $apk")
     if (standby && apk == null) fail("--standby restarts an app: launch <app.apk> --standby")
+    val dwfRuntime =
+      (args.flagValue("--dwf-runtime")
+          ?: System.getenv(DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() })
+        ?.let { File(it).absoluteFile }
+        ?.also { if (!it.isFile) fail("no such --dwf-runtime APK: $it") }
+    val watchfaceFlag = args.flagValue("--watchface")
+    val detected =
+      apk?.let { ApkFormFactor.inspect(it) } ?: ApkFormFactor.Detected(ApkFormFactor.PHONE, null)
+    val useDwfRuntime = detected.isWffWatchFace && dwfRuntime != null
 
     val java =
       when (val result = SimulatorJava.resolve(args.flagValue("--java"))) {
@@ -95,7 +104,7 @@ internal class LaunchCommand(private val args: List<String>) {
           )
       }
     val androidJar =
-      androidJar(listOfNotNull(args.flagValue("--project")?.let(::File), apk))
+      androidJar(listOfNotNull(args.flagValue("--project")?.let(::File), apk, dwfRuntime))
         ?: fail(
           "needs an Android SDK platform's android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
             "or pass --project, or an APK, in a build whose local.properties has sdk.dir.",
@@ -180,8 +189,13 @@ internal class LaunchCommand(private val args: List<String>) {
       fail("--adb runs one app on one device; drop --install and --app")
     }
     if ("--prepare" in args) {
-      if (apk == null) fail("--prepare converts an APK: launch <app.apk> --prepare")
-      println(classesOf(apk).absolutePath)
+      if (apk == null && dwfRuntime == null) {
+        fail("--prepare converts an APK: launch <app.apk> --prepare")
+      }
+      val prepared = linkedSetOf<File>()
+      if (apk != null) prepared += if (useDwfRuntime) dwfRuntime!! else apk
+      if (dwfRuntime != null) prepared += dwfRuntime
+      prepared.forEach { println(classesOf(it).absolutePath) }
       pair?.let { println(classesOf(it).absolutePath) }
       installs.forEach { println(classesOf(it).absolutePath) }
       (if (positional == null) appSpecs.drop(1) else appSpecs).forEach {
@@ -212,8 +226,16 @@ internal class LaunchCommand(private val args: List<String>) {
           fail("--play-services takes ${PLAY_SERVICES_STATES.joinToString(" | ")}")
         }
       }
-    val detected =
-      apk?.let { ApkFormFactor.inspect(it) } ?: ApkFormFactor.Detected(ApkFormFactor.PHONE, null)
+    val wffApks = if (useDwfRuntime) listOf(apk!!) else emptyList()
+    val watchface =
+      watchfaceFlag
+        ?: if (useDwfRuntime) {
+          ApkFormFactor.packageOf(apk!!)
+            ?: fail("could not read package name from Watch Face Format APK: $apk")
+        } else {
+          null
+        }
+    val hostApk = if (useDwfRuntime) dwfRuntime!! else apk
     val formFactor =
       args.flagValue("--form-factor")?.let {
         ApkFormFactor.byId(it)
@@ -225,7 +247,7 @@ internal class LaunchCommand(private val args: List<String>) {
     val launchActivity = detected.projectedActivity.takeIf { formFactor == ApkFormFactor.GLIMMER }
     if (formFactor != ApkFormFactor.PHONE) {
       System.err.println(
-        "compose-preview launch: ${formFactor.id} ${if (apk == null) "device" else "app"}; " +
+        "compose-preview launch: ${formFactor.id} ${if (hostApk == null) "device" else "app"}; " +
           "display ${formFactor.qualifiers}" +
           (if (args.flagValue("--qualifiers") != null || args.flagValue("--device") != null)
             " (overridden by --qualifiers / --device)"
@@ -240,8 +262,7 @@ internal class LaunchCommand(private val args: List<String>) {
           "headless.",
       )
     }
-    val watchface = args.flagValue("--watchface")
-    val hasDwf = apk?.let(ApkDwfExtractor::hasDeclarativeWatchFace) == true
+    val hasDwf = !useDwfRuntime && apk?.let(ApkDwfExtractor::hasDeclarativeWatchFace) == true
     val options =
       Options(
         sdk =
@@ -267,19 +288,21 @@ internal class LaunchCommand(private val args: List<String>) {
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
         displays = args.flagValuesAll("--display"),
-        // A device with nothing started on it shows its system UI.
+        // A device with nothing started on it, or one showing a watch face, shows its system UI.
         launcher =
-          apk == null ||
+          hostApk == null ||
             adb ||
             "--launcher" in args ||
-            watchface != null ||
+            (watchface != null && formFactor == ApkFormFactor.WEAR) ||
             hasDwf ||
             args.flagValuesAll("--widget").isNotEmpty() ||
             args.flagValuesAll("--tile").isNotEmpty(),
-        noLaunch = apk == null || adb,
+        noLaunch =
+          hostApk == null || adb || (watchface != null && formFactor == ApkFormFactor.WEAR),
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
         watchface = watchface,
+        wffApks = wffApks,
         jvmOptions =
           System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
             ?: emptyList(),
@@ -299,19 +322,21 @@ internal class LaunchCommand(private val args: List<String>) {
         "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
       val natives = hostNatives.computeIfAbsent(apkStamp) { hostNatives(launch.apk, options) }
       val dwfDir =
-        dwfDirs
-          .computeIfAbsent(apkStamp) {
-            Optional.ofNullable(
-              ApkDwfExtractor.extractAndCompile(
-                apk = launch.apk,
-                javaBinary = java.binary,
-                robolectricJars = robolectricJars,
-                cacheRoot = simulatorCacheDir,
-                verbose = verbose,
-              ),
-            )
-          }
-          .orElse(null)
+        if (options.wffApks.isNotEmpty()) null
+        else
+          dwfDirs
+            .computeIfAbsent(apkStamp) {
+              Optional.ofNullable(
+                ApkDwfExtractor.extractAndCompile(
+                  apk = launch.apk,
+                  javaBinary = java.binary,
+                  robolectricJars = robolectricJars,
+                  cacheRoot = simulatorCacheDir,
+                  verbose = verbose,
+                ),
+              )
+            }
+            .orElse(null)
       val dwfProperties =
         if (dwfDir != null) mapOf("composeai.simulator.dwfDir" to dwfDir.absolutePath)
         else emptyMap()
@@ -592,15 +617,17 @@ internal class LaunchCommand(private val args: List<String>) {
       val grpcPort =
         args.flagValue("--grpc-port")?.let { it.toIntOrNull() ?: fail("--grpc-port takes a port") }
           ?: DeviceHost.grpcPortFor(consolePort)
-      exitProcess(DeviceHost(virtual, grpcPort, control = control != null, initialApk = apk).run())
+      exitProcess(
+        DeviceHost(virtual, grpcPort, control = control != null, initialApk = hostApk).run(),
+      )
     }
-    if (apk == null) {
+    if (hostApk == null) {
       val command = bootCommand(systemApk)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
       exitProcess(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
     // The normal and `--pair` launches run behind a SimulatorSupervisor (`restart`, `update`).
-    val conversion = conversionOf(apk)
+    val conversion = conversionOf(hostApk)
     // What every reload compares against: the classes this APK was built from.
     live?.recordBaseline()
     val classes = conversion.entry.classesJar
@@ -616,7 +643,7 @@ internal class LaunchCommand(private val args: List<String>) {
     val topology = buildList {
       add(
         if (positional == null && appSpecs.isNotEmpty()) appSpecs.first()
-        else LaunchTopology.App(primaryDevice, apk),
+        else LaunchTopology.App(primaryDevice, hostApk),
       )
       val first = first()
       pair?.let { add(LaunchTopology.App(WATCH, it)) }
@@ -686,7 +713,7 @@ internal class LaunchCommand(private val args: List<String>) {
 
     if (control == null && live == null) {
       // A window only: nothing to supervise, so the simulator has the terminal to itself.
-      val command = commandFor(SimulatorSupervisor.Launch(apk, listOf(classes)), options)
+      val command = commandFor(SimulatorSupervisor.Launch(hostApk, listOf(classes)), options)
       if (verbose) System.err.println("compose-preview launch: ${command.joinToString(" ")}")
       finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
     }
@@ -742,27 +769,7 @@ internal class LaunchCommand(private val args: List<String>) {
       }
     val hasWatch = devices.any(LaunchTopology::isWatch)
     val supervisors = topology.mapIndexed { i, app ->
-      var own = options
-      // A device named a watch is one: the first app keeps the launch's own Wear display options
-      // when its APK is a Wear app, and gets the watch's otherwise.
-      val watch = LaunchTopology.isWatch(app.device)
-      if (watch && (app.device != primaryDevice || own.formFactor != ApkFormFactor.WEAR.id)) {
-        own =
-          own.copy(
-            qualifiers = pairQualifiers ?: ApkFormFactor.WEAR.qualifiers,
-            // Drawn round, with the rotary input; --device presets are phone-sized, so the watch
-            // keeps its own display, and the phone's projected activity is not the watch's.
-            formFactor = ApkFormFactor.WEAR.id,
-            launchActivity = null,
-            device = null,
-            // --display and --widget are the phone's; the watch has its one round display.
-            displays = emptyList(),
-            widgets = emptyList(),
-          )
-      } else if (hasWatch && !LaunchTopology.isWatch(app.device)) {
-        // --tile is the watch's.
-        own = own.copy(tiles = emptyList())
-      }
+      var own = deviceOptions(options, topology, primaryDevice, hasWatch, pairQualifiers, app)
       dataLayer?.let { own = own.copy(dataLayer = DataLayerNode(it.port, app.device)) }
       buses[app.device]?.let { bus ->
         own =
@@ -777,18 +784,6 @@ internal class LaunchCommand(private val args: List<String>) {
                     },
                   "composeai.simulator.device.sdcard" to sdcards.getValue(app.device).path,
                 ),
-          )
-      }
-      if (!LaunchTopology.isFirstOnDevice(topology, app)) {
-        // In the background, with no activity until one is started; its window, hidden until it
-        // comes on screen, and its home screen are the device's.
-        own =
-          own.copy(
-            noLaunch = true,
-            displays = emptyList(),
-            widgets = emptyList(),
-            tiles = emptyList(),
-            properties = own.properties + ("composeai.simulator.device.background" to "true"),
           )
       }
       val emit = { line: String ->
@@ -884,8 +879,13 @@ internal class LaunchCommand(private val args: List<String>) {
      * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
      */
     val tiles: List<String> = emptyList(),
-    /** Watch face (androidx service class or declarative watchFaceId) active at launch. */
+    /**
+     * Watch face (androidx service class, component, declarative watchFaceId, or WFF package)
+     * active at launch (`--watchface`).
+     */
     val watchface: String? = null,
+    /** Resource-only Watch Face Format APKs installed alongside DWF runtime (`--dwf-runtime`). */
+    val wffApks: List<File> = emptyList(),
     /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
     val jvmOptions: List<String> = emptyList(),
     /**
@@ -1075,6 +1075,9 @@ internal class LaunchCommand(private val args: List<String>) {
 
     /** Extra options for the simulator JVM, whitespace-separated. */
     const val JVM_OPTIONS_ENV = "COMPOSE_PREVIEW_SIMULATOR_JVM_OPTIONS"
+
+    /** Default path to DeclarativeWatchFaceRuntime.apk when `--dwf-runtime` is omitted. */
+    const val DWF_RUNTIME_ENV = "COMPOSE_PREVIEW_DWF_RUNTIME_APK"
 
     /** How many changed classes a reload's answer names. */
     private const val MAX_LISTED_CLASSES = 20
@@ -1279,6 +1282,10 @@ internal class LaunchCommand(private val args: List<String>) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
       }
       options.watchface?.let { properties["composeai.simulator.watchface"] = it }
+      if (options.wffApks.isNotEmpty()) {
+        properties["composeai.simulator.wffApks"] =
+          options.wffApks.joinToString(File.pathSeparator) { it.path }
+      }
       options.dataLayer?.let {
         if (it.agent) properties["composeai.simulator.datalayer.agent"] = "true"
         else properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
@@ -1300,6 +1307,47 @@ internal class LaunchCommand(private val args: List<String>) {
       add(LAUNCH_MAIN)
       add(apk.path)
       classes.forEach { add(it.path) }
+    }
+
+    internal fun deviceOptions(
+      options: Options,
+      topology: List<LaunchTopology.App>,
+      primaryDevice: String,
+      hasWatch: Boolean,
+      pairQualifiers: String?,
+      app: LaunchTopology.App,
+    ): Options {
+      var own = options
+      val watch = LaunchTopology.isWatch(app.device)
+      if (watch && (app.device != primaryDevice || own.formFactor != ApkFormFactor.WEAR.id)) {
+        own =
+          own.copy(
+            qualifiers = pairQualifiers ?: ApkFormFactor.WEAR.qualifiers,
+            formFactor = ApkFormFactor.WEAR.id,
+            launchActivity = null,
+            device = null,
+            displays = emptyList(),
+            widgets = emptyList(),
+          )
+      } else if (hasWatch && !watch) {
+        own = own.copy(tiles = emptyList(), watchface = null, wffApks = emptyList())
+      }
+      if (watch && own.watchface != null) {
+        own = own.copy(launcher = true, noLaunch = true)
+      }
+      if (!LaunchTopology.isFirstOnDevice(topology, app)) {
+        own =
+          own.copy(
+            noLaunch = true,
+            displays = emptyList(),
+            widgets = emptyList(),
+            tiles = emptyList(),
+            watchface = null,
+            wffApks = emptyList(),
+            properties = own.properties + ("composeai.simulator.device.background" to "true"),
+          )
+      }
+      return own
     }
 
     /**
@@ -1384,8 +1432,11 @@ internal class LaunchCommand(private val args: List<String>) {
                               short name) on the home screen (repeatable; implies --launcher).
         --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
                               (repeatable; implies --launcher). With --pair, the watch's.
-        --watchface <face>    Wear: set an androidx watch face service or Declarative Watch Face
-                              Format resource id at launch (implies --launcher).
+        --watchface <face>    Wear: set an androidx watch face service, Declarative Watch Face
+                              Format resource id, or WFF package at launch (implies --launcher).
+        --dwf-runtime <apk>   Wear: DeclarativeWatchFaceRuntime.apk used to execute a resource-only
+                              Watch Face Format APK (or set COMPOSE_PREVIEW_DWF_RUNTIME_APK).
+                              Converted once and cached; pre-warm with --prepare.
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
                               of the machine's memory, 768m to 2g, for each of a pair).

@@ -75,6 +75,7 @@ final class SimulatorSandbox {
             .newBuilder()
             .addShadowClasses(
                 SimulatorShadowContextImpl.class,
+                SimulatorShadowPackageManager.class,
                 SimulatorShadowConnectivityManager.class,
                 SimulatorShadowWifiManager.class,
                 SimulatorShadowTelephonyManager.class,
@@ -182,6 +183,8 @@ final class SimulatorSandbox {
         .doNotInstrumentPackage("android.support.v7.view.")
         .doNotInstrumentPackage("android.arch")
         .doNotInstrumentPackage("android.support.test")
+        .doNotInstrumentPackage("android.support.wearable.")
+        .doNotInstrumentPackage("com.google.wear.watchface.")
         .doNotInstrumentPackage("android.R");
     builder.doNotInstrumentClass("android.app.RecoverableSecurityException");
     builder.addInstrumentedClass(ShadowGooglePlayServicesUtilLight.UTIL_LIGHT);

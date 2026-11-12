@@ -147,6 +147,9 @@ public final class ApkAppLoader implements Runnable {
             .setPackage(application.getPackageName());
     List<ResolveInfo> found = application.getPackageManager().queryIntentActivities(launcher, 0);
     if (found.isEmpty()) {
+      if (Boolean.getBoolean(WearSystemUi.PROPERTY)) {
+        return registerNoAppActivity(application);
+      }
       throw new IllegalArgumentException("Could not find a launcher Activity in provided manifest");
     }
     return found.get(0).activityInfo;

@@ -49,8 +49,14 @@ internal enum class ApkFormFactor(
    * What [inspect] found. [projectedActivity] is the fully qualified class (or alias) of the first
    * activity whose `requiredDisplayCategory` is projected: an AI-glasses app typically pairs a
    * phone launcher with it, and a Glimmer launch starts it instead of the launcher.
+   * [isWffWatchFace] marks a resource-only Watch Face Format APK (`hasCode="false"`), which needs
+   * `DeclarativeWatchFaceRuntime.apk` to execute its declarative XML watch face.
    */
-  data class Detected(val formFactor: ApkFormFactor, val projectedActivity: String?)
+  data class Detected(
+    val formFactor: ApkFormFactor,
+    val projectedActivity: String?,
+    val isWffWatchFace: Boolean = false,
+  )
 
   companion object {
     fun byId(id: String): ApkFormFactor? = entries.firstOrNull { it.id == id.lowercase() }
@@ -70,21 +76,26 @@ internal enum class ApkFormFactor(
       ?.ifEmpty { null }
 
     /**
-     * [apk]'s form factor and its projected (glasses) activity, if it declares one; [PHONE] and no
-     * activity when nothing marks it, or it cannot be read.
+     * [apk]'s form factor, its projected (glasses) activity if it declares one, and whether it is a
+     * declarative Watch Face Format APK; [PHONE] and no activity when nothing marks it, or it
+     * cannot be read.
      */
     fun inspect(apk: File): Detected = runCatching {
       ZipFile(apk).use { zip ->
         val manifest =
           zip.getEntry("AndroidManifest.xml")?.let { zip.getInputStream(it).readBytes() }
         val signals = manifest?.let { ManifestSignals.read(it) } ?: ManifestSignals()
-        val dex =
-          zip
-            .entries()
-            .asSequence()
-            .filter { DEX.matches(it.name) }
-            .map { zip.getInputStream(it).readBytes() }
-        Detected(classify(signals, dex), signals.projectedActivities.firstOrNull())
+        val dexEntries = zip.entries().asSequence().filter { DEX.matches(it.name) }.toList()
+        val hasWatchFaceXml = zip.getEntry("res/raw/watchface.xml") != null
+        val isWff =
+          (WATCH_FACE_FORMAT_PROPERTY in signals.properties || hasWatchFaceXml) &&
+            dexEntries.isEmpty()
+        val dex = dexEntries.asSequence().map { zip.getInputStream(it).readBytes() }
+        Detected(
+          if (isWff) WEAR else classify(signals, dex),
+          signals.projectedActivities.firstOrNull(),
+          isWffWatchFace = isWff,
+        )
       }
     }
       .getOrDefault(Detected(PHONE, null))
@@ -150,8 +161,9 @@ internal enum class ApkFormFactor(
 
 /**
  * What [ApkFormFactor] reads from a compiled (binary XML) `AndroidManifest.xml`: every
- * `uses-feature` name, those not marked `required="false"`, and the activities (or aliases) whose
- * `requiredDisplayCategory` is projected, fully qualified against the manifest's `package`.
+ * `uses-feature` name, those not marked `required="false"`, the activities (or aliases) whose
+ * `requiredDisplayCategory` is projected, fully qualified against the manifest's `package`, and
+ * `<property>` names declared in the manifest.
  */
 internal data class ManifestSignals(
   val features: Set<String> = emptySet(),

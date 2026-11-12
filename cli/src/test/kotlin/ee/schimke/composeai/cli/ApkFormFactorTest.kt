@@ -154,6 +154,54 @@ class ApkFormFactorTest {
     assertEquals("w227dp-h227dp-round-watch-xhdpi", ApkFormFactor.WEAR.qualifiers)
   }
 
+  @Test
+  fun `a watch face format apk is detected as wear and resource-only wff`() {
+    val root = Files.createTempDirectory("form-factor").toFile()
+    try {
+      val byProperty = File(root, "wff-property.apk")
+      ZipOutputStream(byProperty.outputStream()).use { zip ->
+        zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+        zip.write(
+          manifest(
+            Element("manifest", mapOf("package" to "com.google.wear.watchface.simpledigital")),
+            Element("uses-feature", mapOf("name" to "android.hardware.type.watch")),
+            Element(
+              "property",
+              mapOf("name" to ApkFormFactor.WATCH_FACE_FORMAT_PROPERTY, "value" to "1"),
+            ),
+          ),
+        )
+        zip.closeEntry()
+      }
+      assertEquals(
+        ApkFormFactor.Detected(ApkFormFactor.WEAR, null, isWffWatchFace = true),
+        ApkFormFactor.inspect(byProperty),
+      )
+      assertEquals("com.google.wear.watchface.simpledigital", ApkFormFactor.packageOf(byProperty))
+
+      val byXml = File(root, "wff-xml.apk")
+      ZipOutputStream(byXml.outputStream()).use { zip ->
+        zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+        zip.write(
+          manifest(
+            Element("manifest", mapOf("package" to "com.example.wff")),
+            Element("uses-feature", mapOf("name" to "android.hardware.type.watch")),
+          ),
+        )
+        zip.closeEntry()
+        zip.putNextEntry(ZipEntry("res/raw/watchface.xml"))
+        zip.write("<WatchFace width=\"450\" height=\"450\"/>".toByteArray())
+        zip.closeEntry()
+      }
+      assertEquals(
+        ApkFormFactor.Detected(ApkFormFactor.WEAR, null, isWffWatchFace = true),
+        ApkFormFactor.inspect(byXml),
+      )
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
   // -----------------------------------------------------------------------------------------------
   // A minimal binary XML writer: a UTF-16 string pool and one start element per [Element], the
   // shape aapt2 writes. Attribute names are matched by name, so no resource map is needed.

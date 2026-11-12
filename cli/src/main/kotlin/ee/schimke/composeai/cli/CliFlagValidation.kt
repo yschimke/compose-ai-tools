@@ -279,6 +279,7 @@ internal object CliFlagValidation {
           "--launcher",
           "--tile",
           "--watchface",
+          "--dwf-runtime",
           "--qualifiers",
           "--device",
           "--display",
