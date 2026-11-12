@@ -112,6 +112,106 @@ final class DwfWatchFaceClient {
           slot, wireType, dwfTypeCode, text, title, value, min, max, hasMono, hasSmall, hasPhoto);
     }
 
+    static FakeComplication fromWireData(
+        int slot, int fallbackWireType, Object data, Object resources, long nowMillis) {
+      int actualWireType = optionalInt(data, "getType", fallbackWireType);
+      String shortText = wireTextAt(data, "getShortText", resources, nowMillis);
+      String longText = wireTextAt(data, "getLongText", resources, nowMillis);
+      String text = shortText != null ? shortText : longText;
+      String shortTitle = wireTextAt(data, "getShortTitle", resources, nowMillis);
+      String longTitle = wireTextAt(data, "getLongTitle", resources, nowMillis);
+      String title = shortTitle != null ? shortTitle : longTitle;
+
+      Float value = optionalFloat(data, "hasRangedValue", "getRangedValue");
+      Float min = optionalFloat(data, "hasRangedMinValue", "getRangedMinValue");
+      Float max = optionalFloat(data, "hasRangedMaxValue", "getRangedMaxValue");
+      if (max == null) {
+        max = optionalFloat(data, "hasTargetValue", "getTargetValue");
+      }
+      if (min == null && actualWireType == 13 && (value != null || max != null)) {
+        min = Float.valueOf(0f);
+      }
+
+      Boolean hasMono = optionalImagePresent(data, "hasIcon", "getIcon");
+      Boolean hasSmall = optionalImagePresent(data, "hasSmallImage", "getSmallImage");
+      Boolean hasPhoto = optionalImagePresent(data, "hasLargeImage", "getLargeImage");
+
+      return new FakeComplication(
+          slot,
+          actualWireType,
+          wireTypeToDwfTypeCode(actualWireType),
+          text,
+          title,
+          value,
+          min,
+          max,
+          hasMono,
+          hasSmall,
+          hasPhoto);
+    }
+
+    private static String wireTextAt(
+        Object data, String getter, Object resources, long nowMillis) {
+      try {
+        Object complicationText = data.getClass().getMethod(getter).invoke(data);
+        if (complicationText == null) return null;
+        for (Method m : complicationText.getClass().getMethods()) {
+          if (!"getTextAt".equals(m.getName()) || m.getParameterCount() != 2) continue;
+          Class<?> secondParam = m.getParameterTypes()[1];
+          if (secondParam != long.class && secondParam != Long.class) continue;
+          Object value = m.invoke(complicationText, resources, Long.valueOf(nowMillis));
+          return value == null || value.toString().isEmpty() ? null : value.toString();
+        }
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return null;
+    }
+
+    private static int optionalInt(Object target, String getter, int fallback) {
+      try {
+        Object out = target.getClass().getMethod(getter).invoke(target);
+        if (out instanceof Number) return ((Number) out).intValue();
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return fallback;
+    }
+
+    private static Float optionalFloat(Object target, String hasGetter, String valueGetter) {
+      try {
+        Method has = findNoArgMethod(target.getClass(), hasGetter);
+        if (has != null) {
+          Object present = has.invoke(target);
+          if (Boolean.FALSE.equals(present)) return null;
+        }
+        Object out = target.getClass().getMethod(valueGetter).invoke(target);
+        if (out instanceof Number) return Float.valueOf(((Number) out).floatValue());
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return null;
+    }
+
+    private static Boolean optionalImagePresent(Object target, String hasGetter, String iconGetter) {
+      try {
+        Method has = findNoArgMethod(target.getClass(), hasGetter);
+        if (has != null) {
+          Object present = has.invoke(target);
+          if (present instanceof Boolean) return (Boolean) present;
+        }
+        Object icon = target.getClass().getMethod(iconGetter).invoke(target);
+        return Boolean.valueOf(icon != null);
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return null;
+    }
+
+    private static Method findNoArgMethod(Class<?> type, String name) {
+      try {
+        return type.getMethod(name);
+      } catch (NoSuchMethodException e) {
+        return null;
+      }
+    }
+
     JSONObject toJson() {
       Protocol.Json json =
           new Protocol.Json()
@@ -481,21 +581,11 @@ final class DwfWatchFaceClient {
     if (data == null) {
       complications.remove(Integer.valueOf(slot));
     } else {
-      String text = ComplicationSourceClient.text(data, app.getResources());
+      Object resources = app == null ? null : app.getResources();
       complications.put(
           Integer.valueOf(slot),
-          new FakeComplication(
-              slot,
-              wireType,
-              wireTypeToDwfTypeCode(wireType),
-              text,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null));
+          FakeComplication.fromWireData(
+              slot, wireType, data, resources, System.currentTimeMillis()));
     }
     render(ambient);
   }

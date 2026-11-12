@@ -185,4 +185,153 @@ public class DwfWatchFaceClientTest {
       tmpDir.delete();
     }
   }
+
+  public static final class StubComplicationText {
+    private final String value;
+
+    StubComplicationText(String value) {
+      this.value = value;
+    }
+
+    public CharSequence getTextAt(Object resources, long nowMillis) {
+      return value;
+    }
+  }
+
+  public static final class StubWireComplicationData {
+    private final int type;
+    private final StubComplicationText shortText;
+    private final StubComplicationText shortTitle;
+    private final boolean hasRangedValue;
+    private final float rangedValue;
+    private final boolean hasRangedMin;
+    private final float rangedMin;
+    private final boolean hasRangedMax;
+    private final float rangedMax;
+    private final boolean hasTarget;
+    private final float target;
+    private final boolean hasIcon;
+
+    StubWireComplicationData(
+        int type,
+        String shortText,
+        String shortTitle,
+        boolean hasRangedValue,
+        float rangedValue,
+        boolean hasRangedMin,
+        float rangedMin,
+        boolean hasRangedMax,
+        float rangedMax,
+        boolean hasTarget,
+        float target,
+        boolean hasIcon) {
+      this.type = type;
+      this.shortText = shortText == null ? null : new StubComplicationText(shortText);
+      this.shortTitle = shortTitle == null ? null : new StubComplicationText(shortTitle);
+      this.hasRangedValue = hasRangedValue;
+      this.rangedValue = rangedValue;
+      this.hasRangedMin = hasRangedMin;
+      this.rangedMin = rangedMin;
+      this.hasRangedMax = hasRangedMax;
+      this.rangedMax = rangedMax;
+      this.hasTarget = hasTarget;
+      this.target = target;
+      this.hasIcon = hasIcon;
+    }
+
+    public int getType() {
+      return type;
+    }
+
+    public StubComplicationText getShortText() {
+      return shortText;
+    }
+
+    public StubComplicationText getShortTitle() {
+      return shortTitle;
+    }
+
+    public boolean hasRangedValue() {
+      return hasRangedValue;
+    }
+
+    public float getRangedValue() {
+      return rangedValue;
+    }
+
+    public boolean hasRangedMinValue() {
+      return hasRangedMin;
+    }
+
+    public float getRangedMinValue() {
+      return rangedMin;
+    }
+
+    public boolean hasRangedMaxValue() {
+      return hasRangedMax;
+    }
+
+    public float getRangedMaxValue() {
+      return rangedMax;
+    }
+
+    public boolean hasTargetValue() {
+      return hasTarget;
+    }
+
+    public float getTargetValue() {
+      return target;
+    }
+
+    public boolean hasIcon() {
+      return hasIcon;
+    }
+  }
+
+  @Test
+  public void preservesNumericAndTextFieldsFromBoundWireComplicationData() {
+    DwfWatchFaceClient.Entry entry =
+        new DwfWatchFaceClient.Entry(
+            "com.example/.WatchFace",
+            "Complications",
+            new File("."),
+            "watchface.rc",
+            450,
+            450,
+            "CIRCLE",
+            Collections.singletonList(new WatchFaceClient.Slot(1, new int[] {5, 13}, true)),
+            Collections.emptyList());
+    DwfWatchFaceClient client = new DwfWatchFaceClient(null, entry, null);
+    FakePlayerTarget target = new FakePlayerTarget();
+
+    StubWireComplicationData rangedWire =
+        new StubWireComplicationData(
+            5, "75%", "Battery", true, 75f, true, 10f, true, 200f, false, 0f, true);
+    DwfWatchFaceClient.FakeComplication ranged =
+        DwfWatchFaceClient.FakeComplication.fromWireData(1, 5, rangedWire, null, 1_000L);
+    client.putFakeComplication(1, ranged);
+    client.applyVariablesTo(target, false);
+    assertEquals(3, target.ints.get("dwf.complication.1.type").intValue());
+    assertEquals("75%", target.strings.get("dwf.complication.1.text"));
+    assertEquals("Battery", target.strings.get("dwf.complication.1.title"));
+    assertEquals(75f, target.floats.get("dwf.complication.1.value").floatValue(), 0.001f);
+    assertEquals(10f, target.floats.get("dwf.complication.1.min").floatValue(), 0.001f);
+    assertEquals(200f, target.floats.get("dwf.complication.1.max").floatValue(), 0.001f);
+    assertEquals(1, target.ints.get("dwf.complication.1.has_monochromatic_image").intValue());
+
+    StubWireComplicationData goalWire =
+        new StubWireComplicationData(
+            13, "6,400", "Steps", true, 6400f, false, 0f, false, 0f, true, 10000f, false);
+    DwfWatchFaceClient.FakeComplication goal =
+        DwfWatchFaceClient.FakeComplication.fromWireData(1, 13, goalWire, null, 1_000L);
+    client.putFakeComplication(1, goal);
+    client.applyVariablesTo(target, false);
+    assertEquals(7, target.ints.get("dwf.complication.1.type").intValue());
+    assertEquals("6,400", target.strings.get("dwf.complication.1.text"));
+    assertEquals("Steps", target.strings.get("dwf.complication.1.title"));
+    assertEquals(6400f, target.floats.get("dwf.complication.1.value").floatValue(), 0.001f);
+    assertEquals(0f, target.floats.get("dwf.complication.1.min").floatValue(), 0.001f);
+    assertEquals(10000f, target.floats.get("dwf.complication.1.max").floatValue(), 0.001f);
+    assertEquals(0, target.ints.get("dwf.complication.1.has_monochromatic_image").intValue());
+  }
 }

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.discovery
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -621,6 +623,8 @@ data class PreviewParams(
    * relative path (for example `raw/watchface.xml`), compiled to `.rc` and rendered via
    * `rc-render-jvm`.
    */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
   val dwfAssetPath: String? = null,
 )
 
