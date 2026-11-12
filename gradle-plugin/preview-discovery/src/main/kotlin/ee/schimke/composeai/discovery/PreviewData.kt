@@ -1,5 +1,7 @@
 package ee.schimke.composeai.discovery
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -616,6 +618,14 @@ data class PreviewParams(
    * inside the preview body).
    */
   val captureGutter: CaptureGutterDp? = null,
+  /**
+   * Declarative Watch Face (Watch Face Format `<WatchFace>`) XML previews only: resource-root
+   * relative path (for example `raw/watchface.xml`), compiled to `.rc` and rendered via
+   * `rc-render-jvm`.
+   */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
+  val dwfAssetPath: String? = null,
 )
 
 /**

@@ -9,7 +9,7 @@ import java.util.Properties
  * this repo).
  */
 internal object PluginVersion {
-  val value: String by lazy {
+  private val properties: Properties by lazy {
     val props = Properties()
     val stream =
       PluginVersion::class
@@ -18,6 +18,13 @@ internal object PluginVersion {
         .getResourceAsStream("ee/schimke/composeai/plugin/plugin-version.properties")
         ?: error("plugin-version.properties missing from plugin jar")
     stream.use { props.load(it) }
-    props.getProperty("version") ?: error("version property missing from plugin-version.properties")
+    props
   }
+
+  val value: String by lazy {
+    properties.getProperty("version")
+      ?: error("version property missing from plugin-version.properties")
+  }
+
+  val rcRenderJvm: String by lazy { properties.getProperty("rcRenderJvm") ?: value }
 }

@@ -429,6 +429,25 @@ providers.gradleProperty("composeai.previewDaemonDir").orNull?.let { dir ->
   }
 }
 
+providers.gradleProperty("composeai.rcPlayersDir").orNull?.let { dir ->
+  includeBuild(dir) {
+    dependencySubstitution {
+      mapOf(
+          "rc-players-bom" to ":bom",
+          "rc-player-trace" to ":rc-player-trace",
+          "rc-player-protocol" to ":rc-player-protocol",
+          "rc-player-runtime" to ":rc-player-runtime",
+          "rc-player-compose" to ":rc-player-compose",
+          "rc-creation-compose" to ":rc-creation-compose",
+          "third-party-rc-embedded-player" to ":third-party-rc-embedded-player",
+        )
+        .forEach { (artifact, path) ->
+          substitute(module("ee.schimke.composeai:$artifact")).using(project(path))
+        }
+    }
+  }
+}
+
 include(":bom")
 
 // Project paths applying `composeai.maven-publishing`, handed to `:bom` through a system property
@@ -464,3 +483,4 @@ val ktfmtProjectPaths = buildList {
   rootProject.children.forEach(::visit)
 }
 System.setProperty("composeai.ktfmtProjectPaths", ktfmtProjectPaths.joinToString(","))
+System.setProperty("composeai.toolsKtfmtProjectPaths", ktfmtProjectPaths.joinToString(","))

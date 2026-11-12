@@ -106,6 +106,16 @@ object PreviewDiscovery {
      */
     val svgRenderSubdir: String = "renders",
     /**
+     * Resource roots (for example Android `src/main/res` or desktop resource dirs) scanned for
+     * Declarative Watch Face (`<WatchFace>`) XML files.
+     */
+    val dwfResourceDirs: List<File> = emptyList(),
+    /**
+     * Subdirectory for Declarative Watch Face `renderOutput`s; disjoint (`dwf-renders`) on Android
+     * so `composePreviewRenderDwf` and Robolectric stay independently cacheable.
+     */
+    val dwfRenderSubdir: String = "renders",
+    /**
      * The module's own classes packaged as JARs (AGP's scoped `PROJECT` `CLASSES` artifact).
      * Method-walked like [classDirs] and not subject to the dependency filter. Needed because AGP 9
      * built-in Kotlin never writes the legacy `kotlin-classes/<variant>` directory (#1924).
@@ -720,6 +730,7 @@ object PreviewDiscovery {
       ) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
+        discoverDwfAssets(input) +
         buildCatalogPreviews(
           rawColorCatalogTokens,
           input.catalogRenderSupported,
@@ -782,7 +793,9 @@ object PreviewDiscovery {
     // Hard-fail only with `failOnEmpty=true`; zero previews in one module is normal. A missing
     // `@Preview` annotation jar is reported as a soft warning below.
     val previewAnnotationsMissing = scanClassCount > 0 && reachablePreviewFqns.isEmpty()
-    val codePreviewCount = allPreviews.count { it.params.kind !in ASSET_PREVIEW_KINDS }
+    val codePreviewCount = allPreviews.count {
+      it.params.kind !in ASSET_PREVIEW_KINDS && it.params.dwfAssetPath == null
+    }
     // Source declares @Preview but compiled outputs are empty: a broken/cancelled compilation, not
     // "zero previews". Writing an assets-only manifest would hide it (#4364). Asset-only modules
     // stay valid.
@@ -1032,6 +1045,98 @@ object PreviewDiscovery {
     val vbW = viewBox?.getOrNull(2)?.toFloatOrNull()?.roundToInt()?.takeIf { it > 0 }
     val vbH = viewBox?.getOrNull(3)?.toFloatOrNull()?.roundToInt()?.takeIf { it > 0 }
     return SvgDims(explicitW ?: vbW, explicitH ?: vbH)
+  }
+
+  private data class DwfDims(val width: Int, val height: Int, val clipShape: String)
+
+  /**
+   * Turns each Declarative Watch Face (`<WatchFace>`) XML in [Input.dwfResourceDirs] /
+   * [Input.resourceDirs] into a [PreviewKind.COMPOSE] preview carrying [PreviewParams.dwfAssetPath]
+   * so `composePreviewRenderDwf` compiles it into `.rc` + `.remotecompose.json` sidecars and a PNG
+   * cover.
+   */
+  private fun discoverDwfAssets(input: Input): List<PreviewInfo> {
+    val roots = (input.dwfResourceDirs + input.resourceDirs).distinct()
+    if (roots.isEmpty()) return emptyList()
+    val found = LinkedHashMap<String, PreviewInfo>()
+    for (root in roots) {
+      if (!root.isDirectory) continue
+      root
+        .walkTopDown()
+        .filter { it.isFile && it.extension.equals("xml", ignoreCase = true) }
+        .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+        .forEach { file ->
+          val relPath = file.relativeTo(root).invariantSeparatorsPath
+          if (!isCandidateDwfPath(relPath)) return@forEach
+          val dims = dwfWatchFaceDimensionsOrNull(file) ?: return@forEach
+          val safe = relPath.removeSuffix(".${file.extension}").replace(SANITIZE_RENDER_STEM, "_")
+          val stem = "dwf__$safe"
+          if (found.containsKey(stem)) return@forEach
+          val relSource =
+            file.relativeToOrNull(input.projectDirectory)?.invariantSeparatorsPath ?: file.name
+          val device =
+            when {
+              dims.clipShape.equals("NONE", ignoreCase = true) ||
+                dims.clipShape.equals("RECTANGLE", ignoreCase = true) -> "id:wearos_rect"
+              maxOf(dims.width, dims.height) < 420 -> "id:wearos_small_round"
+              else -> "id:wearos_large_round"
+            }
+          found[stem] =
+            PreviewInfo(
+              id = stem,
+              functionName = file.nameWithoutExtension,
+              className = "",
+              sourceFile = relSource,
+              includeInA11y = false,
+              params =
+                PreviewParams(
+                  name = file.nameWithoutExtension,
+                  device = device,
+                  kind = PreviewKind.COMPOSE,
+                  widthDp = dims.width,
+                  heightDp = dims.height,
+                  density = 1.0f,
+                  dwfAssetPath = relPath,
+                ),
+              captures = listOf(Capture(renderOutput = "${input.dwfRenderSubdir}/$stem.png")),
+            )
+        }
+    }
+    return found.values.toList()
+  }
+
+  private fun isCandidateDwfPath(relPath: String): Boolean {
+    val firstSeg = relPath.substringBefore('/', missingDelimiterValue = "").lowercase()
+    if (firstSeg.isEmpty()) return true
+    return firstSeg == "raw" ||
+      firstSeg.startsWith("raw-") ||
+      firstSeg == "xml" ||
+      firstSeg.startsWith("xml-") ||
+      firstSeg == "dwf" ||
+      firstSeg == "watchface" ||
+      firstSeg == "watchfaces"
+  }
+
+  private fun dwfWatchFaceDimensionsOrNull(file: File): DwfDims? {
+    val text = runCatching { file.readText() }.getOrNull() ?: return null
+    if (!text.contains("<WatchFace")) return null
+    val stripped =
+      text
+        .replace(Regex("^\\uFEFF"), "")
+        .replace(Regex("<\\?xml[^>]*\\?>", setOf(RegexOption.DOT_MATCHES_ALL)), "")
+        .replace(Regex("<!--.*?-->", setOf(RegexOption.DOT_MATCHES_ALL)), "")
+        .trimStart()
+    val wfTag = Regex("^<WatchFace\\b[^>]*>").find(stripped) ?: return null
+    val attrs = wfTag.value
+    fun stringAttr(name: String): String? =
+      Regex("(?<![\\w-])$name\\s*=\\s*[\"']([^\"']+)[\"']").find(attrs)?.groupValues?.get(1)?.trim()
+    fun intAttr(name: String, default: Int): Int =
+      stringAttr(name)?.toFloatOrNull()?.roundToInt()?.takeIf { it > 0 } ?: default
+    return DwfDims(
+      width = intAttr("width", 450),
+      height = intAttr("height", 450),
+      clipShape = stringAttr("clipShape") ?: "CIRCLE",
+    )
   }
 
   /** Raw `@ColorCatalog` hit collected during the scan, before aggregation into sheets. */

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WatchFace width="450" height="450" clipShape="CIRCLE">
+  <Metadata key="CLOCK_TYPE" value="ANALOG" />
+  <Metadata key="PREVIEW_TIME" value="10:10:30" />
+
+  <UserConfigurations>
+    <ColorConfiguration id="accent" displayName="Accent" defaultValue="emerald">
+      <ColorOption id="emerald" displayName="Emerald" colors="#FF34D399 #FF065F46" />
+      <ColorOption id="amber" displayName="Amber" colors="#FFFBBF24 #FF92400E" />
+      <ColorOption id="sky" displayName="Sky" colors="#FF38BDF8 #FF075985" />
+    </ColorConfiguration>
+    <BooleanConfiguration id="show_seconds" displayName="Show Seconds" defaultValue="true" />
+  </UserConfigurations>
+
+  <Scene backgroundColor="#FF0B111B">
+    <Variant mode="AMBIENT" target="backgroundColor" value="#FF000000" />
+
+    <!-- Outer dial bezel and step-goal progress arc -->
+    <PartDraw x="16" y="16" width="418" height="418">
+      <Arc centerX="209" centerY="209" width="396" height="396" startAngle="0" endAngle="360">
+        <Stroke color="#FF1E293B" thickness="10" />
+      </Arc>
+      <Arc centerX="209" centerY="209" width="396" height="396" startAngle="0" endAngle="240">
+        <Transform target="endAngle" value="clamp([STEP_PERCENT] * 3.6, 0, 360)" />
+        <Stroke color="[CONFIGURATION.accent.0]" thickness="10" cap="ROUND" />
+      </Arc>
+    </PartDraw>
+
+    <!-- Cardinal hour markers -->
+    <PartDraw x="0" y="0" width="450" height="450">
+      <RoundRectangle x="221" y="30" width="8" height="22" cornerRadiusX="4" cornerRadiusY="4">
+        <Fill color="#FFE2E8F0" />
+      </RoundRectangle>
+      <RoundRectangle x="398" y="221" width="22" height="8" cornerRadiusX="4" cornerRadiusY="4">
+        <Fill color="#FF94A3B8" />
+      </RoundRectangle>
+      <RoundRectangle x="221" y="398" width="8" height="22" cornerRadiusX="4" cornerRadiusY="4">
+        <Fill color="#FF94A3B8" />
+      </RoundRectangle>
+      <RoundRectangle x="30" y="221" width="22" height="8" cornerRadiusX="4" cornerRadiusY="4">
+        <Fill color="#FF94A3B8" />
+      </RoundRectangle>
+    </PartDraw>
+
+    <!-- Header icon + digital sub-dial -->
+    <PartImage x="205" y="72" width="40" height="40" resource="@drawable/ic_watchface">
+      <Variant mode="AMBIENT" target="alpha" value="140" />
+    </PartImage>
+
+    <PartText x="125" y="118" width="200" height="28">
+      <Text align="CENTER">
+        <Font size="16" weight="BOLD" color="[CONFIGURATION.accent.0]">@string/app_name</Font>
+      </Text>
+    </PartText>
+
+    <DigitalClock x="135" y="148" width="180" height="44">
+      <TimeText format="HH:mm" hourFormat="TWENTY_FOUR" align="CENTER">
+        <Font size="32" weight="BOLD" color="#FFF8FAFC" />
+      </TimeText>
+    </DigitalClock>
+
+    <!-- Complication Slot 1: Steps (left) -->
+    <ComplicationSlot
+        x="72"
+        y="248"
+        width="136"
+        height="72"
+        slotId="1"
+        supportedTypes="SHORT_TEXT RANGED_VALUE">
+      <DefaultProviderPolicy
+          defaultSystemProvider="STEP_COUNT"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingRoundBox x="0" y="0" width="136" height="72" cornerRadius="20" />
+      <Complication type="SHORT_TEXT">
+        <PartDraw x="0" y="0" width="136" height="72">
+          <RoundRectangle x="0" y="0" width="136" height="72" cornerRadiusX="20" cornerRadiusY="20">
+            <Fill color="#FF162032" />
+          </RoundRectangle>
+        </PartDraw>
+        <PartText x="8" y="10" width="120" height="24">
+          <Text align="CENTER">
+            <Font size="14" color="#FF94A3B8">
+              <Parameter expression="[COMPLICATION.TITLE]" />
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="8" y="34" width="120" height="30">
+          <Text align="CENTER">
+            <Font size="20" weight="BOLD" color="[CONFIGURATION.accent.0]">
+              <Parameter expression="[COMPLICATION.TEXT]" />
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- Complication Slot 2: Battery (right) -->
+    <ComplicationSlot
+        x="242"
+        y="248"
+        width="136"
+        height="72"
+        slotId="2"
+        supportedTypes="SHORT_TEXT RANGED_VALUE">
+      <DefaultProviderPolicy
+          defaultSystemProvider="WATCH_BATTERY"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingRoundBox x="0" y="0" width="136" height="72" cornerRadius="20" />
+      <Complication type="SHORT_TEXT">
+        <PartDraw x="0" y="0" width="136" height="72">
+          <RoundRectangle x="0" y="0" width="136" height="72" cornerRadiusX="20" cornerRadiusY="20">
+            <Fill color="#FF162032" />
+          </RoundRectangle>
+        </PartDraw>
+        <PartText x="8" y="10" width="120" height="24">
+          <Text align="CENTER">
+            <Font size="14" color="#FF94A3B8">BAT</Font>
+          </Text>
+        </PartText>
+        <PartText x="8" y="34" width="120" height="30">
+          <Text align="CENTER">
+            <Font size="20" weight="BOLD" color="#FFF8FAFC">
+              <Parameter expression="[BATTERY_PERCENT]" />%
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- Analog hands overlaid -->
+    <AnalogClock x="0" y="0" width="450" height="450">
+      <HourHand x="219" y="105" width="12" height="120" pivotX="0.5" pivotY="1.0">
+        <PartDraw x="0" y="0" width="12" height="120">
+          <RoundRectangle x="0" y="0" width="12" height="120" cornerRadiusX="6" cornerRadiusY="6">
+            <Fill color="#FFF8FAFC" />
+          </RoundRectangle>
+        </PartDraw>
+      </HourHand>
+      <MinuteHand x="221" y="65" width="8" height="160" pivotX="0.5" pivotY="1.0">
+        <PartDraw x="0" y="0" width="8" height="160">
+          <RoundRectangle x="0" y="0" width="8" height="160" cornerRadiusX="4" cornerRadiusY="4">
+            <Fill color="[CONFIGURATION.accent.0]" />
+          </RoundRectangle>
+        </PartDraw>
+      </MinuteHand>
+      <SecondHand x="223" y="48" width="4" height="195" pivotX="0.5" pivotY="0.9077">
+        <Variant mode="AMBIENT" target="alpha" value="0" />
+        <BooleanConfiguration id="show_seconds">
+          <BooleanOption id="TRUE">
+            <PartDraw x="0" y="0" width="4" height="195">
+              <RoundRectangle x="0" y="0" width="4" height="195" cornerRadiusX="2" cornerRadiusY="2">
+                <Fill color="#FFF43F5E" />
+              </RoundRectangle>
+            </PartDraw>
+          </BooleanOption>
+        </BooleanConfiguration>
+      </SecondHand>
+    </AnalogClock>
+
+    <!-- Center cap -->
+    <PartDraw x="215" y="215" width="20" height="20">
+      <Ellipse x="0" y="0" width="20" height="20">
+        <Fill color="[CONFIGURATION.accent.0]" />
+      </Ellipse>
+      <Ellipse x="5" y="5" width="10" height="10">
+        <Fill color="#FF0B111B" />
+      </Ellipse>
+    </PartDraw>
+  </Scene>
+</WatchFace>

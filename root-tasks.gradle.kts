@@ -11,7 +11,11 @@
 // `gradle-plugin` included build. Under Isolated Projects the root can't iterate `allprojects`, so
 // the non-root ktfmt project paths come from `settings.gradle.kts` via a system property.
 val ktfmtProjectPaths =
-  providers.systemProperty("composeai.ktfmtProjectPaths").get().split(",")
+  providers
+    .systemProperty("composeai.toolsKtfmtProjectPaths")
+    .orElse(providers.systemProperty("composeai.ktfmtProjectPaths"))
+    .get()
+    .split(",")
 
 // `includedBuild(...).task(":ktfmtCheck")` addresses only that build's root project, so its
 // subprojects are passed the same way from `gradle-plugin/settings.gradle.kts`.

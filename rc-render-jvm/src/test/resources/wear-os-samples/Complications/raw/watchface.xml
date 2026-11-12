@@ -1,0 +1,1734 @@
+<?xml version="1.0" encoding="UTF-8"?><WatchFace width="450" height="450">
+    <UserConfigurations>
+        <ColorConfiguration id="themeColor" defaultValue="0" displayName="colors_label" screenReaderText="colors_label">
+            <ColorOption displayName="theme_one_label" id="0" colors="#DBBBF5 #DB324D #333333"/>
+            <ColorOption displayName="theme_two_label" id="1" colors="#C1FBA4 #DACC3E #333333"/>
+        </ColorConfiguration>
+    </UserConfigurations>
+    <Scene>
+        <ComplicationSlot x="0" y="0" width="450" height="450" slotId="0" displayName="background" supportedTypes="PHOTO_IMAGE EMPTY">
+            <BoundingOval x="0" y="0" width="450" height="450" outlinePadding="2.0"/>
+            <Complication type="PHOTO_IMAGE">
+                <PartImage x="0" y="0" width="450" height="450">
+                    <Image resource="[COMPLICATION.PHOTO_IMAGE]"/>
+                </PartImage>
+            </Complication>
+        </ComplicationSlot>
+        <ComplicationSlot x="169" y="45" width="113" height="113" slotId="1" displayName="top_complication_label" supportedTypes="RANGED_VALUE GOAL_PROGRESS WEIGHTED_ELEMENTS SHORT_TEXT SMALL_IMAGE MONOCHROMATIC_IMAGE EMPTY">
+            <BoundingOval x="0" y="0" width="113" height="113" outlinePadding="2.0"/>
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="shortText_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="shortText_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="shortText_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="shortText_monochromaticImageAndTitle">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_monochromaticImage">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_title">
+                        <PartText x="23" y="23" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="45" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+            <Complication type="SMALL_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="MONOCHROMATIC_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="[COMPLICATION.RANGED_VALUE_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="rangedValue_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="rangedValue_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="rangedValue_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="GOAL_PROGRESS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.GOAL_PROGRESS_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.GOAL_PROGRESS_COLORS]" cap="ROUND" interpolate="[COMPLICATION.GOAL_PROGRESS_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="goalProgress_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="goalProgress_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="goalProgress_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="WEIGHTED_ELEMENTS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="10" y="10" width="93" height="93">
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.1]"/>
+                    </Arc>
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <WeightedStroke colors="[COMPLICATION.WEIGHTED_ELEMENTS_COLORS]" thickness="10" weights="[COMPLICATION.WEIGHTED_ELEMENTS_WEIGHTS]"/>
+                    </Arc>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="weightedElements_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="weightedElements_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="weightedElements_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+        </ComplicationSlot>
+        <ComplicationSlot x="45" y="158" width="113" height="113" slotId="2" displayName="left_complication_label" supportedTypes="RANGED_VALUE GOAL_PROGRESS WEIGHTED_ELEMENTS SHORT_TEXT SMALL_IMAGE MONOCHROMATIC_IMAGE EMPTY">
+            <BoundingOval x="0" y="0" width="113" height="113" outlinePadding="2.0"/>
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="shortText_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="shortText_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="shortText_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="shortText_monochromaticImageAndTitle">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_monochromaticImage">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_title">
+                        <PartText x="23" y="23" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="45" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+            <Complication type="SMALL_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="MONOCHROMATIC_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="[COMPLICATION.RANGED_VALUE_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="rangedValue_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="rangedValue_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="rangedValue_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="GOAL_PROGRESS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.GOAL_PROGRESS_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.GOAL_PROGRESS_COLORS]" cap="ROUND" interpolate="[COMPLICATION.GOAL_PROGRESS_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="goalProgress_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="goalProgress_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="goalProgress_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="WEIGHTED_ELEMENTS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="10" y="10" width="93" height="93">
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.1]"/>
+                    </Arc>
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <WeightedStroke colors="[COMPLICATION.WEIGHTED_ELEMENTS_COLORS]" thickness="10" weights="[COMPLICATION.WEIGHTED_ELEMENTS_WEIGHTS]"/>
+                    </Arc>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="weightedElements_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="weightedElements_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="weightedElements_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+        </ComplicationSlot>
+        <ComplicationSlot x="293" y="158" width="113" height="113" slotId="3" displayName="right_complication_label" supportedTypes="RANGED_VALUE GOAL_PROGRESS WEIGHTED_ELEMENTS SHORT_TEXT SMALL_IMAGE MONOCHROMATIC_IMAGE EMPTY">
+            <BoundingOval x="0" y="0" width="113" height="113" outlinePadding="2.0"/>
+            <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="shortText_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="shortText_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="shortText_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="shortText_monochromaticImageAndTitle">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_monochromaticImage">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="shortText_title">
+                        <PartText x="23" y="23" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="45" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Default>
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+            <Complication type="SMALL_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68">
+                    <Image resource="[COMPLICATION.SMALL_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="MONOCHROMATIC_IMAGE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartImage x="23" y="23" width="68" height="68" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                </PartImage>
+            </Complication>
+            <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.RANGED_VALUE_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.RANGED_VALUE_COLORS]" cap="ROUND" interpolate="[COMPLICATION.RANGED_VALUE_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.0" centerY="46.0" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (((clamp(([COMPLICATION.RANGED_VALUE_VALUE]), ([COMPLICATION.RANGED_VALUE_MIN]), ([COMPLICATION.RANGED_VALUE_MAX])) - ([COMPLICATION.RANGED_VALUE_MIN])) / (([COMPLICATION.RANGED_VALUE_MAX]) - ([COMPLICATION.RANGED_VALUE_MIN]))) * (300))"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="rangedValue_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="rangedValue_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="rangedValue_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="rangedValue_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="rangedValue_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="rangedValue_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="rangedValue_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="GOAL_PROGRESS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="colorRamp"><![CDATA[[COMPLICATION.GOAL_PROGRESS_COLORS] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="colorRamp">
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <WeightedStroke thickness="10" colors="[COMPLICATION.GOAL_PROGRESS_COLORS]" cap="ROUND" interpolate="[COMPLICATION.GOAL_PROGRESS_COLORS_INTERPOLATE]"/>
+                            </Arc>
+                        </PartDraw>
+                    </Compare>
+                    <Default>
+                        <PartDraw x="10" y="10" width="93" height="93">
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.2]" cap="ROUND"/>
+                            </Arc>
+                            <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                                <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]" cap="ROUND"/>
+                                <Transform target="endAngle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                            </Arc>
+                        </PartDraw>
+                    </Default>
+                </Condition>
+                <PartDraw x="10" y="10" width="93" height="93" tintColor="[CONFIGURATION.themeColor.1]">
+                    <Ellipse x="38.0" y="-8" width="16" height="16">
+                        <Fill color="#FFFFFF"/>
+                    </Ellipse>
+                    <Transform target="angle" value="-150 + (clamp([COMPLICATION.GOAL_PROGRESS_VALUE], 0, [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) / [COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]) * 300"/>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="goalProgress_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="goalProgress_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="goalProgress_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="goalProgress_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="goalProgress_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="goalProgress_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="goalProgress_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+            <Complication type="WEIGHTED_ELEMENTS">
+                <PartDraw x="0" y="0" width="113" height="113">
+                    <Ellipse x="0" y="0" width="113" height="113">
+                        <Fill color="#000000"/>
+                    </Ellipse>
+                </PartDraw>
+                <PartDraw x="10" y="10" width="93" height="93">
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.1]"/>
+                    </Arc>
+                    <Arc centerX="46.5" centerY="46.5" width="93" height="93" startAngle="-150" endAngle="150">
+                        <WeightedStroke colors="[COMPLICATION.WEIGHTED_ELEMENTS_COLORS]" thickness="10" weights="[COMPLICATION.WEIGHTED_ELEMENTS_WEIGHTS]"/>
+                    </Arc>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="weightedElements_monochromaticImageAndTitleAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImageAndText"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="weightedElements_titleAndText"><![CDATA[[COMPLICATION.TEXT] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="weightedElements_text"><![CDATA[[COMPLICATION.TEXT] != null]]></Expression>
+                        <Expression name="weightedElements_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="weightedElements_monochromaticImageAndTitleAndText">
+                        <PartText x="23" y="17" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndTitle">
+                        <PartText x="23" y="40" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImageAndText">
+                        <PartText x="23" y="34" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="40" y="68" width="34" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_monochromaticImage">
+                        <PartImage x="34" y="34" width="45" height="45" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="weightedElements_titleAndText">
+                        <PartText x="23" y="28" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="23" y="51" width="68" height="28" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_text">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="weightedElements_title">
+                        <PartText x="23" y="40" width="68" height="34" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                </Condition>
+            </Complication>
+        </ComplicationSlot>
+        <ComplicationSlot x="90" y="315" width="270" height="68" slotId="4" displayName="bottom_complication_label" supportedTypes="LONG_TEXT EMPTY">
+            <BoundingRoundBox x="0" y="0" width="270" height="68" outlinePadding="2.0" cornerRadius="10"/>
+            <Complication type="LONG_TEXT">
+                <PartDraw x="0" y="0" width="270" height="68">
+                    <RoundRectangle x="0" y="0" width="270" height="68" cornerRadiusX="10" cornerRadiusY="10">
+                        <Fill color="#000000"/>
+                    </RoundRectangle>
+                </PartDraw>
+                <PartDraw x="0" y="0" width="270" height="68">
+                    <RoundRectangle x="0" y="0" width="270" height="68" cornerRadiusX="5" cornerRadiusY="5">
+                        <Stroke thickness="10" color="[CONFIGURATION.themeColor.0]"/>
+                    </RoundRectangle>
+                </PartDraw>
+                <Condition>
+                    <Expressions>
+                        <Expression name="longText_monochromaticImageAndTitle"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="longText_smallImageAndTitle"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null && [COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="longText_title"><![CDATA[[COMPLICATION.TITLE] != null]]></Expression>
+                        <Expression name="longText_monochromaticImage"><![CDATA[[COMPLICATION.MONOCHROMATIC_IMAGE] != null]]></Expression>
+                        <Expression name="longText_smallImage"><![CDATA[[COMPLICATION.SMALL_IMAGE] != null]]></Expression>
+                    </Expressions>
+                    <Compare expression="longText_monochromaticImageAndTitle">
+                        <PartText x="81" y="7" width="162" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="81" y="34" width="162" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="14" y="7" width="54" height="54" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="longText_smallImageAndTitle">
+                        <PartText x="81" y="7" width="162" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="81" y="34" width="162" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="14" y="7" width="54" height="54">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="longText_title">
+                        <PartText x="27" y="7" width="216" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TITLE]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartText x="27" y="34" width="216" height="27" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Compare>
+                    <Compare expression="longText_monochromaticImage">
+                        <PartText x="81" y="7" width="162" height="54" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="14" y="7" width="54" height="54" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Compare expression="longText_smallImage">
+                        <PartText x="81" y="7" width="162" height="54" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                        <PartImage x="14" y="7" width="54" height="54">
+                            <Image resource="[COMPLICATION.SMALL_IMAGE]"/>
+                        </PartImage>
+                    </Compare>
+                    <Default>
+                        <PartText x="27" y="7" width="216" height="54" tintColor="[CONFIGURATION.themeColor.1]">
+                            <Text ellipsis="TRUE">
+                                <Font family="SYNC_TO_DEVICE" size="20.0">
+                                    <Template><![CDATA[%s]]>
+                                        <Parameter expression="[COMPLICATION.TEXT]"/>
+                                    </Template>
+                                </Font>
+                            </Text>
+                        </PartText>
+                    </Default>
+                </Condition>
+            </Complication>
+        </ComplicationSlot>
+    </Scene>
+</WatchFace>

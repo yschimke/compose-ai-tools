@@ -279,7 +279,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Synthetic catalog sheets have no composable to reflect, and the positional-arg protocol can't
     // carry their data; desktop support is #2135. Skip rather than crash.
     val previews = kindFiltered.filter {
-      it.params.kind.name !in SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP
+      it.params.kind.name !in SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP &&
+        it.params.dwfAssetPath == null
     }
     // Always rebuild from the filtered list so catalog entries are dropped.
     val manifest = rawManifest.copy(previews = previews)

@@ -17,7 +17,8 @@ import org.json.JSONObject;
  * The watch's watch face and complication host: which face is set, and which complication data
  * sources feed which slots. With nothing set the system UI shows its built-in face ({@link
  * WatchFaceView}); {@code set} hosts one of the app's androidx watch faces through {@link
- * WatchFaceClient}; {@code complication} binds one of the app's data sources through {@link
+ * WatchFaceClient} or one of its declarative (Watch Face Format) watch faces through {@link
+ * DwfWatchFaceClient}; {@code complication} binds one of the app's data sources through {@link
  * ComplicationSourceClient} and gives its data to the face's slot, or, when the face is not one of
  * the app's, draws it on the built-in face.
  *
@@ -41,8 +42,10 @@ final class WatchFaceHost {
   private final Navigator navigator;
   private final Protocol protocol;
   private final Display display;
+  private final List<DwfWatchFaceClient.Entry> dwfEntries;
   private final List<Source> sources = new ArrayList<>();
   private WatchFaceClient face;
+  private DwfWatchFaceClient dwfFace;
   private boolean ambient;
   private boolean rendering;
   private String error;
@@ -66,41 +69,104 @@ final class WatchFaceHost {
     this.navigator = navigator;
     this.protocol = protocol;
     this.display = display;
+    this.dwfEntries = DwfWatchFaceClient.availableFromProperty();
   }
 
   /** Whether one of the app's faces is set (rather than the built-in face). */
   boolean hosting() {
-    return face != null;
+    return face != null || dwfFace != null;
+  }
+
+  /**
+   * Sets the {@code --watchface} launch target if given, or defaults to the first declarative watch
+   * face when the APK has no launcher activity.
+   */
+  void setFromLaunch() {
+    String requested = System.getProperty(DwfWatchFaceClient.WATCHFACE_PROPERTY);
+    if (requested != null && !requested.trim().isEmpty()) {
+      try {
+        setByName(requested.trim());
+      } catch (RuntimeException e) {
+        protocol.event(
+            "error",
+            new Protocol.Json().put("kind", "watchface").put("message", e.getMessage()).object());
+      }
+      return;
+    }
+    if (!dwfEntries.isEmpty()
+        && app.getPackageManager().getLaunchIntentForPackage(app.getPackageName()) == null) {
+      try {
+        setDwf(dwfEntries.get(0));
+      } catch (RuntimeException e) {
+        protocol.event(
+            "error",
+            new Protocol.Json().put("kind", "watchface").put("message", e.getMessage()).object());
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
   // Commands
 
   /**
-   * {@code {"cmd":"watchface", "op": "set" | "unset" | "complication" | "uncomplication" |
-   * "status"}}.
+   * {@code {"cmd":"watchface", "op": "set" | "unset" | "config" | "complication" |
+   * "uncomplication" | "status"}}.
    */
   JSONObject command(JSONObject c) throws JSONException {
     String op = c.optString("op", "status");
     switch (op) {
       case "set":
-        return set(resolve(c.getString("component")));
+        {
+          String target =
+              c.has("component") ? c.getString("component") : c.getString("watchFaceId");
+          return setByName(target);
+        }
+      case "config":
+        return configureDwf(c);
       case "unset":
         return unset();
       case "complication":
+        if (!c.has("component") || c.isNull("component") || c.optString("component").isEmpty()) {
+          return fakeComplication(c);
+        }
         return complication(
             resolve(c.getString("component")),
-            c.has("watchface") ? resolve(c.getString("watchface")) : null,
+            c.has("watchface") ? c.getString("watchface") : null,
             c.optInt("slot", -1),
-            c.getInt("type"));
+            DwfWatchFaceClient.parseWireComplicationType(c.opt("type")));
       case "uncomplication":
+        if (!c.has("component") && c.has("slot")) {
+          return uncomplicationSlot(c.getInt("slot"));
+        }
         return uncomplication(c.has("component") ? resolve(c.getString("component")) : null);
       case "status":
         return describe();
       default:
         throw new IllegalArgumentException(
-            "watchface op " + op + ": use set, unset, complication, uncomplication or status");
+            "watchface op "
+                + op
+                + ": use set, unset, config, complication, uncomplication or status");
     }
+  }
+
+  JSONObject setByName(String target) {
+    DwfWatchFaceClient.Entry dwf = findDwfEntry(target);
+    if (dwf != null) {
+      return setDwf(dwf);
+    }
+    return set(resolve(target));
+  }
+
+  /** Sets one of the app's declarative (Watch Face Format) watch faces. */
+  JSONObject setDwf(DwfWatchFaceClient.Entry entry) {
+    if (dwfFace != null && dwfFace.id().equals(entry.id)) return describe();
+    releaseFace();
+    dwfFace = new DwfWatchFaceClient(app, entry, this::renderedDwf);
+    DisplayMetrics metrics = app.getResources().getDisplayMetrics();
+    rendering = true;
+    display.builtInComplication(null);
+    dwfFace.start(metrics.widthPixels, metrics.heightPixels, ambient);
+    return describe();
   }
 
   /** Sets one of the app's androidx watch faces, replacing any other. */
@@ -117,6 +183,25 @@ final class WatchFaceHost {
     return describe();
   }
 
+  private JSONObject configureDwf(JSONObject c) throws JSONException {
+    if (dwfFace == null) {
+      throw new IllegalStateException(
+          "watchface op config requires an active declarative (Watch Face Format) watch face");
+    }
+    JSONObject values = c.optJSONObject("values");
+    if (values != null) {
+      for (Iterator<String> it = values.keys(); it.hasNext(); ) {
+        String k = it.next();
+        dwfFace.setConfig(k, String.valueOf(values.get(k)));
+      }
+    } else {
+      dwfFace.setConfig(c.getString("id"), String.valueOf(c.get("value")));
+    }
+    rendering = true;
+    dwfFace.render(ambient);
+    return describe();
+  }
+
   /** Back to the built-in face; complication sources stay bound and draw on it. */
   JSONObject unset() {
     releaseFace();
@@ -130,13 +215,26 @@ final class WatchFaceHost {
    * [watchFace] is null or another package's (Android Studio installs its own test face), the
    * built-in face. [type] is the wire {@code ComplicationType} ({@code 3} = short text).
    */
-  JSONObject complication(ComponentName source, ComponentName watchFace, int slot, int type)
+  JSONObject complication(ComponentName source, String watchFace, int slot, int type)
       throws JSONException {
     checkSource(source);
-    boolean appFace =
-        watchFace != null && watchFace.getPackageName().equals(app.getPackageName());
-    if (appFace) set(watchFace);
-    if (appFace && face != null && !face.slots().isEmpty()) checkSlot(slot, type);
+    boolean appFace = false;
+    if (watchFace != null) {
+      DwfWatchFaceClient.Entry dwf = findDwfEntry(watchFace);
+      if (dwf != null) {
+        appFace = true;
+        setDwf(dwf);
+      } else {
+        ComponentName wfComp = resolve(watchFace);
+        if (wfComp.getPackageName().equals(app.getPackageName())) {
+          appFace = true;
+          set(wfComp);
+        }
+      }
+    } else if (hosting()) {
+      appFace = true;
+    }
+    if (appFace && !activeSlots().isEmpty()) checkSlot(slot, type);
     // One source per slot, as a face has.
     for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
       Source s = it.next();
@@ -156,7 +254,9 @@ final class WatchFaceHost {
     } catch (ReflectiveOperationException | RuntimeException e) {
       sources.remove(bound);
       throw new IllegalStateException(
-          "could not bind complication data source " + source.flattenToShortString() + ": "
+          "could not bind complication data source "
+              + source.flattenToShortString()
+              + ": "
               + rootMessage(e),
           e);
     }
@@ -177,9 +277,62 @@ final class WatchFaceHost {
             .object());
     if (bound.appFace && face != null) {
       face.complication(bound.slot, data, ambient);
+    } else if (bound.appFace && dwfFace != null) {
+      dwfFace.complication(bound.slot, bound.client.type, data, ambient);
     } else {
       showBuiltInComplication();
     }
+  }
+
+  /**
+   * Injects fake complication values directly into a slot (`{"cmd":"watchface","op":"complication",
+   * "slot":0,"type":"SHORT_TEXT","text":"60","title":"Steps","value":60,"min":0,"max":100}`)
+   * without requiring a bound {@code ComplicationDataSourceService}.
+   */
+  JSONObject fakeComplication(JSONObject c) throws JSONException {
+    if (c.has("watchface") && !c.isNull("watchface")) {
+      setByName(c.getString("watchface"));
+    }
+    int defaultSlot = activeSlots().isEmpty() ? 0 : activeSlots().get(0).id;
+    DwfWatchFaceClient.FakeComplication fake =
+        DwfWatchFaceClient.FakeComplication.fromJson(c, defaultSlot);
+    if (dwfFace != null) {
+      if (!activeSlots().isEmpty()) checkSlot(fake.slot, fake.wireType);
+      for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
+        Source s = it.next();
+        if (s.slot == fake.slot && s.appFace) {
+          s.client.release();
+          it.remove();
+        }
+      }
+      rendering = true;
+      dwfFace.setFakeComplication(fake.slot, fake, ambient);
+      return describe().put("complication", fake.toJson()).put("host", "app");
+    }
+    if (!hosting()) {
+      display.builtInComplication(fake.text);
+      return describe().put("complication", fake.toJson()).put("host", "built-in");
+    }
+    throw new IllegalStateException(
+        "Direct fake complication values require a declarative (Watch Face Format) or built-in watch face");
+  }
+
+  JSONObject uncomplicationSlot(int slot) {
+    for (Iterator<Source> it = sources.iterator(); it.hasNext(); ) {
+      Source s = it.next();
+      if (s.slot == slot) {
+        s.client.release();
+        it.remove();
+        if (s.appFace && face != null) face.complication(s.slot, null, ambient);
+      }
+    }
+    if (dwfFace != null) {
+      rendering = true;
+      dwfFace.setFakeComplication(slot, null, ambient);
+    } else {
+      showBuiltInComplication();
+    }
+    return describe();
   }
 
   /** Unbinds [source]'s complications, or every one with null. */
@@ -190,7 +343,14 @@ final class WatchFaceHost {
         s.client.release();
         it.remove();
         if (s.appFace && face != null) face.complication(s.slot, null, ambient);
+        if (s.appFace && dwfFace != null) {
+          dwfFace.complication(s.slot, s.client.type, null, ambient);
+        }
       }
+    }
+    if (source == null && dwfFace != null) {
+      rendering = true;
+      dwfFace.clearFakeComplications(ambient);
     }
     showBuiltInComplication();
     return describe();
@@ -201,10 +361,15 @@ final class WatchFaceHost {
 
   /** Once a cycle: a new frame each second (each minute in ambient), one in flight at a time. */
   void tick(boolean minuteChanged) {
-    if (face == null || rendering || face.error() != null) return;
+    if (rendering) return;
     if (ambient && !minuteChanged) return;
-    rendering = true;
-    face.render(ambient);
+    if (face != null && face.error() == null) {
+      rendering = true;
+      face.render(ambient);
+    } else if (dwfFace != null && dwfFace.error() == null) {
+      rendering = true;
+      dwfFace.render(ambient);
+    }
   }
 
   void ambient(boolean value) {
@@ -213,11 +378,23 @@ final class WatchFaceHost {
     if (face != null) {
       rendering = true;
       face.render(ambient);
+    } else if (dwfFace != null) {
+      rendering = true;
+      dwfFace.render(ambient);
     }
   }
 
   private void rendered(WatchFaceClient client, Bitmap frame, String failure) {
     if (client != face) return;
+    onFrameRendered(client.component.flattenToShortString(), client.frames(), frame, failure);
+  }
+
+  private void renderedDwf(DwfWatchFaceClient client, Bitmap frame, String failure) {
+    if (client != dwfFace) return;
+    onFrameRendered(client.id(), client.frames(), frame, failure);
+  }
+
+  private void onFrameRendered(String componentId, int frameCount, Bitmap frame, String failure) {
     rendering = false;
     if (failure != null) {
       boolean first = error == null;
@@ -228,13 +405,13 @@ final class WatchFaceHost {
             "watchface",
             new Protocol.Json()
                 .put("state", "error")
-                .put("component", client.component.flattenToShortString())
+                .put("component", componentId)
                 .put("error", failure)
                 .object());
       }
       return;
     }
-    boolean first = client.frames() == 1;
+    boolean first = frameCount == 1;
     error = null;
     display.frame(frame);
     if (first) {
@@ -257,7 +434,7 @@ final class WatchFaceHost {
           "watchface",
           new Protocol.Json()
               .put("state", "set")
-              .put("component", client.component.flattenToShortString())
+              .put("component", componentId)
               .put("width", frame.getWidth())
               .put("height", frame.getHeight())
               .object());
@@ -265,7 +442,7 @@ final class WatchFaceHost {
   }
 
   private void showBuiltInComplication() {
-    if (face != null) return;
+    if (hosting()) return;
     StringBuilder text = new StringBuilder();
     for (Source s : sources) {
       if (s.appFace) continue;
@@ -286,9 +463,14 @@ final class WatchFaceHost {
         it.remove();
       }
     }
-    if (face == null) return;
-    face.release();
-    face = null;
+    if (face != null) {
+      face.release();
+      face = null;
+    }
+    if (dwfFace != null) {
+      dwfFace.release();
+      dwfFace = null;
+    }
     rendering = false;
     error = null;
   }
@@ -299,15 +481,35 @@ final class WatchFaceHost {
   JSONObject describe() {
     JSONArray complications = new JSONArray();
     for (Source s : sources) complications.put(slotJson(s));
+    if (dwfFace != null) {
+      for (DwfWatchFaceClient.FakeComplication fake : dwfFace.fakeComplications().values()) {
+        boolean alreadyListed = false;
+        for (Source s : sources) {
+          if (s.appFace && s.slot == fake.slot) {
+            alreadyListed = true;
+            break;
+          }
+        }
+        if (!alreadyListed) {
+          complications.put(fake.toJson());
+        }
+      }
+    }
+    String activeName =
+        dwfFace != null
+            ? dwfFace.id()
+            : (face != null ? face.component.flattenToShortString() : "built-in");
+    String kind = dwfFace != null ? "dwf" : (face != null ? "androidx" : "built-in");
     Protocol.Json json =
         new Protocol.Json()
-            .put("watchFace", face == null ? "built-in" : face.component.flattenToShortString())
+            .put("watchFace", activeName)
+            .put("kind", kind)
             .put("ambient", ambient)
             .put("complications", complications);
-    if (face != null) {
-      json.put("frames", face.frames());
+    if (face != null || dwfFace != null) {
+      json.put("frames", dwfFace != null ? dwfFace.frames() : face.frames());
       JSONArray slots = new JSONArray();
-      for (WatchFaceClient.Slot slot : face.slots()) {
+      for (WatchFaceClient.Slot slot : activeSlots()) {
         JSONArray types = new JSONArray();
         for (int t : slot.supportedTypes) types.put(t);
         slots.put(
@@ -319,9 +521,24 @@ final class WatchFaceHost {
       }
       json.put("slots", slots);
     }
+    if (dwfFace != null) {
+      json.put("configurations", dwfFace.describeConfigurations());
+    }
     json.put("error", error == null ? JSONObject.NULL : error);
     json.put("available", available());
     return json.object();
+  }
+
+  private List<WatchFaceClient.Slot> activeSlots() {
+    if (dwfFace != null) return dwfFace.slots();
+    if (face != null) return face.slots();
+    return java.util.Collections.emptyList();
+  }
+
+  private String activeFaceLabel() {
+    if (dwfFace != null) return dwfFace.id();
+    if (face != null) return face.component.getShortClassName();
+    return "built-in";
   }
 
   private JSONObject slotJson(Source s) {
@@ -339,15 +556,35 @@ final class WatchFaceHost {
   private JSONObject available() {
     JSONArray faces = new JSONArray();
     for (ComponentName c : services(WALLPAPER_ACTION)) faces.put(c.flattenToShortString());
+    for (DwfWatchFaceClient.Entry e : dwfEntries) faces.put(e.id);
+    JSONArray dwfArr = new JSONArray();
+    for (DwfWatchFaceClient.Entry e : dwfEntries) {
+      dwfArr.put(new Protocol.Json().put("id", e.id).put("label", e.label).object());
+    }
     JSONArray sources = new JSONArray();
     for (ComponentName c : services(ComplicationSourceClient.UPDATE_ACTION)) {
       sources.put(c.flattenToShortString());
     }
     return new Protocol.Json()
         .put("watchFaces", faces)
+        .put("declarativeWatchFaces", dwfArr)
         .put("complicationSources", sources)
-        .put("hostable", WatchFaceClient.hostable(app))
+        .put("hostable", WatchFaceClient.hostable(app) || !dwfEntries.isEmpty())
         .object();
+  }
+
+  private DwfWatchFaceClient.Entry findDwfEntry(String target) {
+    if (target == null || dwfEntries.isEmpty()) return null;
+    String trimmed = target.trim();
+    for (DwfWatchFaceClient.Entry e : dwfEntries) {
+      if (e.id.equals(trimmed) || e.label.equalsIgnoreCase(trimmed)) return e;
+      int slash = e.id.lastIndexOf('/');
+      if (slash >= 0 && e.id.substring(slash + 1).equalsIgnoreCase(trimmed)) return e;
+    }
+    if (trimmed.equals(app.getPackageName()) && dwfEntries.size() == 1) {
+      return dwfEntries.get(0);
+    }
+    return null;
   }
 
   private List<ComponentName> services(String action) {
@@ -370,12 +607,14 @@ final class WatchFaceHost {
               + app.getPackageName());
     }
     if (!services(WALLPAPER_ACTION).contains(component)) {
+      List<String> availableNames = names(services(WALLPAPER_ACTION));
+      for (DwfWatchFaceClient.Entry e : dwfEntries) availableNames.add(e.id);
       throw new IllegalArgumentException(
           component.flattenToShortString()
               + " is not a watch face (a service with the "
               + WALLPAPER_ACTION
-              + " action); the app has "
-              + names(services(WALLPAPER_ACTION)));
+              + " action or a declarative Watch Face Format resource); the app has "
+              + availableNames);
     }
   }
 
@@ -389,20 +628,18 @@ final class WatchFaceHost {
   }
 
   private void checkSlot(int slot, int type) {
-    for (WatchFaceClient.Slot s : face.slots()) {
+    for (WatchFaceClient.Slot s : activeSlots()) {
       if (s.id != slot) continue;
       if (!s.supports(type)) {
         throw new IllegalArgumentException(
-            "slot " + slot + " of " + face.component.getShortClassName() + " does not take type "
-                + type);
+            "slot " + slot + " of " + activeFaceLabel() + " does not take type " + type);
       }
       return;
     }
     List<Integer> ids = new ArrayList<>();
-    for (WatchFaceClient.Slot s : face.slots()) ids.add(s.id);
+    for (WatchFaceClient.Slot s : activeSlots()) ids.add(s.id);
     throw new IllegalArgumentException(
-        face.component.getShortClassName() + " has no complication slot " + slot + " (it has "
-            + ids + ")");
+        activeFaceLabel() + " has no complication slot " + slot + " (it has " + ids + ")");
   }
 
   private static List<String> names(List<ComponentName> components) {

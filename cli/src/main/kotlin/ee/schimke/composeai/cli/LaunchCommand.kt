@@ -10,6 +10,7 @@ import java.awt.GraphicsEnvironment
 import java.io.Closeable
 import java.io.File
 import java.util.Collections
+import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
@@ -239,6 +240,8 @@ internal class LaunchCommand(private val args: List<String>) {
           "headless.",
       )
     }
+    val watchface = args.flagValue("--watchface")
+    val hasDwf = apk?.let(ApkDwfExtractor::hasDeclarativeWatchFace) == true
     val options =
       Options(
         sdk =
@@ -269,11 +272,14 @@ internal class LaunchCommand(private val args: List<String>) {
           apk == null ||
             adb ||
             "--launcher" in args ||
+            watchface != null ||
+            hasDwf ||
             args.flagValuesAll("--widget").isNotEmpty() ||
             args.flagValuesAll("--tile").isNotEmpty(),
         noLaunch = apk == null || adb,
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
+        watchface = watchface,
         jvmOptions =
           System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
             ?: emptyList(),
@@ -286,13 +292,29 @@ internal class LaunchCommand(private val args: List<String>) {
     // size and modification time: a restart of the same APK does not re-read it, while a rebuild
     // or update written over the same path (live reload, `update`) does.
     val hostNatives = ConcurrentHashMap<String, HostNatives>()
+    val dwfDirs = ConcurrentHashMap<String, Optional<File>>()
+    val simulatorCacheDir = composeAiCacheDir("simulator")
     fun commandFor(launch: SimulatorSupervisor.Launch, options: Options): List<String> {
-      val natives =
-        hostNatives.computeIfAbsent(
-          "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}",
-        ) {
-          hostNatives(launch.apk, options)
-        }
+      val apkStamp =
+        "${launch.apk.absolutePath}:${launch.apk.length()}:${launch.apk.lastModified()}"
+      val natives = hostNatives.computeIfAbsent(apkStamp) { hostNatives(launch.apk, options) }
+      val dwfDir =
+        dwfDirs
+          .computeIfAbsent(apkStamp) {
+            Optional.ofNullable(
+              ApkDwfExtractor.extractAndCompile(
+                apk = launch.apk,
+                javaBinary = java.binary,
+                robolectricJars = robolectricJars,
+                cacheRoot = simulatorCacheDir,
+                verbose = verbose,
+              ),
+            )
+          }
+          .orElse(null)
+      val dwfProperties =
+        if (dwfDir != null) mapOf("composeai.simulator.dwfDir" to dwfDir.absolutePath)
+        else emptyMap()
       return simulatorCommand(
         java = java.binary,
         classpath = simulatorJars + robolectricJars + androidJar,
@@ -301,7 +323,8 @@ internal class LaunchCommand(private val args: List<String>) {
         options =
           options.copy(
             // The libraries' own properties first, so a launch's (or the user's) win.
-            properties = natives.properties + options.properties + launch.properties,
+            properties =
+              natives.properties + dwfProperties + options.properties + launch.properties,
             libraryPath = natives.libraryPath,
           ),
         robolectricProperties = robolectricProperties,
@@ -861,6 +884,8 @@ internal class LaunchCommand(private val args: List<String>) {
      * Tiles and Wear Widgets (service class names) in the watch's carousel at launch (`--tile`).
      */
     val tiles: List<String> = emptyList(),
+    /** Watch face (androidx service class or declarative watchFaceId) active at launch. */
+    val watchface: String? = null,
     /** Extra simulator JVM options, from [JVM_OPTIONS_ENV] (`-Xlog:…` while profiling a launch). */
     val jvmOptions: List<String> = emptyList(),
     /**
@@ -1253,6 +1278,7 @@ internal class LaunchCommand(private val args: List<String>) {
       if (options.tiles.isNotEmpty()) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
       }
+      options.watchface?.let { properties["composeai.simulator.watchface"] = it }
       options.dataLayer?.let {
         if (it.agent) properties["composeai.simulator.datalayer.agent"] = "true"
         else properties["composeai.simulator.datalayer.hub"] = it.hubPort.toString()
@@ -1358,6 +1384,8 @@ internal class LaunchCommand(private val args: List<String>) {
                               short name) on the home screen (repeatable; implies --launcher).
         --tile <service>      Wear: a tile or Wear Widget in the carousel at launch
                               (repeatable; implies --launcher). With --pair, the watch's.
+        --watchface <face>    Wear: set an androidx watch face service or Declarative Watch Face
+                              Format resource id at launch (implies --launcher).
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
                               of the machine's memory, 768m to 2g, for each of a pair).

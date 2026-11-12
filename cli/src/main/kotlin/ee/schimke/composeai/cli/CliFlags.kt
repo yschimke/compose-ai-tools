@@ -235,6 +235,7 @@ internal object CliFlags {
       "--gradle-arg",
       "--pair-qualifiers",
       "--tile",
+      "--watchface",
       "--fingerprint",
       "--network",
       "--max-heap",

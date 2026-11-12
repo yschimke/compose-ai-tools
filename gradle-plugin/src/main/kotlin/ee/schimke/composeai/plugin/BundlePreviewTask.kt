@@ -321,9 +321,14 @@ abstract class BundlePreviewTask : DefaultTask() {
       if (authoredPair() != null) {
         selected.flatMap { it.targets + it.componentTargets }.map { it.className }.toSet()
       } else emptySet()
-    val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds + authoringEntrySeeds
+    val depSeedFqns =
+      (selected.map { it.className } + replayEntrySeeds + authoringEntrySeeds)
+        .filter { it.isNotBlank() }
+        .toSet()
     val packSeedFqns =
-      selected.filter { it.id !in irByPreview }.map { it.className }.toSet() + authoringEntrySeeds
+      (selected.filter { it.id !in irByPreview }.map { it.className } + authoringEntrySeeds)
+        .filter { it.isNotBlank() }
+        .toSet()
 
     // Union `moduleClassDirs` with AGP's scoped project classes so the packed set matches
     // discovery's (#1924, #1926). Scoped jars are module classes, not dependency coordinates.
@@ -762,17 +767,24 @@ abstract class BundlePreviewTask : DefaultTask() {
     return if (f.isFile && f.length() > 0) f.readBytes() else null
   }
 
-  /** The Remote Compose knob sidecar (`renders/<stem>.remotecompose.json`), verbatim, or `null`. */
+  /**
+   * The Remote Compose knob sidecar (`<renderDir>/<stem>.remotecompose.json`), verbatim, or `null`.
+   */
   private fun resolvePreviewRemoteCompose(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
     // Strip the primary capture's actual extension, as the writer does, so a non-PNG primary still
     // finds its sidecar.
     val leaf = rel.substringAfterLast('/')
     val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
-    val f = File(rendersRoot, "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT")
-    return if (f.isFile && f.length() > 0) f.readBytes() else null
+    val captureDir = File(previewsRoot, rel).parentFile
+    val sidecarName = "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"
+    val f =
+      listOfNotNull(captureDir?.let { File(it, sidecarName) }, File(rendersRoot, sidecarName))
+        .firstOrNull { it.isFile && it.length() > 0 } ?: return null
+    return f.readBytes()
   }
 
   /**
@@ -840,11 +852,15 @@ abstract class BundlePreviewTask : DefaultTask() {
     }
 
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
     val stem = rel.substringAfterLast('/').removeSuffix(".png")
+    val captureDir = File(previewsRoot, rel).parentFile
 
-    fun resolveIrFile(ext: String): File? = resolveIrSidecar(rendersRoot, stem, ext)
+    fun resolveIrFile(ext: String): File? =
+      captureDir?.let { resolveIrSidecar(it, stem, ext) }
+        ?: resolveIrSidecar(rendersRoot, stem, ext)
 
     resolveIrFile(IR_EXT_REMOTECOMPOSE)?.let {
       return ResolvedIr(
@@ -857,7 +873,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       // The resources proto shares the layout's exact stem.
       val layoutStem = layout.name.removeSuffix(".$IR_EXT_PROTOLAYOUT_LAYOUT")
       val resources =
-        File(rendersRoot, "$layoutStem.$IR_EXT_PROTOLAYOUT_RESOURCES").takeIf {
+        File(layout.parentFile ?: rendersRoot, "$layoutStem.$IR_EXT_PROTOLAYOUT_RESOURCES").takeIf {
           it.isFile && it.length() > 0
         }
       return ResolvedIr(
