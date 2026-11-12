@@ -23,6 +23,9 @@ on:
     paths:
       - 'gradle/libs.versions.toml'
       - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/**'
+      # The Android warm-compile inputs (unit-test class path, output dir) are wired here.
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt'
       - 'gradle-plugin/daemon-launch-builder/**'
       - 'samples/android-daemon-bench/**'
       - 'samples/daemon-edit-loop-runner/**'
@@ -32,6 +35,9 @@ on:
     paths:
       - 'gradle/libs.versions.toml'
       - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/**'
+      # The Android warm-compile inputs (unit-test class path, output dir) are wired here.
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt'
+      - 'gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt'
       - 'gradle-plugin/daemon-launch-builder/**'
       - 'samples/android-daemon-bench/**'
       - 'samples/daemon-edit-loop-runner/**'
