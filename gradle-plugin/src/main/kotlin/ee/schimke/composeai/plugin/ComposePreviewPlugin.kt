@@ -5,7 +5,6 @@ import javax.inject.Inject
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.configuration.BuildFeatures
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.gradle.util.GradleVersion
 
@@ -17,12 +16,12 @@ abstract class ComposePreviewPlugin
 constructor(
   // Injected: `project.services` is internal API.
   private val toolingRegistry: ToolingModelBuilderRegistry,
-  // The supported way to ask whether Isolated Projects is active.
-  private val buildFeatures: BuildFeatures,
 ) : Plugin<Project> {
   override fun apply(project: Project) {
     GradleVersionCheck.problem(GradleVersion.current())?.let { throw GradleException(it) }
-    warnIfIsolatedProjectsEnabled(project)
+    // No Isolated Projects warning: a build that applies the plugin itself works under IP (pinned
+    // by IsolatedProjectsFunctionalTest), and the tooling turns IP off whenever its init script
+    // injects the plugin; that script warns on its own if it ever runs under IP.
     // Opt-in only (`composePreview.themePinning=true`); a no-op for every first-party build.
     ThemePinning.apply(project)
 
@@ -140,21 +139,5 @@ constructor(
 
     // The deferred commit; `desktopHandler` re-checks the lane in case KMP-Android claimed it.
     project.afterEvaluate { if (desktopDeferred) desktopHandler() }
-  }
-
-  /**
-   * Warns when Isolated Projects is active: the CLI / MCP / VS Code init script configures projects
-   * via `allprojects { }`, which IP rejects, so the tooling turns IP off for its own builds.
-   */
-  private fun warnIfIsolatedProjectsEnabled(project: Project) {
-    if (!buildFeatures.isolatedProjects.active.get()) return
-    project.logger.warn(
-      "compose-preview: Isolated Projects is enabled (org.gradle.isolated-projects on Gradle 9.7+, " +
-        "org.gradle.unsafe.isolated-projects before that). " +
-        "The compose-preview CLI, MCP server, and VS Code extension auto-inject this plugin through " +
-        "an init script that configures projects via `allprojects { }`, which Isolated Projects " +
-        "rejects — so those tools turn Isolated Projects off for their own invocations. A build you " +
-        "drive yourself with the init script has to do the same.",
-    )
   }
 }
