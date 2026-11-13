@@ -35,6 +35,7 @@ MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio,
 - [Agents and MCP](https://preview.coo.ee/start/mcp/): Local vs hosted MCP server, agent workflows, and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
 - [Render daemon](https://preview.coo.ee/start/daemon/): Optional long-lived renderer for low-latency preview iteration.
 - [How rendering works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md): Preview discovery, rendering backends, caching, and project structure.
+- [Benchmarks](https://github.com/yschimke/compose-ai-tools/blob/main/docs/BENCHMARKS.md): End-to-end latency, memory, visual fidelity, and structural inspection compared against `android preview` and `android studio render-compose-preview`.
 
 ## Optional
 

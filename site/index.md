@@ -126,5 +126,6 @@ relevant one when it comes up.
 ## More
 
 - **[How it works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md)** — discovery, renderer pipeline, caching.
+- **[Benchmarks](https://github.com/yschimke/compose-ai-tools/blob/main/docs/BENCHMARKS.md)** — measured latency, memory, and fidelity against `android preview` and `android studio render-compose-preview`.
 - **[Samples](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main)** — rendered baselines for `samples:android`, `samples:wear`, `samples:cmp`, `samples:remotecompose`, regenerated on every push to `main`.
 - **[Releases](https://github.com/yschimke/compose-ai-tools/releases)** · **[Changelog](https://github.com/yschimke/compose-ai-tools/blob/main/CHANGELOG.md)** · **[License](https://github.com/yschimke/compose-ai-tools/blob/main/LICENSE)** (Apache 2.0).
