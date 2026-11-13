@@ -410,6 +410,10 @@ public class ApkClassConverterTest {
         ApkClassConverter.providedBySimulator(
             "com/google/wear/services/ambient/AmbientManager.class", host));
     assertTrue(ApkClassConverter.providedBySimulator("com/google/wear/Sdk.class", host));
+    // R8-shrunk androidx.test classes leaked into release APKs must never shadow Robolectric's.
+    assertTrue(
+        ApkClassConverter.providedBySimulator(
+            "androidx/test/internal/util/Checks.class", host));
     // A shared-library class the simulator does not provide stays the APK's.
     assertFalse(
         ApkClassConverter.providedBySimulator(
@@ -419,5 +423,162 @@ public class ApkClassConverterTest {
         ApkClassConverter.providedBySimulator(
             "ee/schimke/composeai/simulator/AmbientClients.class", host));
     assertFalse(ApkClassConverter.providedBySimulator("com/google/wear/Sdk.txt", host));
+  }
+
+  @Test
+  public void r8ConstructorInlinedAncestorInitCallsLoadAndReuseCleanly() throws Exception {
+    Path platform = emptyJar();
+    // R8 constructor inlining produces two patterns valid on ART but rejected by JVM verification:
+    // 1. `new-instance Lapp/Leaf;` followed directly by `invoke-direct v0, Lapp/Root;-><init>(I)V`
+    // 2. `Lapp/Leaf;-><init>(Ljava/lang/String;)V` calling `Lapp/Root;-><init>(I)V` on `this`,
+    //    skipping `Lapp/Mid;` (while also constructing an unrelated `Ljava/lang/StringBuilder;`
+    //    inside `<init>` so `this` tracking must distinguish `this` from local `new-instance`).
+    String root =
+        """
+        .class public Lapp/Root;
+        .super Ljava/lang/Object;
+        .field public value:I
+        .method public constructor <init>(I)V
+          .registers 2
+          invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+          iput p1, p0, Lapp/Root;->value:I
+          return-void
+        .end method
+        """;
+    String mid =
+        """
+        .class public Lapp/Mid;
+        .super Lapp/Root;
+        """;
+    String leaf =
+        """
+        .class public Lapp/Leaf;
+        .super Lapp/Mid;
+        .field public label:Ljava/lang/String;
+        .method public constructor <init>(Ljava/lang/String;)V
+          .registers 4
+          new-instance v0, Ljava/lang/StringBuilder;
+          invoke-direct {v0, p1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+          invoke-virtual {v0}, Ljava/lang/StringBuilder;->length()I
+          move-result v1
+          invoke-direct {p0, v1}, Lapp/Root;-><init>(I)V
+          iput-object p1, p0, Lapp/Leaf;->label:Ljava/lang/String;
+          return-void
+        .end method
+        """;
+    String caller =
+        """
+        .class public Lapp/Caller;
+        .super Ljava/lang/Object;
+        .method public static run(I)I
+          .registers 4
+          new-instance v0, Lapp/Leaf;
+          invoke-direct {v0, p0}, Lapp/Root;-><init>(I)V
+          new-instance v1, Lapp/Leaf;
+          const-string v2, "hello"
+          invoke-direct {v1, v2}, Lapp/Leaf;-><init>(Ljava/lang/String;)V
+          iget v0, v0, Lapp/Root;->value:I
+          iget v1, v1, Lapp/Root;->value:I
+          add-int/2addr v0, v1
+          return v0
+        .end method
+        """;
+    Path firstApk = apk("inlined-1.apk", root, mid, leaf, caller);
+    Path firstJar = temp.getRoot().toPath().resolve("inlined-1.jar");
+    ApkClassConverter.Summary first = ApkClassConverter.convert(firstApk, firstJar, platform, null);
+    assertEquals(0, first.failedMethods);
+    assertEquals(0, first.unframedClasses);
+    try (URLClassLoader loader =
+        new URLClassLoader(new URL[] {firstJar.toUri().toURL()}, null)) {
+      assertEquals(15, loader.loadClass("app.Caller").getMethod("run", int.class).invoke(null, 10));
+    }
+
+    // Rebuild where Caller is edited so Mid/Leaf are reused from the previous jar: Mid and Leaf
+    // must keep their synthesized forwarding `<init>(I)V` constructors across incremental builds.
+    String callerV2 = caller.replace("add-int/2addr v0, v1", "mul-int/2addr v0, v1");
+    Path secondApk = apk("inlined-2.apk", root, mid, leaf, callerV2);
+    Path secondJar = temp.getRoot().toPath().resolve("inlined-2.jar");
+    ApkClassConverter.Summary second =
+        ApkClassConverter.convert(secondApk, secondJar, platform, firstJar);
+    assertEquals(3, second.reused);
+    try (URLClassLoader loader =
+        new URLClassLoader(new URL[] {secondJar.toUri().toURL()}, null)) {
+      assertEquals(50, loader.loadClass("app.Caller").getMethod("run", int.class).invoke(null, 10));
+    }
+  }
+
+  @Test
+  public void inlinedAncestorConstructorSkipsExistingSubclassConstructorsWithSameDescriptor()
+      throws Exception {
+    Path platform = emptyJar();
+    String root =
+        """
+        .class public Lapp/Root;
+        .super Ljava/lang/Object;
+        .field public value:I
+        .method public constructor <init>(I)V
+          .registers 2
+          invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+          iput p1, p0, Lapp/Root;->value:I
+          return-void
+        .end method
+        """;
+    String mid =
+        """
+        .class public Lapp/Mid;
+        .super Lapp/Root;
+        .method public constructor <init>(I)V
+          .registers 3
+          add-int/lit8 v0, p1, 0x64
+          invoke-direct {p0, v0}, Lapp/Root;-><init>(I)V
+          return-void
+        .end method
+        """;
+    String leaf =
+        """
+        .class public Lapp/Leaf;
+        .super Lapp/Mid;
+        .method public constructor <init>(I)V
+          .registers 3
+          add-int/lit16 v0, p1, 0x3e8
+          invoke-direct {p0, v0}, Lapp/Mid;-><init>(I)V
+          return-void
+        .end method
+        """;
+    String arrayCaller =
+        """
+        .class public Lapp/Caller;
+        .super Ljava/lang/Object;
+        .method public static run(I)[I
+          .registers 6
+          new-instance v0, Lapp/Leaf;
+          invoke-direct {v0, p0}, Lapp/Root;-><init>(I)V
+          new-instance v1, Lapp/Leaf;
+          invoke-direct {v1, p0}, Lapp/Mid;-><init>(I)V
+          new-instance v2, Lapp/Leaf;
+          invoke-direct {v2, p0}, Lapp/Leaf;-><init>(I)V
+          const/4 v3, 0x3
+          new-array v3, v3, [I
+          const/4 v4, 0x0
+          iget v0, v0, Lapp/Root;->value:I
+          aput v0, v3, v4
+          const/4 v4, 0x1
+          iget v1, v1, Lapp/Root;->value:I
+          aput v1, v3, v4
+          const/4 v4, 0x2
+          iget v2, v2, Lapp/Root;->value:I
+          aput v2, v3, v4
+          return-object v3
+        .end method
+        """;
+    Path outApk = apk("inlined-existing.apk", root, mid, leaf, arrayCaller);
+    Path outJar = temp.getRoot().toPath().resolve("inlined-existing.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, platform, null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      int[] actual = (int[]) loader.loadClass("app.Caller").getMethod("run", int.class).invoke(null, 10);
+      org.junit.Assert.assertArrayEquals(new int[] {10, 110, 1110}, actual);
+    }
   }
 }

@@ -780,4 +780,87 @@ class LaunchCommandTest {
       LaunchCommand.robolectricMismatch(listOf(File("simulator-4.18-beta-1.jar")), sidecar),
     )
   }
+
+  @Test
+  fun `a watch face format launch runs the dwf runtime and passes the wff apk and package`() {
+    val command =
+      LaunchCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("DeclarativeWatchFaceRuntime.apk"),
+        classes = listOf(File("dwf-classes.jar")),
+        options =
+          LaunchCommand.Options(
+            sdk = 36,
+            qualifiers = ApkFormFactor.WEAR.qualifiers,
+            formFactor = ApkFormFactor.WEAR.id,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            launcher = true,
+            noLaunch = true,
+            watchface = "com.google.wear.watchface.simpledigital",
+            wffApks = listOf(File("SimpleDigital.apk")),
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.launcher=true" in command)
+    assertTrue("-Dcomposeai.simulator.noLaunch=true" in command)
+    assertTrue("-Dcomposeai.simulator.watchface=com.google.wear.watchface.simpledigital" in command)
+    assertTrue("-Dcomposeai.simulator.wffApks=SimpleDigital.apk" in command)
+    assertEquals(
+      listOf(LaunchCommand.LAUNCH_MAIN, "DeclarativeWatchFaceRuntime.apk", "dwf-classes.jar"),
+      command.takeLast(3),
+    )
+  }
+
+  @Test
+  fun `a paired launch scopes --watchface and noLaunch to the watch so the phone still starts`() {
+    val phone = LaunchTopology.App("phone", File("phone.apk"))
+    val watch = LaunchTopology.App("watch", File("watch.apk"))
+    val topology = listOf(phone, watch)
+    val base =
+      LaunchCommand.Options(
+        sdk = 36,
+        qualifiers = ApkFormFactor.PHONE.qualifiers,
+        formFactor = ApkFormFactor.PHONE.id,
+        fontScale = null,
+        headless = true,
+        control = true,
+        installProviders = true,
+        launcher = false,
+        noLaunch = false,
+        watchface = "com.example.watch/.AnalogFace",
+        tiles = listOf(".WeatherTile"),
+      )
+    val phoneOptions =
+      LaunchCommand.deviceOptions(
+        options = base,
+        topology = topology,
+        primaryDevice = "phone",
+        hasWatch = true,
+        pairQualifiers = null,
+        app = phone,
+      )
+    val watchOptions =
+      LaunchCommand.deviceOptions(
+        options = base,
+        topology = topology,
+        primaryDevice = "phone",
+        hasWatch = true,
+        pairQualifiers = null,
+        app = watch,
+      )
+    assertFalse(phoneOptions.noLaunch)
+    assertFalse(phoneOptions.launcher)
+    assertNull(phoneOptions.watchface)
+    assertTrue(phoneOptions.tiles.isEmpty())
+
+    assertTrue(watchOptions.noLaunch)
+    assertTrue(watchOptions.launcher)
+    assertEquals("com.example.watch/.AnalogFace", watchOptions.watchface)
+    assertEquals(listOf(".WeatherTile"), watchOptions.tiles)
+  }
 }

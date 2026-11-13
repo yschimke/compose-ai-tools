@@ -38,6 +38,9 @@ final class WatchFaceHost {
   /** {@code WallpaperService.SERVICE_INTERFACE}: every watch face service declares it. */
   static final String WALLPAPER_ACTION = "android.service.wallpaper.WallpaperService";
 
+  /** Launch-time watch face ({@code --watchface} or WFF APK package). */
+  static final String PROPERTY = "composeai.simulator.watchface";
+
   private final Application app;
   private final Navigator navigator;
   private final Protocol protocol;
@@ -82,10 +85,10 @@ final class WatchFaceHost {
    * face when the APK has no launcher activity.
    */
   void setFromLaunch() {
-    String requested = System.getProperty(DwfWatchFaceClient.WATCHFACE_PROPERTY);
+    String requested = System.getProperty(PROPERTY);
     if (requested != null && !requested.trim().isEmpty()) {
       try {
-        setByName(requested.trim());
+        setByName(requested.trim(), null);
       } catch (RuntimeException e) {
         protocol.event(
             "error",
@@ -109,7 +112,7 @@ final class WatchFaceHost {
   // Commands
 
   /**
-   * {@code {"cmd":"watchface", "op": "set" | "unset" | "config" | "complication" |
+   * {@code {"cmd":"watchface", "op": "set" | "render" | "unset" | "config" | "complication" |
    * "uncomplication" | "status"}}.
    */
   JSONObject command(JSONObject c) throws JSONException {
@@ -119,8 +122,10 @@ final class WatchFaceHost {
         {
           String target =
               c.has("component") ? c.getString("component") : c.getString("watchFaceId");
-          return setByName(target);
+          return setByName(target, parseTimeMillis(c));
         }
+      case "render":
+        return render(c);
       case "config":
         return configureDwf(c);
       case "unset":
@@ -145,16 +150,25 @@ final class WatchFaceHost {
         throw new IllegalArgumentException(
             "watchface op "
                 + op
-                + ": use set, unset, config, complication, uncomplication or status");
+                + ": use set, render, unset, config, complication, uncomplication or status");
     }
   }
 
+  private static Long parseTimeMillis(JSONObject c) throws JSONException {
+    if (!c.has("timeMillis") || c.isNull("timeMillis")) return null;
+    return c.getLong("timeMillis");
+  }
+
   JSONObject setByName(String target) {
+    return setByName(target, null);
+  }
+
+  JSONObject setByName(String target, Long timeMillis) {
     DwfWatchFaceClient.Entry dwf = findDwfEntry(target);
     if (dwf != null) {
       return setDwf(dwf);
     }
-    return set(resolve(target));
+    return set(resolve(target), timeMillis);
   }
 
   /** Sets one of the app's declarative (Watch Face Format) watch faces. */
@@ -169,12 +183,24 @@ final class WatchFaceHost {
     return describe();
   }
 
-  /** Sets one of the app's androidx watch faces, replacing any other. */
+  /** Sets one of the app's androidx or WFF watch faces, replacing any other. */
   JSONObject set(ComponentName component) {
+    return set(component, null);
+  }
+
+  JSONObject set(ComponentName component, Long timeMillis) {
     checkWatchFace(component);
-    if (face != null && face.component.equals(component)) return describe();
+    if (face != null && face.component.equals(component)) {
+      if (timeMillis != null || (face.fixedTimeMillis() != null)) {
+        face.setFixedTimeMillis(timeMillis);
+        rendering = true;
+        face.render(ambient);
+      }
+      return describe();
+    }
     releaseFace();
     face = new WatchFaceClient(app, navigator, component, this::rendered);
+    face.setFixedTimeMillis(timeMillis);
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
     rendering = true;
     face.start(metrics.widthPixels, metrics.heightPixels, ambient);
@@ -202,6 +228,27 @@ final class WatchFaceHost {
     return describe();
   }
 
+  /** Re-renders the active watch face, optionally pinning or clearing {@code timeMillis}. */
+  JSONObject render(JSONObject c) throws JSONException {
+    if (face == null && dwfFace == null) {
+      throw new IllegalStateException("no hosted watch face is set; call op:set first");
+    }
+    if (c.has("ambient")) {
+      ambient = c.getBoolean("ambient");
+    }
+    if (face != null) {
+      if (c.has("timeMillis")) {
+        face.setFixedTimeMillis(c.isNull("timeMillis") ? null : c.getLong("timeMillis"));
+      }
+      rendering = true;
+      face.render(ambient);
+    } else {
+      rendering = true;
+      dwfFace.render(ambient);
+    }
+    return describe();
+  }
+
   /** Back to the built-in face; complication sources stay bound and draw on it. */
   JSONObject unset() {
     releaseFace();
@@ -226,7 +273,8 @@ final class WatchFaceHost {
         setDwf(dwf);
       } else {
         ComponentName wfComp = resolve(watchFace);
-        if (wfComp.getPackageName().equals(app.getPackageName())) {
+        if (wfComp.getPackageName().equals(app.getPackageName())
+            || WffWatchFaces.isInstalled(wfComp.getPackageName())) {
           appFace = true;
           set(wfComp);
         }
@@ -364,6 +412,7 @@ final class WatchFaceHost {
     if (rendering) return;
     if (ambient && !minuteChanged) return;
     if (face != null && face.error() == null) {
+      if (face.fixedTimeMillis() != null && face.frames() > 0) return;
       rendering = true;
       face.render(ambient);
     } else if (dwfFace != null && dwfFace.error() == null) {
@@ -386,7 +435,7 @@ final class WatchFaceHost {
 
   private void rendered(WatchFaceClient client, Bitmap frame, String failure) {
     if (client != face) return;
-    onFrameRendered(client.component.flattenToShortString(), client.frames(), frame, failure);
+    onFrameRendered(displayName(client.component), client.frames(), frame, failure);
   }
 
   private void renderedDwf(DwfWatchFaceClient client, Bitmap frame, String failure) {
@@ -498,8 +547,13 @@ final class WatchFaceHost {
     String activeName =
         dwfFace != null
             ? dwfFace.id()
-            : (face != null ? face.component.flattenToShortString() : "built-in");
-    String kind = dwfFace != null ? "dwf" : (face != null ? "androidx" : "built-in");
+            : (face != null ? displayName(face.component) : "built-in");
+    String kind =
+        dwfFace != null
+            ? "dwf"
+            : (face != null
+                ? (face.component.getClassName().isEmpty() ? "dwf-runtime" : "androidx")
+                : "built-in");
     Protocol.Json json =
         new Protocol.Json()
             .put("watchFace", activeName)
@@ -508,6 +562,10 @@ final class WatchFaceHost {
             .put("complications", complications);
     if (face != null || dwfFace != null) {
       json.put("frames", dwfFace != null ? dwfFace.frames() : face.frames());
+      if (face != null) {
+        Long fixed = face.fixedTimeMillis();
+        if (fixed != null) json.put("timeMillis", fixed);
+      }
       JSONArray slots = new JSONArray();
       for (WatchFaceClient.Slot slot : activeSlots()) {
         JSONArray types = new JSONArray();
@@ -537,7 +595,11 @@ final class WatchFaceHost {
 
   private String activeFaceLabel() {
     if (dwfFace != null) return dwfFace.id();
-    if (face != null) return face.component.getShortClassName();
+    if (face != null) {
+      return face.component.getClassName().isEmpty()
+          ? face.component.getPackageName()
+          : face.component.getShortClassName();
+    }
     return "built-in";
   }
 
@@ -552,9 +614,10 @@ final class WatchFaceHost {
         .object();
   }
 
-  /** The app's watch faces and complication data sources. */
+  /** The app's watch faces, installed WFF packages, and complication data sources. */
   private JSONObject available() {
     JSONArray faces = new JSONArray();
+    for (String wffPkg : WffWatchFaces.packages()) faces.put(wffPkg);
     for (ComponentName c : services(WALLPAPER_ACTION)) faces.put(c.flattenToShortString());
     for (DwfWatchFaceClient.Entry e : dwfEntries) faces.put(e.id);
     JSONArray dwfArr = new JSONArray();
@@ -600,6 +663,9 @@ final class WatchFaceHost {
   }
 
   private void checkWatchFace(ComponentName component) {
+    if (WffWatchFaces.isInstalled(component.getPackageName())) {
+      return;
+    }
     if (!component.getPackageName().equals(app.getPackageName())) {
       throw new IllegalArgumentException(
           component.getPackageName()
@@ -642,14 +708,29 @@ final class WatchFaceHost {
         activeFaceLabel() + " has no complication slot " + slot + " (it has " + ids + ")");
   }
 
+  private static String displayName(ComponentName component) {
+    return component.getClassName().isEmpty()
+        ? component.getPackageName()
+        : component.flattenToShortString();
+  }
+
   private static List<String> names(List<ComponentName> components) {
     List<String> names = new ArrayList<>();
     for (ComponentName c : components) names.add(c.getClassName());
     return names;
   }
 
-  /** {@code pkg/.Class}, {@code pkg/pkg.Class}, {@code .Class} or a bare class name. */
+  /** {@code pkg/.Class}, {@code pkg/pkg.Class}, {@code .Class}, a bare class, or a WFF package. */
   private ComponentName resolve(String component) {
+    if (WffWatchFaces.isInstalled(component)) {
+      return new ComponentName(component, "");
+    }
+    if (component.endsWith("/")) {
+      String pkgOnly = component.substring(0, component.length() - 1);
+      if (WffWatchFaces.isInstalled(pkgOnly)) {
+        return new ComponentName(pkgOnly, "");
+      }
+    }
     String pkg = app.getPackageName();
     if (component.contains("/")) {
       ComponentName c = ComponentName.unflattenFromString(component);

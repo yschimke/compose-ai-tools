@@ -173,6 +173,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Alarms.grantExact(app);
       // The other apps of the device (--install): their manifests, here; their code, elsewhere.
       DevicePeers.install(app);
+      // Watch Face Format resource APKs hosted by DeclarativeWatchFaceRuntime (--dwf-runtime).
+      WffWatchFaces.install(app);
       // ...and their content providers, each call forwarded to the app that owns it.
       DeviceProviders.install(app);
       // The documents and photo pickers, camera, share sheet and browser an intent can reach.

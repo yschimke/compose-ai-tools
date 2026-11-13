@@ -18,6 +18,14 @@ public class SimulatorSandboxWearSdkTest {
   public void instrumentsAppBundledWearSdkSignatureClasses() throws Exception {
     InstrumentationConfiguration configuration = instrumentationConfiguration();
     assertTrue(configuration.shouldInstrument(new ClassDetails(wearHapticSignatureBytes())));
+    org.junit.Assert.assertFalse(
+        configuration.shouldInstrument(
+            new ClassDetails(
+                emptyClassBytes("com/google/wear/watchface/runtime/RuntimeControlService"))));
+    org.junit.Assert.assertFalse(
+        configuration.shouldInstrument(
+            new ClassDetails(
+                emptyClassBytes("android/support/wearable/complications/ComplicationData"))));
   }
 
   @Test
@@ -48,5 +56,18 @@ public class SimulatorSandboxWearSdkTest {
       if (input == null) throw new AssertionError("missing test Wear SDK signature class");
       return input.readAllBytes();
     }
+  }
+
+  private static byte[] emptyClassBytes(String internalName) {
+    org.objectweb.asm.ClassWriter cw = new org.objectweb.asm.ClassWriter(0);
+    cw.visit(
+        org.objectweb.asm.Opcodes.V1_8,
+        org.objectweb.asm.Opcodes.ACC_PUBLIC,
+        internalName,
+        null,
+        "java/lang/Object",
+        null);
+    cw.visitEnd();
+    return cw.toByteArray();
   }
 }

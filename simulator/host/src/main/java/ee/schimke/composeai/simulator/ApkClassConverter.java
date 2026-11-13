@@ -22,8 +22,12 @@ import com.googlecode.dex2jar.ir.IrMethod;
 import com.googlecode.dex2jar.ir.expr.BinopExpr;
 import com.googlecode.dex2jar.ir.expr.Constant;
 import com.googlecode.dex2jar.ir.expr.Exprs;
+import com.googlecode.dex2jar.ir.expr.InvokeExpr;
+import com.googlecode.dex2jar.ir.expr.Local;
+import com.googlecode.dex2jar.ir.expr.NewExpr;
 import com.googlecode.dex2jar.ir.expr.Value;
 import com.googlecode.dex2jar.ir.stmt.Stmt;
+import com.googlecode.dex2jar.ir.stmt.Stmts;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -34,9 +38,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,6 +56,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 /**
  * Turns an APK's `classes*.dex` into one jar Robolectric's simulator can load as an extra
@@ -213,7 +220,28 @@ public final class ApkClassConverter {
           }
         }
       }
-      // Pass 2: interface calls, frames and access, with the whole hierarchy to hand.
+      // Collect forwarding <init> constructors required by R8 constructor-inlined calls across all
+      // translated and reused classes before Pass 2 writes or reuses any class file.
+      Map<String, Set<String>> neededInits = new HashMap<>();
+      for (int i = 0; i < count; i++) {
+        Iterable<String> calls =
+            reused[i] != null
+                ? splitSpaces(reused[i].inlinedInits)
+                : (fresh[i] != null ? fresh[i].inlinedInits : List.of());
+        for (String call : calls) {
+          int p1 = call.indexOf('|');
+          int p2 = call.indexOf('|', p1 + 1);
+          if (p1 > 0 && p2 > p1) {
+            classInfo.recordNeededInits(
+                call.substring(0, p1),
+                call.substring(p1 + 1, p2),
+                call.substring(p2 + 1),
+                neededInits);
+          }
+        }
+      }
+      // Pass 2: interface calls, synthesized forwarding <init>s, frames and access, with the whole
+      // hierarchy to hand.
       try (ZipFile pass1 = new ZipFile(translated.toFile());
           ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(out));
           Index.Writer index = new Index.Writer(indexOf(out))) {
@@ -231,9 +259,14 @@ public final class ApkClassConverter {
         ClassHierarchy hierarchy = new ClassHierarchy(appClasses, platform);
         Set<String> written = new HashSet<>();
         for (int i = 0; i < count; i++) {
+          Set<String> synth =
+              new TreeSet<>(neededInits.getOrDefault(names.get(i), Collections.emptySet()));
+          String synthEncoded = String.join(" ", synth);
           Index.Entry entry;
           byte[] bytes;
-          if (reused[i] != null && hierarchy.resolvesAsBefore(reused[i].dependencies)) {
+          if (reused[i] != null
+              && reused[i].synthesizedInits.equals(synthEncoded)
+              && hierarchy.resolvesAsBefore(reused[i].dependencies)) {
             entry = reused[i];
             bytes = entryBytes(previousJar, entry.entryName);
             summary.reused++;
@@ -244,7 +277,7 @@ public final class ApkClassConverter {
               input =
                   translation.entryName == null ? null : entryBytes(pass1, translation.entryName);
             } else if (reused[i] != null) {
-              // Unchanged, but a supertype it was framed against changed: translate it again.
+              // Unchanged, but a supertype or synthesized <init> set changed: translate it again.
               DexClassNode node = read(reader, i, false);
               if (node == null) continue;
               translation = translate(reader, i, node, classInfo);
@@ -257,10 +290,21 @@ public final class ApkClassConverter {
             entry.withoutDebugInfo = translation.withoutDebugInfo;
             entry.failedMethods = translation.failures.size();
             entry.failures.addAll(translation.failures);
+            entry.inlinedInits = String.join(" ", translation.inlinedInits);
+            entry.synthesizedInits = synthEncoded;
             Summary one = new Summary();
             Set<String> lookups = new TreeSet<>();
             hierarchy.recordInto(lookups);
-            bytes = rewrite(input, hierarchy, one);
+            for (String call : translation.inlinedInits) {
+              int p1 = call.indexOf('|');
+              int p2 = call.indexOf('|', p1 + 1);
+              if (p1 > 0 && p2 > p1) {
+                hierarchy.commonSuperClass(
+                    internalName(call.substring(0, p1)),
+                    internalName(call.substring(p1 + 1, p2)));
+              }
+            }
+            bytes = rewrite(input, synth, hierarchy, one);
             hierarchy.recordInto(null);
             entry.interfaceCallsFixed = one.interfaceCallsFixed;
             entry.unframed = one.unframedClasses > 0;
@@ -279,6 +323,11 @@ public final class ApkClassConverter {
       Files.deleteIfExists(translated);
     }
     return summary;
+  }
+
+  private static List<String> splitSpaces(String value) {
+    if (value == null || value.isEmpty()) return List.of();
+    return List.of(value.split(" "));
   }
 
   /** {@code Lcom/example/Foo;} as {@code com/example/Foo}. */
@@ -315,6 +364,8 @@ public final class ApkClassConverter {
     byte[] bytes;
     boolean withoutDebugInfo;
     final List<String> failures = new ArrayList<>();
+    /** {@code fromDesc|targetDesc|initDesc} triples rewritten for R8 constructor inlining. */
+    final Set<String> inlinedInits = new LinkedHashSet<>();
   }
 
   /**
@@ -372,28 +423,50 @@ public final class ApkClassConverter {
             }
           };
         };
-    new Translator(handler).convertClass(dexVersion, node, classes, classInfo.classes);
+    new Translator(handler, classInfo, translation.inlinedInits)
+        .convertClass(dexVersion, node, classes, classInfo.classes);
     return translation;
   }
 
-  /** dex2jar's translator, with {@code Dex2jar}'s pass order and the zero-left jump fix. */
+  /**
+   * dex2jar's translator, with {@code Dex2jar}'s pass order, R8 constructor-inlining normalization
+   * before {@code T_NEW}, and the zero-left jump fix.
+   */
   private static final class Translator extends ExDex2Asm {
 
-    Translator(BaseDexExceptionHandler handler) {
+    private static final String BRIDGE_MARKER = "Ljava/lang/Void;";
+
+    private final ClassInfo classInfo;
+    private final Set<String> inlinedInits;
+
+    Translator(BaseDexExceptionHandler handler, ClassInfo classInfo, Set<String> inlinedInits) {
       super(handler);
+      this.classInfo = classInfo;
+      this.inlinedInits = inlinedInits;
     }
 
     /**
      * What {@code Dex2Asm.convertDex} collects from every class before translating any: access
-     * flags and the enclosing / inner / member class annotations, for each class's inner-class
-     * attributes. Read without code, fields or methods, so it is small.
+     * flags and the enclosing / inner / member class annotations, plus each kept APK class's
+     * superclass and {@code <init>} descriptors so R8 constructor-inlined {@code invoke-direct}
+     * calls can be bridged across intermediate subclasses. Read without code or field constants, so
+     * it is small.
      */
     static ClassInfo classInfo(BaseDexFileReader reader) {
+      Map<String, String> superOf = new HashMap<>();
+      Map<String, Set<String>> existingInits = new HashMap<>();
+      ClassLoader host = ApkClassConverter.class.getClassLoader();
       DexFileNode headers =
           new DexFileNode() {
             @Override
             public DexClassVisitor visit(
                 int access, String className, String superClass, String[] interfaceNames) {
+              boolean kept = !providedBySimulator(internalName(className) + ".class", host);
+              Set<String> inits = kept ? new HashSet<>() : null;
+              if (kept) {
+                superOf.put(className, superClass);
+                existingInits.put(className, inits);
+              }
               DexClassNode node =
                   new DexClassNode(access, className, superClass, interfaceNames) {
                     @Override
@@ -403,6 +476,9 @@ public final class ApkClassConverter {
 
                     @Override
                     public DexMethodVisitor visitMethod(int access, Method method) {
+                      if (inits != null && "<init>".equals(method.getName())) {
+                        inits.add(method.getDesc());
+                      }
                       return null;
                     }
                   };
@@ -416,7 +492,7 @@ public final class ApkClassConverter {
               | DexFileReader.SKIP_CODE
               | DexFileReader.SKIP_DEBUG
               | DexFileReader.SKIP_FIELD_CONSTANT);
-      return new ClassInfo(collectClzInfo(headers));
+      return new ClassInfo(collectClzInfo(headers), superOf, existingInits);
     }
 
     /**
@@ -477,6 +553,11 @@ public final class ApkClassConverter {
         }
         facts.append('/').append(p.enclosingClass == null ? null : p.enclosingClass.name);
       }
+      Set<String> supers = new HashSet<>();
+      facts.append("|pad=").append(classInfo.baseVoidPad);
+      for (String s = node.className; s != null && supers.add(s); s = classInfo.superOf.get(s)) {
+        facts.append('>').append(s);
+      }
       digest.update(facts.toString().getBytes(StandardCharsets.UTF_8));
       return hex(digest.digest());
     }
@@ -484,10 +565,205 @@ public final class ApkClassConverter {
     /** {@link #classInfo}'s result; dex2jar's {@code Clz} is not visible outside a subclass. */
     static final class ClassInfo {
       final Map<String, Clz> classes;
+      final Map<String, String> superOf;
+      final Map<String, Set<String>> existingInits;
+      final int baseVoidPad;
 
-      ClassInfo(Map<String, Clz> classes) {
+      ClassInfo(
+          Map<String, Clz> classes,
+          Map<String, String> superOf,
+          Map<String, Set<String>> existingInits) {
         this.classes = classes;
+        this.superOf = superOf;
+        this.existingInits = existingInits;
+        int maxTrailing = 0;
+        for (Set<String> inits : existingInits.values()) {
+          for (String desc : inits) maxTrailing = Math.max(maxTrailing, trailingMarkers(desc));
+        }
+        this.baseVoidPad = 1 + maxTrailing;
       }
+
+      private static int trailingMarkers(String initDesc) {
+        int end = initDesc.indexOf(')');
+        if (end < 0) return 0;
+        String params = initDesc.substring(0, end);
+        int count = 0;
+        while (params.endsWith(BRIDGE_MARKER)) {
+          count++;
+          params = params.substring(0, params.length() - BRIDGE_MARKER.length());
+        }
+        return count;
+      }
+
+      int depth(String desc) {
+        int d = 0;
+        String cur = desc;
+        Set<String> visited = new HashSet<>();
+        while (cur != null && superOf.containsKey(cur) && visited.add(cur)) {
+          d++;
+          cur = superOf.get(cur);
+        }
+        return d;
+      }
+
+      int bridgePad(String targetAncestorDesc) {
+        return baseVoidPad + depth(targetAncestorDesc);
+      }
+
+      static String appendMarkers(String initDesc, int pad) {
+        int end = initDesc.indexOf(')');
+        StringBuilder sb = new StringBuilder(initDesc.length() + pad * BRIDGE_MARKER.length());
+        sb.append(initDesc, 0, end);
+        for (int i = 0; i < pad; i++) sb.append(BRIDGE_MARKER);
+        sb.append(initDesc, end, initDesc.length());
+        return sb.toString();
+      }
+
+      /**
+       * Whether [targetAncestorDesc] is an ancestor of [fromDesc] reachable entirely through APK
+       * classes we emit (so forwarding bridge {@code <init>}s along the chain can be synthesized).
+       */
+      boolean canBridge(String fromDesc, String targetAncestorDesc) {
+        String cur = fromDesc;
+        Set<String> visited = new HashSet<>();
+        while (cur != null && !cur.equals(targetAncestorDesc) && visited.add(cur)) {
+          if (!superOf.containsKey(cur)) return false;
+          cur = superOf.get(cur);
+        }
+        return targetAncestorDesc.equals(cur);
+      }
+
+      void recordNeededInits(
+          String fromDesc,
+          String targetAncestorDesc,
+          String origInitDesc,
+          Map<String, Set<String>> neededInits) {
+        String bridgeDesc = appendMarkers(origInitDesc, bridgePad(targetAncestorDesc));
+        String cur = fromDesc;
+        Set<String> visited = new HashSet<>();
+        while (cur != null && !cur.equals(targetAncestorDesc) && visited.add(cur)) {
+          String sup = superOf.get(cur);
+          if (sup == null) break;
+          String superCallDesc = sup.equals(targetAncestorDesc) ? origInitDesc : bridgeDesc;
+          neededInits
+              .computeIfAbsent(cur, k -> new LinkedHashSet<>())
+              .add(bridgeDesc + ">" + superCallDesc);
+          cur = sup;
+        }
+      }
+    }
+
+    /**
+     * Normalizes R8 constructor-inlined {@code invoke-direct} instructions before {@code T_NEW}.
+     *
+     * <p>ART permits both {@code new-instance Sub; invoke-direct Ancestor.<init>} (skipping {@code
+     * Sub.<init>}) and {@code Sub.<init>} calling {@code Grandparent.<init>} on {@code this}
+     * (skipping {@code Parent.<init>}). On a JVM both are {@code VerifyError}s ("Call to wrong
+     * {@code <init>} method"), and the first also leaves {@code T_NEW} unable to fuse {@code NEW} +
+     * {@code INVOKESPECIAL}, emitting a bare {@code NEW} with no {@code <init>} call at all.
+     * Rewriting the owner to {@code Sub} (or {@code Parent}) and synthesizing forwarding {@code
+     * <init>} methods along the super chain satisfies both {@code T_NEW} and the JVM verifier.
+     */
+    private void normalizeInlinedConstructors(IrMethod irMethod) {
+      Map<Local, String> newTypes = new HashMap<>();
+      Set<Local> thisLocals = new HashSet<>();
+      boolean changed = true;
+      while (changed) {
+        changed = false;
+        for (Stmt s : irMethod.stmts) {
+          if ((s.st == Stmt.ST.ASSIGN || s.st == Stmt.ST.IDENTITY)
+              && s.getOp1().vt == Value.VT.LOCAL) {
+            Local lhs = (Local) s.getOp1();
+            Value rhs = s.getOp2();
+            if (rhs.vt == Value.VT.NEW) {
+              String type = ((NewExpr) rhs).type;
+              changed |= !type.equals(newTypes.put(lhs, type));
+            } else if (rhs.vt == Value.VT.THIS_REF) {
+              changed |= thisLocals.add(lhs);
+            } else if (rhs instanceof Local src) {
+              String type = newTypes.get(src);
+              if (type != null) changed |= !type.equals(newTypes.put(lhs, type));
+              if (thisLocals.contains(src)) changed |= thisLocals.add(lhs);
+            }
+          }
+        }
+      }
+      if (newTypes.isEmpty() && thisLocals.isEmpty()) return;
+      String selfDesc =
+          irMethod.owner == null
+              ? null
+              : (irMethod.owner.startsWith("L") ? irMethod.owner : "L" + irMethod.owner + ";");
+      List<Stmt> stmts = new ArrayList<>();
+      for (Stmt s : irMethod.stmts) stmts.add(s);
+      int bridgeCounter = 0;
+      for (Stmt s : stmts) {
+        Value op = s.st == Stmt.ST.VOID_INVOKE ? s.getOp() : null;
+        if (!(op instanceof InvokeExpr inv)
+            || inv.vt != Value.VT.INVOKE_SPECIAL
+            || !"<init>".equals(inv.getName())) {
+          continue;
+        }
+        Value[] ops = inv.getOps();
+        if (ops == null || ops.length == 0 || !(ops[0] instanceof Local loc)) continue;
+        String currentOwner = inv.getOwner();
+        String allocType = newTypes.get(loc);
+        if (allocType != null
+            && !allocType.equals(currentOwner)
+            && classInfo.canBridge(allocType, currentOwner)) {
+          String initDesc = inv.getProto().getDesc();
+          inlinedInits.add(allocType + "|" + currentOwner + "|" + initDesc);
+          bridgeCounter =
+              rewriteToBridgeInit(
+                  irMethod,
+                  s,
+                  inv,
+                  allocType,
+                  classInfo.bridgePad(currentOwner),
+                  bridgeCounter);
+        } else if (selfDesc != null
+            && thisLocals.contains(loc)
+            && "<init>".equals(irMethod.name)) {
+          String directSuper = classInfo.superOf.get(selfDesc);
+          if (directSuper != null
+              && !currentOwner.equals(selfDesc)
+              && !currentOwner.equals(directSuper)
+              && classInfo.canBridge(directSuper, currentOwner)) {
+            String initDesc = inv.getProto().getDesc();
+            inlinedInits.add(directSuper + "|" + currentOwner + "|" + initDesc);
+            bridgeCounter =
+                rewriteToBridgeInit(
+                    irMethod,
+                    s,
+                    inv,
+                    directSuper,
+                    classInfo.bridgePad(currentOwner),
+                    bridgeCounter);
+          }
+        }
+      }
+    }
+
+    private static int rewriteToBridgeInit(
+        IrMethod irMethod,
+        Stmt invokeStmt,
+        InvokeExpr inv,
+        String newOwner,
+        int pad,
+        int bridgeCounter) {
+      Value[] oldOps = inv.getOps();
+      String[] oldArgs = inv.getArgs();
+      Value[] newOps = Arrays.copyOf(oldOps, oldOps.length + pad);
+      String[] newArgs = Arrays.copyOf(oldArgs, oldArgs.length + pad);
+      for (int i = 0; i < pad; i++) {
+        Local marker = Exprs.nLocal("bridge" + (bridgeCounter++));
+        irMethod.locals.add(marker);
+        irMethod.stmts.insertBefore(
+            invokeStmt, Stmts.nAssign(marker, Exprs.nConstant(Constant.NULL)));
+        newOps[oldOps.length + i] = marker;
+        newArgs[oldArgs.length + i] = BRIDGE_MARKER;
+      }
+      invokeStmt.setOp(Exprs.nInvokeSpecial(newOps, newOwner, "<init>", newArgs, "V"));
+      return bridgeCounter;
     }
 
     // Dex2jar's own pass order, which differs from Dex2Asm's default in its last two steps.
@@ -503,6 +779,7 @@ public final class ApkClassConverter {
         T_REMOVE_LOCAL.transform(irMethod);
         T_REMOVE_CONST.transform(irMethod);
       }
+      normalizeInlinedConstructors(irMethod);
       T_NEW.transform(irMethod);
       T_FILL_ARRAY.transform(irMethod);
       T_AGG.transform(irMethod);
@@ -579,13 +856,16 @@ public final class ApkClassConverter {
   };
 
   /**
-   * Whether [entryName] is a class of a shared library that [host], the simulator's own class path,
-   * also defines. On a device the library's class loader is the app's parent, so its classes win
-   * over any copy the APK carries (often a compile stub missing the methods the app calls); in the
-   * sandbox the app's classes come first, so the APK's copy is dropped instead.
+   * Whether [entryName] is a class the simulator itself supplies: either one of the {@link
+   * #SHARED_LIBRARY_PACKAGES} present on [host], or a leaked {@code androidx.test} class (the
+   * simulator's Robolectric sidecar carries the full {@code androidx.test:core}, {@code monitor},
+   * {@code runner} and {@code espresso} jars, and an R8-shrunk copy bundled in an APK — such as
+   * {@code DeclarativeWatchFaceRuntime.apk}'s stripped {@code Checks} — would otherwise shadow the
+   * methods {@code RoboMonitoringInstrumentation} calls).
    */
   static boolean providedBySimulator(String entryName, ClassLoader host) {
     if (!entryName.endsWith(".class")) return false;
+    if (entryName.startsWith("androidx/test/")) return true;
     for (String prefix : SHARED_LIBRARY_PACKAGES) {
       if (entryName.startsWith(prefix)) return host != null && host.getResource(entryName) != null;
     }
@@ -598,9 +878,15 @@ public final class ApkClassConverter {
    * only, and is counted.
    */
   static byte[] rewrite(byte[] bytes, ClassHierarchy hierarchy, Summary summary) {
+    return rewrite(bytes, Collections.emptySet(), hierarchy, summary);
+  }
+
+  static byte[] rewrite(
+      byte[] bytes, Set<String> synthesizedInits, ClassHierarchy hierarchy, Summary summary) {
     int[] fixed = {0};
     try {
-      byte[] framed = rewrite(bytes, hierarchy, ClassWriter.COMPUTE_FRAMES, fixed);
+      byte[] framed =
+          rewrite(bytes, synthesizedInits, hierarchy, ClassWriter.COMPUTE_FRAMES, fixed);
       summary.interfaceCallsFixed += fixed[0];
       return framed;
     } catch (RuntimeException e) {
@@ -609,7 +895,7 @@ public final class ApkClassConverter {
         summary.failures.add(new ClassReader(bytes).getClassName() + ": frames: " + e);
       }
       fixed[0] = 0;
-      byte[] maxed = rewrite(bytes, hierarchy, ClassWriter.COMPUTE_MAXS, fixed);
+      byte[] maxed = rewrite(bytes, synthesizedInits, hierarchy, ClassWriter.COMPUTE_MAXS, fixed);
       summary.interfaceCallsFixed += fixed[0];
       return maxed;
     }
@@ -628,7 +914,12 @@ public final class ApkClassConverter {
         : access;
   }
 
-  private static byte[] rewrite(byte[] bytes, ClassHierarchy hierarchy, int compute, int[] fixed) {
+  private static byte[] rewrite(
+      byte[] bytes,
+      Set<String> synthesizedInits,
+      ClassHierarchy hierarchy,
+      int compute,
+      int[] fixed) {
     ClassReader reader = new ClassReader(bytes);
     ClassWriter writer =
         new ClassWriter(compute) {
@@ -639,6 +930,8 @@ public final class ApkClassConverter {
         };
     reader.accept(
         new ClassVisitor(Opcodes.ASM9, writer) {
+          private String superInternalName;
+
           @Override
           public void visit(
               int version,
@@ -647,6 +940,7 @@ public final class ApkClassConverter {
               String signature,
               String superName,
               String[] interfaces) {
+            this.superInternalName = superName;
             // Frames need class file version 50+; dex2jar may write older.
             super.visit(
                 Math.max(version, Opcodes.V1_8), access, name, signature, superName, interfaces);
@@ -676,6 +970,41 @@ public final class ApkClassConverter {
                 super.visitMethodInsn(opcode, owner, method, descriptor, itf);
               }
             };
+          }
+
+          @Override
+          public void visitEnd() {
+            if (superInternalName != null) {
+              for (String spec : synthesizedInits) {
+                int sep = spec.indexOf('>');
+                String bridgeDesc = sep >= 0 ? spec.substring(0, sep) : spec;
+                String superCallDesc = sep >= 0 ? spec.substring(sep + 1) : spec;
+                MethodVisitor mv =
+                    super.visitMethod(
+                        Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC,
+                        "<init>",
+                        bridgeDesc,
+                        null,
+                        null);
+                mv.visitCode();
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                int stack = 1;
+                for (Type argType : Type.getArgumentTypes(superCallDesc)) {
+                  mv.visitVarInsn(argType.getOpcode(Opcodes.ILOAD), stack);
+                  stack += argType.getSize();
+                }
+                int locals = 1;
+                for (Type argType : Type.getArgumentTypes(bridgeDesc)) {
+                  locals += argType.getSize();
+                }
+                mv.visitMethodInsn(
+                    Opcodes.INVOKESPECIAL, superInternalName, "<init>", superCallDesc, false);
+                mv.visitInsn(Opcodes.RETURN);
+                mv.visitMaxs(stack, locals);
+                mv.visitEnd();
+              }
+            }
+            super.visitEnd();
           }
         },
         ClassReader.SKIP_FRAMES);
@@ -808,7 +1137,7 @@ public final class ApkClassConverter {
    * holds a tab, space or newline, and failure messages have theirs replaced.
    */
   static final class Index {
-    static final String HEADER = "composeai-apk-classes 1";
+    static final String HEADER = "composeai-apk-classes 2";
 
     static final class Entry {
       final String descriptor;
@@ -819,6 +1148,8 @@ public final class ApkClassConverter {
       boolean withoutDebugInfo;
       int failedMethods;
       String dependencies = "";
+      String inlinedInits = "";
+      String synthesizedInits = "";
       final List<String> failures = new ArrayList<>();
 
       Entry(String descriptor, String key, String entryName) {
@@ -836,14 +1167,16 @@ public final class ApkClassConverter {
         if (lines.isEmpty() || !lines.get(0).equals(HEADER)) return entries;
         for (String line : lines.subList(1, lines.size())) {
           String[] f = line.split("\t", -1);
-          if (f.length < 9) return new HashMap<>();
+          if (f.length < 11) return new HashMap<>();
           Entry entry = new Entry(f[0], f[1], f[2]);
           entry.interfaceCallsFixed = Integer.parseInt(f[3]);
           entry.unframed = f[4].equals("1");
           entry.withoutDebugInfo = f[5].equals("1");
           entry.failedMethods = Integer.parseInt(f[6]);
           entry.dependencies = f[7];
-          for (int i = 8; i < f.length; i++) {
+          entry.inlinedInits = f[8];
+          entry.synthesizedInits = f[9];
+          for (int i = 10; i < f.length; i++) {
             if (!f[i].isEmpty()) entry.failures.add(f[i]);
           }
           entries.put(entry.descriptor, entry);
@@ -870,6 +1203,7 @@ public final class ApkClassConverter {
         out.write("\t" + entry.interfaceCallsFixed + "\t" + (entry.unframed ? 1 : 0));
         out.write("\t" + (entry.withoutDebugInfo ? 1 : 0) + "\t" + entry.failedMethods);
         out.write("\t" + entry.dependencies);
+        out.write("\t" + entry.inlinedInits + "\t" + entry.synthesizedInits);
         if (entry.failures.isEmpty()) out.write('\t');
         for (String failure : entry.failures) {
           out.write('\t');

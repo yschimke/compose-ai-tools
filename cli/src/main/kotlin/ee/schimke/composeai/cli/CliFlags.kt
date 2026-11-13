@@ -236,6 +236,7 @@ internal object CliFlags {
       "--pair-qualifiers",
       "--tile",
       "--watchface",
+      "--dwf-runtime",
       "--fingerprint",
       "--network",
       "--max-heap",
