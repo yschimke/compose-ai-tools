@@ -746,25 +746,25 @@ internal object ComposePreviewTasks {
       // repository root.
       uiBuilderPolicyCandidates.from(
         project.layout.projectDirectory.file("ui-builder.policy.json"),
-        project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
+        repositoryRootDirectory(project).file("ui-builder.policy.json"),
       )
       uiBuilderGuidelinesCandidates.from(
         project.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
-        project.rootProject.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
+        repositoryRootDirectory(project).file(UiBuilderGuidelinesFile.FILE_NAME),
       )
       catalogSpecCandidates.from(
         project.layout.projectDirectory.file("catalog.spec.json"),
-        project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
+        repositoryRootDirectory(project).file("catalog.spec.json"),
       )
       // Template designs from the conventional directory that branch-relative `templates` entries
       // resolve in.
       uiBuilderTemplateCandidates.from(
         uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
-        uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
+        uiBuilderTemplateTree(repositoryRootDirectory(project).dir("ui-builder")),
       )
       uiBuilderTemplateRoots.from(
         project.layout.projectDirectory,
-        project.rootProject.layout.projectDirectory,
+        repositoryRootDirectory(project),
       )
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
@@ -1703,25 +1703,25 @@ internal object ComposePreviewTasks {
       // Module first, then repository root; candidates may be absent.
       uiBuilderPolicyCandidates.from(
         project.layout.projectDirectory.file("ui-builder.policy.json"),
-        project.rootProject.layout.projectDirectory.file("ui-builder.policy.json"),
+        repositoryRootDirectory(project).file("ui-builder.policy.json"),
       )
       uiBuilderGuidelinesCandidates.from(
         project.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
-        project.rootProject.layout.projectDirectory.file(UiBuilderGuidelinesFile.FILE_NAME),
+        repositoryRootDirectory(project).file(UiBuilderGuidelinesFile.FILE_NAME),
       )
       catalogSpecCandidates.from(
         project.layout.projectDirectory.file("catalog.spec.json"),
-        project.rootProject.layout.projectDirectory.file("catalog.spec.json"),
+        repositoryRootDirectory(project).file("catalog.spec.json"),
       )
       // Template designs from the conventional directory that branch-relative `templates` entries
       // resolve in.
       uiBuilderTemplateCandidates.from(
         uiBuilderTemplateTree(project.layout.projectDirectory.dir("ui-builder")),
-        uiBuilderTemplateTree(project.rootProject.layout.projectDirectory.dir("ui-builder")),
+        uiBuilderTemplateTree(repositoryRootDirectory(project).dir("ui-builder")),
       )
       uiBuilderTemplateRoots.from(
         project.layout.projectDirectory,
-        project.rootProject.layout.projectDirectory,
+        repositoryRootDirectory(project),
       )
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"
@@ -2332,6 +2332,14 @@ internal object ComposePreviewTasks {
    * and exclude `build` dirs (the glob is in code: it would end this KDoc). Roots stay the project
    * directories ([DiscoverPreviewsTask.uiBuilderTemplateRoots]).
    */
+  /**
+   * The root project's directory, read through [Project.getIsolated] so it is Isolated-Projects
+   * safe: `rootProject.layout` from a subproject is a cross-project access IP rejects ("Project
+   * ':app' cannot access 'Project.layout' functionality on another project ':'").
+   */
+  private fun repositoryRootDirectory(project: Project): Directory =
+    project.isolated.rootProject.projectDirectory
+
   private fun uiBuilderTemplateTree(dir: Directory) =
     dir.asFileTree.matching {
       include("**/*.json")

@@ -6,8 +6,9 @@ that would actually fix it.
 
 ## TL;DR
 
-- IP is **not** enabled in this repo's `gradle.properties`, and the plugin +
-  init scripts **warn** when IP is detected. See the rationale in
+- IP is **not** enabled in this repo's `gradle.properties`, and the init
+  scripts **warn** when IP is detected (the plugin does not: applied by the
+  build itself, it runs under IP). See the rationale in
   [gradle.properties](../gradle.properties) and the "Isolated Projects"
   constraint in [AGENT_GUIDE.md](AGENT_GUIDE.md).
 - The auto-inject init script applies the plugin to every project via
@@ -28,7 +29,13 @@ that would actually fix it.
   repros below — has to pass the same flags itself.
 - `--no-auto-inject` (or a build that applies the plugin in its own
   `plugins { }` blocks) does not need any of this: the plugin itself is
-  IP-clean, which the gradle-plugin functional tests pin with IP on.
+  IP-clean, which the gradle-plugin functional tests pin with IP on —
+  `IsolatedProjectsFunctionalTest` configures the discover / bundle tasks of
+  an Android subproject, where reading `rootProject.layout` (the
+  repository-root `ui-builder.policy.json` / `catalog.spec.json` lookup) used
+  to fail with `Project ':app' cannot access 'Project.layout' functionality on
+  another project ':'`. Read the root directory through
+  `project.isolated.rootProject.projectDirectory` instead.
 - We attempted an IP-safe redesign. The blocker is fundamental: there is no
   Gradle mechanism that is simultaneously **(a)** IP-clean, **(b)** injects a
   plugin without editing build files, and **(c)** puts that plugin on the same
