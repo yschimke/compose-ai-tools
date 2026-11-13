@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.91.0](https://github.com/yschimke/compose-ai-tools/compare/v2.90.1...v2.91.0) (2026-11-13)
+
+
+### Features
+
+* **cli:** report modules whose edits cannot compile in process ([#6527](https://github.com/yschimke/compose-ai-tools/issues/6527)) ([b723f08](https://github.com/yschimke/compose-ai-tools/commit/b723f0831473ad4922ed03572e0c7622bf8a785d))
+* **dwf:** support Declarative Watch Face previews, fake complications, and simulator launch ([#6520](https://github.com/yschimke/compose-ai-tools/issues/6520)) ([5a45c8b](https://github.com/yschimke/compose-ai-tools/commit/5a45c8b973fd82e768f40d7bebc0aa33cce7dd0e))
+* **simulator:** launch Watch Face Format APKs with cached DWF runtime ([#6531](https://github.com/yschimke/compose-ai-tools/issues/6531)) ([6961d3e](https://github.com/yschimke/compose-ai-tools/commit/6961d3e842e61abb689400facea7bfd0bb6d880b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.1.1 ([#6529](https://github.com/yschimke/compose-ai-tools/issues/6529)) ([366daa4](https://github.com/yschimke/compose-ai-tools/commit/366daa4c4856fa627f03b9178e9bbc913bf12e61))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.1.2 ([#6532](https://github.com/yschimke/compose-ai-tools/issues/6532)) ([848adcf](https://github.com/yschimke/compose-ai-tools/commit/848adcfb8902a6cd55e47eedc434d278e09d213f))
+* **plugin:** let Kotlin/JVM modules compile in process ([#6528](https://github.com/yschimke/compose-ai-tools/issues/6528)) ([309c7bc](https://github.com/yschimke/compose-ai-tools/commit/309c7bc3a6a2d9e9bbf88378f6764347b0581fbc))
+
 ## [2.90.1](https://github.com/yschimke/compose-ai-tools/compare/v2.90.0...v2.90.1) (2026-11-12)
 
 
