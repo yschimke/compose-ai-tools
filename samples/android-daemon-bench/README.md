@@ -1,6 +1,8 @@
 # `:samples:android-daemon-bench`
 
 Latency baseline harness for the preview-daemon work. See
+[`docs/BENCHMARKS.md`](../../docs/BENCHMARKS.md) for the side-by-side comparison against
+`android preview` and `android studio render-compose-preview`, plus
 [`docs/daemon/DESIGN.md` § 13](../../docs/daemon/DESIGN.md) and
 [`docs/daemon/baseline-latency.md`](../../docs/daemon/baseline-latency.md).
 

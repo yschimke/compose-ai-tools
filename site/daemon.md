@@ -42,4 +42,5 @@ The full design docs live in
 - [`PROTOCOL.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/PROTOCOL.md) — the v1 client ↔ daemon wire format.
 - [`CONFIG.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/CONFIG.md) — the `composePreview.daemon { … }` DSL.
 - [`MCP.md`](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md) — daemon ↔ MCP mapping and tool surface.
+- [`BENCHMARKS.md`](https://github.com/yschimke/compose-ai-tools/blob/main/docs/BENCHMARKS.md) — measured cold/warm render, Stage-2 BTA edit-to-pixel, and semantics latency vs `android preview` and `android studio render-compose-preview`.
 </content>
