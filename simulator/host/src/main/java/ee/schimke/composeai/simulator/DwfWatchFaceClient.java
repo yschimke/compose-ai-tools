@@ -964,31 +964,75 @@ final class DwfWatchFaceClient {
       setBothInt(target, "dwf.weather.condition", ws.weatherCondition());
       setBothString(target, "dwf.weather.condition_name", ws.weatherConditionName());
       setBothFloat(target, "dwf.weather.temperature", ws.weatherTemperature());
+      setBothFloat(target, "dwf.weather.temperature_high", ws.weatherTemperatureHigh());
+      setBothFloat(target, "dwf.weather.temperature_low", ws.weatherTemperatureLow());
       setBothInt(target, "dwf.weather.temperature_unit", ws.weatherCelsius() ? 1 : 0);
+      setBothInt(target, "dwf.weather.chance_of_precipitation", ws.weatherPrecipitation());
+      setBothInt(target, "dwf.weather.uv_index", ws.weatherUvIndex());
       setBothString(target, "dwf.weather.last_updated_text", ws.weatherLastUpdated());
 
-      for (Map.Entry<Integer, WatchState.HourlyWeather> h : ws.hourlyWeather().entrySet()) {
-        int hr = h.getKey().intValue();
-        WatchState.HourlyWeather hw = h.getValue();
-        setBothInt(target, "dwf.weather.hours." + hr + ".is_available", ws.weatherAvailable() ? 1 : 0);
-        setBothInt(target, "dwf.weather.hours." + hr + ".is_day", hw.isDay ? 1 : 0);
-        setBothInt(target, "dwf.weather.hours." + hr + ".condition", hw.condition);
-        setBothFloat(target, "dwf.weather.hours." + hr + ".temperature", hw.temperature);
+      int[] hourlyTempOffsets = {0, 1, 2, 1, 0, -1, -2, -3};
+      int[] hourlyCondDefaults = {14, 8, 8, 2, 6, 14, 1, 1};
+      for (int hr = 1; hr <= 24; hr++) {
+        WatchState.HourlyWeather hw = ws.hourlyWeather().get(Integer.valueOf(hr));
+        setBothInt(
+            target, "dwf.weather.hours." + hr + ".is_available", ws.weatherAvailable() ? 1 : 0);
+        if (hw != null) {
+          setBothInt(target, "dwf.weather.hours." + hr + ".is_day", hw.isDay ? 1 : 0);
+          setBothInt(target, "dwf.weather.hours." + hr + ".condition", hw.condition);
+          setBothFloat(target, "dwf.weather.hours." + hr + ".temperature", hw.temperature);
+          setBothInt(target, "dwf.weather.hours." + hr + ".uv_index", hw.uvIndex);
+        } else {
+          setBothInt(target, "dwf.weather.hours." + hr + ".is_day", hr <= 6 ? 1 : 0);
+          setBothInt(
+              target,
+              "dwf.weather.hours." + hr + ".condition",
+              hourlyCondDefaults[(hr - 1) % hourlyCondDefaults.length]);
+          setBothFloat(
+              target,
+              "dwf.weather.hours." + hr + ".temperature",
+              ws.weatherTemperature() + hourlyTempOffsets[(hr - 1) % hourlyTempOffsets.length]);
+          setBothInt(target, "dwf.weather.hours." + hr + ".uv_index", Math.max(0, 6 - hr));
+        }
       }
-      for (Map.Entry<Integer, WatchState.DailyWeather> d : ws.dailyWeather().entrySet()) {
-        int dy = d.getKey().intValue();
-        WatchState.DailyWeather dw = d.getValue();
-        setBothInt(target, "dwf.weather.days." + dy + ".is_available", ws.weatherAvailable() ? 1 : 0);
-        setBothInt(target, "dwf.weather.days." + dy + ".condition_day", dw.conditionDay);
-        setBothInt(target, "dwf.weather.days." + dy + ".condition_night", dw.conditionNight);
-        setBothFloat(target, "dwf.weather.days." + dy + ".temperature_high", dw.temperatureHigh);
-        setBothFloat(target, "dwf.weather.days." + dy + ".temperature_low", dw.temperatureLow);
+      int[] dailyCondDefaults = {8, 14, 2, 6, 8};
+      for (int dy = 1; dy <= 7; dy++) {
+        WatchState.DailyWeather dw = ws.dailyWeather().get(Integer.valueOf(dy));
         setBothInt(
-            target, "dwf.weather.days." + dy + ".chance_of_precipitation", dw.chanceOfPrecipitation);
-        setBothInt(
-            target,
-            "dwf.weather.days." + dy + ".chance_of_precipitation_night",
-            dw.chanceOfPrecipitationNight);
+            target, "dwf.weather.days." + dy + ".is_available", ws.weatherAvailable() ? 1 : 0);
+        if (dw != null) {
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_day", dw.conditionDay);
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_night", dw.conditionNight);
+          setBothFloat(target, "dwf.weather.days." + dy + ".temperature_high", dw.temperatureHigh);
+          setBothFloat(target, "dwf.weather.days." + dy + ".temperature_low", dw.temperatureLow);
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation",
+              dw.chanceOfPrecipitation);
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation_night",
+              dw.chanceOfPrecipitationNight);
+          setBothInt(target, "dwf.weather.days." + dy + ".uv_index", dw.uvIndex);
+        } else {
+          int fallbackDayCond = dailyCondDefaults[(dy - 1) % dailyCondDefaults.length];
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_day", fallbackDayCond);
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_night", 1);
+          setBothFloat(
+              target,
+              "dwf.weather.days." + dy + ".temperature_high",
+              ws.weatherTemperature() + (3 - (dy % 2)));
+          setBothFloat(
+              target,
+              "dwf.weather.days." + dy + ".temperature_low",
+              ws.weatherTemperature() - (5 + (dy % 2)));
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation",
+              fallbackDayCond == 6 ? 65 : 15);
+          setBothInt(target, "dwf.weather.days." + dy + ".chance_of_precipitation_night", 10);
+          setBothInt(target, "dwf.weather.days." + dy + ".uv_index", ws.weatherUvIndex());
+        }
       }
     }
 

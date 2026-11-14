@@ -121,6 +121,8 @@ final class WatchState {
   private float weatherTemperature = 21f;
   private float weatherTemperatureHigh = 24f;
   private float weatherTemperatureLow = 16f;
+  private boolean explicitTempHigh;
+  private boolean explicitTempLow;
   private boolean weatherCelsius = true;
   private int weatherPrecipitation = 10;
   private int weatherUvIndex = 3;
@@ -562,18 +564,37 @@ final class WatchState {
     if (c.has("conditionName") && !c.isNull("conditionName")) {
       weatherConditionName = c.getString("conditionName");
     }
-    if (c.has("temperature")) weatherTemperature = (float) c.getDouble("temperature");
-    else if (c.has("tempC")) {
+    boolean tempChanged = false;
+    if (c.has("temperature")) {
+      weatherTemperature = (float) c.getDouble("temperature");
+      tempChanged = true;
+    } else if (c.has("tempC")) {
       weatherTemperature = (float) c.getDouble("tempC");
       weatherCelsius = true;
+      tempChanged = true;
     } else if (c.has("tempF")) {
       weatherTemperature = (float) c.getDouble("tempF");
       weatherCelsius = false;
+      tempChanged = true;
     }
-    if (c.has("temperatureHigh")) weatherTemperatureHigh = (float) c.getDouble("temperatureHigh");
-    else if (c.has("high")) weatherTemperatureHigh = (float) c.getDouble("high");
-    if (c.has("temperatureLow")) weatherTemperatureLow = (float) c.getDouble("temperatureLow");
-    else if (c.has("low")) weatherTemperatureLow = (float) c.getDouble("low");
+    if (c.has("temperatureHigh")) {
+      weatherTemperatureHigh = (float) c.getDouble("temperatureHigh");
+      explicitTempHigh = true;
+    } else if (c.has("high")) {
+      weatherTemperatureHigh = (float) c.getDouble("high");
+      explicitTempHigh = true;
+    } else if (tempChanged && !explicitTempHigh) {
+      weatherTemperatureHigh = weatherTemperature + 3f;
+    }
+    if (c.has("temperatureLow")) {
+      weatherTemperatureLow = (float) c.getDouble("temperatureLow");
+      explicitTempLow = true;
+    } else if (c.has("low")) {
+      weatherTemperatureLow = (float) c.getDouble("low");
+      explicitTempLow = true;
+    } else if (tempChanged && !explicitTempLow) {
+      weatherTemperatureLow = weatherTemperature - 6f;
+    }
 
     if (c.has("temperatureUnit") && !c.isNull("temperatureUnit")) {
       Object u = c.get("temperatureUnit");
