@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.92.1](https://github.com/yschimke/compose-ai-tools/compare/v2.92.0...v2.92.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.3.1 ([#6548](https://github.com/yschimke/compose-ai-tools/issues/6548)) ([89265db](https://github.com/yschimke/compose-ai-tools/commit/89265db8a55fe52e54cdff4f195562a100d3bc5f))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.5.1 ([#6550](https://github.com/yschimke/compose-ai-tools/issues/6550)) ([16f4ee7](https://github.com/yschimke/compose-ai-tools/commit/16f4ee7e5c1eba6feaa13adbeeb366ea6aabf7e2))
+
 ## [2.92.0](https://github.com/yschimke/compose-ai-tools/compare/v2.91.0...v2.92.0) (2026-11-14)
 
 
