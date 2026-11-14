@@ -96,7 +96,7 @@ class ScenarioRunnerTest {
                         buildJsonArray {
                           add(
                             buildJsonObject {
-                              put("id", 10)
+                              put("slot", 10)
                               put("text", "132 bpm")
                             },
                           )
@@ -159,6 +159,71 @@ class ScenarioRunnerTest {
       assertEquals("s1", spec.steps[1]["snapshot"]?.jsonPrimitive?.contentOrNull)
     } finally {
       file.delete()
+    }
+  }
+
+  @Test
+  fun `piped transport correlates against command id and watchface config preserves configId`() {
+    val reader = java.io.PipedReader()
+    val writer = java.io.PipedWriter(reader)
+    val buffered = java.io.BufferedReader(reader)
+    val outbound = java.util.concurrent.LinkedBlockingQueue<String>()
+    val exit = java.util.concurrent.CompletableFuture<Int>()
+    val transport = ScenarioRunner.PipedSessionTransport(writer, outbound, exit, verbose = false)
+    val echoThread = Thread {
+      while (true) {
+        val line = buffered.readLine() ?: break
+        val req = kotlinx.serialization.json.Json.parseToJsonElement(line) as JsonObject
+        val reqId = req.getValue("id")
+        outbound.offer(
+          buildJsonObject {
+            put("id", reqId)
+            put("ok", true)
+            put("result", req)
+          }
+            .toString(),
+        )
+      }
+    }
+      .apply {
+        isDaemon = true
+        start()
+      }
+    val reportDir = Files.createTempDirectory("scenario-id-test-").toFile()
+    try {
+      // 1. Direct command carrying its own `id` correlates against that `id`.
+      val directReply =
+        transport.send(
+          buildJsonObject {
+            put("id", "custom-req-7")
+            put("cmd", "notification")
+            put("title", "Ping")
+          },
+          timeoutMs = 2_000L,
+        )
+      assertEquals("custom-req-7", directReply["id"]?.jsonPrimitive?.contentOrNull)
+
+      // 2. `watchface: { op: config, id: color_style_setting, value: emerald }` rewrites `id` ->
+      // `configId` so envelope `id` stays monotonic while the watch face host receives `configId`.
+      val spec =
+        ScenarioRunner.parseScenario(
+          """
+          name: config-id-scenario
+          steps:
+            - watchface: { op: config, id: color_style_setting, value: emerald }
+              expect:
+                last.configId: color_style_setting
+          """
+            .trimIndent(),
+          jsonFormat = false,
+        )
+      outbound.offer("""{"event":"ready"}""")
+      val report = ScenarioRunner.execute(spec, reportDir, transport)
+      assertTrue(report.passed, "expected config-id scenario to pass: ${report.toJson()}")
+    } finally {
+      transport.close()
+      echoThread.join(1_000L)
+      reportDir.deleteRecursively()
     }
   }
 

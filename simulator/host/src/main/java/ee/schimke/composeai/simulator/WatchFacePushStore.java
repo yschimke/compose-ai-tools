@@ -368,6 +368,15 @@ public final class WatchFacePushStore {
               + clientPkg
               + ".watchfacepush.'");
     }
+    for (StoredSlot other : slots.values()) {
+      if (!existing.slotId.equals(other.slotId)
+          && inspection.packageName.equals(other.packageName)) {
+        deleteQuietly(staged);
+        throw new UpdateException(
+            UpdateException.ERROR_INVALID_PACKAGE_NAME,
+            "Watch face package '" + inspection.packageName + "' is already installed");
+      }
+    }
 
     String oldPackage = existing.packageName;
     boolean wasActive = isPackageActive(oldPackage);
@@ -390,7 +399,7 @@ public final class WatchFacePushStore {
 
     WatchFaceHost host = WatchFaceHost.current();
     if (host != null) {
-      host.onPushedSlotUpdated(existing, wasActive);
+      host.onPushedSlotUpdated(oldPackage, existing, wasActive);
       host.emitPushEvent("update", existing);
     }
     return existing.toSdkSlot();

@@ -417,6 +417,14 @@ internal object ScenarioRunner {
     val commands = mutableListOf<JsonObject>()
     fun withDevice(base: Map<String, JsonElement>): JsonObject {
       val merged = LinkedHashMap(base)
+      if (
+        (merged["cmd"] as? JsonPrimitive)?.contentOrNull == "watchface" &&
+          (merged["op"] as? JsonPrimitive)?.contentOrNull == "config" &&
+          "id" in merged &&
+          "configId" !in merged
+      ) {
+        merged["configId"] = merged.remove("id")!!
+      }
       if (device != null && "device" !in merged) {
         merged["device"] = JsonPrimitive(device)
       }
@@ -658,11 +666,13 @@ internal object ScenarioRunner {
             val idx = segment.toIntOrNull()
             if (idx != null && idx in cur.indices) cur[idx]
             else {
-              // Also allow matching array element by `id` or `slotId` (`complications.10`).
+              // Also allow matching array element by `id`, `slotId`, or `slot`
+              // (`complications.10`).
               cur.firstOrNull { item ->
                 item is JsonObject &&
                   ((item["id"] as? JsonPrimitive)?.contentOrNull == segment ||
-                    (item["slotId"] as? JsonPrimitive)?.contentOrNull == segment)
+                    (item["slotId"] as? JsonPrimitive)?.contentOrNull == segment ||
+                    (item["slot"] as? JsonPrimitive)?.contentOrNull == segment)
               }
             }
           }
@@ -939,7 +949,7 @@ internal object ScenarioRunner {
    * Drives a running [PairedLaunch] over piped streams, correlating replies by `"id"` while
    * buffering asynchronous `"event"` JSON objects for `events.contains` assertions.
    */
-  private class PipedSessionTransport(
+  internal class PipedSessionTransport(
     private val writer: PipedWriter,
     private val outboundLines: LinkedBlockingQueue<String>,
     private val sessionExit: CompletableFuture<Int>,
@@ -975,8 +985,15 @@ internal object ScenarioRunner {
     }
 
     override fun send(command: JsonObject, timeoutMs: Long): JsonObject {
-      val id = "sc-${nextId.getAndIncrement()}"
-      val withId = JsonObject(mapOf("id" to JsonPrimitive(id)) + command)
+      val existingId =
+        (command["id"] as? JsonPrimitive)
+          ?.takeIf { command["id"] !is JsonNull }
+          ?.content
+          ?.takeIf { it.isNotEmpty() }
+      val expectedId = existingId ?: "sc-${nextId.getAndIncrement()}"
+      val withId =
+        if (existingId != null) command
+        else JsonObject(mapOf("id" to JsonPrimitive(expectedId)) + command)
       val serialized = withId.toString()
       if (verbose) System.err.println("compose-preview scenario -> $serialized")
       writer.write(serialized)
@@ -1001,8 +1018,8 @@ internal object ScenarioRunner {
           }
           continue
         }
-        val replyId = (obj["id"] as? JsonPrimitive)?.contentOrNull
-        if (replyId == id || (replyId == null && "ok" in obj)) {
+        val replyId = (obj["id"] as? JsonPrimitive)?.takeIf { obj["id"] !is JsonNull }?.content
+        if (replyId == expectedId || (replyId == null && "ok" in obj)) {
           return obj
         }
       }

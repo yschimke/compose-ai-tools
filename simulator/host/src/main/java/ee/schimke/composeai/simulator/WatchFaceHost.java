@@ -199,6 +199,15 @@ final class WatchFaceHost {
   }
 
   void onPushedSlotUpdated(WatchFacePushStore.StoredSlot slot, boolean rebindIfActive) {
+    onPushedSlotUpdated(null, slot, rebindIfActive);
+  }
+
+  void onPushedSlotUpdated(
+      String previousPackageName, WatchFacePushStore.StoredSlot slot, boolean rebindIfActive) {
+    if (previousPackageName != null && !previousPackageName.equals(slot.packageName)) {
+      List<DwfWatchFaceClient.Entry> oldEntries = pushedDwfEntries.remove(previousPackageName);
+      if (oldEntries != null) dwfEntries.removeAll(oldEntries);
+    }
     List<DwfWatchFaceClient.Entry> previous = pushedDwfEntries.remove(slot.packageName);
     if (previous != null) dwfEntries.removeAll(previous);
     if (slot.compiledEntries != null && !slot.compiledEntries.isEmpty()) {
@@ -478,6 +487,7 @@ final class WatchFaceHost {
           "watchface op config requires an active hosted watch face");
     }
     JSONObject values = c.optJSONObject("values");
+    String singleCfgId = c.has("configId") ? c.getString("configId") : c.optString("id", "");
     if (dwfFace != null) {
       if (values != null) {
         for (Iterator<String> it = values.keys(); it.hasNext(); ) {
@@ -485,7 +495,10 @@ final class WatchFaceHost {
           dwfFace.setConfig(k, String.valueOf(values.get(k)));
         }
       } else {
-        dwfFace.setConfig(c.getString("id"), String.valueOf(c.get("value")));
+        if (singleCfgId.isEmpty()) {
+          throw new JSONException("watchface op config requires 'configId', 'id', or 'values'");
+        }
+        dwfFace.setConfig(singleCfgId, String.valueOf(c.get("value")));
       }
       rendering = true;
       dwfFace.render(ambient);
@@ -496,7 +509,10 @@ final class WatchFaceHost {
           face.setConfig(k, String.valueOf(values.get(k)));
         }
       } else {
-        face.setConfig(c.getString("id"), String.valueOf(c.get("value")));
+        if (singleCfgId.isEmpty()) {
+          throw new JSONException("watchface op config requires 'configId', 'id', or 'values'");
+        }
+        face.setConfig(singleCfgId, String.valueOf(c.get("value")));
       }
       rendering = true;
       face.render(ambient);

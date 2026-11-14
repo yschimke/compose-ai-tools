@@ -31,6 +31,7 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -340,7 +341,36 @@ public class WatchFaceScenariosRobolectricTest {
         WatchFacePushManager.SetActiveException.ERROR_MAXIMUM_ATTEMPTS_REACHED,
         secondActivate.error.getErrorCode());
 
-    // 7. Update slot in-place and then remove it.
+    // 7. Update slot in-place across package change and verify old compiled entries are removed.
+    DwfWatchFaceClient.Entry neonEntry =
+        new DwfWatchFaceClient.Entry(
+            pushedPkg + "/watchface",
+            "Neon",
+            new File("."),
+            "watchface.rc",
+            450,
+            450,
+            "CIRCLE",
+            List.of(),
+            List.of());
+    WatchFacePushStore.StoredSlot neonStored =
+        new WatchFacePushStore.StoredSlot(
+            added.getSlotId(),
+            clientPkg,
+            pushedPkg,
+            1L,
+            Map.of(),
+            validApk.toPath(),
+            List.of(neonEntry));
+    host.onPushedSlotUpdated(neonStored, false);
+    org.json.JSONArray beforeFaces =
+        host.describe().getJSONObject("available").getJSONArray("watchFaces");
+    boolean foundNeonBefore = false;
+    for (int i = 0; i < beforeFaces.length(); i++) {
+      if ((pushedPkg + "/watchface").equals(beforeFaces.getString(i))) foundNeonBefore = true;
+    }
+    assertTrue(foundNeonBefore);
+
     File updatedApk = buildPushTestWffApk(clientPkg + ".watchfacepush.solar", true, false);
     try (ParcelFileDescriptor pfd =
         ParcelFileDescriptor.open(updatedApk, ParcelFileDescriptor.MODE_READ_ONLY)) {
@@ -348,6 +378,14 @@ public class WatchFaceScenariosRobolectricTest {
           callPush(r -> mgr.updateWatchFace(added.getSlotId(), pfd, "tok-v3", Runnable::run, r));
       assertNull(upd.error);
       assertEquals(clientPkg + ".watchfacepush.solar", upd.value.getPackageName());
+    }
+    org.json.JSONArray afterFaces =
+        host.describe().getJSONObject("available").getJSONArray("watchFaces");
+    for (int i = 0; i < afterFaces.length(); i++) {
+      assertNotEquals(
+          "old slot package's compiled entry should be removed on update",
+          pushedPkg + "/watchface",
+          afterFaces.getString(i));
     }
 
     Outcome<Void, WatchFacePushManager.RemoveException> removed =
