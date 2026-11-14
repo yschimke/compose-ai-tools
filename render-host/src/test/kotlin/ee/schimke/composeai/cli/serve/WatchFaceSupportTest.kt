@@ -228,7 +228,7 @@ class WatchFaceSupportTest {
     assertEquals(RemoteNamedValue.IntValue(1), translatedSeeds["dwf.config.color_style"])
     assertEquals(
       RemoteNamedValue.ColorValue("#FFFF5722"),
-      translatedSeeds["dwf.theme.color_style.0"],
+      translatedSeeds["dwf.color.color_style.0"],
     )
     assertEquals(
       RemoteNamedValue.StringValue("95 BPM"),

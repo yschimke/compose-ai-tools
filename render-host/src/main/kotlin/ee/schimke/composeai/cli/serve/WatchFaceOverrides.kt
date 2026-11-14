@@ -822,7 +822,7 @@ public object WatchFaceOverrides {
    *
    * Portable `namedOverrides` seed first so explicit `remoteCompose.namedValues` take precedence,
    * and when [watchFace] metadata is present, `LIST` / `COLOR` option IDs on `dwf.config.<id>` are
-   * normalized to their 0-based option index (plus `dwf.theme.<id>.<idx>` palette entries).
+   * normalized to their 0-based option index (plus `dwf.color.<id>.<idx>` palette entries).
    */
   public fun effectiveRcNamedValues(
     overrides: PreviewOverrides,
@@ -868,7 +868,7 @@ public object WatchFaceOverrides {
           val optId = cfg.options.getOrNull(resolvedIdx)
           val palette = optId?.let { cfg.optionColors[it] }.orEmpty()
           palette.forEachIndexed { colorIdx, hex ->
-            rc["dwf.theme.${cfg.id}.$colorIdx"] = RemoteNamedValue.ColorValue(hex)
+            rc["dwf.color.${cfg.id}.$colorIdx"] = RemoteNamedValue.ColorValue(hex)
           }
         }
       }
