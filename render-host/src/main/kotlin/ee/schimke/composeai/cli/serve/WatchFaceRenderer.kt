@@ -141,15 +141,7 @@ public object DwfRcWatchFaceRendererBackend : WatchFaceRendererBackend {
         for (decl in preview.remoteComposeKnobs) {
           seeds[decl.name] = decl.default
         }
-        overrides.remoteCompose?.namedValues?.forEach { (k, v) ->
-          seeds[k.removePrefix("USER:")] = v
-        }
-        if (overrides.ambient != null) {
-          val amb =
-            overrides.ambient?.state ==
-              ee.schimke.composeai.daemon.protocol.AmbientStateOverride.AMBIENT
-          seeds["dwf.is_ambient"] = RemoteNamedValue.BooleanValue(amb)
-        }
+        seeds.putAll(WatchFaceOverrides.effectiveRcNamedValues(overrides, preview.watchFace))
         return when (val r = RcJvmServerRenderer.render(docBytes, spec, seeds)) {
           is RcJvmServerRenderer.RenderResult.Ok ->
             RenderOutcome.Ok(r.bytes, RenderOutcome.Generation.DAEMON)
@@ -172,10 +164,10 @@ public object DwfRcWatchFaceRendererBackend : WatchFaceRendererBackend {
  * Second watch-face renderer backend (`dwf-apk`), reserved for rendering `<WatchFace>` packages
  * through the Android Wear OS DWF renderer APK (`compose-preview launch` / `:simulator-host`).
  *
- * Reports `available = false` with an actionable diagnostic unless a DWF renderer APK path or
- * delegate is configured (`-Dcomposeai.watchface.apkRenderer` / `COMPOSE_PREVIEW_DWF_RENDERER_APK`
- * or [WatchFaceRendererRegistry.register]), so callers never silently receive `dwf-rc` pixels when
- * explicitly asking for `dwf-apk`.
+ * The built-in placeholder stays `available = false` until a launch session bridge backend is
+ * installed via [WatchFaceRendererRegistry.register], so registry consumers are never offered a
+ * backend that cannot render and callers never silently receive `dwf-rc` pixels when explicitly
+ * asking for `dwf-apk`.
  */
 public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
   override val id: String = WatchFaceRendererIds.DWF_APK
@@ -193,55 +185,37 @@ public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
     return File(raw).takeIf(File::isFile)
   }
 
-  override fun infoFor(host: ServeHost, preview: ServePreview): WatchFaceRendererInfo {
+  private fun unavailableReason(): String {
     val apk = configuredApkFile()
-    return WatchFaceRendererInfo(
+    return if (apk != null) {
+      "wfRenderer '$id' APK '${apk.name}' is configured, but no launch session bridge is registered on this host"
+    } else {
+      "wfRenderer '$id' is unavailable: no Wear OS DWF renderer APK launch session bridge is registered on this host"
+    }
+  }
+
+  override fun infoFor(host: ServeHost, preview: ServePreview): WatchFaceRendererInfo =
+    WatchFaceRendererInfo(
       id = id,
       label = label,
       badgeLabel = badgeLabel,
-      available = apk != null,
-      unavailableReason =
-        if (apk != null) null
-        else
-          "DWF Renderer APK is not configured on this host (set -D$APK_PATH_SYS_PROP or " +
-            "$$APK_PATH_ENV to enable launch-based APK rendering)",
-      supportsLiveOverrides = apk != null,
+      available = false,
+      unavailableReason = unavailableReason(),
+      supportsLiveOverrides = false,
       isDefault = false,
     )
-  }
 
   override fun render(
     host: ServeHost,
     preview: ServePreview,
     overrides: PreviewOverrides,
-  ): RenderOutcome {
-    val apk = configuredApkFile()
-    if (apk == null) {
-      return RenderOutcome.Failed(
-        "wfRenderer '$id' is unavailable: no Wear OS DWF renderer APK configured " +
-          "(-D$APK_PATH_SYS_PROP / $$APK_PATH_ENV)",
-      )
-    }
-    return RenderOutcome.Failed(
-      "wfRenderer '$id' APK '${apk.name}' is configured, but no launch session bridge is registered",
-    )
-  }
+  ): RenderOutcome = RenderOutcome.Failed(unavailableReason())
 
   override fun complications(
     host: ServeHost,
     preview: ServePreview,
     overrides: PreviewOverrides,
-  ): WatchFaceComplicationsOutcome {
-    val apk = configuredApkFile()
-    if (apk == null) {
-      return WatchFaceComplicationsOutcome.Unavailable(
-        "wfRenderer '$id' is unavailable: no Wear OS DWF renderer APK configured",
-      )
-    }
-    return preview.watchFace?.let {
-      WatchFaceOverrides.projectComplicationsOutcome(it, overrides, id)
-    } ?: WatchFaceComplicationsOutcome.NotFound
-  }
+  ): WatchFaceComplicationsOutcome = WatchFaceComplicationsOutcome.Unavailable(unavailableReason())
 }
 
 /**

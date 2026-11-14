@@ -815,6 +815,68 @@ public object WatchFaceOverrides {
   }
 
   /**
+   * Translate portable `wf.*` [PreviewOverrides.namedOverrides], [PreviewOverrides.ambient], and
+   * explicit [PreviewOverrides.remoteCompose] `namedValues` into the effective `dwf.*` /
+   * `metrics.*` seed map for RemoteCompose replay, matching `DwfDaemonMain` when no live daemon is
+   * running.
+   *
+   * Portable `namedOverrides` seed first so explicit `remoteCompose.namedValues` take precedence,
+   * and when [watchFace] metadata is present, `LIST` / `COLOR` option IDs on `dwf.config.<id>` are
+   * normalized to their 0-based option index (plus `dwf.color.<id>.<idx>` palette entries).
+   */
+  public fun effectiveRcNamedValues(
+    overrides: PreviewOverrides,
+    watchFace: WatchFaceComplicationsPayload? = null,
+  ): Map<String, RemoteNamedValue> {
+    val rc = LinkedHashMap<String, RemoteNamedValue>()
+    val wfNamed = overrides.namedOverrides?.filterKeys { it.startsWith(WF_PREFIX) }.orEmpty()
+    if (wfNamed.isNotEmpty()) {
+      val flat = LinkedHashMap<String, String>(wfNamed.size)
+      for ((k, v) in wfNamed) {
+        flat[k] =
+          when (v) {
+            is PreviewOverrideValue.StringValue -> v.value
+            is PreviewOverrideValue.IntValue -> v.value.toString()
+            is PreviewOverrideValue.FloatValue -> v.value.toString()
+            is PreviewOverrideValue.BooleanValue -> v.value.toString()
+            is PreviewOverrideValue.ColorValue -> v.argb
+            else -> v.toString()
+          }
+      }
+      (parseWfParams(flat) as? WfParamParse.Ok)?.let { parsed -> rc.putAll(parsed.rcNamedValues) }
+    }
+    overrides.remoteCompose?.namedValues?.forEach { (k, v) -> rc[k.removePrefix("USER:")] = v }
+    if (overrides.ambient != null) {
+      rc["dwf.is_ambient"] =
+        RemoteNamedValue.BooleanValue(overrides.ambient?.state == AmbientStateOverride.AMBIENT)
+    }
+    if (watchFace != null) {
+      for (cfg in watchFace.userConfigurations) {
+        if (cfg.kind != "LIST" && cfg.kind != "COLOR") continue
+        val key = "dwf.config.${cfg.id}"
+        val raw = rc[key] ?: continue
+        val resolvedIdx =
+          when (raw) {
+            is RemoteNamedValue.IntValue -> raw.value.takeIf { it in cfg.options.indices }
+            is RemoteNamedValue.StringValue ->
+              cfg.options.indexOf(raw.value).takeIf { it >= 0 }
+                ?: raw.value.toIntOrNull()?.takeIf { it in cfg.options.indices }
+            else -> null
+          } ?: continue
+        rc[key] = RemoteNamedValue.IntValue(resolvedIdx)
+        if (cfg.kind == "COLOR") {
+          val optId = cfg.options.getOrNull(resolvedIdx)
+          val palette = optId?.let { cfg.optionColors[it] }.orEmpty()
+          palette.forEachIndexed { colorIdx, hex ->
+            rc["dwf.color.${cfg.id}.$colorIdx"] = RemoteNamedValue.ColorValue(hex)
+          }
+        }
+      }
+    }
+    return rc
+  }
+
+  /**
    * Project [overrides] onto a baked [WatchFaceComplicationsPayload] so static hosts (bundles or
    * catalogs without an active daemon) still report accurate active complication and configuration
    * state.
@@ -828,8 +890,7 @@ public object WatchFaceOverrides {
     ) {
       return base
     }
-    val rc = LinkedHashMap<String, RemoteNamedValue>()
-    overrides.remoteCompose?.namedValues?.forEach { (k, v) -> rc[k.removePrefix("USER:")] = v }
+    val rc = effectiveRcNamedValues(overrides, watchFace = null)
     val ambient =
       when {
         overrides.ambient != null -> overrides.ambient?.state == AmbientStateOverride.AMBIENT
