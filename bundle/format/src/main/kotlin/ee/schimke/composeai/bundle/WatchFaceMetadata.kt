@@ -40,6 +40,7 @@ public data class WatchFaceUserConfigDto(
   public val defaultValue: String,
   public val activeValue: String,
   public val options: List<String> = emptyList(),
+  public val optionColors: Map<String, List<String>> = emptyMap(),
 )
 
 @Serializable

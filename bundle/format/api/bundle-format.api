@@ -1146,22 +1146,24 @@ public final class ee/schimke/composeai/bundle/WatchFaceSlotBoundsDto$Companion 
 
 public final class ee/schimke/composeai/bundle/WatchFaceUserConfigDto {
 	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceUserConfigDto$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Ljava/lang/String;
 	public final fun component6 ()Ljava/util/List;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
-	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
+	public final fun component7 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Map;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getActiveValue ()Ljava/lang/String;
 	public final fun getDefaultValue ()Ljava/lang/String;
 	public final fun getDisplayName ()Ljava/lang/String;
 	public final fun getId ()Ljava/lang/String;
 	public final fun getKind ()Ljava/lang/String;
+	public final fun getOptionColors ()Ljava/util/Map;
 	public final fun getOptions ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

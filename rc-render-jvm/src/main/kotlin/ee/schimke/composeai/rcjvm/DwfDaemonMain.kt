@@ -619,6 +619,10 @@ internal fun buildDwfComplicationsPayload(
             defaultValue = defaultOpt,
             activeValue = activeId,
             options = cfg.options.map { it.id },
+            optionColors =
+              cfg.options.associate { opt ->
+                opt.id to opt.colors.map { "#%08X".format(Locale.ROOT, it) }
+              },
           )
         }
         is DwfUserConfiguration.PhotosConfiguration ->

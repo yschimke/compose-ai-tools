@@ -139,6 +139,11 @@ class WatchFaceSupportTest {
               defaultValue = "ocean",
               activeValue = "ocean",
               options = listOf("ocean", "ember"),
+              optionColors =
+                mapOf(
+                  "ocean" to listOf("#FF00BCD4", "#FF006064"),
+                  "ember" to listOf("#FFFF5722", "#FFBF360C"),
+                ),
             ),
           ),
         slots =
@@ -185,6 +190,53 @@ class WatchFaceSupportTest {
     assertEquals(2, renderers.size)
     assertTrue(renderers.first { it.id == WatchFaceRendererIds.DWF_RC }.isDefault)
     assertTrue(!renderers.first { it.id == WatchFaceRendererIds.DWF_APK }.available)
+
+    // Even when an APK file path is configured on disk, the built-in placeholder stays unavailable
+    // until a real launch session bridge backend is registered.
+    val tempApk = Files.createTempFile("fake-dwf-renderer", ".apk").toFile()
+    try {
+      System.setProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP, tempApk.absolutePath)
+      val apkInfo = DwfApkWatchFaceRendererBackend.infoFor(fakeHost, preview)
+      assertTrue(!apkInfo.available)
+      assertTrue(!apkInfo.supportsLiveOverrides)
+      assertIs<RenderOutcome.Failed>(
+        DwfApkWatchFaceRendererBackend.render(fakeHost, preview, PreviewOverrides()),
+      )
+      assertIs<WatchFaceComplicationsOutcome.Unavailable>(
+        DwfApkWatchFaceRendererBackend.complications(fakeHost, preview, PreviewOverrides()),
+      )
+    } finally {
+      System.clearProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP)
+      tempApk.delete()
+    }
+
+    // Portable `namedOverrides` (without `remoteCompose.namedValues`) translate into RC seeds and
+    // complication projections for static fallback lanes, while explicit RC seeds still win.
+    val portableOnly =
+      PreviewOverrides(
+        namedOverrides =
+          mapOf(
+            "wf.batteryPercent" to PreviewOverrideValue.FloatValue(12f),
+            "wf.config.color_style" to PreviewOverrideValue.StringValue("ember"),
+            "wf.slot.1.type" to PreviewOverrideValue.StringValue("SHORT_TEXT"),
+            "wf.slot.1.text" to PreviewOverrideValue.StringValue("95 BPM"),
+          ),
+      )
+    val translatedSeeds = WatchFaceOverrides.effectiveRcNamedValues(portableOnly, payload)
+    assertEquals(RemoteNamedValue.FloatValue(12f), translatedSeeds["dwf.battery_percent"])
+    assertEquals(RemoteNamedValue.BooleanValue(true), translatedSeeds["dwf.battery_is_low"])
+    assertEquals(RemoteNamedValue.IntValue(1), translatedSeeds["dwf.config.color_style"])
+    assertEquals(
+      RemoteNamedValue.ColorValue("#FFFF5722"),
+      translatedSeeds["dwf.theme.color_style.0"],
+    )
+    assertEquals(
+      RemoteNamedValue.StringValue("95 BPM"),
+      translatedSeeds["dwf.complication.1.text"],
+    )
+    val projectedPortable = WatchFaceOverrides.projectComplicationsPayload(payload, portableOnly)
+    assertEquals("95 BPM", projectedPortable.slots.single().activeState.text)
+    assertEquals("ember", projectedPortable.userConfigurations.single().activeValue)
 
     // Register a custom launch-backed `dwf-apk` test double and verify dispatch + projection.
     val customApkBackend =

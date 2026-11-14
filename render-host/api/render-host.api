@@ -4932,6 +4932,8 @@ public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides {
 	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceOverrides;
 	public static final field WF_PREFIX Ljava/lang/String;
 	public static final field WF_RENDERER_PARAM Ljava/lang/String;
+	public final fun effectiveRcNamedValues (Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;)Ljava/util/Map;
+	public static synthetic fun effectiveRcNamedValues$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;ILjava/lang/Object;)Ljava/util/Map;
 	public final fun getKNOWN_COMPLICATION_TYPES ()Ljava/util/Set;
 	public final fun hasWatchFaceOverrides (Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Z
 	public final fun isValidRendererId (Ljava/lang/String;)Z
