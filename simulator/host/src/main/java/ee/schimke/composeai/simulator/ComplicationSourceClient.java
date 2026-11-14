@@ -177,6 +177,7 @@ final class ComplicationSourceClient {
                 .put("instanceId", instanceId)
                 .put("type", type)
                 .put("timeMillis", WatchState.currentTimeMillis())
+                .put("timeZone", java.util.TimeZone.getDefault().getID())
                 .object());
     if (reply != null && reply.has("busError")) {
       activeRemotes.remove(remoteId);
@@ -205,7 +206,11 @@ final class ComplicationSourceClient {
     askBus(
         remoteOwner,
         BUS_UPDATE,
-        new Protocol.Json().put("id", remoteId).put("timeMillis", nowMillis).object());
+        new Protocol.Json()
+            .put("id", remoteId)
+            .put("timeMillis", nowMillis)
+            .put("timeZone", java.util.TimeZone.getDefault().getID())
+            .object());
   }
 
   /**
@@ -219,7 +224,11 @@ final class ComplicationSourceClient {
         askBus(
             remoteOwner,
             BUS_REEVALUATE,
-            new Protocol.Json().put("id", remoteId).put("timeMillis", nowMillis).object());
+            new Protocol.Json()
+                .put("id", remoteId)
+                .put("timeMillis", nowMillis)
+                .put("timeZone", java.util.TimeZone.getDefault().getID())
+                .object());
     if (reply != null) {
       JSONObject summary = reply.optJSONObject("summary");
       if (summary != null) {
@@ -304,6 +313,7 @@ final class ComplicationSourceClient {
           int wireType = body.getInt("type");
           long hostTimeMillis = body.optLong("timeMillis", WatchState.currentTimeMillis());
           Navigator nav = Navigator.current();
+          syncPeerTimezone(Protocol.string(body, "timeZone"), app, nav);
           if (nav == null || comp == null) {
             reply.send(DeviceBus.error("navigator not ready on " + app.getPackageName()));
             return;
@@ -363,6 +373,7 @@ final class ComplicationSourceClient {
           if (body.has("timeMillis")) {
             served.hostTimeMillis = body.getLong("timeMillis");
           }
+          syncPeerTimezone(Protocol.string(body, "timeZone"), app, Navigator.current());
           Class.forName(COMPLICATIONS + "IComplicationProvider", true, app.getClassLoader())
               .getMethod("onUpdate", int.class, int.class, IBinder.class)
               .invoke(served.provider, served.instanceId, served.type, served.manager);
@@ -383,6 +394,7 @@ final class ComplicationSourceClient {
                       ? served.hostTimeMillis
                       : WatchState.currentTimeMillis());
           served.hostTimeMillis = evalTime;
+          syncPeerTimezone(Protocol.string(body, "timeZone"), app, Navigator.current());
           JSONObject summary =
               ComplicationParcels.summarizeToJson(
                   served.lastData, app.getResources(), evalTime, served.instanceId);
@@ -539,6 +551,20 @@ final class ComplicationSourceClient {
     } catch (ReflectiveOperationException | RuntimeException e) {
       // The getter throws for a type that has no such field.
       return null;
+    }
+  }
+
+  private static void syncPeerTimezone(String zoneId, Application app, Navigator nav) {
+    if (zoneId == null || zoneId.isEmpty()) return;
+    if (zoneId.equals(java.util.TimeZone.getDefault().getID())) return;
+    try {
+      java.util.TimeZone zone = DeviceState.parseTimezone(zoneId);
+      java.util.TimeZone.setDefault(zone);
+      if (WatchState.current() != null) {
+        WatchState.current().notifyTimezoneChanged();
+      }
+      DeviceState.broadcastTimezoneChanged(zone, app, nav);
+    } catch (RuntimeException ignored) {
     }
   }
 

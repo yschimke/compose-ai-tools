@@ -9,7 +9,10 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
@@ -25,14 +28,15 @@ import android.support.wearable.complications.ComplicationText;
 import android.util.TypedValue;
 import com.google.wear.Sdk;
 import com.google.wear.services.watchfaces.watchfacepush.ListWatchFaceSlotsResponse;
-import com.google.wear.services.watchfaces.watchfacepush.WatchFacePushManager;
 import com.google.wear.services.watchfaces.watchfacepush.WatchFaceSlot;
+import com.google.wear.services.watchfaces.watchfacepush.WatchFacePushManager;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -471,6 +475,50 @@ public class WatchFaceScenariosRobolectricTest {
     } finally {
       host.unset();
       WatchFaceHost.resetCurrent();
+      WatchState.resetCurrent();
+    }
+  }
+
+  @Test
+  public void clockCommandBroadcastsTimezoneAnd24HourChangesToReceivers() throws Exception {
+    TimeZone previousZone = TimeZone.getDefault();
+    Navigator navigator = new Navigator(app, Protocol.create());
+    WatchState state = new WatchState(app, navigator, null);
+    AtomicReference<String> receivedTzExtra = new AtomicReference<>();
+    AtomicReference<String> observedDefaultTzOnReceive = new AtomicReference<>();
+    AtomicReference<Integer> received24HourExtra = new AtomicReference<>();
+    BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+          @Override
+          public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_TIMEZONE_CHANGED.equals(intent.getAction())) {
+              receivedTzExtra.set(intent.getStringExtra("time-zone"));
+              observedDefaultTzOnReceive.set(TimeZone.getDefault().getID());
+            } else if (Intent.ACTION_TIME_CHANGED.equals(intent.getAction())) {
+              received24HourExtra.set(
+                  Integer.valueOf(
+                      intent.getIntExtra("android.intent.extra.TIME_PREF_24_HOUR_FORMAT", -1)));
+            }
+          }
+        };
+    IntentFilter filter = new IntentFilter();
+    filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+    filter.addAction(Intent.ACTION_TIME_CHANGED);
+    app.registerReceiver(receiver, filter);
+    try {
+      state.clockCommand(
+          new JSONObject()
+              .put("timeZone", "Asia/Tokyo")
+              .put("is24Hour", false)
+              .put("time", "10:15:00"));
+      org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+      assertEquals("Asia/Tokyo", receivedTzExtra.get());
+      assertEquals("Asia/Tokyo", observedDefaultTzOnReceive.get());
+      assertEquals(Integer.valueOf(0), received24HourExtra.get());
+      assertFalse(state.is24Hour());
+    } finally {
+      app.unregisterReceiver(receiver);
+      TimeZone.setDefault(previousZone);
       WatchState.resetCurrent();
     }
   }

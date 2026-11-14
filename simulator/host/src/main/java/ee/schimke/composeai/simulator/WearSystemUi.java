@@ -130,7 +130,7 @@ final class WearSystemUi {
     this.protocol = protocol;
     this.stream = stream;
     this.systemData = new SystemData(app);
-    this.watchState = new WatchState(app, systemData);
+    this.watchState = new WatchState(app, navigator, systemData);
     this.tiles = new TileHost(app, navigator, systemData, this::tileRendered, this::widgetRendered);
     this.watchFaces =
         new WatchFaceHost(

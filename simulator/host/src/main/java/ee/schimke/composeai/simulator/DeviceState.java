@@ -199,21 +199,31 @@ final class DeviceState {
 
   /** Sets the default time zone ({@code Europe/London}, ...) and tells the app. */
   private JSONObject timezone(String id) {
-    TimeZone zone = TimeZone.getTimeZone(id);
-    if (!zone.getID().equals(id) && !"GMT".equals(id)) {
-      throw new IllegalArgumentException("unknown time zone " + id);
-    }
+    TimeZone zone = WatchState.parseTimezone(id);
     TimeZone.setDefault(zone);
     if (WatchState.current() != null) {
       WatchState.current().notifyTimezoneChanged();
     }
-    JSONObject delivered =
-        navigator.broadcast(
-            new Intent(Intent.ACTION_TIMEZONE_CHANGED).putExtra("time-zone", zone.getID()));
+    JSONObject delivered = broadcastTimezoneChanged(zone, app, navigator);
     return new Protocol.Json()
         .put("timezone", TimeZone.getDefault().getID())
         .put("offsetMinutes", zone.getOffset(WatchState.currentTimeMillis()) / 60000)
         .put("broadcast", delivered)
         .object();
+  }
+
+  static TimeZone parseTimezone(String id) {
+    return WatchState.parseTimezone(id);
+  }
+
+  static JSONObject broadcastTimezoneChanged(TimeZone zone, Application app, Navigator navigator) {
+    Intent intent = new Intent(Intent.ACTION_TIMEZONE_CHANGED).putExtra("time-zone", zone.getID());
+    if (navigator != null) {
+      return navigator.broadcast(intent);
+    }
+    if (app != null) {
+      app.sendBroadcast(intent);
+    }
+    return null;
   }
 }

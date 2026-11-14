@@ -2,6 +2,7 @@ package ee.schimke.composeai.simulator;
 
 import android.app.Application;
 import android.content.Context;
+import android.content.Intent;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -84,6 +85,7 @@ final class WatchState {
   private static volatile WatchState active;
 
   private final Application app;
+  private final Navigator navigator;
   private final SystemData systemData;
   private final List<Runnable> listeners = new ArrayList<>();
 
@@ -131,7 +133,12 @@ final class WatchState {
   private final Map<Integer, DailyWeather> dailyWeather = new LinkedHashMap<>();
 
   WatchState(Application app, SystemData systemData) {
+    this(app, null, systemData);
+  }
+
+  WatchState(Application app, Navigator navigator, SystemData systemData) {
     this.app = app;
+    this.navigator = navigator;
     this.systemData = systemData;
     active = this;
   }
@@ -242,17 +249,16 @@ final class WatchState {
       notifyChanged();
       return describeClock();
     }
+    TimeZone changedZone = null;
     if (c.has("timeZone") && !c.isNull("timeZone")) {
-      String tzId = c.getString("timeZone");
-      TimeZone tz = TimeZone.getTimeZone(tzId);
-      if (!tz.getID().equals(tzId) && !"GMT".equals(tzId) && !"UTC".equals(tzId)) {
-        throw new IllegalArgumentException("unknown time zone " + tzId);
-      }
-      TimeZone.setDefault(tz);
+      changedZone = parseTimezone(c.getString("timeZone"));
+      TimeZone.setDefault(changedZone);
     }
+    Boolean changed24Hour = null;
     if (c.has("is24Hour") && !c.isNull("is24Hour")) {
       boolean v = c.getBoolean("is24Hour");
       is24HourOverride = Boolean.valueOf(v);
+      changed24Hour = is24HourOverride;
       if (app != null) {
         Settings.System.putString(
             app.getContentResolver(), Settings.System.TIME_12_24, v ? "24" : "12");
@@ -308,7 +314,30 @@ final class WatchState {
       clockFrozen = c.getBoolean("frozen");
     }
     notifyChanged();
+    if (changedZone != null && (navigator != null || app != null)) {
+      DeviceState.broadcastTimezoneChanged(changedZone, app, navigator);
+    }
+    if (changed24Hour != null && (navigator != null || app != null)) {
+      Intent timeChanged =
+          new Intent(Intent.ACTION_TIME_CHANGED)
+              .putExtra(
+                  "android.intent.extra.TIME_PREF_24_HOUR_FORMAT",
+                  changed24Hour.booleanValue() ? 1 : 0);
+      if (navigator != null) {
+        navigator.broadcast(timeChanged);
+      } else {
+        app.sendBroadcast(timeChanged);
+      }
+    }
     return describeClock();
+  }
+
+  static TimeZone parseTimezone(String id) {
+    TimeZone zone = TimeZone.getTimeZone(id);
+    if (!zone.getID().equals(id) && !"GMT".equals(id) && !"UTC".equals(id)) {
+      throw new IllegalArgumentException("unknown time zone " + id);
+    }
+    return zone;
   }
 
   static long parseTimeSpec(String raw, long referenceMillis, ZoneId zone) {
