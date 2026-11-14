@@ -82,10 +82,25 @@ internal class DwfExpressionCompiler(
   val accelAngleY: RemoteFloat
     get() = sharedVariables.accelAngleY
 
+  internal enum class ComplicationImageKind {
+    MONOCHROMATIC,
+    SMALL,
+    PHOTO,
+  }
+
+  internal data class ResolvedComplicationImage(
+    val kind: ComplicationImageKind,
+    val staticResource: String?,
+    val isPresent: RemoteBoolean,
+    val imageColor: RemoteColor,
+    val accentColor: RemoteColor,
+  )
+
   internal data class ResolvedWeightedStroke(
     val colors: List<RemoteColor>,
     val weights: List<RemoteFloat>,
-    val interpolate: Boolean,
+    val interpolate: RemoteBoolean,
+    val colorCount: RemoteInt? = null,
   )
 
   fun listConfigurationState(configId: String): RemoteInt =
@@ -99,7 +114,7 @@ internal class DwfExpressionCompiler(
 
   fun complicationTypeState(slotId: Int): RemoteInt = sharedVariables.complicationTypeState(slotId)
 
-  fun resolveComplicationImageResource(rawResource: String): Pair<String, RemoteBoolean>? =
+  fun resolveComplicationImageResource(rawResource: String): ResolvedComplicationImage? =
     sharedVariables.resolveComplicationImageResource(complicationSlotId ?: 0, rawResource)
 
   fun resolveWeightedStroke(ws: DwfWeightedStroke): ResolvedWeightedStroke =
@@ -1498,6 +1513,16 @@ internal class DwfExpressionCompiler(
     private val complicationMonoImgCache = HashMap<Int, RemoteBoolean>()
     private val complicationSmallImgCache = HashMap<Int, RemoteBoolean>()
     private val complicationPhotoImgCache = HashMap<Int, RemoteBoolean>()
+    private val complicationImageColorCache = HashMap<Int, RemoteColor>()
+    private val complicationAccentColorCache = HashMap<Int, RemoteColor>()
+    private val complicationHasRangedColorsCache = HashMap<Int, RemoteBoolean>()
+    private val complicationRangedInterpCache = HashMap<Int, RemoteBoolean>()
+    private val complicationHasGoalColorsCache = HashMap<Int, RemoteBoolean>()
+    private val complicationGoalInterpCache = HashMap<Int, RemoteBoolean>()
+    private val complicationHasWeightedCache = HashMap<Int, RemoteBoolean>()
+    private val complicationColorCountCache = HashMap<Int, RemoteInt>()
+    private val complicationColorStopCache = HashMap<String, RemoteColor>()
+    private val complicationWeightCache = HashMap<String, RemoteFloat>()
     private val weatherBoolCache = HashMap<String, RemoteBoolean>()
     private val weatherIntCache = HashMap<String, RemoteInt>()
     private val weatherFloatCache = HashMap<String, RemoteFloat>()
@@ -1927,10 +1952,93 @@ internal class DwfExpressionCompiler(
         )
       }
 
+    private fun complicationImageColorState(slotId: Int): RemoteColor =
+      complicationImageColorCache.getOrPut(slotId) {
+        RemoteColor.createNamedRemoteColor(
+          DwfVariables.complicationImageColorKey(slotId),
+          0xFFFFFFFF.toInt(),
+        )
+      }
+
+    private fun complicationAccentColorState(slotId: Int): RemoteColor =
+      complicationAccentColorCache.getOrPut(slotId) {
+        RemoteColor.createNamedRemoteColor(
+          DwfVariables.complicationAccentColorKey(slotId),
+          0xFF1976D2.toInt(),
+        )
+      }
+
+    private fun hasRangedColorsState(slotId: Int, seed: DwfComplicationSeed): RemoteBoolean =
+      complicationHasRangedColorsCache.getOrPut(slotId) {
+        RemoteBoolean.createNamedRemoteBoolean(
+          DwfVariables.complicationHasRangedColorsKey(slotId),
+          seed.rangedValueColors.isNotEmpty(),
+        )
+      }
+
+    private fun rangedInterpolateState(slotId: Int, seed: DwfComplicationSeed): RemoteBoolean =
+      complicationRangedInterpCache.getOrPut(slotId) {
+        RemoteBoolean.createNamedRemoteBoolean(
+          DwfVariables.complicationRangedInterpolateKey(slotId),
+          seed.rangedValueColorsInterpolate,
+        )
+      }
+
+    private fun hasGoalColorsState(slotId: Int, seed: DwfComplicationSeed): RemoteBoolean =
+      complicationHasGoalColorsCache.getOrPut(slotId) {
+        RemoteBoolean.createNamedRemoteBoolean(
+          DwfVariables.complicationHasGoalColorsKey(slotId),
+          seed.goalProgressColors.isNotEmpty(),
+        )
+      }
+
+    private fun goalInterpolateState(slotId: Int, seed: DwfComplicationSeed): RemoteBoolean =
+      complicationGoalInterpCache.getOrPut(slotId) {
+        RemoteBoolean.createNamedRemoteBoolean(
+          DwfVariables.complicationGoalInterpolateKey(slotId),
+          seed.goalProgressColorsInterpolate,
+        )
+      }
+
+    private fun hasWeightedElementsState(slotId: Int, seed: DwfComplicationSeed): RemoteBoolean =
+      complicationHasWeightedCache.getOrPut(slotId) {
+        RemoteBoolean.createNamedRemoteBoolean(
+          DwfVariables.complicationHasWeightedElementsKey(slotId),
+          seed.weightedElementsColors.isNotEmpty() || seed.weightedElementsWeights.isNotEmpty(),
+        )
+      }
+
+    private fun complicationColorCountState(slotId: Int, defaultCount: Int): RemoteInt =
+      complicationColorCountCache.getOrPut(slotId) {
+        RemoteInt.createNamedRemoteInt(DwfVariables.complicationColorCountKey(slotId), defaultCount)
+      }
+
+    private fun complicationColorStopState(
+      slotId: Int,
+      index: Int,
+      defaultArgb: Int,
+    ): RemoteColor {
+      val key = DwfVariables.complicationColorStopKey(slotId, index)
+      return complicationColorStopCache.getOrPut(key) {
+        RemoteColor.createNamedRemoteColor(key, defaultArgb)
+      }
+    }
+
+    private fun complicationWeightState(
+      slotId: Int,
+      index: Int,
+      defaultWeight: Float,
+    ): RemoteFloat {
+      val key = DwfVariables.complicationWeightKey(slotId, index)
+      return complicationWeightCache.getOrPut(key) {
+        RemoteFloat.createNamedRemoteFloat(key, defaultWeight)
+      }
+    }
+
     fun resolveComplicationImageResource(
       slotId: Int,
       rawResource: String,
-    ): Pair<String, RemoteBoolean>? {
+    ): ResolvedComplicationImage? {
       val trimmed = rawResource.trim()
       if (!trimmed.startsWith("[COMPLICATION.", ignoreCase = true) || !trimmed.endsWith("]")) {
         return null
@@ -1939,20 +2047,32 @@ internal class DwfExpressionCompiler(
       val seed = seedForSlot(slotId)
       return when (prop) {
         "MONOCHROMATIC_IMAGE",
-        "MONOCHROMATIC_IMAGE_AMBIENT" -> {
-          val ref = seed.monochromaticImage ?: return null
-          ref to hasMonoImageState(slotId, seed)
-        }
+        "MONOCHROMATIC_IMAGE_AMBIENT" ->
+          ResolvedComplicationImage(
+            kind = ComplicationImageKind.MONOCHROMATIC,
+            staticResource = seed.monochromaticImage,
+            isPresent = hasMonoImageState(slotId, seed),
+            imageColor = complicationImageColorState(slotId),
+            accentColor = complicationAccentColorState(slotId),
+          )
         "SMALL_IMAGE",
-        "SMALL_IMAGE_AMBIENT" -> {
-          val ref = seed.smallImage ?: return null
-          ref to hasSmallImageState(slotId, seed)
-        }
+        "SMALL_IMAGE_AMBIENT" ->
+          ResolvedComplicationImage(
+            kind = ComplicationImageKind.SMALL,
+            staticResource = seed.smallImage,
+            isPresent = hasSmallImageState(slotId, seed),
+            imageColor = complicationImageColorState(slotId),
+            accentColor = complicationAccentColorState(slotId),
+          )
         "PHOTO_IMAGE",
-        "PHOTO_IMAGE_AMBIENT" -> {
-          val ref = seed.photoImage ?: return null
-          ref to hasPhotoImageState(slotId, seed)
-        }
+        "PHOTO_IMAGE_AMBIENT" ->
+          ResolvedComplicationImage(
+            kind = ComplicationImageKind.PHOTO,
+            staticResource = seed.photoImage,
+            isPresent = hasPhotoImageState(slotId, seed),
+            imageColor = complicationImageColorState(slotId),
+            accentColor = complicationAccentColorState(slotId),
+          )
         else -> null
       }
     }
@@ -1964,27 +2084,75 @@ internal class DwfExpressionCompiler(
     ): ResolvedWeightedStroke {
       val seed = seedForSlot(slotId)
       val colorsTrimmed = ws.colors.trim()
-      val colors: List<RemoteColor> =
-        when (colorsTrimmed.uppercase()) {
-          "[COMPLICATION.RANGED_VALUE_COLORS]" -> seed.rangedValueColors.map(::RemoteColor)
-          "[COMPLICATION.GOAL_PROGRESS_COLORS]" -> seed.goalProgressColors.map(::RemoteColor)
+      val colorsUpper = colorsTrimmed.uppercase()
+      val isComplicationColors =
+        colorsUpper == "[COMPLICATION.RANGED_VALUE_COLORS]" ||
+          colorsUpper == "[COMPLICATION.GOAL_PROGRESS_COLORS]" ||
+          colorsUpper == "[COMPLICATION.WEIGHTED_ELEMENTS_COLORS]"
+      val seedColors: List<Int> =
+        when (colorsUpper) {
+          "[COMPLICATION.RANGED_VALUE_COLORS]" ->
+            seed.rangedValueColors.ifEmpty { seed.weightedElementsColors }
+          "[COMPLICATION.GOAL_PROGRESS_COLORS]" ->
+            seed.goalProgressColors.ifEmpty { seed.rangedValueColors }
           "[COMPLICATION.WEIGHTED_ELEMENTS_COLORS]" ->
-            seed.weightedElementsColors.map(::RemoteColor)
-          else ->
-            colorsTrimmed
-              .split(Regex("\\s+"))
-              .filter { it.isNotEmpty() }
-              .map { compiler.compileColor(it) }
+            seed.weightedElementsColors
+              .ifEmpty { seed.rangedValueColors }
+              .ifEmpty { seed.goalProgressColors }
+          else -> emptyList()
         }
+      val colorCountState: RemoteInt?
+      val colors: List<RemoteColor>
+      if (isComplicationColors) {
+        val stopCount = maxOf(DwfVariables.MAX_COMPLICATION_COLOR_STOPS, seedColors.size)
+        val defaultCount = if (seedColors.isNotEmpty()) seedColors.size else 3
+        colorCountState = complicationColorCountState(slotId, defaultCount)
+        colors =
+          (0 until stopCount).map { idx ->
+            val defaultArgb =
+              seedColors.getOrNull(idx)
+                ?: seedColors.lastOrNull()
+                ?: DEFAULT_COMPLICATION_STOP_COLORS[idx % DEFAULT_COMPLICATION_STOP_COLORS.size]
+            if (idx < DwfVariables.MAX_COMPLICATION_COLOR_STOPS) {
+              complicationColorStopState(slotId, idx, defaultArgb)
+            } else {
+              RemoteColor(defaultArgb)
+            }
+          }
+      } else {
+        colorCountState = null
+        colors =
+          colorsTrimmed
+            .split(Regex("\\s+"))
+            .filter { it.isNotEmpty() }
+            .map { compiler.compileColor(it) }
+      }
+
       val weightsTrimmed = ws.weights?.trim().orEmpty()
       val weights: List<RemoteFloat> =
         when {
-          weightsTrimmed.isEmpty() -> List(colors.size) { 1f.rf }
-          weightsTrimmed.equals("[COMPLICATION.WEIGHTED_ELEMENTS_WEIGHTS]", ignoreCase = true) ->
-            if (seed.weightedElementsWeights.isNotEmpty()) {
-              seed.weightedElementsWeights.map { it.rf }
+          weightsTrimmed.isEmpty() ->
+            if (colorCountState != null) {
+              colors.indices.map { idx ->
+                RemoteInt(idx).isLessThan(colorCountState).select(1f.rf, 0f.rf)
+              }
             } else {
               List(colors.size) { 1f.rf }
+            }
+          weightsTrimmed.equals("[COMPLICATION.WEIGHTED_ELEMENTS_WEIGHTS]", ignoreCase = true) ->
+            colors.indices.map { idx ->
+              val defaultWeight =
+                when {
+                  seed.weightedElementsWeights.isNotEmpty() ->
+                    seed.weightedElementsWeights.getOrNull(idx) ?: 0f
+                  seedColors.isNotEmpty() -> if (idx < seedColors.size) 1f else 0f
+                  else -> DEFAULT_COMPLICATION_STOP_WEIGHTS.getOrElse(idx) { 0f }
+                }
+              if (idx < DwfVariables.MAX_COMPLICATION_COLOR_STOPS) {
+                complicationWeightState(slotId, idx, defaultWeight)
+              } else {
+                defaultWeight.rf
+              }
             }
           else ->
             weightsTrimmed
@@ -1993,15 +2161,20 @@ internal class DwfExpressionCompiler(
               .map { compiler.compileFloat(it, 1f) }
         }
       val interpTrimmed = ws.interpolate?.trim().orEmpty()
-      val interpolate =
+      val interpolate: RemoteBoolean =
         when (interpTrimmed.uppercase()) {
-          "[COMPLICATION.RANGED_VALUE_COLORS_INTERPOLATE]" -> seed.rangedValueColorsInterpolate
-          "[COMPLICATION.GOAL_PROGRESS_COLORS_INTERPOLATE]" -> seed.goalProgressColorsInterpolate
+          "[COMPLICATION.RANGED_VALUE_COLORS_INTERPOLATE]" -> rangedInterpolateState(slotId, seed)
+          "[COMPLICATION.GOAL_PROGRESS_COLORS_INTERPOLATE]" -> goalInterpolateState(slotId, seed)
           "TRUE",
-          "1" -> true
-          else -> false
+          "1" -> RemoteBoolean(true)
+          else -> RemoteBoolean(false)
         }
-      return ResolvedWeightedStroke(colors = colors, weights = weights, interpolate = interpolate)
+      return ResolvedWeightedStroke(
+        colors = colors,
+        weights = weights,
+        interpolate = interpolate,
+        colorCount = colorCountState,
+      )
     }
 
     fun resolveComplicationProperty(slotId: Int, prop: String): EvalValue {
@@ -2063,24 +2236,26 @@ internal class DwfExpressionCompiler(
         "PHOTO_IMAGE",
         "PHOTO_IMAGE_AMBIENT" ->
           EvalValue.NullableRef(hasPhotoImageState(slotId, seed), seed.photoImage)
-        "RANGED_VALUE_COLORS" ->
-          EvalValue.NullableRef(RemoteBoolean(seed.rangedValueColors.isNotEmpty()))
-        "RANGED_VALUE_COLORS_INTERPOLATE" ->
-          EvalValue.Bool(RemoteBoolean(seed.rangedValueColorsInterpolate))
-        "GOAL_PROGRESS_COLORS" ->
-          EvalValue.NullableRef(RemoteBoolean(seed.goalProgressColors.isNotEmpty()))
-        "GOAL_PROGRESS_COLORS_INTERPOLATE" ->
-          EvalValue.Bool(RemoteBoolean(seed.goalProgressColorsInterpolate))
-        "WEIGHTED_ELEMENTS_COLORS" ->
-          EvalValue.NullableRef(RemoteBoolean(seed.weightedElementsColors.isNotEmpty()))
-        "WEIGHTED_ELEMENTS_WEIGHTS" ->
-          EvalValue.NullableRef(RemoteBoolean(seed.weightedElementsWeights.isNotEmpty()))
+        "RANGED_VALUE_COLORS" -> EvalValue.NullableRef(hasRangedColorsState(slotId, seed))
+        "RANGED_VALUE_COLORS_INTERPOLATE" -> EvalValue.Bool(rangedInterpolateState(slotId, seed))
+        "GOAL_PROGRESS_COLORS" -> EvalValue.NullableRef(hasGoalColorsState(slotId, seed))
+        "GOAL_PROGRESS_COLORS_INTERPOLATE" -> EvalValue.Bool(goalInterpolateState(slotId, seed))
+        "WEIGHTED_ELEMENTS_COLORS",
+        "WEIGHTED_ELEMENTS_WEIGHTS" -> EvalValue.NullableRef(hasWeightedElementsState(slotId, seed))
         else -> EvalValue.NullVal
       }
     }
   }
 
   private companion object {
+    val DEFAULT_COMPLICATION_STOP_COLORS: IntArray =
+      intArrayOf(
+        0xFF4285F4.toInt(),
+        0xFF34A853.toInt(),
+        0xFFFBBC05.toInt(),
+        0xFFEA4335.toInt(),
+      )
+    val DEFAULT_COMPLICATION_STOP_WEIGHTS: FloatArray = floatArrayOf(45f, 35f, 20f, 0f)
     val TIME_PATTERN_CHARS: Set<Char> =
       setOf('H', 'h', 'k', 'K', 'm', 's', 'S', 'a', 'y', 'Y', 'M', 'L', 'd', 'D', 'E', 'c', 'e')
     val TWO_CHAR_OPS: Set<String> = setOf("==", "!=", "<=", ">=", "&&", "||")

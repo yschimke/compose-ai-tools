@@ -158,6 +158,46 @@ public object DwfVariables {
   public fun complicationHasPhotoImageKey(slotId: Int): String =
     "dwf.complication.$slotId.has_photo_image"
 
+  /** Foreground/tint color (`RemoteColor`) for procedural complication icons in [slotId]. */
+  public fun complicationImageColorKey(slotId: Int): String = "dwf.complication.$slotId.image_color"
+
+  /** Badge/backdrop accent color (`RemoteColor`) for `SMALL_IMAGE` / `PHOTO_IMAGE` in [slotId]. */
+  public fun complicationAccentColorKey(slotId: Int): String =
+    "dwf.complication.$slotId.accent_color"
+
+  /** `1` when [slotId] supplies `RANGED_VALUE_COLORS` (`RemoteBoolean`). */
+  public fun complicationHasRangedColorsKey(slotId: Int): String =
+    "dwf.complication.$slotId.has_ranged_value_colors"
+
+  /** `1` when [slotId]'s `RANGED_VALUE_COLORS` ramp interpolates (`RemoteBoolean`). */
+  public fun complicationRangedInterpolateKey(slotId: Int): String =
+    "dwf.complication.$slotId.ranged_value_colors_interpolate"
+
+  /** `1` when [slotId] supplies `GOAL_PROGRESS_COLORS` (`RemoteBoolean`). */
+  public fun complicationHasGoalColorsKey(slotId: Int): String =
+    "dwf.complication.$slotId.has_goal_progress_colors"
+
+  /** `1` when [slotId]'s `GOAL_PROGRESS_COLORS` ramp interpolates (`RemoteBoolean`). */
+  public fun complicationGoalInterpolateKey(slotId: Int): String =
+    "dwf.complication.$slotId.goal_progress_colors_interpolate"
+
+  /** `1` when [slotId] supplies `WEIGHTED_ELEMENTS` data (`RemoteBoolean`). */
+  public fun complicationHasWeightedElementsKey(slotId: Int): String =
+    "dwf.complication.$slotId.has_weighted_elements"
+
+  /** Active color-stop count (`RemoteInt`, `1..4`) for [slotId]'s ramp/weighted stroke. */
+  public fun complicationColorCountKey(slotId: Int): String = "dwf.complication.$slotId.color_count"
+
+  /** Dynamic color stop (`RemoteColor`) at 0-based [index] (`0..3`) for [slotId]. */
+  public fun complicationColorStopKey(slotId: Int, index: Int): String =
+    "dwf.complication.$slotId.color.$index"
+
+  /** Dynamic element weight (`RemoteFloat`) at 0-based [index] (`0..3`) for [slotId]. */
+  public fun complicationWeightKey(slotId: Int, index: Int): String =
+    "dwf.complication.$slotId.weight.$index"
+
+  public const val MAX_COMPLICATION_COLOR_STOPS: Int = 4
+
   public const val COMPLICATION_TYPE_EMPTY: Int = 0
   public const val COMPLICATION_TYPE_SHORT_TEXT: Int = 1
   public const val COMPLICATION_TYPE_LONG_TEXT: Int = 2
@@ -179,12 +219,28 @@ public object DwfVariables {
       "SHORT_TEXT" -> COMPLICATION_TYPE_SHORT_TEXT
       "LONG_TEXT" -> COMPLICATION_TYPE_LONG_TEXT
       "RANGED_VALUE" -> COMPLICATION_TYPE_RANGED_VALUE
-      "MONOCHROMATIC_IMAGE" -> COMPLICATION_TYPE_MONOCHROMATIC_IMAGE
+      "MONOCHROMATIC_IMAGE",
+      "ICON" -> COMPLICATION_TYPE_MONOCHROMATIC_IMAGE
       "SMALL_IMAGE" -> COMPLICATION_TYPE_SMALL_IMAGE
       "PHOTO_IMAGE",
       "LARGE_IMAGE" -> COMPLICATION_TYPE_PHOTO_IMAGE
       "GOAL_PROGRESS" -> COMPLICATION_TYPE_GOAL_PROGRESS
       "WEIGHTED_ELEMENTS" -> COMPLICATION_TYPE_WEIGHTED_ELEMENTS
       else -> COMPLICATION_TYPE_SHORT_TEXT
+    }
+
+  /** Maps an internal complication type int code back to its canonical WFF type name. */
+  public fun complicationTypeName(code: Int): String =
+    when (code) {
+      COMPLICATION_TYPE_EMPTY -> "EMPTY"
+      COMPLICATION_TYPE_SHORT_TEXT -> "SHORT_TEXT"
+      COMPLICATION_TYPE_LONG_TEXT -> "LONG_TEXT"
+      COMPLICATION_TYPE_RANGED_VALUE -> "RANGED_VALUE"
+      COMPLICATION_TYPE_MONOCHROMATIC_IMAGE -> "MONOCHROMATIC_IMAGE"
+      COMPLICATION_TYPE_SMALL_IMAGE -> "SMALL_IMAGE"
+      COMPLICATION_TYPE_PHOTO_IMAGE -> "PHOTO_IMAGE"
+      COMPLICATION_TYPE_GOAL_PROGRESS -> "GOAL_PROGRESS"
+      COMPLICATION_TYPE_WEIGHTED_ELEMENTS -> "WEIGHTED_ELEMENTS"
+      else -> "SHORT_TEXT"
     }
 }
