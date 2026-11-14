@@ -383,10 +383,12 @@ private class DwfCanvasRenderer(
           if (resName != null) {
             val compImage = compiler.resolveComplicationImageResource(resName)
             if (compImage != null) {
-              val (targetRes, isPresent) = compImage
-              if (targetRes.isNotBlank()) {
-                drawConditionally(isPresent) {
-                  renderImageOrVector(targetRes, alphaFactor, tint, w, h)
+              drawConditionally(compImage.isPresent) {
+                val renderedStatic =
+                  !compImage.staticResource.isNullOrBlank() &&
+                    tryRenderImageOrVector(compImage.staticResource, alphaFactor, tint, w, h)
+                if (!renderedStatic) {
+                  renderProceduralComplicationImage(compImage, alphaFactor, tint, w, h)
                 }
               }
             } else {
@@ -761,18 +763,35 @@ private class DwfCanvasRenderer(
       compiler.resolveTransformedFloat(ws.thickness, "thickness", ws.transforms, ws.variants)
     val rcStart = startDwf - 90f.rf
 
-    if (resolved.interpolate && resolved.colors.size >= 2) {
+    fun RemoteDrawScope.drawInterpolatedBranch() {
       val steps = 32
       val stepSweep = totalSweep / steps.toFloat().rf
       val overlap = if (arc.direction == DwfArcDirection.CLOCKWISE) 0.45f.rf else (-0.45f).rf
-      val spanCount = resolved.colors.size - 1
+      val dynamicCount = resolved.colorCount
       for (i in 0 until steps) {
         val t = (i + 0.5f) / steps.toFloat()
-        val scaled = t * spanCount
-        val segIdx = scaled.toInt().coerceIn(0, spanCount - 1)
-        val localT = (scaled - segIdx).coerceIn(0f, 1f)
         val segColor =
-          inheritedTint ?: lerp(resolved.colors[segIdx], resolved.colors[segIdx + 1], localT.rf)
+          if (inheritedTint != null) {
+            inheritedTint
+          } else if (dynamicCount != null && resolved.colors.size >= 4) {
+            val c0 = resolved.colors[0]
+            val c1 = resolved.colors[1]
+            val c2 = resolved.colors[2]
+            val c3 = resolved.colors[3]
+            val spans = max((dynamicCount - RemoteInt(1)).toRemoteFloat(), 1f.rf)
+            val scaled = t.rf * spans
+            val l01 = lerp(c0, c1, clamp(scaled, 0f.rf, 1f.rf))
+            val l12 = lerp(c1, c2, clamp(scaled - 1f.rf, 0f.rf, 1f.rf))
+            val l23 = lerp(c2, c3, clamp(scaled - 2f.rf, 0f.rf, 1f.rf))
+            val tail = lerp(l12, l23, scaled.isLessThan(2f.rf).select(0f.rf, 1f.rf))
+            lerp(l01, tail, scaled.isLessThan(1f.rf).select(0f.rf, 1f.rf))
+          } else {
+            val spanCount = (resolved.colors.size - 1).coerceAtLeast(1)
+            val scaled = t * spanCount
+            val segIdx = scaled.toInt().coerceIn(0, spanCount - 1)
+            val localT = (scaled - segIdx).coerceIn(0f, 1f)
+            lerp(resolved.colors[segIdx], resolved.colors[segIdx + 1], localT.rf)
+          }
         val paint = RemotePaint {
           isAntiAlias = true
           style = RemotePaintingStyle.Stroke
@@ -791,7 +810,19 @@ private class DwfCanvasRenderer(
         val startRad = toRad(rcStart)
         val endRad = toRad(rcStart + totalSweep)
         val startCol = applyAlpha(inheritedTint ?: resolved.colors.first(), alphaFactor)
-        val endCol = applyAlpha(inheritedTint ?: resolved.colors.last(), alphaFactor)
+        val rawEndCol =
+          if (inheritedTint != null) {
+            inheritedTint
+          } else if (dynamicCount != null && resolved.colors.size >= 4) {
+            val c1 = resolved.colors[1]
+            val c2 = resolved.colors[2]
+            val c3 = resolved.colors[3]
+            val c2Or3 = lerp(c2, c3, dynamicCount.isLessThan(RemoteInt(4)).select(0f.rf, 1f.rf))
+            lerp(c1, c2Or3, dynamicCount.isLessThan(RemoteInt(3)).select(0f.rf, 1f.rf))
+          } else {
+            resolved.colors.last()
+          }
+        val endCol = applyAlpha(rawEndCol, alphaFactor)
         val startCapPaint = RemotePaint {
           isAntiAlias = true
           style = RemotePaintingStyle.Fill
@@ -815,25 +846,38 @@ private class DwfCanvasRenderer(
           endCapPaint,
         )
       }
-      return
     }
 
-    val weights =
-      resolved.colors.indices.map { idx -> max(resolved.weights.getOrElse(idx) { 1f.rf }, 0f.rf) }
-    val totalWeight = max(weights.reduce { a, b -> a + b }, 0.0001f.rf)
-    var cursor = rcStart
-    for ((idx, col) in resolved.colors.withIndex()) {
-      val segSweep = totalSweep * (weights[idx] / totalWeight)
-      val baseCol = inheritedTint ?: col
-      val paint = RemotePaint {
-        isAntiAlias = true
-        style = RemotePaintingStyle.Stroke
-        strokeWidth = thickness
-        strokeCap = toRemoteStrokeCap(ws.cap)
-        color = applyAlpha(baseCol, alphaFactor)
+    fun RemoteDrawScope.drawDiscreteBranch() {
+      val weights =
+        resolved.colors.indices.map { idx -> max(resolved.weights.getOrElse(idx) { 1f.rf }, 0f.rf) }
+      val totalWeight = max(weights.reduce { a, b -> a + b }, 0.0001f.rf)
+      var cursor = rcStart
+      for ((idx, col) in resolved.colors.withIndex()) {
+        val segSweep = totalSweep * (weights[idx] / totalWeight)
+        val baseCol = inheritedTint ?: col
+        val paint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Stroke
+          strokeWidth = thickness
+          strokeCap = toRemoteStrokeCap(ws.cap)
+          color = applyAlpha(baseCol, alphaFactor)
+        }
+        drawConditionally(weights[idx].isGreaterThan(0.0001f.rf)) {
+          remoteCanvas.drawArc(left, top, right, bottom, cursor, segSweep, false, paint)
+        }
+        cursor += segSweep
       }
-      remoteCanvas.drawArc(left, top, right, bottom, cursor, segSweep, false, paint)
-      cursor += segSweep
+    }
+
+    val constInterp = resolved.interpolate.constantValueOrNull
+    if (resolved.colors.size < 2 || constInterp == false) {
+      drawDiscreteBranch()
+    } else if (constInterp == true) {
+      drawInterpolatedBranch()
+    } else {
+      drawConditionally(resolved.interpolate) { drawInterpolatedBranch() }
+      drawConditionally(resolved.interpolate.not()) { drawDiscreteBranch() }
     }
   }
 
@@ -1673,6 +1717,109 @@ private class DwfCanvasRenderer(
       return true
     }
     return false
+  }
+
+  private fun RemoteDrawScope.renderProceduralComplicationImage(
+    compImage: DwfExpressionCompiler.ResolvedComplicationImage,
+    alphaFactor: RemoteFloat,
+    tint: RemoteColor?,
+    dstW: RemoteFloat,
+    dstH: RemoteFloat,
+  ) {
+    when (compImage.kind) {
+      DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC -> {
+        val fgColor = applyAlpha(tint ?: compImage.imageColor, alphaFactor)
+        val fgPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = fgColor
+        }
+        val mainStar =
+          RemotePath("M12,2 L14.8,9.2 L22,12 L14.8,14.8 L12,22 L9.2,14.8 L2,12 L9.2,9.2 Z")
+        val sparkle =
+          RemotePath("M19,3 L19.8,5.2 L22,6 L19.8,6.8 L19,9 L18.2,6.8 L16,6 L18.2,5.2 Z")
+        scale(dstW / 24f.rf, dstH / 24f.rf, RemoteOffset(0f.rf, 0f.rf)) {
+          remoteCanvas.drawPath(mainStar, RemotePathFillType.NonZero, fgPaint)
+          remoteCanvas.drawPath(sparkle, RemotePathFillType.NonZero, fgPaint)
+        }
+      }
+      DwfExpressionCompiler.ComplicationImageKind.SMALL -> {
+        val badgePaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor)
+        }
+        remoteCanvas.drawOval(0f.rf, 0f.rf, dstW, dstH, badgePaint)
+        val emblemPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(compImage.imageColor, alphaFactor)
+        }
+        val bolt = RemotePath("M13,4 L7,13 L11.5,13 L10.5,20 L17,11 L12.5,11 Z")
+        scale(dstW / 24f.rf, dstH / 24f.rf, RemoteOffset(0f.rf, 0f.rf)) {
+          remoteCanvas.drawPath(bolt, RemotePathFillType.NonZero, emblemPaint)
+        }
+      }
+      DwfExpressionCompiler.ComplicationImageKind.PHOTO -> {
+        val baseDarkPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(RemoteColor(0xFF0E1624.toInt()), alphaFactor)
+        }
+        remoteCanvas.drawRect(0f.rf, 0f.rf, dstW, dstH, baseDarkPaint)
+
+        val skyWashPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor * 0.48f.rf)
+        }
+        remoteCanvas.drawOval(
+          dstW * (-0.2f).rf,
+          dstH * (-0.35f).rf,
+          dstW * 1.2f.rf,
+          dstH * 0.78f.rf,
+          skyWashPaint,
+        )
+
+        val orbPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(compImage.imageColor, alphaFactor * 0.75f.rf)
+        }
+        remoteCanvas.drawCircle(
+          dstW * 0.68f.rf,
+          dstH * 0.30f.rf,
+          min(dstW, dstH) * 0.14f.rf,
+          orbPaint,
+        )
+
+        val farHillPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor * 0.34f.rf)
+        }
+        remoteCanvas.drawOval(
+          dstW * (-0.30f).rf,
+          dstH * 0.56f.rf,
+          dstW * 0.92f.rf,
+          dstH * 1.35f.rf,
+          farHillPaint,
+        )
+
+        val nearHillPaint = RemotePaint {
+          isAntiAlias = true
+          style = RemotePaintingStyle.Fill
+          color = applyAlpha(RemoteColor(0xFF09101B.toInt()), alphaFactor * 0.78f.rf)
+        }
+        remoteCanvas.drawOval(
+          dstW * 0.12f.rf,
+          dstH * 0.65f.rf,
+          dstW * 1.35f.rf,
+          dstH * 1.40f.rf,
+          nearHillPaint,
+        )
+      }
+    }
   }
 
   private fun RemoteDrawScope.renderVectorDrawable(

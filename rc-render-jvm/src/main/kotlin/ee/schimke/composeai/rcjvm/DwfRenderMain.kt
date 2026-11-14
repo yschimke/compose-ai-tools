@@ -45,16 +45,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.jetbrains.skia.EncodedImageFormat
 
-private val dwfJson = Json {
+internal val dwfJson = Json {
   ignoreUnknownKeys = true
   encodeDefaults = true
 }
 
 @Serializable
-private data class DwfPreviewManifestDto(val previews: List<DwfPreviewEntryDto> = emptyList())
+internal data class DwfPreviewManifestDto(val previews: List<DwfPreviewEntryDto> = emptyList())
 
 @Serializable
-private data class DwfPreviewEntryDto(
+internal data class DwfPreviewEntryDto(
   val id: String,
   val functionName: String = "",
   val params: DwfPreviewParamsDto = DwfPreviewParamsDto(),
@@ -62,7 +62,7 @@ private data class DwfPreviewEntryDto(
 )
 
 @Serializable
-private data class DwfPreviewParamsDto(
+internal data class DwfPreviewParamsDto(
   val name: String? = null,
   val widthDp: Int? = null,
   val heightDp: Int? = null,
@@ -70,7 +70,7 @@ private data class DwfPreviewParamsDto(
   val dwfAssetPath: String? = null,
 )
 
-@Serializable private data class DwfCaptureDto(val renderOutput: String = "")
+@Serializable internal data class DwfCaptureDto(val renderOutput: String = "")
 
 /**
  * Deterministic fake host data for DWF preview rendering (`--fakes-json <file>` or
@@ -650,7 +650,7 @@ private val bundledDwfTypefaces: RcTypefaceLoader? by lazy {
     .getOrNull()
 }
 
-private fun findSidecarFakes(xmlFile: File): DwfFakesConfig? {
+internal fun findSidecarFakes(xmlFile: File): DwfFakesConfig? {
   val dir = xmlFile.parentFile ?: return null
   val stem = xmlFile.nameWithoutExtension
   val candidate = File(dir, "$stem.fakes.json")
@@ -705,7 +705,13 @@ internal fun extractDwfDeclarationsPayload(
         RcNamedVariable.FLOAT_TYPE -> RemoteNamedValue.FloatValue(floats[op.id] ?: 0f)
         RcNamedVariable.INT_TYPE -> {
           val v = ints[op.id] ?: 0
-          if (cleanName in knownBooleanKeys) {
+          val isBooleanVar =
+            cleanName in knownBooleanKeys ||
+              cleanName.endsWith(".is_available") ||
+              cleanName.endsWith(".is_day") ||
+              (cleanName.startsWith("dwf.complication.") &&
+                (cleanName.contains(".has_") || cleanName.endsWith("_interpolate")))
+          if (isBooleanVar) {
             RemoteNamedValue.BooleanValue(v != 0)
           } else {
             RemoteNamedValue.IntValue(v)
@@ -820,7 +826,7 @@ internal fun parsePreviewHms(previewTime: String?): Triple<Int, Int, Int> {
   return Triple(10, 10, 30)
 }
 
-private fun resolveDwfXmlFile(
+internal fun resolveDwfXmlFile(
   relPath: String,
   resourceDirs: List<File>,
   previewsRoot: File,

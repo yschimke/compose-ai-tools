@@ -1247,6 +1247,14 @@ internal object AndroidPreviewSupport {
     // the afterEvaluate block fails configuration with the missing coordinates.
     val manageDependencies = extension.manageDependencies.get()
 
+    // A Watch Face Format module (android/wear-os-samples' `WatchFaceFormat/*`: `hasCode=false`,
+    // `enableKotlin = false`, nothing under `src/` but resources) renders only through the desktop
+    // DWF lane (`composePreviewRenderDwf`); Robolectric has nothing to load. The main-variant floor
+    // pins below exist for the Robolectric merged test APK; for such a module they only put
+    // Compose UI into the shipped variant and, through `checkDebugAarMetadata`, demand
+    // `compileSdk >= 35` from a watch face that declares 33 or 34.
+    val codelessDwfModule = hasDwfSources && !ComposePreviewTasks.hasJvmSources(project)
+
     // Pinned to [RENDERER_COMPOSE_FLOOR_VERSION] rather than unversioned: tile-only apps have no
     // Compose BOM, so an unversioned coordinate fails resolution (surfacing as an opaque
     // config-cache error), yet tile renders still use `createAndroidComposeRule`. Consumers with a
@@ -1274,47 +1282,56 @@ internal object AndroidPreviewSupport {
       // their own BOM. Each note gives the failure the pin prevents; `composePreviewDoctor` shows
       // the user-facing `reason`.
 
-      // compose-ui 1.10+'s `InsetsListener.onViewAttachedToWindow` reads
-      // `androidx.core.R.id.tag_compat_insets_dispatch`, added in core 1.16.0:
-      //   NoSuchFieldError: androidx.core.R$id … 'int tag_compat_insets_dispatch'
-      project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
-
-      // compose-ui's `PoolingContainer.<clinit>` reads
-      // `androidx.customview.poolingcontainer.R.id.*`:
-      //   NoClassDefFoundError: androidx/customview/poolingcontainer/R$id
-      // 1.0.0 is the only published version.
-      project.dependencies.add(
-        "${variantName}Implementation",
-        "androidx.customview:customview-poolingcontainer:1.0.0",
-      )
-
-      // `ViewTreeOnBackPressedDispatcherOwner.set` reads an `androidx.activity.R.id` added in
-      // 1.5.0:
-      //   NoSuchFieldError: androidx.activity.R$id … 'view_tree_on_back_pressed_dispatcher_owner'
-      project.dependencies.add("${variantName}Implementation", "androidx.activity:activity:1.10.0")
-
-      // compose-ui's accessibility delegate reads `androidx.compose.ui.R.id.*`:
-      //   NoClassDefFoundError: androidx/compose/ui/R$id
-      //
-      // Not the compile floor: the merged R class must match the compose-ui classes that run — the
-      // consumer's BOM, or our CMP runtime for a Compose-less consumer (1.9.5's `R.txt` lacks
-      // fields the newer classes read). Reused for `foundation` and the doctor records.
       val mainComposeVersion =
-        mainVariantComposeVersion(project, variantName, naming.unitTestRuntimeClasspath)
-      addPluginDependency(
-        project,
-        "${variantName}Implementation",
-        "androidx.compose.ui:ui:$mainComposeVersion",
-      )
+        if (!codelessDwfModule) {
+          mainVariantComposeVersion(project, variantName, naming.unitTestRuntimeClasspath)
+        } else {
+          ""
+        }
+      if (!codelessDwfModule) {
+        // compose-ui 1.10+'s `InsetsListener.onViewAttachedToWindow` reads
+        // `androidx.core.R.id.tag_compat_insets_dispatch`, added in core 1.16.0:
+        //   NoSuchFieldError: androidx.core.R$id … 'int tag_compat_insets_dispatch'
+        project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
 
-      // `TilePreviewComposable` calls `Modifier.fillMaxSize()`:
-      //   NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt
-      // Versioned with compose-ui, since foundation and ui share a line.
-      addPluginDependency(
-        project,
-        "${variantName}Implementation",
-        "androidx.compose.foundation:foundation:$mainComposeVersion",
-      )
+        // compose-ui's `PoolingContainer.<clinit>` reads
+        // `androidx.customview.poolingcontainer.R.id.*`:
+        //   NoClassDefFoundError: androidx/customview/poolingcontainer/R$id
+        // 1.0.0 is the only published version.
+        project.dependencies.add(
+          "${variantName}Implementation",
+          "androidx.customview:customview-poolingcontainer:1.0.0",
+        )
+
+        // `ViewTreeOnBackPressedDispatcherOwner.set` reads an `androidx.activity.R.id` added in
+        // 1.5.0:
+        //   NoSuchFieldError: androidx.activity.R$id … 'view_tree_on_back_pressed_dispatcher_owner'
+        project.dependencies.add(
+          "${variantName}Implementation",
+          "androidx.activity:activity:1.10.0",
+        )
+
+        // compose-ui's accessibility delegate reads `androidx.compose.ui.R.id.*`:
+        //   NoClassDefFoundError: androidx/compose/ui/R$id
+        //
+        // Not the compile floor: the merged R class must match the compose-ui classes that run —
+        // the consumer's BOM, or our CMP runtime for a Compose-less consumer (1.9.5's `R.txt` lacks
+        // fields the newer classes read). Reused for `foundation` and the doctor records.
+        addPluginDependency(
+          project,
+          "${variantName}Implementation",
+          "androidx.compose.ui:ui:$mainComposeVersion",
+        )
+
+        // `TilePreviewComposable` calls `Modifier.fillMaxSize()`:
+        //   NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt
+        // Versioned with compose-ui, since foundation and ui share a line.
+        addPluginDependency(
+          project,
+          "${variantName}Implementation",
+          "androidx.compose.foundation:foundation:$mainComposeVersion",
+        )
+      }
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -1342,51 +1359,72 @@ internal object AndroidPreviewSupport {
         reason =
           "espresso-core < 3.7 (transitive from ui-test-junit4) reflects InputManager.getInstance(), removed in API 37, so every render on an API 37 sandbox fails; floor only, a higher consumer version wins",
       )
-      recordInjectedDependency(
-        project,
-        injectedDependencies,
-        coordinate = "androidx.core:core:1.16.0",
-        configuration = "${variantName}Implementation",
-        outcome = "APPLIED",
-        reason =
-          "compose-ui 1.10+ on the renderer test classpath reads R.id.tag_compat_insets_dispatch (added in core 1.16); merged test APK needs the field",
-      )
-      recordInjectedDependency(
-        project,
-        injectedDependencies,
-        coordinate = "androidx.customview:customview-poolingcontainer:1.0.0",
-        configuration = "${variantName}Implementation",
-        outcome = "APPLIED",
-        reason =
-          "compose-ui's ViewCompositionStrategy reads androidx.customview.poolingcontainer.R.id.* from PoolingContainer.<clinit>; merged test APK needs the R class",
-      )
-      recordInjectedDependency(
-        project,
-        injectedDependencies,
-        coordinate = "androidx.activity:activity:1.10.0",
-        configuration = "${variantName}Implementation",
-        outcome = "APPLIED",
-        reason =
-          "activity-compose 1.5+ on the renderer test classpath reads R.id.view_tree_on_back_pressed_dispatcher_owner via ViewTreeOnBackPressedDispatcherOwner.set (added in androidx.activity:activity:1.5.0); merged test APK needs the field so ComponentActivity.initializeViewTreeOwners doesn't NoSuchFieldError",
-      )
-      recordInjectedDependency(
-        project,
-        injectedDependencies,
-        coordinate = "androidx.compose.ui:ui:$mainComposeVersion",
-        configuration = "${variantName}Implementation",
-        outcome = "APPLIED",
-        reason =
-          "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main. Versioned by whichever Compose actually runs: the renderer's compile floor when the consumer brings its own Compose, the CMP runtime version when ours is the only Compose on the render classpath",
-      )
-      recordInjectedDependency(
-        project,
-        injectedDependencies,
-        coordinate = "androidx.compose.foundation:foundation:$mainComposeVersion",
-        configuration = "${variantName}Implementation",
-        outcome = "APPLIED",
-        reason =
-          "TilePreviewRenderer.TilePreviewComposable calls Modifier.fillMaxSize() from androidx.compose.foundation.layout.SizeKt; tile-only consumers without compose-foundation in main hit NoClassDefFoundError at render time. Versioned with compose-ui above — foundation and ui have to stay on one line",
-      )
+      if (!codelessDwfModule) {
+        recordInjectedDependency(
+          project,
+          injectedDependencies,
+          coordinate = "androidx.core:core:1.16.0",
+          configuration = "${variantName}Implementation",
+          outcome = "APPLIED",
+          reason =
+            "compose-ui 1.10+ on the renderer test classpath reads R.id.tag_compat_insets_dispatch (added in core 1.16); merged test APK needs the field",
+        )
+        recordInjectedDependency(
+          project,
+          injectedDependencies,
+          coordinate = "androidx.customview:customview-poolingcontainer:1.0.0",
+          configuration = "${variantName}Implementation",
+          outcome = "APPLIED",
+          reason =
+            "compose-ui's ViewCompositionStrategy reads androidx.customview.poolingcontainer.R.id.* from PoolingContainer.<clinit>; merged test APK needs the R class",
+        )
+        recordInjectedDependency(
+          project,
+          injectedDependencies,
+          coordinate = "androidx.activity:activity:1.10.0",
+          configuration = "${variantName}Implementation",
+          outcome = "APPLIED",
+          reason =
+            "activity-compose 1.5+ on the renderer test classpath reads R.id.view_tree_on_back_pressed_dispatcher_owner via ViewTreeOnBackPressedDispatcherOwner.set (added in androidx.activity:activity:1.5.0); merged test APK needs the field so ComponentActivity.initializeViewTreeOwners doesn't NoSuchFieldError",
+        )
+        recordInjectedDependency(
+          project,
+          injectedDependencies,
+          coordinate = "androidx.compose.ui:ui:$mainComposeVersion",
+          configuration = "${variantName}Implementation",
+          outcome = "APPLIED",
+          reason =
+            "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main. Versioned by whichever Compose actually runs: the renderer's compile floor when the consumer brings its own Compose, the CMP runtime version when ours is the only Compose on the render classpath",
+        )
+        recordInjectedDependency(
+          project,
+          injectedDependencies,
+          coordinate = "androidx.compose.foundation:foundation:$mainComposeVersion",
+          configuration = "${variantName}Implementation",
+          outcome = "APPLIED",
+          reason =
+            "TilePreviewRenderer.TilePreviewComposable calls Modifier.fillMaxSize() from androidx.compose.foundation.layout.SizeKt; tile-only consumers without compose-foundation in main hit NoClassDefFoundError at render time. Versioned with compose-ui above — foundation and ui have to stay on one line",
+        )
+      } else {
+        for (coordinate in
+          listOf(
+            "androidx.core:core:1.16.0",
+            "androidx.customview:customview-poolingcontainer:1.0.0",
+            "androidx.activity:activity:1.10.0",
+            "androidx.compose.ui:ui",
+            "androidx.compose.foundation:foundation",
+          )) {
+          recordInjectedDependency(
+            project,
+            injectedDependencies,
+            coordinate = coordinate,
+            configuration = "${variantName}Implementation",
+            outcome = "SKIPPED",
+            reason =
+              "Watch Face Format module with no Kotlin/Java sources: rendered by the desktop DWF lane only, so the Robolectric merged-test-APK floor is not needed and would raise the module's compileSdk floor",
+          )
+        }
+      }
     } else {
       recordInjectedDependency(
         project,
@@ -1563,7 +1601,7 @@ internal object AndroidPreviewSupport {
       // `manageDependencies=false`: verify the consumer declared what we'd have injected and fail
       // configuration with the coordinates, rather than a ClassNotFoundException at render time.
       // Any declarable bucket counts.
-      if (!manageDependencies) {
+      if (!manageDependencies && !codelessDwfModule) {
         validateExternallyManagedDependencies(
           project = project,
           variantName = variantName,
@@ -2853,11 +2891,18 @@ internal object AndroidPreviewSupport {
         "$consumerBuildDir/tmp/kotlin-classes/",
         "$consumerBuildDir/classes/",
       )
+    val dwfDaemonRendersDir = previewOutputDir.map { it.dir(DWF_RENDER_SUBDIR).asFile.absolutePath }
+    val dwfDaemonResDirs =
+      androidDwfResDirs.elements.map { all ->
+        all.joinToString(java.io.File.pathSeparator) { it.asFile.absolutePath }
+      }
     project.tasks.register(
       "composePreviewDaemonStart",
       ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask::class.java,
     ) {
-      validateDaemonComposeFloorTask?.let { dependsOn(it) }
+      if (!codelessDwfModule) {
+        validateDaemonComposeFloorTask?.let { dependsOn(it) }
+      }
       // Bound via [lateAgpTestTask], as for the render task.
 
       this.modulePath.set(project.path)
@@ -2867,205 +2912,254 @@ internal object AndroidPreviewSupport {
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
       this.backgroundSandboxBoot.set(extension.daemon.backgroundSandboxBoot)
-      // Stage-2 BTA: AGP's unit-test classpath carries everything `compileDebugKotlin` sees. Output
-      // goes to the dir `compile<Variant>Kotlin` uses — the one `composeai.daemon.userClassDirs`
-      // names ([AndroidVariantNaming.btaOutputDir]) — so the daemon's child classloader loads it.
-      // MODULE_NAME is `project.name`, matching KGP's default for AGP variants.
-      val agpTestClasspath = lateAgpTestTask.classpath
-      ComposePreviewTasks.wireBtaInputs(
-        project = project,
-        task = this,
-        userCompileClasspath = agpTestClasspath,
-        moduleName = project.name,
-        outputDirProvider =
-          project.layout.buildDirectory
-            .dir(
-              naming.btaOutputDir(
-                kotlinAndroidPluginApplied =
-                  project.pluginManager.hasPlugin("org.jetbrains.kotlin.android"),
-              ),
-            )
-            .map { it.asFile.absolutePath },
-        icWorkingDirProvider =
-          project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
-            it.asFile.absolutePath
-          },
-        ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
-        kotlinPluginConfigurationName =
-          "kotlinCompilerPluginClasspath${variantName.replaceFirstChar { it.uppercase() }}",
-      )
-      // What the variant is built from, for the descriptor's `sourceWatch`.
-      variant.sources.java?.all?.let { dirs ->
-        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
-      }
-      variant.sources.kotlin?.all?.let { dirs ->
-        this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
-      }
-      variant.sources.res?.all?.let { layers ->
-        this.watchResourceDirs.addAll(
-          layers.map { all -> all.flatten().map { it.asFile.absolutePath } },
-        )
-      }
-      variant.sources.resources?.all?.let { dirs ->
-        this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
-      }
-      // Lottie assets render from these too; listed even when absent, so creating one is noticed.
-      this.watchResourceDirs.addAll(
-        androidLottieResourceDirs(project).elements.map { all ->
-          all.map { it.asFile.absolutePath }
-        },
-      )
-      this.watchBuildFiles.set(
-        ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project),
-      )
-      // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
-      this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
-      // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks. Load-bearing:
-      // when unset, the VS Code extension uses its own bundled JDK, which may be too old for the
-      // classes.
+
       fun setLauncher(launcher: Provider<JavaLauncher>?) {
         launcher?.let { l ->
           this.javaLauncher.set(l.map { it.executablePath.asFile.absolutePath })
         }
       }
-      if (!lateAgpTestTask.whenAvailable { setLauncher(renderJavaLauncher(it)) }) {
-        setLauncher(renderJavaLauncher(null))
-      }
-      // One graph: `daemonRendererConfig` extends `rendererConfig` and `testConfig`, so one
-      // resolution covers daemon, renderer and consumer with one version per module; daemon classes
-      // come first so [mainClass] resolves. The other entries match the render task's; only
-      // AGP-only extras are appended ([AndroidPreviewClasspath.buildAgpClasspathExtras]).
-      this.classpath.from(
-        AndroidPreviewClasspath.buildTestClasspath(
-          project = project,
-          bootClasspath = bootClasspath,
-          bootClasspathFallback = bootClasspathFallback,
-          rendererConfig = daemonRendererConfig,
-          rendererClasspathEntries = rendererClasspathEntries,
-          sourceClassDirs = sourceClassDirs,
-          testConfig = testConfig,
-          screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
-          unitTestConfigDir = unitTestConfigDir,
-          robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
-          legacyClasspathUnion = legacyClasspathUnion,
-        ),
-      )
-      this.classpath.from(lateAgpClasspathExtras)
-      this.classpath.from(lateAgpTestTask.testClassesDirs)
-      this.classpath.from(
-        AndroidPreviewClasspath.buildAgpClasspathExtras(
-          project = project,
-          agpTestClasspath = lateAgpTestTask.classpath,
-          testConfig = testConfig,
-          legacyClasspathUnion = legacyClasspathUnion,
-        ),
-      )
-      // Duplicate guard on the daemon classpath, which a11y and VS Code actually use. Runs before
-      // the descriptor is written so `fail` never emits one. Reads the daemon-scoped coordinate map
-      // (see [renderArtifactCoordinates]).
-      doFirst {
-        RenderClasspathDuplicates.check(
-          this,
-          classpath.files,
-          classpathDuplicatesMode,
-          daemonArtifactCoordinates.get(),
+
+      if (codelessDwfModule) {
+        variant.sources.res?.all?.let { layers ->
+          this.watchResourceDirs.addAll(
+            layers.map { all -> all.flatten().map { it.asFile.absolutePath } },
+          )
+        }
+        variant.sources.resources?.all?.let { dirs ->
+          this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+        }
+        this.watchResourceDirs.addAll(
+          androidDwfResDirs.elements.map { all -> all.map { it.asFile.absolutePath } },
         )
+        this.watchBuildFiles.set(
+          ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project),
+        )
+        this.mainClass.set("ee.schimke.composeai.rcjvm.DwfDaemonMain")
+        setLauncher(renderJavaLauncher(null))
+        dwfRendererClasspath?.let { this.classpath.from(it) }
+        this.jvmArgs.addAll(
+          "--enable-native-access=ALL-UNNAMED",
+          "-Dapple.awt.UIElement=true",
+          "-Djava.awt.headless=true",
+        )
+        this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
+        this.systemProperties.put("composeai.render.manifest", manifestFile)
+        this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
+        this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
+        this.systemProperties.put("composeai.render.outputDir", dwfDaemonRendersDir)
+        this.systemProperties.put("composeai.daemon.resDirs", dwfDaemonResDirs)
+        this.systemProperties.put("composeai.daemon.modulePath", project.path)
+        this.systemProperties.put(
+          "composeai.daemon.moduleProjectDir",
+          project.layout.projectDirectory.asFile.absolutePath,
+        )
+        this.systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
+        this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
+      } else {
+        // Stage-2 BTA: AGP's unit-test classpath carries everything `compileDebugKotlin` sees.
+        // Output
+        // goes to the dir `compile<Variant>Kotlin` uses — the one `composeai.daemon.userClassDirs`
+        // names ([AndroidVariantNaming.btaOutputDir]) — so the daemon's child classloader loads it.
+        // MODULE_NAME is `project.name`, matching KGP's default for AGP variants.
+        val agpTestClasspath = lateAgpTestTask.classpath
+        ComposePreviewTasks.wireBtaInputs(
+          project = project,
+          task = this,
+          userCompileClasspath = agpTestClasspath,
+          moduleName = project.name,
+          outputDirProvider =
+            project.layout.buildDirectory
+              .dir(
+                naming.btaOutputDir(
+                  kotlinAndroidPluginApplied =
+                    project.pluginManager.hasPlugin("org.jetbrains.kotlin.android"),
+                ),
+              )
+              .map { it.asFile.absolutePath },
+          icWorkingDirProvider =
+            project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
+              it.asFile.absolutePath
+            },
+          ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
+          kotlinPluginConfigurationName =
+            "kotlinCompilerPluginClasspath${variantName.replaceFirstChar { it.uppercase() }}",
+        )
+        // What the variant is built from, for the descriptor's `sourceWatch`.
+        variant.sources.java?.all?.let { dirs ->
+          this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+        }
+        variant.sources.kotlin?.all?.let { dirs ->
+          this.watchSourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+        }
+        variant.sources.res?.all?.let { layers ->
+          this.watchResourceDirs.addAll(
+            layers.map { all -> all.flatten().map { it.asFile.absolutePath } },
+          )
+        }
+        variant.sources.resources?.all?.let { dirs ->
+          this.watchResourceDirs.addAll(dirs.map { all -> all.map { it.asFile.absolutePath } })
+        }
+        // Lottie assets render from these too; listed even when absent, so creating one is noticed.
+        this.watchResourceDirs.addAll(
+          androidLottieResourceDirs(project).elements.map { all ->
+            all.map { it.asFile.absolutePath }
+          },
+        )
+        this.watchBuildFiles.set(
+          ee.schimke.composeai.plugin.daemon.SourceWatchInputs.buildFiles(project),
+        )
+        // See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
+        this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+        // Bake the render JVM into `daemon-launch.json` as composePreviewRender forks.
+        // Load-bearing:
+        // when unset, the VS Code extension uses its own bundled JDK, which may be too old for the
+        // classes.
+        if (!lateAgpTestTask.whenAvailable { setLauncher(renderJavaLauncher(it)) }) {
+          setLauncher(renderJavaLauncher(null))
+        }
+        // One graph: `daemonRendererConfig` extends `rendererConfig` and `testConfig`, so one
+        // resolution covers daemon, renderer and consumer with one version per module; daemon
+        // classes
+        // come first so [mainClass] resolves. The other entries match the render task's; only
+        // AGP-only extras are appended ([AndroidPreviewClasspath.buildAgpClasspathExtras]).
+        this.classpath.from(
+          AndroidPreviewClasspath.buildTestClasspath(
+            project = project,
+            bootClasspath = bootClasspath,
+            bootClasspathFallback = bootClasspathFallback,
+            rendererConfig = daemonRendererConfig,
+            rendererClasspathEntries = rendererClasspathEntries,
+            sourceClassDirs = sourceClassDirs,
+            testConfig = testConfig,
+            screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
+            unitTestConfigDir = unitTestConfigDir,
+            robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
+            legacyClasspathUnion = legacyClasspathUnion,
+          ),
+        )
+        this.classpath.from(lateAgpClasspathExtras)
+        this.classpath.from(lateAgpTestTask.testClassesDirs)
+        this.classpath.from(
+          AndroidPreviewClasspath.buildAgpClasspathExtras(
+            project = project,
+            agpTestClasspath = lateAgpTestTask.classpath,
+            testConfig = testConfig,
+            legacyClasspathUnion = legacyClasspathUnion,
+          ),
+        )
+        // Duplicate guard on the daemon classpath, which a11y and VS Code actually use. Runs before
+        // the descriptor is written so `fail` never emits one. Reads the daemon-scoped coordinate
+        // map
+        // (see [renderArtifactCoordinates]).
+        doFirst {
+          RenderClasspathDuplicates.check(
+            this,
+            classpath.files,
+            classpathDuplicatesMode,
+            daemonArtifactCoordinates.get(),
+          )
+        }
+        // AGP's test jvmArgs aren't inherited; they're test-runner specific.
+        this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
+        this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
+        // Same system properties as the render task, plus daemon keys from [DaemonExtension].
+        // Per-key
+        // `put` so each provider captures only serialisable references; one map-building lambda
+        // would
+        // capture `project` and fail the configuration cache.
+        this.systemProperties.put("robolectric.graphicsMode", "NATIVE")
+        this.systemProperties.put("robolectric.looperMode", "PAUSED")
+        this.systemProperties.put("robolectric.conscryptMode", "OFF")
+        this.systemProperties.put("robolectric.pixelCopyRenderMode", "hardware")
+        this.systemProperties.put("roborazzi.test.record", "true")
+        this.systemProperties.put("composeai.render.manifest", manifestFile)
+        this.systemProperties.put("composeai.render.outputDir", rendersDir)
+        this.systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
+        this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+        this.systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
+        this.systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
+        this.systemProperties.put("composeai.svg.background", daemonSvgBackground)
+        this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
+        this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
+        this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
+        this.systemProperties.put("composeai.render.rcPlayer", daemonRcPlayer)
+        this.systemProperties.put("composeai.render.rcDensity", daemonRcDensity)
+        // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class loader
+        // itself, so the property is all it needs. Absent when off.
+        this.systemProperties.putAll(
+          clockPackages.map { packages ->
+            if (packages.isEmpty()) emptyMap()
+            else mapOf(CLOCK_PACKAGES_PROPERTY to clockPackagesProperty(packages))
+          },
+        )
+        this.systemProperties.put("composeai.daemon.protocolVersion", "1")
+        this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
+        this.systemProperties.put(
+          "composeai.daemon.maxHeapMb",
+          extension.daemon.maxHeapMb.map { it.toString() },
+        )
+        this.systemProperties.put(
+          "composeai.daemon.maxRendersPerSandbox",
+          extension.daemon.maxRendersPerSandbox.map { it.toString() },
+        )
+        this.systemProperties.put(
+          "composeai.daemon.warmSpare",
+          extension.daemon.warmSpare.map { it.toString() },
+        )
+        this.systemProperties.put(
+          "composeai.daemon.backgroundSandboxBoot",
+          extension.daemon.backgroundSandboxBoot.map { it.toString() },
+        )
+        // Mirrors the generated `application=android.app.Application`; otherwise the daemon uses
+        // the
+        // manifest Application.
+        this.systemProperties.put(
+          "composeai.daemon.useConsumerApplication",
+          extension.useConsumerApplication.map { it.toString() },
+        )
+        // The SDK composePreviewRender boots, so the daemon's semantics/layout passes run on the
+        // same
+        // framework as the PNGs (an older daemon ignores the key).
+        this.systemProperties.put(
+          "composeai.daemon.sandboxSdk",
+          generateRobolectricPropertiesTask
+            .flatMap { it.outputDir }
+            .map { dir -> GenerateRobolectricPropertiesTask.resolvedSdkIn(dir.asFile).orEmpty() },
+        )
+        this.systemProperties.put(
+          "composeai.daemon.perfettoTrace",
+          resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
+        )
+        this.systemProperties.put("composeai.daemon.modulePath", project.path)
+        this.systemProperties.put(
+          "composeai.daemon.moduleProjectDir",
+          project.layout.projectDirectory.asFile.absolutePath,
+        )
+        // The closure captures only a configuration-time list; `classpath.elements` is serialised
+        // with the task inputs.
+        this.systemProperties.put(
+          "composeai.daemon.userClassDirs",
+          this.classpath.elements.map { elements ->
+            elements
+              .map { it.asFile.absolutePath }
+              .filter { entry -> daemonUserClassMarkers.any { marker -> entry.startsWith(marker) } }
+              .joinToString(java.io.File.pathSeparator)
+          },
+        )
+        this.systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
+        // B2.2 phase 1 — `composeai.daemon.previewsJsonPath`. Same path as the composePreviewRender
+        // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
+        // know about the renderer-shared key.
+        this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
+        this.systemProperties.put("composeai.daemon.resDirs", daemonResDirs)
+        // Lets the daemon's `PreviewManifestRouter` map a `previewId` to a `RenderSpec`; without it
+        // renders fall back to a stub (#314). The "harness" prefix is historical.
+        this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
+        // Enables daemon history recording, under the user-level cache root
+        // ([composeAiHistoryDir]).
+        this.systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
+        this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       }
-      // AGP's test jvmArgs aren't inherited; they're test-runner specific.
-      this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
-      this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
-      // Same system properties as the render task, plus daemon keys from [DaemonExtension]. Per-key
-      // `put` so each provider captures only serialisable references; one map-building lambda would
-      // capture `project` and fail the configuration cache.
-      this.systemProperties.put("robolectric.graphicsMode", "NATIVE")
-      this.systemProperties.put("robolectric.looperMode", "PAUSED")
-      this.systemProperties.put("robolectric.conscryptMode", "OFF")
-      this.systemProperties.put("robolectric.pixelCopyRenderMode", "hardware")
-      this.systemProperties.put("roborazzi.test.record", "true")
-      this.systemProperties.put("composeai.render.manifest", manifestFile)
-      this.systemProperties.put("composeai.render.outputDir", rendersDir)
-      this.systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
-      this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
-      this.systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
-      this.systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
-      this.systemProperties.put("composeai.svg.background", daemonSvgBackground)
-      this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
-      this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
-      this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
-      this.systemProperties.put("composeai.render.rcPlayer", daemonRcPlayer)
-      this.systemProperties.put("composeai.render.rcDensity", daemonRcDensity)
-      // `pinAppClock`: the daemon instruments these prefixes in its sandbox and user-class loader
-      // itself, so the property is all it needs. Absent when off.
-      this.systemProperties.putAll(
-        clockPackages.map { packages ->
-          if (packages.isEmpty()) emptyMap()
-          else mapOf(CLOCK_PACKAGES_PROPERTY to clockPackagesProperty(packages))
-        },
-      )
-      this.systemProperties.put("composeai.daemon.protocolVersion", "1")
-      this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
-      this.systemProperties.put(
-        "composeai.daemon.maxHeapMb",
-        extension.daemon.maxHeapMb.map { it.toString() },
-      )
-      this.systemProperties.put(
-        "composeai.daemon.maxRendersPerSandbox",
-        extension.daemon.maxRendersPerSandbox.map { it.toString() },
-      )
-      this.systemProperties.put(
-        "composeai.daemon.warmSpare",
-        extension.daemon.warmSpare.map { it.toString() },
-      )
-      this.systemProperties.put(
-        "composeai.daemon.backgroundSandboxBoot",
-        extension.daemon.backgroundSandboxBoot.map { it.toString() },
-      )
-      // Mirrors the generated `application=android.app.Application`; otherwise the daemon uses the
-      // manifest Application.
-      this.systemProperties.put(
-        "composeai.daemon.useConsumerApplication",
-        extension.useConsumerApplication.map { it.toString() },
-      )
-      // The SDK composePreviewRender boots, so the daemon's semantics/layout passes run on the same
-      // framework as the PNGs (an older daemon ignores the key).
-      this.systemProperties.put(
-        "composeai.daemon.sandboxSdk",
-        generateRobolectricPropertiesTask
-          .flatMap { it.outputDir }
-          .map { dir -> GenerateRobolectricPropertiesTask.resolvedSdkIn(dir.asFile).orEmpty() },
-      )
-      this.systemProperties.put(
-        "composeai.daemon.perfettoTrace",
-        resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
-      )
-      this.systemProperties.put("composeai.daemon.modulePath", project.path)
-      this.systemProperties.put(
-        "composeai.daemon.moduleProjectDir",
-        project.layout.projectDirectory.asFile.absolutePath,
-      )
-      // The closure captures only a configuration-time list; `classpath.elements` is serialised
-      // with the task inputs.
-      this.systemProperties.put(
-        "composeai.daemon.userClassDirs",
-        this.classpath.elements.map { elements ->
-          elements
-            .map { it.asFile.absolutePath }
-            .filter { entry -> daemonUserClassMarkers.any { marker -> entry.startsWith(marker) } }
-            .joinToString(java.io.File.pathSeparator)
-        },
-      )
-      this.systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
-      // B2.2 phase 1 — `composeai.daemon.previewsJsonPath`. Same path as the composePreviewRender
-      // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
-      // know about the renderer-shared key.
-      this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
-      this.systemProperties.put("composeai.daemon.resDirs", daemonResDirs)
-      // Lets the daemon's `PreviewManifestRouter` map a `previewId` to a `RenderSpec`; without it
-      // renders fall back to a stub (#314). The "harness" prefix is historical.
-      this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
-      // Enables daemon history recording, under the user-level cache root ([composeAiHistoryDir]).
-      this.systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
-      this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
       // Invalidates the descriptor (triggering VS Code's respawn) when the manifest appears or

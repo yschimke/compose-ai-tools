@@ -102,6 +102,24 @@ internal object ComposePreviewTasks {
       }
   }
 
+  /**
+   * True when the module has any Kotlin or Java source under `src/`. A Watch Face Format module
+   * (`hasCode=false`) has none, so with [hasDwfXmlSources] it identifies a module whose only
+   * previews are watch faces rendered by the desktop DWF lane.
+   */
+  internal fun hasJvmSources(project: Project): Boolean {
+    val srcRoot = project.projectDir.resolve("src")
+    if (!srcRoot.isDirectory) return false
+    return srcRoot
+      .walkTopDown()
+      .onEnter { dir -> dir.name != "build" && !dir.name.startsWith(".") }
+      .any { file ->
+        file.isFile &&
+          (file.extension.equals("kt", ignoreCase = true) ||
+            file.extension.equals("java", ignoreCase = true))
+      }
+  }
+
   internal fun hostSkikoPlatformToken(
     osName: String = System.getProperty("os.name").orEmpty(),
     osArch: String = System.getProperty("os.arch").orEmpty(),
