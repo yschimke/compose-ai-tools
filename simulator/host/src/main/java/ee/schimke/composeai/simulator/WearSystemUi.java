@@ -158,7 +158,7 @@ final class WearSystemUi {
     stream.onChange(this::streamChanged);
   }
 
-  private void onThemeColorsChanged() {
+  void onThemeColorsChanged() {
     tiles.refreshAll();
     if (surface == Surface.TILES && onTop() && root != null) {
       buildCarousel();

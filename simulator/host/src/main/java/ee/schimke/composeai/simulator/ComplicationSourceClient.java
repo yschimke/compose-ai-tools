@@ -43,6 +43,7 @@ final class ComplicationSourceClient {
 
   private static final String BUS_ACTIVATE = "complicationActivate";
   private static final String BUS_UPDATE = "complicationUpdate";
+  private static final String BUS_REEVALUATE = "complicationReevaluate";
   private static final String BUS_DEACTIVATE = "complicationDeactivate";
   private static final String BUS_DATA = "complicationData";
   private static final String BUS_TAP = "complicationTap";
@@ -62,13 +63,16 @@ final class ComplicationSourceClient {
     Object provider;
     IBinder manager;
     volatile Object lastData;
+    volatile long hostTimeMillis;
 
-    RemoteServed(String hostPkg, long id, Intent intent, int instanceId, int type) {
+    RemoteServed(
+        String hostPkg, long id, Intent intent, int instanceId, int type, long hostTimeMillis) {
       this.hostPkg = hostPkg;
       this.id = id;
       this.intent = intent;
       this.instanceId = instanceId;
       this.type = type;
+      this.hostTimeMillis = hostTimeMillis;
     }
   }
 
@@ -86,6 +90,7 @@ final class ComplicationSourceClient {
   private int updates;
   private long lastUpdateMillis;
   private volatile boolean remoteHasTapAction;
+  private volatile String lastRemoteSummaryJson;
 
   ComplicationSourceClient(
       Application app,
@@ -171,6 +176,7 @@ final class ComplicationSourceClient {
                 .put("component", component.flattenToString())
                 .put("instanceId", instanceId)
                 .put("type", type)
+                .put("timeMillis", WatchState.currentTimeMillis())
                 .object());
     if (reply != null && reply.has("busError")) {
       activeRemotes.remove(remoteId);
@@ -194,15 +200,50 @@ final class ComplicationSourceClient {
 
   private void updateRemote() {
     if (remoteOwner == null) return;
-    lastUpdateMillis = WatchState.currentTimeMillis();
-    askBus(remoteOwner, BUS_UPDATE, new Protocol.Json().put("id", remoteId).object());
+    long nowMillis = WatchState.currentTimeMillis();
+    lastUpdateMillis = nowMillis;
+    askBus(
+        remoteOwner,
+        BUS_UPDATE,
+        new Protocol.Json().put("id", remoteId).put("timeMillis", nowMillis).object());
+  }
+
+  /**
+   * Re-summarizes the peer JVM's cached wire {@code ComplicationData} at the host's simulated
+   * {@code nowMillis} so timeline entries and {@code TimeDependentText} track {@code clock}
+   * commands even when the watch face JVM has no wire complication classes on its classpath.
+   */
+  void reevaluateRemote(long nowMillis) {
+    if (remoteOwner == null) return;
+    JSONObject reply =
+        askBus(
+            remoteOwner,
+            BUS_REEVALUATE,
+            new Protocol.Json().put("id", remoteId).put("timeMillis", nowMillis).object());
+    if (reply != null) {
+      JSONObject summary = reply.optJSONObject("summary");
+      if (summary != null) {
+        String encodedSummary = summary.toString();
+        if (!encodedSummary.equals(lastRemoteSummaryJson)) {
+          lastRemoteSummaryJson = encodedSummary;
+          remoteHasTapAction = summary.optBoolean("hasTapAction");
+          onData.accept(summary);
+        }
+      }
+    }
   }
 
   /** Fires the remote complication's {@code tapAction} inside the peer JVM that owns it. */
   boolean sendRemoteTap() {
     if (remoteOwner == null) return false;
     JSONObject reply =
-        askBus(remoteOwner, BUS_TAP, new Protocol.Json().put("id", remoteId).object());
+        askBus(
+            remoteOwner,
+            BUS_TAP,
+            new Protocol.Json()
+                .put("id", remoteId)
+                .put("timeMillis", WatchState.currentTimeMillis())
+                .object());
     return reply != null && reply.optBoolean("tapped", false);
   }
 
@@ -242,6 +283,7 @@ final class ComplicationSourceClient {
             client.updates++;
             client.lastUpdateMillis = WatchState.currentTimeMillis();
             JSONObject summary = body.optJSONObject("summary");
+            client.lastRemoteSummaryJson = summary != null ? summary.toString() : null;
             client.remoteHasTapAction = summary != null && summary.optBoolean("hasTapAction");
             String encoded = Protocol.string(body, "data");
             Parcelable decoded =
@@ -260,6 +302,7 @@ final class ComplicationSourceClient {
           ComponentName comp = ComponentName.unflattenFromString(body.getString("component"));
           int instanceId = body.getInt("instanceId");
           int wireType = body.getInt("type");
+          long hostTimeMillis = body.optLong("timeMillis", WatchState.currentTimeMillis());
           Navigator nav = Navigator.current();
           if (nav == null || comp == null) {
             reply.send(DeviceBus.error("navigator not ready on " + app.getPackageName()));
@@ -271,7 +314,8 @@ final class ComplicationSourceClient {
             reply.send(DeviceBus.error(comp + " returned no binder"));
             return;
           }
-          RemoteServed served = new RemoteServed(from, id, serviceIntent, instanceId, wireType);
+          RemoteServed served =
+              new RemoteServed(from, id, serviceIntent, instanceId, wireType, hostTimeMillis);
           ClassLoader cl = app.getClassLoader();
           Object remoteProvider =
               Class.forName(COMPLICATIONS + "IComplicationProvider$Stub", true, cl)
@@ -284,9 +328,13 @@ final class ComplicationSourceClient {
                     served.lastData = data;
                     String encoded =
                         data instanceof Parcelable ? Parcels.encode((Parcelable) data) : null;
+                    long evalTime =
+                        served.hostTimeMillis > 0
+                            ? served.hostTimeMillis
+                            : WatchState.currentTimeMillis();
                     JSONObject summary =
                         ComplicationParcels.summarizeToJson(
-                            data, app.getResources(), WatchState.currentTimeMillis(), instanceId);
+                            data, app.getResources(), evalTime, instanceId);
                     DeviceBus.request(
                         from,
                         BUS_DATA,
@@ -312,10 +360,33 @@ final class ComplicationSourceClient {
             reply.send(DeviceBus.error("complication not active"));
             return;
           }
+          if (body.has("timeMillis")) {
+            served.hostTimeMillis = body.getLong("timeMillis");
+          }
           Class.forName(COMPLICATIONS + "IComplicationProvider", true, app.getClassLoader())
               .getMethod("onUpdate", int.class, int.class, IBinder.class)
               .invoke(served.provider, served.instanceId, served.type, served.manager);
           reply.send(new JSONObject());
+        });
+    DeviceBus.on(
+        BUS_REEVALUATE,
+        (from, body, reply) -> {
+          RemoteServed served = servedOnPeer.get(from + "/" + body.getLong("id"));
+          if (served == null || served.lastData == null) {
+            reply.send(new JSONObject());
+            return;
+          }
+          long evalTime =
+              body.optLong(
+                  "timeMillis",
+                  served.hostTimeMillis > 0
+                      ? served.hostTimeMillis
+                      : WatchState.currentTimeMillis());
+          served.hostTimeMillis = evalTime;
+          JSONObject summary =
+              ComplicationParcels.summarizeToJson(
+                  served.lastData, app.getResources(), evalTime, served.instanceId);
+          reply.send(new Protocol.Json().put("summary", summary).object());
         });
     DeviceBus.on(
         BUS_DEACTIVATE,
@@ -339,8 +410,13 @@ final class ComplicationSourceClient {
           RemoteServed served = servedOnPeer.get(from + "/" + body.getLong("id"));
           boolean tapped = false;
           if (served != null && served.lastData != null) {
-            Object effective =
-                ComplicationParcels.activeTimelineEntry(served.lastData, WatchState.currentTimeMillis());
+            long tapTime =
+                body.optLong(
+                    "timeMillis",
+                    served.hostTimeMillis > 0
+                        ? served.hostTimeMillis
+                        : WatchState.currentTimeMillis());
+            Object effective = ComplicationParcels.activeTimelineEntry(served.lastData, tapTime);
             PendingIntent pi = ComplicationParcels.tapAction(effective);
             if (pi == null) pi = ComplicationParcels.tapAction(served.lastData);
             Navigator nav = Navigator.current();

@@ -185,9 +185,13 @@ final class WatchFaceHost {
     if (!sources.isEmpty()) {
       long now = WatchState.currentTimeMillis();
       for (Source s : sources) {
-        if (s.data != null && !(s.data instanceof JSONObject)) {
+        if (s.client.isRemote() && s.data instanceof JSONObject) {
+          s.client.reevaluateRemote(now);
+        } else if (s.data != null && !(s.data instanceof JSONObject)) {
           if (s.appFace && face != null) {
             face.complication(s.slot, s.data, ambient);
+          } else if (s.appFace && dwfFace != null) {
+            dwfFace.complication(s.slot, s.client.type, s.data, ambient);
           }
         } else if (!s.appFace) {
           showBuiltInComplication();
@@ -871,7 +875,20 @@ final class WatchFaceHost {
 
   /** Once a cycle: a new frame each second (each minute in ambient), one in flight at a time. */
   void tick(boolean minuteChanged) {
-    refreshDuePeriodicSources(WatchState.currentTimeMillis());
+    long now = WatchState.currentTimeMillis();
+    if (minuteChanged && !sources.isEmpty()) {
+      for (Source s : sources) {
+        if (s.client.isRemote() && s.data instanceof JSONObject) {
+          s.client.reevaluateRemote(now);
+        } else if (s.appFace
+            && dwfFace != null
+            && s.data != null
+            && !(s.data instanceof JSONObject)) {
+          dwfFace.complication(s.slot, s.client.type, s.data, ambient);
+        }
+      }
+    }
+    refreshDuePeriodicSources(now);
     if (rendering) return;
     if (ambient && !minuteChanged) return;
     boolean clockFrozen = WatchState.current() != null && WatchState.current().isClockFrozen();

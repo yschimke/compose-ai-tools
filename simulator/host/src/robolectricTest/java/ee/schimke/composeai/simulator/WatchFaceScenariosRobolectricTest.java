@@ -132,6 +132,14 @@ public class WatchFaceScenariosRobolectricTest {
     ComplicationData at1500 =
         (ComplicationData) ComplicationParcels.activeTimelineEntry(parent, 1_500_000L);
     assertEquals("Rain 15°", at1500.getShortText().getTextAt(app.getResources(), 1_500_000L));
+    assertEquals(
+        "Clear 18°",
+        ComplicationParcels.summarizeToJson(parent, app.getResources(), 500_000L, 10)
+            .getString("text"));
+    assertEquals(
+        "Rain 15°",
+        ComplicationParcels.summarizeToJson(parent, app.getResources(), 1_500_000L, 10)
+            .getString("text"));
   }
 
   @Test
@@ -168,6 +176,31 @@ public class WatchFaceScenariosRobolectricTest {
     assertNull(WatchFaceDynamicColors.lookup(accentId));
     assertEquals(
         0, Settings.Global.getInt(app.getContentResolver(), "dynamic_color_theme_enabled", 1));
+
+    // Receiving a peer watch-face palette over DeviceBus populates SimulatorShadowResources,
+    // ignores stale timestamps, and fires the UI refresh callback on apply and clear.
+    WatchFaceDynamicColors.resetForTest();
+    int[] refreshCalls = {0};
+    WatchFaceDynamicColors.setOnPeerPaletteChanged(() -> refreshCalls[0]++);
+    WatchFaceDynamicColors.heardFromBus(app, violet.toBusJson(1000L).object());
+    assertTrue(WatchFaceDynamicColors.isActive());
+    assertEquals(violet, WatchFaceDynamicColors.currentPalette());
+    assertEquals(1, refreshCalls[0]);
+    assertEquals(
+        1, Settings.Global.getInt(app.getContentResolver(), "dynamic_color_theme_enabled", 0));
+    assertEquals(violetAccent, res.getColor(accentId, null));
+
+    WatchFaceDynamicColors.heardFromBus(app, coral.toBusJson(500L).object());
+    assertEquals(violet, WatchFaceDynamicColors.currentPalette());
+    assertEquals(1, refreshCalls[0]);
+
+    WatchFaceDynamicColors.heardFromBus(
+        app, new Protocol.Json().put("active", false).put("time", 2000L).object());
+    assertFalse(WatchFaceDynamicColors.isActive());
+    assertEquals(2, refreshCalls[0]);
+    assertEquals(
+        0, Settings.Global.getInt(app.getContentResolver(), "dynamic_color_theme_enabled", 1));
+    WatchFaceDynamicColors.resetForTest();
   }
 
   @Test

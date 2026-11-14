@@ -59,6 +59,25 @@ final class WatchFaceDynamicColors {
           .object();
     }
 
+    Protocol.Json toBusJson(long time) {
+      return new Protocol.Json()
+          .put("active", true)
+          .put("time", time)
+          .put("primaryArgb", primaryArgb)
+          .put("secondaryArgb", secondaryArgb)
+          .put("tertiaryArgb", tertiaryArgb)
+          .put("source", source);
+    }
+
+    static Palette fromBusJson(JSONObject body) {
+      if (body == null || !body.optBoolean("active", false)) return null;
+      return new Palette(
+          body.optInt("primaryArgb", 0xFF6750A4),
+          body.optInt("secondaryArgb", 0xFF625B71),
+          body.optInt("tertiaryArgb", 0xFF7D5260),
+          body.optString("source", "peer"));
+    }
+
     static String hex(int argb) {
       return String.format(Locale.ROOT, "#%06X", argb & 0xFFFFFF);
     }
@@ -80,7 +99,14 @@ final class WatchFaceDynamicColors {
     }
   }
 
+  private static final String BUS_EVENT = "watchfacePalette";
+  private static final String BUS_SYNC = "watchfacePaletteSync";
+
   private static volatile Map<Integer, Integer> activeResourceColors = Collections.emptyMap();
+  private static volatile Palette activePalette;
+  private static volatile long paletteTime;
+  private static volatile Application attachedApp;
+  private static volatile Runnable onPeerPaletteChanged;
   private static Map<String, Integer> systemColorIds;
 
   private WatchFaceDynamicColors() {}
@@ -93,22 +119,114 @@ final class WatchFaceDynamicColors {
     return !activeResourceColors.isEmpty();
   }
 
+  static Palette currentPalette() {
+    return activePalette;
+  }
+
+  static void setOnPeerPaletteChanged(Runnable listener) {
+    onPeerPaletteChanged = listener;
+  }
+
+  static void attach(Application app) {
+    attachedApp = app;
+    if (!DeviceBus.enabled()) return;
+    DeviceBus.onBroadcast(BUS_EVENT, (from, body) -> heardFromBus(app, body));
+    DeviceBus.onBroadcast(
+        BUS_SYNC,
+        (from, body) -> {
+          heardFromBus(app, body);
+          Palette p = activePalette;
+          long t = paletteTime;
+          if (body.optBoolean("ask") && t > 0) {
+            Protocol.Json reply =
+                p != null
+                    ? p.toBusJson(t)
+                    : new Protocol.Json().put("active", false).put("time", t);
+            DeviceBus.broadcast(BUS_SYNC, reply.put("ask", false).object());
+          }
+        });
+  }
+
+  static void joined() {
+    if (!DeviceBus.enabled()) return;
+    Palette p = activePalette;
+    long t = paletteTime;
+    Protocol.Json json =
+        t > 0
+            ? (p != null ? p.toBusJson(t) : new Protocol.Json().put("active", false).put("time", t))
+            : new Protocol.Json().put("time", 0L);
+    DeviceBus.broadcast(BUS_SYNC, json.put("ask", true).object());
+  }
+
   static void apply(Application app, Palette palette) {
     if (palette == null) {
       clear(app);
       return;
     }
-    activeResourceColors = buildSystemColorMap(palette);
+    boolean changed = !Objects.equals(palette, activePalette) || !isActive();
+    activePalette = palette;
+    if (changed) {
+      activeResourceColors = buildSystemColorMap(palette);
+      paletteTime = Math.max(System.currentTimeMillis(), paletteTime + 1L);
+    }
     if (app != null) {
       Settings.Global.putInt(app.getContentResolver(), DYNAMIC_COLOR_SETTING, 1);
+    }
+    if (changed && DeviceBus.enabled()) {
+      DeviceBus.broadcast(BUS_EVENT, palette.toBusJson(paletteTime).object());
     }
   }
 
   static void clear(Application app) {
+    boolean changed = activePalette != null || isActive();
+    activePalette = null;
     activeResourceColors = Collections.emptyMap();
+    if (changed) {
+      paletteTime = Math.max(System.currentTimeMillis(), paletteTime + 1L);
+    }
     if (app != null) {
       Settings.Global.putInt(app.getContentResolver(), DYNAMIC_COLOR_SETTING, 0);
     }
+    if (changed && DeviceBus.enabled()) {
+      DeviceBus.broadcast(
+          BUS_EVENT, new Protocol.Json().put("active", false).put("time", paletteTime).object());
+    }
+  }
+
+  static void heardFromBus(Application app, JSONObject body) {
+    if (body == null) return;
+    long incomingTime = body.optLong("time", 0L);
+    if (incomingTime <= 0L || incomingTime < paletteTime) return;
+    Palette incoming = Palette.fromBusJson(body);
+    boolean wasActive = isActive();
+    Palette previous = activePalette;
+    paletteTime = incomingTime;
+    Application targetApp = app != null ? app : attachedApp;
+    if (incoming != null) {
+      activePalette = incoming;
+      activeResourceColors = buildSystemColorMap(incoming);
+      if (targetApp != null) {
+        Settings.Global.putInt(targetApp.getContentResolver(), DYNAMIC_COLOR_SETTING, 1);
+      }
+    } else {
+      activePalette = null;
+      activeResourceColors = Collections.emptyMap();
+      if (targetApp != null) {
+        Settings.Global.putInt(targetApp.getContentResolver(), DYNAMIC_COLOR_SETTING, 0);
+      }
+    }
+    if (!Objects.equals(incoming, previous) || wasActive != isActive()) {
+      Runnable listener = onPeerPaletteChanged;
+      if (listener != null) listener.run();
+    }
+  }
+
+  static void resetForTest() {
+    activePalette = null;
+    activeResourceColors = Collections.emptyMap();
+    paletteTime = 0L;
+    attachedApp = null;
+    onPeerPaletteChanged = null;
   }
 
   /** Extracts up to 3 vibrant/dominant non-black colors from a rendered watch face bitmap. */

@@ -177,13 +177,31 @@ final class Session {
     DeviceProviders.serve(app);
     DeviceServices.serve(app);
     ComplicationSourceClient.serveOnBus(app);
-    // The device's one clipboard and settings, shared with its other apps.
+    // The device's one clipboard, settings, and watch-face dynamic palette, shared across apps.
     DeviceClipboard.attach(app);
     DeviceSettings.attach(app);
+    WatchFaceDynamicColors.attach(app);
+    WatchFaceDynamicColors.setOnPeerPaletteChanged(
+        () -> {
+          if (wear != null) {
+            wear.onThemeColorsChanged();
+          } else {
+            for (Navigator.Entry entry : navigator.backStack()) {
+              if (!entry.system && entry.displayId == android.view.Display.DEFAULT_DISPLAY) {
+                try {
+                  navigator.recreate(android.view.Display.DEFAULT_DISPLAY);
+                } catch (RuntimeException ignored) {
+                }
+                break;
+              }
+            }
+          }
+        });
     DeviceBus.start(app.getPackageName());
     // What this app set while starting goes out now, and the apps already there answer.
     DeviceClipboard.joined();
     DeviceSettings.joined();
+    WatchFaceDynamicColors.joined();
     deviceApps.announce();
   }
 
