@@ -400,6 +400,24 @@ public interface ServeHost : AutoCloseable {
   public fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome =
     SlotsOutcome.NotFound
 
+  /**
+   * Fetch [previewId]'s Declarative Watch Face complication slots and active values under
+   * [overrides], or [WatchFaceComplicationsOutcome.NotFound] when [previewId] is not a watch face.
+   */
+  public fun renderWatchFaceComplications(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): WatchFaceComplicationsOutcome {
+    val preview =
+      previews.firstOrNull { it.id == previewId } ?: return WatchFaceComplicationsOutcome.NotFound
+    val base = preview.watchFace ?: return WatchFaceComplicationsOutcome.NotFound
+    return WatchFaceOverrides.projectComplicationsOutcome(
+      base,
+      overrides,
+      WatchFaceRendererIds.DWF_RC,
+    )
+  }
+
   /** Whether this host can produce the accessibility data products the viewer overlay draws. */
   public val hasA11yOverlay: Boolean
     get() = false

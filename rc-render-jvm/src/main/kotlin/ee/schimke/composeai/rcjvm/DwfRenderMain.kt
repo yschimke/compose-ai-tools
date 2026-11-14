@@ -404,12 +404,30 @@ public fun renderDwfPreviews(
     val options = activeFakes?.toRenderOptions() ?: DwfRenderOptions()
     val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
     val declarationsPayload = extractDwfDeclarationsPayload(doc, rcBytes)
+    val defaultNamedValues = LinkedHashMap<String, RemoteNamedValue>()
+    for (decl in declarationsPayload.declarations) {
+      defaultNamedValues[decl.name] = decl.default
+    }
+    val slots = collectDwfRawSlots(doc.scene.children)
+    val widthPx = doc.width.coerceAtLeast(1)
+    val heightPx = doc.height.coerceAtLeast(1)
+    val watchFacePayload =
+      buildDwfComplicationsPayload(
+        previewId = entry.id,
+        dwfAssetPath = relPath,
+        doc = doc,
+        fakes = activeFakes,
+        slots = slots,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        namedValues = defaultNamedValues,
+      )
     val (hour, minute, second) = parsePreviewHms(activeFakes?.previewTime ?: doc.previewTime)
     val pngBytes =
       renderDwfDocumentToPng(
         bytes = rcBytes,
-        widthPx = doc.width.coerceAtLeast(1),
-        heightPx = doc.height.coerceAtLeast(1),
+        widthPx = widthPx,
+        heightPx = heightPx,
         hour = hour,
         minute = minute,
         second = second,
@@ -442,6 +460,13 @@ public fun renderDwfPreviews(
           dwfJson.encodeToString(
             RemoteComposeDeclarationsPayload.serializer(),
             declarationsPayload,
+          ),
+        )
+      File(dir, "$stem.watchface.json")
+        .writeText(
+          dwfJson.encodeToString(
+            WatchFaceComplicationsPayload.serializer(),
+            watchFacePayload,
           ),
         )
       rendered++

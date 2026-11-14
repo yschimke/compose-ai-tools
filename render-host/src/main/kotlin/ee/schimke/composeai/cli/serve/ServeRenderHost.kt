@@ -234,7 +234,26 @@ public data class ServePreview(
    * catalogs. Last for positional-call compatibility; see [motion].
    */
   val componentParameters: List<ServeComponentParameter> = emptyList(),
+  /**
+   * Declarative Watch Face (`<WatchFace>`) metadata and default complication slot states, from
+   * `previews/<id>.watchface.json`. Null for non-watch-face previews. Last for positional-call
+   * compatibility; see [motion].
+   */
+  val watchFace: ee.schimke.composeai.bundle.WatchFaceComplicationsPayload? = null,
+  /**
+   * Module-relative DWF XML resource path (e.g. `raw/watchface.xml`) when this preview was
+   * discovered from a `<WatchFace>` XML asset. Last for positional-call compatibility; see
+   * [motion].
+   */
+  val dwfAssetPath: String? = null,
 )
+
+/** True when this preview originates from a Declarative Watch Face (`<WatchFace>`) asset. */
+public val ServePreview.isWatchFace: Boolean
+  get() =
+    watchFace != null ||
+      !dwfAssetPath.isNullOrBlank() ||
+      ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND in dataProductKinds
 
 /**
  * What a preview's `@Preview(device = …)` resolves to, reduced to what a clip needs. Resolved once
@@ -579,6 +598,7 @@ internal constructor(
           ComposeSemanticsProduct.KIND,
           LayoutInspectorProduct.KIND,
           THEME_EXTENSION_ID,
+          ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND,
         ),
       )
     }
@@ -595,6 +615,7 @@ internal constructor(
                 ComposeSemanticsProduct.KIND,
                 LayoutInspectorProduct.KIND,
                 THEME_EXTENSION_ID,
+                ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND,
               )
           }
           .build()
@@ -613,6 +634,10 @@ internal constructor(
   // Rides the same `extensions/enable`; a backend without it reports `unknown`, hiding the control.
   override val hasA11yOverlay: Boolean by lazy {
     A11Y_EXTENSION_ID !in extensionEnableResult.unknown
+  }
+
+  private val hasWatchFaceComplications: Boolean by lazy {
+    ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND !in extensionEnableResult.unknown
   }
 
   override fun hasScrollExportFor(previewId: String): Boolean =
@@ -697,6 +722,9 @@ internal constructor(
 
   // The typography/theme inspection-layer counterpart of [cache], keyed the same way.
   private val annotationsCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The watchface/complications counterpart of [cache], keyed by previewId × overrides.
+  private val watchFaceCache = LruByteCache(MAX_CACHE_ENTRIES)
 
   // Tolerates additive schema fields in fetched semantics payloads.
   private val dataJson = Json { ignoreUnknownKeys = true }
@@ -1398,6 +1426,108 @@ internal constructor(
     obj?.get(name) as? JsonArray ?: JsonArray(emptyList())
 
   /**
+   * Fetch [previewId]'s `watchface/complications` metadata & active state at [overrides]. Falls
+   * back to [ServeHost]'s static sidecar projection when the backing daemon does not advertise
+   * `watchface/complications`.
+   */
+  override fun renderWatchFaceComplications(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): WatchFaceComplicationsOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return WatchFaceComplicationsOutcome.NotFound
+    ensureExtensionsEnabled()?.let {
+      return WatchFaceComplicationsOutcome.Failed(it)
+    }
+    if (!hasWatchFaceComplications) {
+      return super.renderWatchFaceComplications(previewId, overrides)
+    }
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    watchFaceCache.get(key)?.let { cachedBytes ->
+      val cachedPayload = runCatching {
+        dataJson.decodeFromString(
+          ee.schimke.composeai.bundle.WatchFaceComplicationsPayload.serializer(),
+          cachedBytes.decodeToString(),
+        )
+      }
+        .getOrNull()
+      if (cachedPayload != null) {
+        return WatchFaceComplicationsOutcome.Ok(payload = cachedPayload, json = cachedBytes)
+      }
+    }
+
+    return renderLock.withLock {
+      watchFaceCache.get(key)?.let { cachedBytes ->
+        val cachedPayload = runCatching {
+          dataJson.decodeFromString(
+            ee.schimke.composeai.bundle.WatchFaceComplicationsPayload.serializer(),
+            cachedBytes.decodeToString(),
+          )
+        }
+          .getOrNull()
+        if (cachedPayload != null) {
+          return@withLock WatchFaceComplicationsOutcome.Ok(
+            payload = cachedPayload,
+            json = cachedBytes,
+          )
+        }
+      }
+      val fetchParams = buildJsonObject {
+        put(
+          DataFetchParams.PARAM_OVERRIDES,
+          Json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+        )
+      }
+      val result =
+        try {
+          session.fetchData(
+            previewId,
+            ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND,
+            inline = true,
+            params = fetchParams,
+          )
+        } catch (e: ee.schimke.composeai.render.session.DataProductException) {
+          if (
+            e.code == ee.schimke.composeai.render.session.DataProductException.UNKNOWN ||
+              e.code == ee.schimke.composeai.render.session.DataProductException.NOT_AVAILABLE ||
+              e.code == -32602
+          ) {
+            return@withLock super.renderWatchFaceComplications(previewId, overrides)
+          }
+          val reason = "watchface/complications fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock WatchFaceComplicationsOutcome.Failed(reason)
+        } catch (e: Exception) {
+          val reason = "watchface/complications fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock WatchFaceComplicationsOutcome.Failed(reason)
+        }
+      val jsonBytes =
+        result.payload?.let {
+          dataJson
+            .encodeToString(kotlinx.serialization.json.JsonElement.serializer(), it)
+            .encodeToByteArray()
+        }
+          ?: result.path
+            ?.toPath()
+            ?.takeIf { fileSystem.exists(it) }
+            ?.let { path -> fileSystem.read(path) { readByteArray() } }
+          ?: return@withLock super.renderWatchFaceComplications(previewId, overrides)
+      val payload =
+        runCatching {
+          dataJson.decodeFromString(
+            ee.schimke.composeai.bundle.WatchFaceComplicationsPayload.serializer(),
+            jsonBytes.decodeToString(),
+          )
+        }
+          .getOrNull() ?: return@withLock super.renderWatchFaceComplications(previewId, overrides)
+      watchFaceCache.put(key, jsonBytes)
+      WatchFaceComplicationsOutcome.Ok(payload = payload, json = jsonBytes)
+    }
+  }
+
+  /**
    * Try to open a daemon-backed live stream for [previewId]; frames go to [onFrame] and the handle
    * forwards input and closes the stream. Returns null when unsupported, so the caller falls back
    * to per-frame [render]. Runs independently of the snapshot render lock.
@@ -1573,6 +1703,7 @@ internal constructor(
           slotsCache,
           a11yCache,
           annotationsCache,
+          watchFaceCache,
         )
         .forEach(LruByteCache::clear)
       breaker.reset()

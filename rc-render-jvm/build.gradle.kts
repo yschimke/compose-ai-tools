@@ -29,6 +29,7 @@ dependencies {
   implementation(libs.jetbrains.compose.runtime)
   implementation(libs.jetbrains.compose.ui)
   implementation(libs.jetbrains.compose.foundation)
+  api(project(":bundle-format"))
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.composeai.daemon.protocol)

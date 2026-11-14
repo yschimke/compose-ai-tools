@@ -818,6 +818,28 @@ public final class ee/schimke/composeai/cli/serve/DesignReferenceSource$Companio
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class ee/schimke/composeai/cli/serve/DwfApkWatchFaceRendererBackend : ee/schimke/composeai/cli/serve/WatchFaceRendererBackend {
+	public static final field APK_PATH_ENV Ljava/lang/String;
+	public static final field APK_PATH_SYS_PROP Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/DwfApkWatchFaceRendererBackend;
+	public fun complications (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
+	public fun getBadgeLabel ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getLabel ()Ljava/lang/String;
+	public fun infoFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
+}
+
+public final class ee/schimke/composeai/cli/serve/DwfRcWatchFaceRendererBackend : ee/schimke/composeai/cli/serve/WatchFaceRendererBackend {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/DwfRcWatchFaceRendererBackend;
+	public fun complications (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
+	public fun getBadgeLabel ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getLabel ()Ljava/lang/String;
+	public fun infoFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
+}
+
 public final class ee/schimke/composeai/cli/serve/FigmaCommentEvent {
 	public static final field Companion Lee/schimke/composeai/cli/serve/FigmaCommentEvent$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/util/List;Ljava/util/List;)V
@@ -3473,6 +3495,7 @@ public final class ee/schimke/composeai/cli/serve/ServeBundleDaemon {
 	public static synthetic fun materializePlaygroundSnippet$default (Lee/schimke/composeai/cli/serve/ServeBundleDaemon;Lee/schimke/composeai/cli/serve/PlaygroundTokenStore$PlaygroundSnippet;Lee/schimke/composeai/cli/serve/PlaygroundSandbox;Lokio/FileSystem;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/ServeSessionState;
 	public final fun readLaunchDescriptor (Ljava/io/File;)Lee/schimke/composeai/daemon/protocol/DaemonLaunchDescriptor;
 	public final fun readPreviews (Ljava/io/File;Ljava/io/File;Lokio/FileSystem;)Ljava/util/List;
+	public final fun readWatchFaceSidecar (Ljava/io/File;Ljava/lang/String;Lokio/FileSystem;)Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
 	public final fun shouldPrecedeDaemonSidecar (Lee/schimke/composeai/bundle/BundleReader$ClasspathEntry$Maven;)Z
 }
 
@@ -3733,6 +3756,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public fun renderSlots (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SlotsOutcome;
 	public fun renderSvg (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun renderSvgForWeb (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
+	public fun renderWatchFaceComplications (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
 	public fun replayableThemes ()Ljava/util/List;
 	public fun sourcesChanged (Ljava/util/List;)Z
 	public fun spatialAsset (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
@@ -3816,6 +3840,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun renderSlots (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SlotsOutcome;
 	public static fun renderSvg (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public static fun renderSvgForWeb (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
+	public static fun renderWatchFaceComplications (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
 	public static fun replayableThemes (Lee/schimke/composeai/cli/serve/ServeHost;)Ljava/util/List;
 	public static fun sourcesChanged (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/util/List;)Z
 	public static fun spatialAsset (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
@@ -3930,6 +3955,7 @@ public final class ee/schimke/composeai/cli/serve/ServeOverrides {
 	public static final field INSTANCE Lee/schimke/composeai/cli/serve/ServeOverrides;
 	public static final field KNOB_PREFIX Ljava/lang/String;
 	public static final field RC_NAMED_PREFIX Ljava/lang/String;
+	public static final field WF_PREFIX Ljava/lang/String;
 	public final fun cacheKey (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Ljava/lang/String;
 	public final fun declaredKnobKinds (Lee/schimke/composeai/cli/serve/ServePreview;)Ljava/util/Map;
 	public final fun getSUPPORTED_KEYS ()Ljava/util/Set;
@@ -4003,8 +4029,8 @@ public final class ee/schimke/composeai/cli/serve/ServeParityIssuesStore {
 }
 
 public final class ee/schimke/composeai/cli/serve/ServePreview {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Ljava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Z
 	public final fun component11 ()Ljava/lang/String;
@@ -4030,14 +4056,16 @@ public final class ee/schimke/composeai/cli/serve/ServePreview {
 	public final fun component3 ()Ljava/util/List;
 	public final fun component30 ()Z
 	public final fun component31 ()Ljava/util/List;
+	public final fun component32 ()Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public final fun component33 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/util/Set;
 	public final fun component5 ()Ljava/util/List;
 	public final fun component6 ()Ljava/util/List;
 	public final fun component7 ()Z
 	public final fun component8 ()Z
 	public final fun component9 ()Z
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;)Lee/schimke/composeai/cli/serve/ServePreview;
-	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/ServePreview;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/ServePreview;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServePreview;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/ServePreview;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/Set;Ljava/util/List;Ljava/util/List;ZZZZLjava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;IZJLjava/lang/String;Ljava/lang/String;Lee/schimke/composeai/cli/serve/CatalogRenderFailure;Ljava/util/List;Ljava/util/List;Lee/schimke/composeai/cli/serve/ServeDeviceFrame;ZLjava/util/List;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Ljava/lang/String;IILjava/lang/Object;)Lee/schimke/composeai/cli/serve/ServePreview;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBackgroundColor ()J
 	public final fun getBodyLine ()Ljava/lang/Integer;
@@ -4047,6 +4075,7 @@ public final class ee/schimke/composeai/cli/serve/ServePreview {
 	public final fun getComponentParameters ()Ljava/util/List;
 	public final fun getDataProductKinds ()Ljava/util/Set;
 	public final fun getDeviceFrame ()Lee/schimke/composeai/cli/serve/ServeDeviceFrame;
+	public final fun getDwfAssetPath ()Ljava/lang/String;
 	public final fun getFixedTheme ()Z
 	public final fun getGroup ()Ljava/lang/String;
 	public final fun getId ()Ljava/lang/String;
@@ -4070,6 +4099,7 @@ public final class ee/schimke/composeai/cli/serve/ServePreview {
 	public final fun getSupportsGestures ()Z
 	public final fun getTheme ()Ljava/lang/String;
 	public final fun getUiMode ()I
+	public final fun getWatchFace ()Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -4240,6 +4270,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public fun renderSlots (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SlotsOutcome;
 	public fun renderSvg (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
 	public fun renderSvgForWeb (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/SvgOutcome;
+	public fun renderWatchFaceComplications (Ljava/lang/String;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
 	public fun replayableThemes ()Ljava/util/List;
 	public fun sourcesChanged (Ljava/util/List;)Z
 	public fun spatialAsset (Ljava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeSpatialAsset;
@@ -4263,6 +4294,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost$Companion {
 public final class ee/schimke/composeai/cli/serve/ServeRenderHostKt {
 	public static final fun declaredThemesFromPreviews (Ljava/util/List;)Ljava/util/List;
 	public static final fun detectedFeaturesOf (Lee/schimke/composeai/previewdata/PreviewInfo;)Lkotlin/Pair;
+	public static final fun isWatchFace (Lee/schimke/composeai/cli/serve/ServePreview;)Z
 }
 
 public final class ee/schimke/composeai/cli/serve/ServeSemanticsTags {
@@ -4846,6 +4878,191 @@ public final synthetic class ee/schimke/composeai/cli/serve/UsageSnippetResponse
 
 public final class ee/schimke/composeai/cli/serve/UsageSnippetResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome {
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Failed : ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Failed;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Failed;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$NotFound : ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$NotFound;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok : ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome {
+	public fun <init> (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;[BLjava/lang/String;)V
+	public synthetic fun <init> (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;[BLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public final fun component2 ()[B
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;[BLjava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;[BLjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getJson ()[B
+	public final fun getPayload ()Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public final fun getRendererId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Unavailable : ee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Unavailable;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Unavailable;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceOverrides;
+	public static final field WF_PREFIX Ljava/lang/String;
+	public static final field WF_RENDERER_PARAM Ljava/lang/String;
+	public final fun getKNOWN_COMPLICATION_TYPES ()Ljava/util/Set;
+	public final fun hasWatchFaceOverrides (Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Z
+	public final fun isValidRendererId (Ljava/lang/String;)Z
+	public final fun mergeStructuredOverrides (Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonObject;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/lang/Long;Ljava/lang/String;)Lee/schimke/composeai/daemon/protocol/PreviewOverrides;
+	public static synthetic fun mergeStructuredOverrides$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonObject;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/lang/Long;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/daemon/protocol/PreviewOverrides;
+	public final fun parseAmbientParams (Ljava/util/Map;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse;
+	public final fun parseClockEpochMillis (Ljava/lang/String;)Ljava/lang/Long;
+	public final fun parseWfParams (Ljava/util/Map;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse;
+	public final fun projectComplicationsOutcome (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok;
+	public static synthetic fun projectComplicationsOutcome$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome$Ok;
+	public final fun projectComplicationsPayload (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+}
+
+public abstract interface class ee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse {
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Invalid : ee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Invalid;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Invalid;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Invalid;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Ok : ee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse {
+	public fun <init> (Lee/schimke/composeai/daemon/protocol/AmbientOverride;)V
+	public final fun component1 ()Lee/schimke/composeai/daemon/protocol/AmbientOverride;
+	public final fun copy (Lee/schimke/composeai/daemon/protocol/AmbientOverride;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Ok;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Ok;Lee/schimke/composeai/daemon/protocol/AmbientOverride;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$AmbientParamParse$Ok;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAmbient ()Lee/schimke/composeai/daemon/protocol/AmbientOverride;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse {
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Invalid : ee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Invalid;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Invalid;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Invalid;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Ok : ee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse {
+	public fun <init> (Ljava/util/Map;Ljava/util/Map;Lee/schimke/composeai/daemon/protocol/AmbientOverride;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Lee/schimke/composeai/daemon/protocol/AmbientOverride;
+	public final fun copy (Ljava/util/Map;Ljava/util/Map;Lee/schimke/composeai/daemon/protocol/AmbientOverride;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Ok;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Ok;Ljava/util/Map;Ljava/util/Map;Lee/schimke/composeai/daemon/protocol/AmbientOverride;ILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceOverrides$WfParamParse$Ok;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAmbient ()Lee/schimke/composeai/daemon/protocol/AmbientOverride;
+	public final fun getNamedOverrides ()Ljava/util/Map;
+	public final fun getRcNamedValues ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/cli/serve/WatchFaceRendererBackend {
+	public abstract fun complications (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
+	public abstract fun getBadgeLabel ()Ljava/lang/String;
+	public abstract fun getId ()Ljava/lang/String;
+	public abstract fun getLabel ()Ljava/lang/String;
+	public abstract fun infoFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public abstract fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceRendererIds {
+	public static final field DWF_APK Ljava/lang/String;
+	public static final field DWF_RC Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceRendererIds;
+	public static final field QUERY_PARAM Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceRendererInfo {
+	public static final field Companion Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZ)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public static synthetic fun copy$default (Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZILjava/lang/Object;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAvailable ()Z
+	public final fun getBadgeLabel ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getSupportsLiveOverrides ()Z
+	public final fun getUnavailableReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isDefault ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/cli/serve/WatchFaceRendererInfo$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceRendererInfo$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/cli/serve/WatchFaceRendererRegistry {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceRendererRegistry;
+	public final fun all ()Ljava/util/List;
+	public final fun defaultBackend ()Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
+	public final fun register (Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;)V
+	public final fun renderersFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Ljava/util/List;
+	public final fun resetDefaults ()V
+	public final fun resolve (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
 }
 
 public final class ee/schimke/composeai/cli/serve/WireTagEntry {

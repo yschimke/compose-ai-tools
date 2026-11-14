@@ -89,6 +89,13 @@ public object ServeOverrides {
       // other id-shaped values → `playerId`. Client-side lanes (`camaelon-js`, `cmp-wasm`) and
       // `cmp-jvm` are rejected. Daemon + Android only.
       "rcPlayer",
+      // Wear OS / Declarative Watch Face ambient display mode and preview clock override.
+      "ambient",
+      "ambientBurnIn",
+      "ambientLowBit",
+      "clockEpochMillis",
+      // Pluggable watch-face renderer backend selector (`dwf-rc`, `dwf-apk`, …).
+      "wfRenderer",
     )
 
   /**
@@ -113,19 +120,40 @@ public object ServeOverrides {
   public const val RC_NAMED_PREFIX: String = "rc."
 
   /**
-   * True when [parse] consumes [key]: a [SUPPORTED_KEYS] axis, a `knob.` knob or an `rc.` seed.
-   * HTTP `GET /render` filters queries through this so unrelated params (cache-busters) are
-   * ignored. WebSocket override maps are already scoped and passed wholesale.
+   * Prefix for renderer-neutral Declarative Watch Face overrides (`wf.slot.<id>.*`,
+   * `wf.config.<id>`, `wf.batteryPercent`, …). Dynamic, so not in [SUPPORTED_KEYS].
    */
-  public fun isOverrideParam(key: String): Boolean =
-    key in SUPPORTED_KEYS || key.startsWith(KNOB_PREFIX) || key.startsWith(RC_NAMED_PREFIX)
+  public const val WF_PREFIX: String = WatchFaceOverrides.WF_PREFIX
 
   /**
-   * The `rc.<name>=<value>` seeds in [params], parsed leniently (malformed values skipped), for the
-   * best-effort cmp-jvm lane. [parse] is the strict counterpart; both use the same grammar.
+   * True when [parse] consumes [key]: a [SUPPORTED_KEYS] axis, a `knob.` knob, an `rc.` seed or a
+   * `wf.` watch-face override. HTTP `GET /render` filters queries through this so unrelated params
+   * (cache-busters) are ignored. WebSocket override maps are already scoped and passed wholesale.
+   */
+  public fun isOverrideParam(key: String): Boolean =
+    key in SUPPORTED_KEYS ||
+      key.startsWith(KNOB_PREFIX) ||
+      key.startsWith(RC_NAMED_PREFIX) ||
+      key.startsWith(WF_PREFIX)
+
+  /**
+   * The `rc.<name>=<value>` (and watch-face `wf.*` / `ambient`) seeds in [params], parsed leniently
+   * (malformed values skipped), for the best-effort cmp-jvm lane. [parse] is the strict
+   * counterpart; both use the same grammar.
    */
   public fun rcNamedValueSeeds(params: Map<String, String>): Map<String, RemoteNamedValue> {
     val seeds = mutableMapOf<String, RemoteNamedValue>()
+    (WatchFaceOverrides.parseWfParams(params) as? WatchFaceOverrides.WfParamParse.Ok)?.let { wf ->
+      seeds.putAll(wf.rcNamedValues)
+    }
+    (WatchFaceOverrides.parseAmbientParams(params) as? WatchFaceOverrides.AmbientParamParse.Ok)
+      ?.ambient
+      ?.let { amb ->
+        seeds["dwf.is_ambient"] =
+          RemoteNamedValue.BooleanValue(
+            amb.state == ee.schimke.composeai.daemon.protocol.AmbientStateOverride.AMBIENT,
+          )
+      }
     for ((rawKey, raw) in params) {
       if (!rawKey.startsWith(RC_NAMED_PREFIX)) continue
       val name = rawKey.removePrefix(RC_NAMED_PREFIX)
@@ -557,8 +585,46 @@ public object ServeOverrides {
           }
         }
 
+    params[WatchFaceOverrides.WF_RENDERER_PARAM]
+      ?.takeIf { it.isNotBlank() }
+      ?.let { raw ->
+        if (!WatchFaceOverrides.isValidRendererId(raw)) {
+          return OverrideParse.Invalid(
+            "${WatchFaceOverrides.WF_RENDERER_PARAM} must be a renderer id " +
+              "(letters, digits, '.', '_', '-'), got '$raw'",
+          )
+        }
+      }
+
+    val clockEpochMillis: Long? =
+      params["clockEpochMillis"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let { raw ->
+          WatchFaceOverrides.parseClockEpochMillis(raw)
+            ?: return OverrideParse.Invalid(
+              "clockEpochMillis must be epoch millis, HH:mm[:ss], or an ISO-8601 instant, got '$raw'",
+            )
+        }
+
+    val ambientFromTop =
+      when (val parsed = WatchFaceOverrides.parseAmbientParams(params)) {
+        is WatchFaceOverrides.AmbientParamParse.Invalid ->
+          return OverrideParse.Invalid(parsed.message)
+        is WatchFaceOverrides.AmbientParamParse.Ok -> parsed.ambient
+      }
+
+    val wfParsed =
+      when (val parsed = WatchFaceOverrides.parseWfParams(params)) {
+        is WatchFaceOverrides.WfParamParse.Invalid -> return OverrideParse.Invalid(parsed.message)
+        is WatchFaceOverrides.WfParamParse.Ok -> parsed
+      }
+    namedOverrides.putAll(wfParsed.namedOverrides)
+
     // `rc.<name>=<value>` seeds (own `<kind>:` tag, default string); malformed values are Invalid.
+    // Watch-face `wf.*` translations seed first so an explicit `rc.<name>` override wins if both
+    // are present.
     val rcNamedValues = mutableMapOf<String, RemoteNamedValue>()
+    rcNamedValues.putAll(wfParsed.rcNamedValues)
     for ((rawKey, raw) in params) {
       if (!rawKey.startsWith(RC_NAMED_PREFIX)) continue
       val name = rawKey.removePrefix(RC_NAMED_PREFIX)
@@ -641,6 +707,8 @@ public object ServeOverrides {
           }
           .build()
 
+    val effectiveAmbient = ambientFromTop ?: wfParsed.ambient
+
     return OverrideParse.Ok(
       PreviewOverrides(
         widthPx = widthPx,
@@ -655,12 +723,14 @@ public object ServeOverrides {
         uiMode = uiMode,
         orientation = orientation,
         device = params["device"]?.takeIf { it.isNotBlank() },
+        clockEpochMillis = clockEpochMillis,
         inspectionMode = inspectionMode,
         slotMode = slotMode,
         placeholderActive = placeholderActive,
         talkBack = talkBack,
         touchOverlay = touchOverlay,
         themeProvider = themeProvider,
+        ambient = effectiveAmbient,
         focus = focus,
         gestures = gestures,
         clearBackground = clearBackground,
@@ -689,12 +759,14 @@ public object ServeOverrides {
       append("ui=").append(o.uiMode).append('|')
       append("or=").append(o.orientation).append('|')
       append("dev=").append(o.device).append('|')
+      append("clk=").append(o.clockEpochMillis).append('|')
       append("insp=").append(o.inspectionMode).append('|')
       append("slot=").append(o.slotMode).append('|')
       append("ph=").append(o.placeholderActive).append('|')
       append("talk=").append(o.talkBack).append('|')
       append("touch=").append(o.touchOverlay).append('|')
       append("theme=").append(o.themeProvider).append('|')
+      append("amb=").append(o.ambient).append('|')
       append("focus=").append(o.focus).append('|')
       append("gestures=").append(o.gestures).append('|')
       append("clearbg=").append(o.clearBackground).append('|')

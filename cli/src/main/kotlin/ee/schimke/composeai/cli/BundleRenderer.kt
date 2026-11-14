@@ -144,6 +144,7 @@ class BundleRenderer(
 
     return when (manifest.backend) {
       "desktop" -> renderDesktop(classesDir, libJars, manifest, previews, local)
+      "dwf" -> renderDwf(workDir, classesDir, previews, selectedJson)
       "android" ->
         renderAndroid(
           workDir,
@@ -157,9 +158,76 @@ class BundleRenderer(
         )
       else ->
         throw UnsupportedOperationException(
-          "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')",
+          "bundle render: backend '${manifest.backend}' not supported (expected 'desktop', 'android' or 'dwf')",
         )
     }
+  }
+
+  private fun renderDwf(
+    workDir: File,
+    classesDir: File,
+    previews: PreviewManifest,
+    previewsJsonRaw: String,
+  ): Result {
+    DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP, log = logSink)
+    val rcjvmJars = locateBundleSidecarJars("lib-rcjvm")
+    if (rcjvmJars.isEmpty()) {
+      throw IllegalStateException(
+        "bundle render: backend=dwf needs `lib-rcjvm/`. Looked in `${bundleSidecarSearchDescription("lib-rcjvm")}`.",
+      )
+    }
+    val desktopJars = locateBundleSidecarJars("lib-daemon-desktop")
+    if (desktopJars.isEmpty()) {
+      throw IllegalStateException(
+        "bundle render: backend=dwf needs `lib-daemon-desktop/` for Skiko natives. Looked in " +
+          "`${bundleSidecarSearchDescription("lib-daemon-desktop")}`.",
+      )
+    }
+    val skikoNative = SkikoNativeProvision.prepare(desktopJars + rcjvmJars)
+    val classpath =
+      (listOf(skikoNative) + rcjvmJars + desktopJars).distinct().joinToString(File.pathSeparator) {
+        it.absolutePath
+      }
+    val previewsJsonFile = workDir.resolve("previews.json").apply { writeText(previewsJsonRaw) }
+    val dwfOutDir = workDir.resolve("dwf-renders").apply { mkdirs() }
+    val javaBin = locateJava()
+    val command =
+      fitJavaCommand(
+        listOf(
+          javaBin,
+          "--enable-native-access=ALL-UNNAMED",
+          "-Dapple.awt.UIElement=true",
+          "-cp",
+          classpath,
+          "ee.schimke.composeai.rcjvm.DwfRenderMainKt",
+          "--previews-json",
+          previewsJsonFile.absolutePath,
+          "--output-dir",
+          dwfOutDir.absolutePath,
+          "--resource-dir",
+          classesDir.absolutePath,
+        ),
+      )
+    outputDir.mkdirs()
+    val (exitCode, tail) = runRenderProcess(ProcessBuilder(command), tailLines = 40)
+    val timedOut = exitCode == RENDER_TIMEOUT_EXIT
+    val succeeded = mutableListOf<RenderedPreview>()
+    val failed = mutableListOf<FailedPreview>()
+    for (preview in previews.previews) {
+      val renderedLeaf = dwfOutDir.resolve(androidOutputLeaf(preview))
+      val outFile =
+        outputDir.resolve(ee.schimke.composeai.bundle.producer.previewPngName(preview.id))
+      if (!timedOut && renderedLeaf.isFile && renderedLeaf.length() > 0) {
+        renderedLeaf.copyTo(outFile, overwrite = true)
+        succeeded += RenderedPreview(preview.id, outFile)
+        if (verbose) logSink("rendered ${preview.id} → ${outFile.path}")
+      } else {
+        failed += FailedPreview(preview.id, exitCode, tail)
+        logSink("FAILED ${preview.id} (exit=$exitCode)")
+        if (verbose) logSink(tail)
+      }
+    }
+    return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
   }
 
   private fun renderDesktop(

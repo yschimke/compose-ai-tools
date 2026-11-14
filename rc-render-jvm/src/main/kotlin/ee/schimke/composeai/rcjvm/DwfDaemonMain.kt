@@ -31,6 +31,7 @@ import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsListResult
 import ee.schimke.composeai.daemon.protocol.InitializeResult
 import ee.schimke.composeai.daemon.protocol.Manifest
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
@@ -62,12 +63,14 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Base64
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -89,9 +92,23 @@ import org.jetbrains.skia.EncodedImageFormat
  * and live slot state (`get_preview_data(kind = "watchface/complications")`).
  */
 public object WatchFaceComplicationsProduct {
-  public const val KIND: String = "watchface/complications"
-  public const val SCHEMA_VERSION: Int = 1
+  public const val KIND: String = ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND
+  public const val SCHEMA_VERSION: Int =
+    ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.SCHEMA_VERSION
 }
+
+public typealias WatchFaceComplicationsPayload =
+  ee.schimke.composeai.bundle.WatchFaceComplicationsPayload
+
+public typealias WatchFaceUserConfigDto = ee.schimke.composeai.bundle.WatchFaceUserConfigDto
+
+public typealias WatchFaceSlotBoundsDto = ee.schimke.composeai.bundle.WatchFaceSlotBoundsDto
+
+public typealias WatchFaceComplicationSlotDto =
+  ee.schimke.composeai.bundle.WatchFaceComplicationSlotDto
+
+public typealias WatchFaceActiveComplicationDto =
+  ee.schimke.composeai.bundle.WatchFaceActiveComplicationDto
 
 /** Configuration for [runDwfDaemon]. */
 public data class DwfDaemonConfig(
@@ -144,126 +161,598 @@ public data class DwfDaemonConfig(
   }
 }
 
-@Serializable
-public data class WatchFaceComplicationsPayload(
-  val previewId: String,
-  val dwfAssetPath: String,
-  val widthPx: Int,
-  val heightPx: Int,
-  val clipShape: String,
-  val previewTime: String,
-  val isAmbient: Boolean,
-  val userConfigurations: List<WatchFaceUserConfigDto> = emptyList(),
-  val slots: List<WatchFaceComplicationSlotDto> = emptyList(),
-)
-
-@Serializable
-public data class WatchFaceUserConfigDto(
-  val id: String,
-  val kind: String,
-  val displayName: String,
-  val defaultValue: String,
-  val activeValue: String,
-  val options: List<String> = emptyList(),
-)
-
-@Serializable
-public data class WatchFaceSlotBoundsDto(
+internal data class DwfRawSlotMeta(
+  val slotId: Int,
   val x: Float,
   val y: Float,
   val width: Float,
   val height: Float,
+  val boundingShape: String?,
+  val isCustomizable: Boolean,
+  val supportedTypes: List<String>,
+  val authoredTypes: List<String>,
+  val defaultSystemProvider: String?,
+  val defaultSystemProviderType: String?,
 )
 
-@Serializable
-public data class WatchFaceComplicationSlotDto(
-  val slotId: Int,
-  val bounds: WatchFaceSlotBoundsDto,
-  val boundingShape: String? = null,
-  val isCustomizable: Boolean = true,
-  val supportedTypes: List<String> = emptyList(),
-  val authoredTypes: List<String> = emptyList(),
-  val defaultSystemProvider: String? = null,
-  val defaultSystemProviderType: String? = null,
-  val activeState: WatchFaceActiveComplicationDto,
-)
-
-@Serializable
-public data class WatchFaceActiveComplicationDto(
-  val type: String,
-  val typeCode: Int,
-  val text: String,
-  val title: String,
-  val value: Float,
-  val min: Float,
-  val max: Float,
-  val hasMonochromaticImage: Boolean,
-  val hasSmallImage: Boolean,
-  val hasPhotoImage: Boolean,
-  val imageColor: String,
-  val accentColor: String,
-  val hasRangedValueColors: Boolean,
-  val rangedValueColorsInterpolate: Boolean,
-  val hasGoalProgressColors: Boolean,
-  val goalProgressColorsInterpolate: Boolean,
-  val hasWeightedElements: Boolean,
-  val colorCount: Int,
-  val colors: List<String> = emptyList(),
-  val weights: List<Float> = emptyList(),
-) {
-  internal fun semanticText(): String =
-    when (type) {
-      "EMPTY" -> ""
-      "MONOCHROMATIC_IMAGE",
-      "SMALL_IMAGE",
-      "PHOTO_IMAGE" -> listOf(title, text).filter { it.isNotBlank() }.joinToString(" ")
-      "RANGED_VALUE",
-      "GOAL_PROGRESS" -> {
-        val label = listOf(title, text).filter { it.isNotBlank() }.joinToString(" ")
-        if (label.isNotEmpty()) label else "${formatNumber(value)}/${formatNumber(max)}"
-      }
-      else -> listOf(title, text).filter { it.isNotBlank() }.joinToString(" ")
-    }
-
-  internal fun accessibilitySummary(slotId: Int): String =
-    when (type) {
-      "EMPTY" -> "Complication slot $slotId: EMPTY"
-      "RANGED_VALUE",
-      "GOAL_PROGRESS" -> {
-        val parts = buildList {
-          add("Complication slot $slotId ($type)")
-          if (title.isNotBlank()) add(title)
-          if (text.isNotBlank()) add(text)
-          add("value=${formatNumber(value)} [${formatNumber(min)}..${formatNumber(max)}]")
+internal fun collectDwfRawSlots(rootNodes: List<DwfSceneNode>): List<DwfRawSlotMeta> {
+  val found = LinkedHashMap<Int, DwfRawSlotMeta>()
+  fun walk(nodes: List<DwfSceneNode>, offsetX: Float, offsetY: Float) {
+    for (node in nodes) {
+      when (node) {
+        is DwfSceneNode.ComplicationSlot -> {
+          found.putIfAbsent(
+            node.slotId,
+            DwfRawSlotMeta(
+              slotId = node.slotId,
+              x = offsetX + node.geometry.x,
+              y = offsetY + node.geometry.y,
+              width = node.geometry.width,
+              height = node.geometry.height,
+              boundingShape = node.boundingShape?.kind,
+              isCustomizable = node.isCustomizable,
+              supportedTypes = node.supportedTypes,
+              authoredTypes = node.complications.map { it.type }.distinct(),
+              defaultSystemProvider = node.defaultSystemProvider,
+              defaultSystemProviderType = node.defaultSystemProviderType,
+            ),
+          )
         }
-        parts.joinToString(": ")
-      }
-      "WEIGHTED_ELEMENTS" -> {
-        val parts = buildList {
-          add("Complication slot $slotId (WEIGHTED_ELEMENTS)")
-          if (title.isNotBlank()) add(title)
-          if (text.isNotBlank()) add(text)
-          if (weights.isNotEmpty()) {
-            add("weights=${weights.joinToString(",") { formatNumber(it) }}")
-          }
+        is DwfSceneNode.Group ->
+          walk(node.children, offsetX + node.geometry.x, offsetY + node.geometry.y)
+        is DwfSceneNode.AnalogClock ->
+          walk(node.children, offsetX + node.geometry.x, offsetY + node.geometry.y)
+        is DwfSceneNode.Condition -> node.branches.forEach { walk(it.children, offsetX, offsetY) }
+        is DwfSceneNode.BooleanConfigurationSwitch -> {
+          walk(node.trueChildren, offsetX, offsetY)
+          walk(node.falseChildren, offsetX, offsetY)
         }
-        parts.joinToString(": ")
-      }
-      else -> {
-        val content = listOf(title, text).filter { it.isNotBlank() }.joinToString(" - ")
-        if (content.isNotEmpty()) {
-          "Complication slot $slotId ($type): $content"
-        } else {
-          "Complication slot $slotId ($type)"
-        }
+        is DwfSceneNode.ListConfigurationSwitch ->
+          node.options.forEach { walk(it.children, offsetX, offsetY) }
+        else -> {}
       }
     }
+  }
+  walk(rootNodes, 0f, 0f)
+  return found.values.sortedBy { it.slotId }
 }
 
-private fun formatNumber(v: Float): String {
-  val asInt = v.toInt()
-  return if (kotlin.math.abs(v - asInt.toFloat()) < 0.001f) asInt.toString()
-  else "%.1f".format(java.util.Locale.ROOT, v)
+/**
+ * Translates renderer-neutral `wf.*` entries from [PreviewOverrides.namedOverrides] into DWF
+ * RemoteCompose named values (`dwf.*` / `metrics.*`), so callers that populate only portable
+ * `namedOverrides` render identically on `DwfDaemonMain`.
+ */
+internal fun applyWfNamedOverrides(
+  namedOverrides: Map<String, PreviewOverrideValue>?,
+  out: MutableMap<String, RemoteNamedValue>,
+) {
+  if (namedOverrides.isNullOrEmpty()) return
+
+  fun strOf(v: PreviewOverrideValue): String =
+    when (v) {
+      is PreviewOverrideValue.StringValue -> v.value
+      is PreviewOverrideValue.IntValue -> v.value.toString()
+      is PreviewOverrideValue.FloatValue -> v.value.toString()
+      is PreviewOverrideValue.BooleanValue -> v.value.toString()
+      is PreviewOverrideValue.ColorValue -> v.argb
+    }
+
+  fun boolOf(v: PreviewOverrideValue): Boolean? =
+    when (v) {
+      is PreviewOverrideValue.BooleanValue -> v.value
+      is PreviewOverrideValue.IntValue -> v.value != 0
+      is PreviewOverrideValue.StringValue ->
+        when (v.value.trim().lowercase()) {
+          "true",
+          "1",
+          "ambient" -> true
+          "false",
+          "0",
+          "interactive" -> false
+          else -> null
+        }
+      else -> null
+    }
+
+  fun floatOf(v: PreviewOverrideValue): Float? =
+    when (v) {
+      is PreviewOverrideValue.FloatValue -> v.value
+      is PreviewOverrideValue.IntValue -> v.value.toFloat()
+      is PreviewOverrideValue.StringValue -> v.value.trim().toFloatOrNull()
+      else -> null
+    }
+
+  fun intOf(v: PreviewOverrideValue): Int? =
+    when (v) {
+      is PreviewOverrideValue.IntValue -> v.value
+      is PreviewOverrideValue.FloatValue -> v.value.toInt()
+      is PreviewOverrideValue.StringValue -> v.value.trim().toIntOrNull()
+      else -> null
+    }
+
+  fun hexColorOf(raw: String): String? {
+    val hex = raw.trim().removePrefix("#")
+    return when (hex.length) {
+      6 -> hex.toLongOrNull(16)?.let { "#FF${hex.uppercase()}" }
+      8 -> hex.toLongOrNull(16)?.let { "#${hex.uppercase()}" }
+      else -> null
+    }
+  }
+
+  val slotEntries = LinkedHashMap<Int, MutableMap<String, PreviewOverrideValue>>()
+  var explicitBatteryLow: Boolean? = null
+
+  for ((rawKey, v) in namedOverrides) {
+    if (!rawKey.startsWith("wf.")) continue
+    val rest = rawKey.removePrefix("wf.")
+    when {
+      rest == "ambient" || rest == "isAmbient" ->
+        boolOf(v)?.let { out[DwfVariables.IS_AMBIENT] = RemoteNamedValue.BooleanValue(it) }
+      rest == "is24Hour" ->
+        boolOf(v)?.let { out[DwfVariables.IS_24_HOUR] = RemoteNamedValue.BooleanValue(it) }
+      rest == "isDst" ->
+        boolOf(v)?.let { out[DwfVariables.IS_DST] = RemoteNamedValue.BooleanValue(it) }
+      rest == "batteryIsLow" -> explicitBatteryLow = boolOf(v)
+      rest == "batteryPercent" ->
+        floatOf(v)?.let { pct ->
+          out[DwfVariables.BATTERY_PERCENT] = RemoteNamedValue.FloatValue(pct)
+          if (explicitBatteryLow == null) {
+            out[DwfVariables.BATTERY_IS_LOW] = RemoteNamedValue.BooleanValue(pct <= 15f)
+          }
+        }
+      rest == "batteryCharging" ->
+        boolOf(v)?.let { out[DwfVariables.BATTERY_CHARGING] = RemoteNamedValue.BooleanValue(it) }
+      rest == "unreadNotifications" ->
+        intOf(v)?.let { out[DwfVariables.UNREAD_NOTIFICATIONS] = RemoteNamedValue.IntValue(it) }
+      rest == "stepCount" ->
+        intOf(v)?.let { out["metrics.day.steps"] = RemoteNamedValue.IntValue(it) }
+      rest == "stepGoal" ->
+        floatOf(v)?.let { out[DwfVariables.STEP_GOAL] = RemoteNamedValue.FloatValue(it) }
+      rest == "heartRate" ->
+        floatOf(v)?.let { out["metrics.heart_rate"] = RemoteNamedValue.FloatValue(it) }
+      rest == "calories" ->
+        floatOf(v)?.let { out["metrics.day.calories"] = RemoteNamedValue.FloatValue(it) }
+      rest == "distance" ->
+        floatOf(v)?.let { out["metrics.day.distance"] = RemoteNamedValue.FloatValue(it) }
+      rest == "floors" ->
+        floatOf(v)?.let { out["metrics.day.flights_of_stairs"] = RemoteNamedValue.FloatValue(it) }
+      rest.startsWith("config.") -> {
+        val cfgId = rest.removePrefix("config.")
+        if (cfgId.isNotBlank()) {
+          out[DwfVariables.configKey(cfgId)] =
+            when (v) {
+              is PreviewOverrideValue.BooleanValue -> RemoteNamedValue.BooleanValue(v.value)
+              is PreviewOverrideValue.IntValue -> RemoteNamedValue.IntValue(v.value)
+              is PreviewOverrideValue.FloatValue -> RemoteNamedValue.FloatValue(v.value)
+              is PreviewOverrideValue.ColorValue -> RemoteNamedValue.ColorValue(v.argb)
+              is PreviewOverrideValue.StringValue -> RemoteNamedValue.StringValue(v.value)
+            }
+        }
+      }
+      rest.startsWith("themeColor.") -> {
+        val rawColorKey = rest.removePrefix("themeColor.")
+        val normalized = hexColorOf(strOf(v))
+        if (rawColorKey.isNotBlank() && normalized != null) {
+          val dot = rawColorKey.lastIndexOf('.')
+          val fullKey =
+            if (dot > 0 && rawColorKey.substring(dot + 1).toIntOrNull() != null) {
+              "dwf.color.$rawColorKey"
+            } else {
+              "dwf.color.$rawColorKey.0"
+            }
+          out[fullKey] = RemoteNamedValue.ColorValue(normalized)
+        }
+      }
+      rest.startsWith("slot.") -> {
+        val tail = rest.removePrefix("slot.")
+        val dot = tail.indexOf('.')
+        if (dot > 0) {
+          val slotId = tail.substring(0, dot).toIntOrNull()
+          val field = tail.substring(dot + 1)
+          if (slotId != null && slotId >= 0 && field.isNotBlank()) {
+            slotEntries.getOrPut(slotId) { LinkedHashMap() }[field] = v
+          }
+        }
+      }
+    }
+  }
+  if (explicitBatteryLow != null) {
+    out[DwfVariables.BATTERY_IS_LOW] = RemoteNamedValue.BooleanValue(explicitBatteryLow!!)
+  }
+
+  for ((slotId, fields) in slotEntries) {
+    val prefix = "dwf.complication.$slotId"
+    val rawType = fields["type"]?.let(::strOf)
+    val typeCode = rawType?.let { DwfVariables.complicationTypeCode(it) }
+    if (typeCode == DwfVariables.COMPLICATION_TYPE_EMPTY) {
+      out["$prefix.type"] = RemoteNamedValue.IntValue(DwfVariables.COMPLICATION_TYPE_EMPTY)
+      out["$prefix.text"] = RemoteNamedValue.StringValue("")
+      out["$prefix.title"] = RemoteNamedValue.StringValue("")
+      out["$prefix.has_monochromatic_image"] = RemoteNamedValue.BooleanValue(false)
+      out["$prefix.has_small_image"] = RemoteNamedValue.BooleanValue(false)
+      out["$prefix.has_photo_image"] = RemoteNamedValue.BooleanValue(false)
+      continue
+    }
+    if (typeCode != null) {
+      out["$prefix.type"] = RemoteNamedValue.IntValue(typeCode)
+    }
+    if ("text" in fields) {
+      out["$prefix.text"] = RemoteNamedValue.StringValue(strOf(fields.getValue("text")))
+    } else if (typeCode != null) {
+      out["$prefix.text"] = RemoteNamedValue.StringValue("")
+    }
+    if ("title" in fields) {
+      out["$prefix.title"] = RemoteNamedValue.StringValue(strOf(fields.getValue("title")))
+    } else if (typeCode != null) {
+      out["$prefix.title"] = RemoteNamedValue.StringValue("")
+    }
+    fields["value"]?.let(::floatOf)?.let { out["$prefix.value"] = RemoteNamedValue.FloatValue(it) }
+    fields["min"]?.let(::floatOf)?.let { out["$prefix.min"] = RemoteNamedValue.FloatValue(it) }
+    (fields["max"] ?: fields["targetValue"])?.let(::floatOf)?.let {
+      out["$prefix.max"] = RemoteNamedValue.FloatValue(it)
+    }
+    val mono = (fields["monochromaticImage"] ?: fields["icon"])?.let(::boolOf)
+    val small = fields["smallImage"]?.let(::boolOf)
+    val photo = fields["photoImage"]?.let(::boolOf)
+    if (mono != null) {
+      out["$prefix.has_monochromatic_image"] = RemoteNamedValue.BooleanValue(mono)
+    } else if (typeCode != null) {
+      out["$prefix.has_monochromatic_image"] =
+        RemoteNamedValue.BooleanValue(
+          typeCode == DwfVariables.COMPLICATION_TYPE_MONOCHROMATIC_IMAGE,
+        )
+    }
+    if (small != null) {
+      out["$prefix.has_small_image"] = RemoteNamedValue.BooleanValue(small)
+    } else if (typeCode != null) {
+      out["$prefix.has_small_image"] =
+        RemoteNamedValue.BooleanValue(typeCode == DwfVariables.COMPLICATION_TYPE_SMALL_IMAGE)
+    }
+    if (photo != null) {
+      out["$prefix.has_photo_image"] = RemoteNamedValue.BooleanValue(photo)
+    } else if (typeCode != null) {
+      out["$prefix.has_photo_image"] =
+        RemoteNamedValue.BooleanValue(typeCode == DwfVariables.COMPLICATION_TYPE_PHOTO_IMAGE)
+    }
+    fields["imageColor"]?.let(::strOf)?.let(::hexColorOf)?.let {
+      out["$prefix.image_color"] = RemoteNamedValue.ColorValue(it)
+    }
+    fields["accentColor"]?.let(::strOf)?.let(::hexColorOf)?.let {
+      out["$prefix.accent_color"] = RemoteNamedValue.ColorValue(it)
+    }
+    val parsedColors =
+      fields["colors"]
+        ?.let(::strOf)
+        ?.split(',')
+        ?.mapNotNull { token -> token.trim().takeIf { it.isNotEmpty() }?.let(::hexColorOf) }
+        ?.take(DwfVariables.MAX_COMPLICATION_COLOR_STOPS)
+    val parsedWeights =
+      fields["weights"]
+        ?.let(::strOf)
+        ?.split(',')
+        ?.mapNotNull { token -> token.trim().toFloatOrNull()?.takeIf { it >= 0f } }
+        ?.take(DwfVariables.MAX_COMPLICATION_COLOR_STOPS)
+    if (parsedColors != null && parsedColors.isNotEmpty()) {
+      out["$prefix.color_count"] = RemoteNamedValue.IntValue(parsedColors.size)
+      val pad = parsedColors.last()
+      for (idx in 0 until DwfVariables.MAX_COMPLICATION_COLOR_STOPS) {
+        out["$prefix.color.$idx"] = RemoteNamedValue.ColorValue(parsedColors.getOrElse(idx) { pad })
+      }
+      out["$prefix.has_ranged_value_colors"] = RemoteNamedValue.BooleanValue(true)
+      out["$prefix.has_goal_progress_colors"] = RemoteNamedValue.BooleanValue(true)
+      if (typeCode == DwfVariables.COMPLICATION_TYPE_WEIGHTED_ELEMENTS || parsedWeights != null) {
+        out["$prefix.has_weighted_elements"] = RemoteNamedValue.BooleanValue(true)
+      }
+    } else if (typeCode == DwfVariables.COMPLICATION_TYPE_WEIGHTED_ELEMENTS) {
+      out["$prefix.has_weighted_elements"] = RemoteNamedValue.BooleanValue(true)
+    }
+    if (parsedWeights != null && parsedWeights.isNotEmpty()) {
+      out["$prefix.has_weighted_elements"] = RemoteNamedValue.BooleanValue(true)
+      if (parsedColors.isNullOrEmpty()) {
+        out["$prefix.color_count"] = RemoteNamedValue.IntValue(parsedWeights.size)
+      }
+      for (idx in 0 until DwfVariables.MAX_COMPLICATION_COLOR_STOPS) {
+        out["$prefix.weight.$idx"] =
+          RemoteNamedValue.FloatValue(parsedWeights.getOrElse(idx) { 0f })
+      }
+    }
+    fields["interpolate"]?.let(::boolOf)?.let { interp ->
+      out["$prefix.ranged_value_colors_interpolate"] = RemoteNamedValue.BooleanValue(interp)
+      out["$prefix.goal_progress_colors_interpolate"] = RemoteNamedValue.BooleanValue(interp)
+    }
+  }
+}
+
+/**
+ * Resolves option-ID strings (`"red_style"`) or boolean strings (`"true"`) on `dwf.config.<id>`
+ * into the typed `RemoteNamedValue` (`IntValue(optionIndex)` or `BooleanValue`) expected by
+ * [DwfExpressionCompiler].
+ */
+internal fun normalizeDwfConfigValues(
+  doc: DwfDocument,
+  effectiveNamed: MutableMap<String, RemoteNamedValue>,
+) {
+  for (cfg in doc.userConfigurations) {
+    val key = DwfVariables.configKey(cfg.id)
+    val current = effectiveNamed[key] ?: continue
+    when (cfg) {
+      is DwfUserConfiguration.BooleanConfiguration -> {
+        if (current is RemoteNamedValue.StringValue) {
+          when (current.value.trim().lowercase()) {
+            "true",
+            "1" -> effectiveNamed[key] = RemoteNamedValue.BooleanValue(true)
+            "false",
+            "0" -> effectiveNamed[key] = RemoteNamedValue.BooleanValue(false)
+          }
+        }
+      }
+      is DwfUserConfiguration.ListConfiguration -> {
+        if (current is RemoteNamedValue.StringValue) {
+          val raw = current.value.trim()
+          val byId = cfg.options.indexOfFirst { it.id.equals(raw, ignoreCase = true) }
+          val resolved =
+            when {
+              byId >= 0 -> byId
+              else -> raw.toIntOrNull()?.takeIf { it in cfg.options.indices }
+            }
+          if (resolved != null) {
+            effectiveNamed[key] = RemoteNamedValue.IntValue(resolved)
+          }
+        }
+      }
+      is DwfUserConfiguration.ColorConfiguration -> {
+        val resolvedIdx =
+          when (current) {
+            is RemoteNamedValue.StringValue -> {
+              val raw = current.value.trim()
+              val byId = cfg.options.indexOfFirst { it.id.equals(raw, ignoreCase = true) }
+              when {
+                byId >= 0 -> byId
+                else -> raw.toIntOrNull()?.takeIf { it in cfg.options.indices }
+              }
+            }
+            is RemoteNamedValue.IntValue -> current.value.takeIf { it in cfg.options.indices }
+            is RemoteNamedValue.FloatValue ->
+              current.value.toInt().takeIf { it in cfg.options.indices }
+            else -> null
+          }
+        if (resolvedIdx != null) {
+          effectiveNamed[key] = RemoteNamedValue.IntValue(resolvedIdx)
+          val chosenOpt = cfg.options[resolvedIdx]
+          for ((colorIdx, argb) in chosenOpt.colors.withIndex()) {
+            effectiveNamed[DwfVariables.colorThemeKey(cfg.id, colorIdx)] =
+              RemoteNamedValue.ColorValue("#%08X".format(argb))
+          }
+        }
+      }
+      is DwfUserConfiguration.PhotosConfiguration -> {}
+    }
+  }
+}
+
+internal fun buildDwfComplicationsPayload(
+  previewId: String,
+  dwfAssetPath: String,
+  doc: DwfDocument,
+  fakes: DwfFakesConfig?,
+  slots: List<DwfRawSlotMeta>,
+  widthPx: Int,
+  heightPx: Int,
+  namedValues: Map<String, RemoteNamedValue>,
+  previewTimeOverride: String? = null,
+): WatchFaceComplicationsPayload {
+  fun strVal(key: String, fallback: String = ""): String =
+    (namedValues[key] as? RemoteNamedValue.StringValue)?.value ?: fallback
+
+  fun floatVal(key: String, fallback: Float = 0f): Float =
+    when (val v = namedValues[key]) {
+      is RemoteNamedValue.FloatValue -> v.value
+      is RemoteNamedValue.IntValue -> v.value.toFloat()
+      is RemoteNamedValue.DpValue -> v.value
+      else -> fallback
+    }
+
+  fun intVal(key: String, fallback: Int = 0): Int =
+    when (val v = namedValues[key]) {
+      is RemoteNamedValue.IntValue -> v.value
+      is RemoteNamedValue.FloatValue -> v.value.toInt()
+      is RemoteNamedValue.BooleanValue -> if (v.value) 1 else 0
+      else -> fallback
+    }
+
+  fun boolVal(key: String, fallback: Boolean = false): Boolean =
+    when (val v = namedValues[key]) {
+      is RemoteNamedValue.BooleanValue -> v.value
+      is RemoteNamedValue.IntValue -> v.value != 0
+      else -> fallback
+    }
+
+  fun colorVal(key: String, fallback: String): String =
+    (namedValues[key] as? RemoteNamedValue.ColorValue)?.argb ?: fallback
+
+  val isAmbient = boolVal(DwfVariables.IS_AMBIENT, fakes?.isAmbient ?: false)
+
+  val configs =
+    doc.userConfigurations.map { cfg ->
+      when (cfg) {
+        is DwfUserConfiguration.BooleanConfiguration -> {
+          val active = boolVal(DwfVariables.configKey(cfg.id), cfg.defaultValue)
+          WatchFaceUserConfigDto(
+            id = cfg.id,
+            kind = "BOOLEAN",
+            displayName = cfg.displayName ?: cfg.id,
+            defaultValue = cfg.defaultValue.toString(),
+            activeValue = active.toString(),
+          )
+        }
+        is DwfUserConfiguration.ListConfiguration -> {
+          val rawDefault = cfg.defaultValue ?: cfg.options.firstOrNull()?.id.orEmpty()
+          val defaultIdx =
+            cfg.options.indexOfFirst { it.id == rawDefault }.takeIf { it >= 0 }
+              ?: rawDefault.toIntOrNull()?.takeIf { it in cfg.options.indices }
+              ?: 0
+          val defaultOpt = cfg.options.getOrNull(defaultIdx)?.id ?: rawDefault
+          val activeIdx = intVal(DwfVariables.configKey(cfg.id), defaultIdx)
+          val activeId = cfg.options.getOrNull(activeIdx)?.id ?: activeIdx.toString()
+          WatchFaceUserConfigDto(
+            id = cfg.id,
+            kind = "LIST",
+            displayName = cfg.displayName ?: cfg.id,
+            defaultValue = defaultOpt,
+            activeValue = activeId,
+            options = cfg.options.map { it.id },
+          )
+        }
+        is DwfUserConfiguration.ColorConfiguration -> {
+          val rawDefault = cfg.defaultValue ?: cfg.options.firstOrNull()?.id.orEmpty()
+          val defaultIdx =
+            cfg.options.indexOfFirst { it.id == rawDefault }.takeIf { it >= 0 }
+              ?: rawDefault.toIntOrNull()?.takeIf { it in cfg.options.indices }
+              ?: 0
+          val defaultOpt = cfg.options.getOrNull(defaultIdx)?.id ?: rawDefault
+          val activeIdx = intVal(DwfVariables.configKey(cfg.id), defaultIdx)
+          val activeId = cfg.options.getOrNull(activeIdx)?.id ?: activeIdx.toString()
+          WatchFaceUserConfigDto(
+            id = cfg.id,
+            kind = "COLOR",
+            displayName = cfg.displayName ?: cfg.id,
+            defaultValue = defaultOpt,
+            activeValue = activeId,
+            options = cfg.options.map { it.id },
+          )
+        }
+        is DwfUserConfiguration.PhotosConfiguration ->
+          WatchFaceUserConfigDto(
+            id = cfg.id,
+            kind = "PHOTOS",
+            displayName = cfg.displayName ?: cfg.id,
+            defaultValue = cfg.configType,
+            activeValue = cfg.configType,
+          )
+      }
+    }
+
+  val slotDtos = slots.map { slot ->
+    val sid = slot.slotId
+    val seed = fakes?.complications?.get(sid)?.toSeed()
+    val fallbackTypeStr =
+      seed?.type
+        ?: slot.defaultSystemProviderType
+        ?: slot.supportedTypes.firstOrNull()
+        ?: "SHORT_TEXT"
+    val fallbackTypeCode = DwfVariables.complicationTypeCode(fallbackTypeStr)
+    val typeCode = intVal(DwfVariables.complicationTypeKey(sid), fallbackTypeCode)
+    val typeName = DwfVariables.complicationTypeName(typeCode)
+    val hasRangedColors = boolVal(DwfVariables.complicationHasRangedColorsKey(sid), false)
+    val hasGoalColors = boolVal(DwfVariables.complicationHasGoalColorsKey(sid), false)
+    val hasWeighted = boolVal(DwfVariables.complicationHasWeightedElementsKey(sid), false)
+    val stopDefaults = listOf("#FF4285F4", "#FF34A853", "#FFFBBC05", "#FFEA4335")
+    val weightDefaults = listOf(45f, 35f, 20f, 0f)
+
+    val rawColorCount = intVal(DwfVariables.complicationColorCountKey(sid), 0)
+    val variantSeedColors: List<Int> =
+      when (typeCode) {
+        DwfVariables.COMPLICATION_TYPE_RANGED_VALUE ->
+          seed?.rangedValueColors.orEmpty().ifEmpty { seed?.weightedElementsColors.orEmpty() }
+        DwfVariables.COMPLICATION_TYPE_GOAL_PROGRESS ->
+          seed?.goalProgressColors.orEmpty().ifEmpty { seed?.rangedValueColors.orEmpty() }
+        DwfVariables.COMPLICATION_TYPE_WEIGHTED_ELEMENTS ->
+          seed
+            ?.weightedElementsColors
+            .orEmpty()
+            .ifEmpty { seed?.rangedValueColors.orEmpty() }
+            .ifEmpty { seed?.goalProgressColors.orEmpty() }
+        else -> seed?.rangedValueColors.orEmpty()
+      }
+    val colorCount: Int
+    val colors: List<String>
+    if (rawColorCount > 0) {
+      colorCount = rawColorCount.coerceIn(1, DwfVariables.MAX_COMPLICATION_COLOR_STOPS)
+      colors =
+        (0 until colorCount).map { idx ->
+          colorVal(
+            DwfVariables.complicationColorStopKey(sid, idx),
+            stopDefaults.getOrElse(idx) { "#FFFFFFFF" },
+          )
+        }
+    } else if (variantSeedColors.isNotEmpty()) {
+      colorCount = variantSeedColors.size.coerceIn(1, DwfVariables.MAX_COMPLICATION_COLOR_STOPS)
+      colors = variantSeedColors.take(colorCount).map { "#%08X".format(Locale.ROOT, it) }
+    } else {
+      colorCount = 3
+      colors = stopDefaults.take(colorCount)
+    }
+
+    val weights =
+      (0 until colorCount).map { idx ->
+        floatVal(
+          DwfVariables.complicationWeightKey(sid, idx),
+          seed?.weightedElementsWeights?.getOrNull(idx) ?: weightDefaults.getOrElse(idx) { 0f },
+        )
+      }
+
+    val active =
+      WatchFaceActiveComplicationDto(
+        type = typeName,
+        typeCode = typeCode,
+        text = strVal(DwfVariables.complicationTextKey(sid), seed?.text.orEmpty()),
+        title = strVal(DwfVariables.complicationTitleKey(sid), seed?.title.orEmpty()),
+        value = floatVal(DwfVariables.complicationValueKey(sid), seed?.value ?: 0f),
+        min = floatVal(DwfVariables.complicationMinKey(sid), seed?.min ?: 0f),
+        max = floatVal(DwfVariables.complicationMaxKey(sid), seed?.max ?: 100f),
+        hasMonochromaticImage =
+          boolVal(
+            DwfVariables.complicationHasMonoImageKey(sid),
+            !seed?.monochromaticImage.isNullOrBlank(),
+          ),
+        hasSmallImage =
+          boolVal(
+            DwfVariables.complicationHasSmallImageKey(sid),
+            !seed?.smallImage.isNullOrBlank(),
+          ),
+        hasPhotoImage =
+          boolVal(
+            DwfVariables.complicationHasPhotoImageKey(sid),
+            !seed?.photoImage.isNullOrBlank(),
+          ),
+        imageColor = colorVal(DwfVariables.complicationImageColorKey(sid), "#FFFFFFFF"),
+        accentColor = colorVal(DwfVariables.complicationAccentColorKey(sid), "#FF1976D2"),
+        hasRangedValueColors = hasRangedColors,
+        rangedValueColorsInterpolate =
+          boolVal(DwfVariables.complicationRangedInterpolateKey(sid), false),
+        hasGoalProgressColors = hasGoalColors,
+        goalProgressColorsInterpolate =
+          boolVal(DwfVariables.complicationGoalInterpolateKey(sid), false),
+        hasWeightedElements = hasWeighted,
+        colorCount = colorCount,
+        colors = if (hasRangedColors || hasGoalColors || hasWeighted) colors else emptyList(),
+        weights = if (hasWeighted) weights else emptyList(),
+      )
+
+    WatchFaceComplicationSlotDto(
+      slotId = sid,
+      bounds = WatchFaceSlotBoundsDto(slot.x, slot.y, slot.width, slot.height),
+      boundingShape = slot.boundingShape,
+      isCustomizable = slot.isCustomizable,
+      supportedTypes = slot.supportedTypes,
+      authoredTypes = slot.authoredTypes,
+      defaultSystemProvider = slot.defaultSystemProvider,
+      defaultSystemProviderType = slot.defaultSystemProviderType,
+      activeState = active,
+    )
+  }
+
+  return WatchFaceComplicationsPayload(
+    previewId = previewId,
+    dwfAssetPath = dwfAssetPath,
+    widthPx = widthPx,
+    heightPx = heightPx,
+    clipShape = doc.clipShape.name,
+    previewTime = previewTimeOverride ?: (fakes?.previewTime ?: doc.previewTime) ?: "10:10:30",
+    isAmbient = isAmbient,
+    userConfigurations = configs,
+    slots = slotDtos,
+  )
 }
 
 /**
@@ -335,7 +824,16 @@ private class DwfDaemonSession(
     )
 
   private val supportedOverrides =
-    listOf("widthPx", "heightPx", "density", "device", "ambient", "remoteCompose")
+    listOf(
+      "widthPx",
+      "heightPx",
+      "density",
+      "device",
+      "ambient",
+      "clockEpochMillis",
+      "namedOverrides",
+      "remoteCompose",
+    )
 
   private val knownExtensionIds =
     setOf(
@@ -353,20 +851,6 @@ private class DwfDaemonSession(
   private val globalAttachProducts = ConcurrentHashMap.newKeySet<String>()
   private val subscribedProducts = ConcurrentHashMap.newKeySet<Pair<String, String>>()
 
-  private data class RawSlotMeta(
-    val slotId: Int,
-    val x: Float,
-    val y: Float,
-    val width: Float,
-    val height: Float,
-    val boundingShape: String?,
-    val isCustomizable: Boolean,
-    val supportedTypes: List<String>,
-    val authoredTypes: List<String>,
-    val defaultSystemProvider: String?,
-    val defaultSystemProviderType: String?,
-  )
-
   private data class CompiledWatchFace(
     val entry: DwfPreviewEntryDto,
     val xmlFile: File,
@@ -377,10 +861,11 @@ private class DwfDaemonSession(
     val rcBytes: ByteArray,
     val declarationsPayload: RemoteComposeDeclarationsPayload,
     val defaultNamedValues: Map<String, RemoteNamedValue>,
-    val slots: List<RawSlotMeta>,
+    val slots: List<DwfRawSlotMeta>,
   )
 
   private data class RenderedWatchFaceState(
+    val compiled: CompiledWatchFace,
     val pngFile: File,
     val widthPx: Int,
     val heightPx: Int,
@@ -468,7 +953,7 @@ private class DwfDaemonSession(
     for (decl in declarations.declarations) {
       defaultMap[decl.name] = decl.default
     }
-    val slots = collectRawSlots(doc.scene.children)
+    val slots = collectDwfRawSlots(doc.scene.children)
     val compiled =
       CompiledWatchFace(
         entry = entry,
@@ -483,49 +968,8 @@ private class DwfDaemonSession(
         slots = slots,
       )
     compiledCache[previewId] = compiled
+    latestRenders.remove(previewId)
     return compiled
-  }
-
-  private fun collectRawSlots(rootNodes: List<DwfSceneNode>): List<RawSlotMeta> {
-    val found = LinkedHashMap<Int, RawSlotMeta>()
-    fun walk(nodes: List<DwfSceneNode>, offsetX: Float, offsetY: Float) {
-      for (node in nodes) {
-        when (node) {
-          is DwfSceneNode.ComplicationSlot -> {
-            found.putIfAbsent(
-              node.slotId,
-              RawSlotMeta(
-                slotId = node.slotId,
-                x = offsetX + node.geometry.x,
-                y = offsetY + node.geometry.y,
-                width = node.geometry.width,
-                height = node.geometry.height,
-                boundingShape = node.boundingShape?.kind,
-                isCustomizable = node.isCustomizable,
-                supportedTypes = node.supportedTypes,
-                authoredTypes = node.complications.map { it.type }.distinct(),
-                defaultSystemProvider = node.defaultSystemProvider,
-                defaultSystemProviderType = node.defaultSystemProviderType,
-              ),
-            )
-          }
-          is DwfSceneNode.Group ->
-            walk(node.children, offsetX + node.geometry.x, offsetY + node.geometry.y)
-          is DwfSceneNode.AnalogClock ->
-            walk(node.children, offsetX + node.geometry.x, offsetY + node.geometry.y)
-          is DwfSceneNode.Condition -> node.branches.forEach { walk(it.children, offsetX, offsetY) }
-          is DwfSceneNode.BooleanConfigurationSwitch -> {
-            walk(node.trueChildren, offsetX, offsetY)
-            walk(node.falseChildren, offsetX, offsetY)
-          }
-          is DwfSceneNode.ListConfigurationSwitch ->
-            node.options.forEach { walk(it.children, offsetX, offsetY) }
-          else -> {}
-        }
-      }
-    }
-    walk(rootNodes, 0f, 0f)
-    return found.values.sortedBy { it.slotId }
   }
 
   private fun renderWatchFace(
@@ -539,6 +983,7 @@ private class DwfDaemonSession(
     val heightPx = (overrides?.heightPx ?: deviceH ?: nativeH).coerceAtLeast(1)
 
     val effectiveNamed = LinkedHashMap<String, RemoteNamedValue>(compiled.defaultNamedValues)
+    applyWfNamedOverrides(overrides?.namedOverrides, effectiveNamed)
     if (overrides?.ambient != null) {
       val amb = overrides.ambient?.state == AmbientStateOverride.AMBIENT
       effectiveNamed[DwfVariables.IS_AMBIENT] = RemoteNamedValue.BooleanValue(amb)
@@ -550,19 +995,63 @@ private class DwfDaemonSession(
       effectiveNamed[key] = value
       if (
         key !in declaredNames &&
-          !key.startsWith("dwf.") // DWF slots/configs that a simpler watch face didn't reference
+          !key.startsWith("dwf.") &&
+          !key.startsWith("metrics.") // DWF slots/configs/metrics a simpler watch face omitted
       ) {
         unusedSeeds += key
       }
     }
+    normalizeDwfConfigValues(compiled.doc, effectiveNamed)
 
     val rcSeeds = LinkedHashMap<String, RcNamedValue>()
     for ((k, v) in effectiveNamed) {
       toRcNamedValue(v)?.let { rcSeeds[k] = it }
     }
 
+    val defaultHms = parsePreviewHms(compiled.fakes?.previewTime ?: compiled.doc.previewTime)
+    val defaultYear = compiled.fakes?.year ?: 2026
+    val defaultMonth = compiled.fakes?.month ?: 11
+    val defaultDayOfMonth = compiled.fakes?.dayOfMonth ?: 18
+    val defaultDate = runCatching {
+      LocalDate.of(defaultYear, defaultMonth, defaultDayOfMonth)
+    }
+      .getOrElse { LocalDate.of(2026, 11, 18) }
+    val clockMs = overrides?.clockEpochMillis
+    val date: LocalDate
+    val hour: Int
+    val minute: Int
+    val second: Int
+    val currentEpochMs: Long
+    val previewTimeOverride: String?
+    if (clockMs != null) {
+      val zdt = Instant.ofEpochMilli(clockMs).atZone(ZoneOffset.UTC)
+      date = zdt.toLocalDate()
+      hour = zdt.hour
+      minute = zdt.minute
+      second = zdt.second
+      currentEpochMs = clockMs
+      previewTimeOverride = "%02d:%02d:%02d".format(Locale.ROOT, hour, minute, second)
+    } else {
+      date = defaultDate
+      hour = defaultHms.first
+      minute = defaultHms.second
+      second = defaultHms.third
+      currentEpochMs = 1_763_460_630_000L
+      previewTimeOverride = null
+    }
+
     val complicationsPayload =
-      buildComplicationsPayload(compiled, widthPx, heightPx, effectiveNamed)
+      buildDwfComplicationsPayload(
+        previewId = compiled.entry.id,
+        dwfAssetPath = compiled.entry.params.dwfAssetPath.orEmpty(),
+        doc = compiled.doc,
+        fakes = compiled.fakes,
+        slots = compiled.slots,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        namedValues = effectiveNamed,
+        previewTimeOverride = previewTimeOverride,
+      )
     val remotePayload =
       RemoteComposePayload(
           namedValues = effectiveNamed,
@@ -577,18 +1066,9 @@ private class DwfDaemonSession(
           }
         }
 
-    val (hour, minute, second) =
-      parsePreviewHms(compiled.fakes?.previewTime ?: compiled.doc.previewTime)
-    val year = compiled.fakes?.year ?: 2026
-    val month = compiled.fakes?.month ?: 11
-    val dayOfMonth = compiled.fakes?.dayOfMonth ?: 18
-    val date = runCatching {
-      LocalDate.of(year, month, dayOfMonth)
-    }
-      .getOrElse { LocalDate.of(2026, 11, 18) }
     val fixedTime =
       object : RcTimeSource {
-        override fun currentTimeMillis(): Long = 1_763_460_630_000L
+        override fun currentTimeMillis(): Long = currentEpochMs
 
         override fun snapshot(epochMillis: Long): RcTimeSnapshot =
           RcTimeSnapshot(
@@ -683,10 +1163,26 @@ private class DwfDaemonSession(
             compiled.declarationsPayload,
           ),
         )
+      File(dir, "$stem.watchface.json")
+        .writeText(
+          payloadJson.encodeToString(
+            WatchFaceComplicationsPayload.serializer(),
+            complicationsPayload,
+          ),
+        )
+      val previewsRoot =
+        config.previewsJson?.parentFile ?: config.outputDir.parentFile ?: config.outputDir
+      val semanticsFile =
+        File(previewsRoot, "data/${compiled.entry.id}/${ComposeSemanticsProduct.FILE}")
+      semanticsFile.parentFile?.mkdirs()
+      semanticsFile.writeText(
+        payloadJson.encodeToString(ComposeSemanticsPayload.serializer(), semanticsPayload),
+      )
     }
 
     val state =
       RenderedWatchFaceState(
+        compiled = compiled,
         pngFile = pngFile,
         widthPx = widthPx,
         heightPx = heightPx,
@@ -724,196 +1220,6 @@ private class DwfDaemonSession(
         "%02x".format(it)
       }
     return File(config.outputDir, "${entry.id}-$digest.png")
-  }
-
-  private fun buildComplicationsPayload(
-    compiled: CompiledWatchFace,
-    widthPx: Int,
-    heightPx: Int,
-    namedValues: Map<String, RemoteNamedValue>,
-  ): WatchFaceComplicationsPayload {
-    fun strVal(key: String, fallback: String = ""): String =
-      (namedValues[key] as? RemoteNamedValue.StringValue)?.value ?: fallback
-
-    fun floatVal(key: String, fallback: Float = 0f): Float =
-      when (val v = namedValues[key]) {
-        is RemoteNamedValue.FloatValue -> v.value
-        is RemoteNamedValue.IntValue -> v.value.toFloat()
-        is RemoteNamedValue.DpValue -> v.value
-        else -> fallback
-      }
-
-    fun intVal(key: String, fallback: Int = 0): Int =
-      when (val v = namedValues[key]) {
-        is RemoteNamedValue.IntValue -> v.value
-        is RemoteNamedValue.FloatValue -> v.value.toInt()
-        is RemoteNamedValue.BooleanValue -> if (v.value) 1 else 0
-        else -> fallback
-      }
-
-    fun boolVal(key: String, fallback: Boolean = false): Boolean =
-      when (val v = namedValues[key]) {
-        is RemoteNamedValue.BooleanValue -> v.value
-        is RemoteNamedValue.IntValue -> v.value != 0
-        else -> fallback
-      }
-
-    fun colorVal(key: String, fallback: String): String =
-      (namedValues[key] as? RemoteNamedValue.ColorValue)?.argb ?: fallback
-
-    val isAmbient = boolVal(DwfVariables.IS_AMBIENT, compiled.fakes?.isAmbient ?: false)
-
-    val configs =
-      compiled.doc.userConfigurations.map { cfg ->
-        when (cfg) {
-          is DwfUserConfiguration.BooleanConfiguration -> {
-            val active = boolVal(DwfVariables.configKey(cfg.id), cfg.defaultValue)
-            WatchFaceUserConfigDto(
-              id = cfg.id,
-              kind = "BOOLEAN",
-              displayName = cfg.displayName ?: cfg.id,
-              defaultValue = cfg.defaultValue.toString(),
-              activeValue = active.toString(),
-            )
-          }
-          is DwfUserConfiguration.ListConfiguration -> {
-            val defaultOpt = cfg.defaultValue ?: cfg.options.firstOrNull()?.id.orEmpty()
-            val defaultIdx =
-              cfg.options.indexOfFirst { it.id == defaultOpt }.takeIf { it >= 0 } ?: 0
-            val activeIdx = intVal(DwfVariables.configKey(cfg.id), defaultIdx)
-            val activeId = cfg.options.getOrNull(activeIdx)?.id ?: activeIdx.toString()
-            WatchFaceUserConfigDto(
-              id = cfg.id,
-              kind = "LIST",
-              displayName = cfg.displayName ?: cfg.id,
-              defaultValue = defaultOpt,
-              activeValue = activeId,
-              options = cfg.options.map { it.id },
-            )
-          }
-          is DwfUserConfiguration.ColorConfiguration -> {
-            val defaultOpt = cfg.defaultValue ?: cfg.options.firstOrNull()?.id.orEmpty()
-            val defaultIdx =
-              cfg.options.indexOfFirst { it.id == defaultOpt }.takeIf { it >= 0 } ?: 0
-            val activeIdx = intVal(DwfVariables.configKey(cfg.id), defaultIdx)
-            val activeId = cfg.options.getOrNull(activeIdx)?.id ?: activeIdx.toString()
-            WatchFaceUserConfigDto(
-              id = cfg.id,
-              kind = "COLOR",
-              displayName = cfg.displayName ?: cfg.id,
-              defaultValue = defaultOpt,
-              activeValue = activeId,
-              options = cfg.options.map { it.id },
-            )
-          }
-          is DwfUserConfiguration.PhotosConfiguration ->
-            WatchFaceUserConfigDto(
-              id = cfg.id,
-              kind = "PHOTOS",
-              displayName = cfg.displayName ?: cfg.id,
-              defaultValue = cfg.configType,
-              activeValue = cfg.configType,
-            )
-        }
-      }
-
-    val slotDtos =
-      compiled.slots.map { slot ->
-        val sid = slot.slotId
-        val seed = compiled.fakes?.complications?.get(sid)?.toSeed()
-        val fallbackTypeStr =
-          seed?.type
-            ?: slot.defaultSystemProviderType
-            ?: slot.supportedTypes.firstOrNull()
-            ?: "SHORT_TEXT"
-        val fallbackTypeCode = DwfVariables.complicationTypeCode(fallbackTypeStr)
-        val typeCode = intVal(DwfVariables.complicationTypeKey(sid), fallbackTypeCode)
-        val typeName = DwfVariables.complicationTypeName(typeCode)
-        val colorCount =
-          intVal(DwfVariables.complicationColorCountKey(sid), 3)
-            .coerceIn(1, DwfVariables.MAX_COMPLICATION_COLOR_STOPS)
-        val hasRangedColors = boolVal(DwfVariables.complicationHasRangedColorsKey(sid), false)
-        val hasGoalColors = boolVal(DwfVariables.complicationHasGoalColorsKey(sid), false)
-        val hasWeighted = boolVal(DwfVariables.complicationHasWeightedElementsKey(sid), false)
-        val stopDefaults = listOf("#FF4285F4", "#FF34A853", "#FFFBBC05", "#FFEA4335")
-        val weightDefaults = listOf(45f, 35f, 20f, 0f)
-        val colors =
-          (0 until colorCount).map { idx ->
-            colorVal(
-              DwfVariables.complicationColorStopKey(sid, idx),
-              stopDefaults.getOrElse(idx) { "#FFFFFFFF" },
-            )
-          }
-        val weights =
-          (0 until colorCount).map { idx ->
-            floatVal(
-              DwfVariables.complicationWeightKey(sid, idx),
-              weightDefaults.getOrElse(idx) { 0f },
-            )
-          }
-
-        val active =
-          WatchFaceActiveComplicationDto(
-            type = typeName,
-            typeCode = typeCode,
-            text = strVal(DwfVariables.complicationTextKey(sid), seed?.text.orEmpty()),
-            title = strVal(DwfVariables.complicationTitleKey(sid), seed?.title.orEmpty()),
-            value = floatVal(DwfVariables.complicationValueKey(sid), seed?.value ?: 0f),
-            min = floatVal(DwfVariables.complicationMinKey(sid), seed?.min ?: 0f),
-            max = floatVal(DwfVariables.complicationMaxKey(sid), seed?.max ?: 100f),
-            hasMonochromaticImage =
-              boolVal(
-                DwfVariables.complicationHasMonoImageKey(sid),
-                !seed?.monochromaticImage.isNullOrBlank(),
-              ),
-            hasSmallImage =
-              boolVal(
-                DwfVariables.complicationHasSmallImageKey(sid),
-                !seed?.smallImage.isNullOrBlank(),
-              ),
-            hasPhotoImage =
-              boolVal(
-                DwfVariables.complicationHasPhotoImageKey(sid),
-                !seed?.photoImage.isNullOrBlank(),
-              ),
-            imageColor = colorVal(DwfVariables.complicationImageColorKey(sid), "#FFFFFFFF"),
-            accentColor = colorVal(DwfVariables.complicationAccentColorKey(sid), "#FF1976D2"),
-            hasRangedValueColors = hasRangedColors,
-            rangedValueColorsInterpolate =
-              boolVal(DwfVariables.complicationRangedInterpolateKey(sid), false),
-            hasGoalProgressColors = hasGoalColors,
-            goalProgressColorsInterpolate =
-              boolVal(DwfVariables.complicationGoalInterpolateKey(sid), false),
-            hasWeightedElements = hasWeighted,
-            colorCount = colorCount,
-            colors = if (hasRangedColors || hasGoalColors || hasWeighted) colors else emptyList(),
-            weights = if (hasWeighted) weights else emptyList(),
-          )
-
-        WatchFaceComplicationSlotDto(
-          slotId = sid,
-          bounds = WatchFaceSlotBoundsDto(slot.x, slot.y, slot.width, slot.height),
-          boundingShape = slot.boundingShape,
-          isCustomizable = slot.isCustomizable,
-          supportedTypes = slot.supportedTypes,
-          authoredTypes = slot.authoredTypes,
-          defaultSystemProvider = slot.defaultSystemProvider,
-          defaultSystemProviderType = slot.defaultSystemProviderType,
-          activeState = active,
-        )
-      }
-
-    return WatchFaceComplicationsPayload(
-      previewId = compiled.entry.id,
-      dwfAssetPath = compiled.entry.params.dwfAssetPath.orEmpty(),
-      widthPx = widthPx,
-      heightPx = heightPx,
-      clipShape = compiled.doc.clipShape.name,
-      previewTime = (compiled.fakes?.previewTime ?: compiled.doc.previewTime) ?: "10:10:30",
-      isAmbient = isAmbient,
-      userConfigurations = configs,
-      slots = slotDtos,
-    )
   }
 
   private fun parseDeviceSpecPx(device: String?): Pair<Int?, Int?> {
@@ -1145,7 +1451,13 @@ private class DwfDaemonSession(
       sendError(id, -32020, "DataProductUnknown: kind not advertised: $kind")
       return
     }
-    val compiled = compileOrGet(previewId)
+    val compiled = runCatching {
+      compileOrGet(previewId)
+    }
+      .getOrElse { err ->
+        sendError(id, -32022, "DataProductFetchFailed: ${err.message}")
+        return
+      }
     if (compiled == null) {
       sendError(id, -32021, "DataProductNotAvailable: unknown preview '$previewId'")
       return
@@ -1172,7 +1484,8 @@ private class DwfDaemonSession(
       if (explicitOverrides != null || forceRerender) {
         renderWatchFace(compiled, explicitOverrides)
       } else {
-        latestRenders[previewId] ?: renderWatchFace(compiled, null)
+        latestRenders[previewId]?.takeIf { it.compiled === compiled }
+          ?: renderWatchFace(compiled, null)
       }
     }
       .getOrElse { err ->
@@ -1263,6 +1576,7 @@ private class DwfDaemonSession(
       "fileChanged" -> {
         refreshManifestIfNeeded(force = true)
         compiledCache.clear()
+        latestRenders.clear()
         val rawEntries =
           config.previewsJson
             ?.takeIf(File::isFile)

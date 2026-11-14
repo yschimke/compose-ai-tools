@@ -92,10 +92,10 @@ public object ServeBundleDaemon {
         return null
       }
     val backend = manifest.backend
-    if (backend != "desktop" && backend != "android") {
+    if (backend != "desktop" && backend != "android" && backend != "dwf") {
       onLog(
-        "catalog $system: bundle backend '$backend' is not 'desktop' or 'android' — no live daemon " +
-          "for this backend",
+        "catalog $system: bundle backend '$backend' is not 'desktop', 'android' or 'dwf' — no " +
+          "live daemon for this backend",
       )
       return null
     }
@@ -111,9 +111,9 @@ public object ServeBundleDaemon {
     val classesDir = File(destDir, "classes").apply { mkdirs() }
     val libsDir = File(destDir, "libs").apply { mkdirs() }
     val previewsJson = File(destDir, "previews.json")
-    // A fully IR-backed bundle (schema v5+) may carry no `classes/app.jar`; a mixed one must.
+    // A fully IR-backed bundle (schema v5+) or codeless DWF bundle may carry no `classes/app.jar`.
     val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
-    val requireAppJar = manifest.previewIds.any { it !in irPreviewIds }
+    val requireAppJar = backend != "dwf" && manifest.previewIds.any { it !in irPreviewIds }
     try {
       extractBundleClassesAndManifest(
         zipBytes,
@@ -197,11 +197,13 @@ public object ServeBundleDaemon {
           "whose Skiko this server ships, or give the server network access to Maven Central.",
       )
     }
+    val useDwfDaemon = backend == "dwf" || isDwfOnlyManifest(previewsJson, fileSystem)
     // Resolved first: which Remote Compose artifacts the sidecar ships decides what may be
     // promoted.
     val backendLaunch =
-      when (backend) {
-        "android" -> androidBundleDaemonLaunch(system, onLog)
+      when {
+        useDwfDaemon -> dwfBundleDaemonLaunch(system, classesDir, extraClasspathDirs, onLog)
+        backend == "android" -> androidBundleDaemonLaunch(system, onLog)
         else -> desktopBundleDaemonLaunch(system, onLog)
       } ?: return null
     // `androidx.compose.remote:*` must load as one coherent family. On an IR bundle carrying only
@@ -221,11 +223,11 @@ public object ServeBundleDaemon {
         overlaysDaemonSidecar(it.coordinate, demotedRemoteComposeGroups)
       }
     // Android app resources: extract the bundle's `android/` payload and synthesize Robolectric's
-    // `test_config.properties` so `stringResource(R.string.…)` resolves. Empty for desktop or older
-    // bundles. The carried R jar is widened with the daemon's own R fields, which its Compose needs
-    // when it is newer than the app's ([AndroidRClassUnion], #6125).
+    // `test_config.properties` so `stringResource(R.string.…)` resolves. Empty for desktop, DWF or
+    // older bundles. The carried R jar is widened with the daemon's own R fields, which its Compose
+    // needs when it is newer than the app's ([AndroidRClassUnion], #6125).
     val androidResourceClasspath =
-      if (backend == "android")
+      if (backend == "android" && !useDwfDaemon)
         AndroidRClassUnion.widen(
             AndroidBundleResources.daemonClasspath(
               zipBytes,
@@ -282,9 +284,7 @@ public object ServeBundleDaemon {
           modulePath = ":catalog",
           variant = backendLaunch.variant,
           enabled = true,
-          // Both backends use the same `DaemonMain` over stdio; only classpath / JVM args /
-          // sysprops differ.
-          mainClass = DAEMON_MAIN_CLASS,
+          mainClass = backendLaunch.mainClass,
           classpath = classpaths.daemonClasspath,
           // Catalog daemons only: the playground keeps bytecode verification for a stranger's
           // snippet.
@@ -308,7 +308,7 @@ public object ServeBundleDaemon {
               // The pack-time daemon leaves this off so misses fail loudly. Literal key to avoid a
               // `:daemon:android` dependency.
               put("composeai.render.placeholderMissingResources", "true")
-              // Backend extras (Robolectric flags for Android; none for desktop).
+              // Backend extras (Robolectric flags for Android; resDirs for DWF; fonts for desktop).
               putAll(backendLaunch.extraSystemProperties)
             },
           workingDirectory = destDir.absolutePath,
@@ -325,8 +325,8 @@ public object ServeBundleDaemon {
       return null
     }
 
-    // Extract the knob sidecars (`.overrides.json`, `.remotecompose.json`) so [readPreviews] can
-    // advertise editable knobs. Best-effort.
+    // Extract the knob and watchface sidecars (`.overrides.json`, `.remotecompose.json`,
+    // `.watchface.json`) so [readPreviews] can advertise editable knobs and complication slots.
     val previewsDir = File(destDir, "previews").apply { mkdirs() }
     extractKnobSidecars(zipBytes, previewsDir, fileSystem)
 
@@ -344,8 +344,8 @@ public object ServeBundleDaemon {
       label = system,
       // App-declared `@ThemeCatalog` themes for the live theme selector; empty when none.
       declaredThemes = readDeclaredThemes(previewsJson, fileSystem),
-      // Android daemons cost more of the live-seat budget ([LiveSeatLimiter]).
-      liveSeatWeight = if (backend == "android") ANDROID_LIVE_SEAT_WEIGHT else 1,
+      // Android daemons cost more of the live-seat budget ([LiveSeatLimiter]); DWF uses 1 seat.
+      liveSeatWeight = if (backend == "android" && !useDwfDaemon) ANDROID_LIVE_SEAT_WEIGHT else 1,
     )
   }
 
@@ -485,6 +485,42 @@ public object ServeBundleDaemon {
     return declaredThemesFromPreviews(manifest.previews)
   }
 
+  private fun readDwfAssetPaths(text: String): Map<String, String> {
+    val root =
+      runCatching { previewsManifestJson.parseToJsonElement(text) }.getOrNull()
+        as? kotlinx.serialization.json.JsonObject ?: return emptyMap()
+    val previews = root["previews"] as? kotlinx.serialization.json.JsonArray ?: return emptyMap()
+    val out = LinkedHashMap<String, String>()
+    for (entry in previews) {
+      val obj = entry as? kotlinx.serialization.json.JsonObject ?: continue
+      val id =
+        (obj["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf {
+          it.isNotBlank()
+        } ?: continue
+      val params = obj["params"] as? kotlinx.serialization.json.JsonObject ?: continue
+      val assetPath =
+        (params["dwfAssetPath"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf {
+          it.isNotBlank()
+        } ?: continue
+      out[id] = assetPath
+    }
+    return out
+  }
+
+  private fun isDwfOnlyManifest(previewsJson: File, fileSystem: FileSystem): Boolean {
+    val text =
+      try {
+        fileSystem.read(previewsJson.path.toPath()) { readUtf8() }
+      } catch (_: Exception) {
+        return false
+      }
+    val manifest =
+      runCatching { previewsManifestJson.decodeFromString(PreviewManifest.serializer(), text) }
+        .getOrNull() ?: return false
+    val dwfPaths = readDwfAssetPaths(text)
+    return manifest.previews.isNotEmpty() && manifest.previews.all { dwfPaths[it.id] != null }
+  }
+
   /**
    * Read the extracted `previews.json` into [ServePreview]s, with each preview's knobs from its
    * sidecars in [previewsDir].
@@ -503,12 +539,19 @@ public object ServeBundleDaemon {
     val manifest =
       runCatching { previewsManifestJson.decodeFromString(PreviewManifest.serializer(), text) }
         .getOrNull() ?: return emptyList()
+    val dwfPaths = readDwfAssetPaths(text)
     return manifest.previews.map {
       val (focus, gestures) = detectedFeaturesOf(it)
+      val watchFace = readWatchFaceSidecar(previewsDir, it.id, fileSystem)
+      val dwfAssetPath = dwfPaths[it.id] ?: watchFace?.dwfAssetPath?.takeIf { p -> p.isNotBlank() }
+      val kinds = it.dataProducts.mapTo(LinkedHashSet()) { product -> product.kind }
+      if (watchFace != null || dwfAssetPath != null) {
+        kinds.add(ee.schimke.composeai.bundle.WatchFaceComplicationsProduct.KIND)
+      }
       ServePreview(
         id = it.id,
-        label = it.functionName.ifBlank { it.id },
-        dataProductKinds = it.dataProducts.mapTo(LinkedHashSet()) { product -> product.kind },
+        label = it.functionName.ifBlank { it.params.name?.takeIf(String::isNotBlank) ?: it.id },
+        dataProductKinds = kinds,
         uiMode = it.params.uiMode,
         showBackground = it.params.showBackground,
         backgroundColor = it.params.backgroundColor,
@@ -519,6 +562,8 @@ public object ServeBundleDaemon {
         supportsFocus = focus,
         supportsGestures = gestures,
         fixedTheme = it.fixedTheme,
+        watchFace = watchFace,
+        dwfAssetPath = dwfAssetPath,
       )
     }
   }
@@ -533,7 +578,9 @@ public object ServeBundleDaemon {
         if (
           !entry.isDirectory &&
             name.startsWith("previews/") &&
-            (name.endsWith(OVERRIDES_SUFFIX) || name.endsWith(REMOTECOMPOSE_SUFFIX)) &&
+            (name.endsWith(OVERRIDES_SUFFIX) ||
+              name.endsWith(REMOTECOMPOSE_SUFFIX) ||
+              name.endsWith(ee.schimke.composeai.bundle.BUNDLE_WATCHFACE_SUFFIX)) &&
             ".." !in name.split("/")
         ) {
           // Strip `previews/` so files land directly under previewsDir, keyed by id.
@@ -588,6 +635,26 @@ public object ServeBundleDaemon {
         .declarations
     } catch (_: Exception) {
       emptyList()
+    }
+  }
+
+  /** [id]'s `<id>.watchface.json` complication & configuration metadata; absent means null. */
+  public fun readWatchFaceSidecar(
+    previewsDir: File,
+    id: String,
+    fileSystem: FileSystem,
+  ): ee.schimke.composeai.bundle.WatchFaceComplicationsPayload? {
+    val sidecar =
+      File(previewsDir, "$id${ee.schimke.composeai.bundle.BUNDLE_WATCHFACE_SUFFIX}").path.toPath()
+    if (!fileSystem.exists(sidecar)) return null
+    return try {
+      val text = fileSystem.read(sidecar) { readUtf8() }
+      overridesJson.decodeFromString(
+        ee.schimke.composeai.bundle.WatchFaceComplicationsPayload.serializer(),
+        text,
+      )
+    } catch (_: Exception) {
+      null
     }
   }
 
@@ -742,7 +809,54 @@ public object ServeBundleDaemon {
     val daemonClasspath: List<String>,
     val jvmArgs: List<String>,
     val extraSystemProperties: Map<String, String>,
+    val mainClass: String = DAEMON_MAIN_CLASS,
   )
+
+  /**
+   * Declarative Watch Face (`<WatchFace>`) launch: `lib-rcjvm` + `lib-daemon-desktop` (supplying
+   * Skiko + Compose Desktop runtime), spawning `DwfDaemonMain` with `composeai.daemon.resDirs`
+   * pointing at the extracted bundle resources (`classes/` + externalized resource dirs).
+   */
+  private fun dwfBundleDaemonLaunch(
+    system: String,
+    classesDir: File,
+    extraClasspathDirs: List<File>,
+    onLog: (String) -> Unit,
+  ): BackendDaemonLaunch? {
+    val rcjvmJars = locateBundleSidecarJars("lib-rcjvm")
+    if (rcjvmJars.isEmpty()) {
+      onLog(
+        "catalog $system: backend=dwf needs `lib-rcjvm/` (looked in " +
+          "${bundleSidecarSearchDescription("lib-rcjvm")}) — is this a `:cli:installDist` build?",
+      )
+      return null
+    }
+    val desktopJars = locateBundleSidecarJars("lib-daemon-desktop")
+    if (desktopJars.isEmpty()) {
+      onLog(
+        "catalog $system: backend=dwf needs `lib-daemon-desktop/` for Skiko natives (looked in " +
+          "${bundleSidecarSearchDescription("lib-daemon-desktop")})",
+      )
+      return null
+    }
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
+    val resDirs =
+      (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory })
+        .map { it.absolutePath }
+        .distinct()
+        .joinToString(File.pathSeparator)
+    return BackendDaemonLaunch(
+      variant = "dwf",
+      daemonClasspath =
+        (rcjvmJars + desktopJars + rendererJars)
+          .distinctBy { it.absoluteFile.normalize().path }
+          .map { it.absolutePath },
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
+      extraSystemProperties =
+        desktopFontSystemProperties() + mapOf("composeai.daemon.resDirs" to resDirs),
+      mainClass = DWF_DAEMON_MAIN_CLASS,
+    )
+  }
 
   /** Desktop (CMP/Skiko) launch: `lib-daemon-desktop` + `lib-renderer`, native-access opened. */
   private fun desktopBundleDaemonLaunch(
@@ -969,8 +1083,11 @@ public object ServeBundleDaemon {
   internal const val ANDROID_DAEMON_VERIFY_PROP =
     "composeai.serve.androidDaemonBytecodeVerification"
 
-  /** The daemon entrypoint a bundle spawns (both backends). */
+  /** The daemon entrypoint a bundle spawns (Android and Desktop backends). */
   private const val DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
+
+  /** The lightweight Skiko/JVM daemon entrypoint a Declarative Watch Face bundle spawns. */
+  private const val DWF_DAEMON_MAIN_CLASS = "ee.schimke.composeai.rcjvm.DwfDaemonMain"
 
   /** Descriptor schema version — mirrors `SubprocessRenderSessions.openBundleDaemon`. */
   private const val DAEMON_LAUNCH_SCHEMA_VERSION = 2
