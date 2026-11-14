@@ -239,6 +239,9 @@ final class ScreenPower {
   private void details(JSONObject c) throws JSONException {
     if (c.has("burnIn")) burnIn = c.getBoolean("burnIn");
     if (c.has("lowBit")) lowBit = c.getBoolean("lowBit");
+    if (WatchState.current() != null) {
+      WatchState.current().syncDisplay(policy.state() != ScreenPolicy.State.ON, burnIn, lowBit);
+    }
   }
 
   private JSONObject wake(String reason) {
@@ -317,6 +320,9 @@ final class ScreenPower {
     if (t.enterAmbient) {
       updates = 0;
       for (AmbientClients.Client client : ready) client.enter(burnIn, lowBit);
+    }
+    if (WatchState.current() != null) {
+      WatchState.current().syncDisplay(target != ScreenPolicy.State.ON, burnIn, lowBit);
     }
     if (wearUi != null) wearUi.screen(target);
     if (t.restartApp) {

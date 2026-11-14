@@ -54,25 +54,55 @@ final class SystemData {
       values.put("HEART_RATE_ACCURACY", accuracy(c.getString("heartRateAccuracy")));
     }
     if (c.has("steps")) values.put("DAILY_STEPS", c.getInt("steps"));
+    if (c.has("stepGoal") && WatchState.current() != null) {
+      WatchState.current().setStepGoal((float) c.getDouble("stepGoal"));
+    }
     if (c.has("distanceMeters")) {
       values.put("DAILY_DISTANCE_METERS", (float) c.getDouble("distanceMeters"));
     }
     if (c.has("calories")) values.put("DAILY_CALORIES", (float) c.getDouble("calories"));
     if (c.has("floors")) values.put("DAILY_FLOORS", (float) c.getDouble("floors"));
     publish();
+    if (WatchState.current() != null) {
+      WatchState.current().onHealthChanged();
+    }
     return describe();
   }
 
+  float heartRate() {
+    return values.get("HEART_RATE_BPM").floatValue();
+  }
+
+  int steps() {
+    return values.get("DAILY_STEPS").intValue();
+  }
+
+  float distanceMeters() {
+    return values.get("DAILY_DISTANCE_METERS").floatValue();
+  }
+
+  float calories() {
+    return values.get("DAILY_CALORIES").floatValue();
+  }
+
+  float floors() {
+    return values.get("DAILY_FLOORS").floatValue();
+  }
+
   JSONObject describe() {
-    return new Protocol.Json()
-        .put("heartRate", values.get("HEART_RATE_BPM"))
-        .put("heartRateAccuracy", accuracyName(values.get("HEART_RATE_ACCURACY").intValue()))
-        .put("steps", values.get("DAILY_STEPS"))
-        .put("distanceMeters", values.get("DAILY_DISTANCE_METERS"))
-        .put("calories", values.get("DAILY_CALORIES"))
-        .put("floors", values.get("DAILY_FLOORS"))
-        .put("receivers", receivers.size() + listeners.size())
-        .object();
+    Protocol.Json json =
+        new Protocol.Json()
+            .put("heartRate", values.get("HEART_RATE_BPM"))
+            .put("heartRateAccuracy", accuracyName(values.get("HEART_RATE_ACCURACY").intValue()))
+            .put("steps", values.get("DAILY_STEPS"))
+            .put("distanceMeters", values.get("DAILY_DISTANCE_METERS"))
+            .put("calories", values.get("DAILY_CALORIES"))
+            .put("floors", values.get("DAILY_FLOORS"))
+            .put("receivers", receivers.size() + listeners.size());
+    if (WatchState.current() != null) {
+      json.put("stepGoal", WatchState.current().stepGoal());
+    }
+    return json.object();
   }
 
   private static int accuracy(String name) {

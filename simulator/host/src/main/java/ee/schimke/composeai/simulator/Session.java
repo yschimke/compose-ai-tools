@@ -176,6 +176,7 @@ final class Session {
     DeviceBroadcasts.attach(app, navigator, protocol);
     DeviceProviders.serve(app);
     DeviceServices.serve(app);
+    ComplicationSourceClient.serveOnBus(app);
     // The device's one clipboard and settings, shared with its other apps.
     DeviceClipboard.attach(app);
     DeviceSettings.attach(app);
@@ -247,8 +248,8 @@ final class Session {
     LayoutBounds.cycle();
     if (wear != null) wear.cycle();
     if (phoneUi != null) phoneUi.cycle();
-    // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the wall clock.
-    if (timeTick.due(System.currentTimeMillis())) {
+    // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the simulated clock.
+    if (timeTick.due(WatchState.currentTimeMillis())) {
       app.sendBroadcast(new Intent(Intent.ACTION_TIME_TICK));
     }
     screen.cycle();
@@ -447,6 +448,21 @@ final class Session {
     if (emulated == null) emulated = displays.command(name, c);
     if (emulated == null) emulated = screen.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null && WatchState.current() != null) {
+      switch (name) {
+        case "clock":
+          emulated = WatchState.current().clockCommand(c);
+          break;
+        case "weather":
+          emulated = WatchState.current().weatherCommand(c);
+          break;
+        case "accel":
+          emulated = WatchState.current().accelCommand(c);
+          break;
+        default:
+          break;
+      }
+    }
     if (emulated == null && phoneUi != null) emulated = phoneUi.command(name, c);
     if (emulated == null) emulated = notifications.command(name, c);
     if (emulated == null) emulated = launcherCommand(name, c);

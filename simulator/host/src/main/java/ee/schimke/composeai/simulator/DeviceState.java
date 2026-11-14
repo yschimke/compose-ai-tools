@@ -121,12 +121,16 @@ final class DeviceState {
       power.setIsPowerSaveMode(powerSave);
       navigator.broadcast(new Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED));
     }
+    boolean effectivePowerSave = app.getSystemService(PowerManager.class).isPowerSaveMode();
+    if (WatchState.current() != null) {
+      WatchState.current().syncBattery(batteryLevel, charging, warnings.low(), effectivePowerSave);
+    }
     return new Protocol.Json()
         .put("level", batteryLevel)
         .put("charging", charging)
         .put("plugged", pluggedName(plugged))
         .put("low", warnings.low())
-        .put("powerSave", app.getSystemService(PowerManager.class).isPowerSaveMode())
+        .put("powerSave", effectivePowerSave)
         .object();
   }
 
@@ -181,7 +185,7 @@ final class DeviceState {
       if (c.has("altitude")) fix.setAltitude(c.getDouble("altitude"));
       if (c.has("bearing")) fix.setBearing((float) c.getDouble("bearing"));
       if (c.has("speed")) fix.setSpeed((float) c.getDouble("speed"));
-      fix.setTime(System.currentTimeMillis());
+      fix.setTime(WatchState.currentTimeMillis());
       fix.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
       shadow.simulateLocation(provider, fix);
     }
@@ -200,12 +204,15 @@ final class DeviceState {
       throw new IllegalArgumentException("unknown time zone " + id);
     }
     TimeZone.setDefault(zone);
+    if (WatchState.current() != null) {
+      WatchState.current().notifyTimezoneChanged();
+    }
     JSONObject delivered =
         navigator.broadcast(
             new Intent(Intent.ACTION_TIMEZONE_CHANGED).putExtra("time-zone", zone.getID()));
     return new Protocol.Json()
         .put("timezone", TimeZone.getDefault().getID())
-        .put("offsetMinutes", zone.getOffset(System.currentTimeMillis()) / 60000)
+        .put("offsetMinutes", zone.getOffset(WatchState.currentTimeMillis()) / 60000)
         .put("broadcast", delivered)
         .object();
   }

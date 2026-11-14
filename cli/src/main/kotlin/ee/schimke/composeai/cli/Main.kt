@@ -47,6 +47,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
     "provision" to { a -> ProvisionCommand(a).run() },
+    "dwf-runtime" to { a -> DwfRuntimeCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
     "pin" to { a -> PinCommand(a).run() },
     "auth" to { a -> AuthCommand(a).run() },

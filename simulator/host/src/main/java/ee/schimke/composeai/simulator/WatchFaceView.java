@@ -84,10 +84,21 @@ final class WatchFaceView extends View {
     if (!shown.equals(timeText())) invalidate();
   }
 
+  private static Calendar currentCalendar() {
+    WatchState ws = WatchState.current();
+    Calendar cal =
+        ws != null ? Calendar.getInstance(ws.timeZone()) : Calendar.getInstance();
+    cal.setTimeInMillis(WatchState.currentTimeMillis());
+    return cal;
+  }
+
   private static String timeText() {
-    Calendar now = Calendar.getInstance();
-    return String.format(
-        Locale.ROOT, "%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE));
+    Calendar now = currentCalendar();
+    WatchState ws = WatchState.current();
+    boolean is24 = ws == null || ws.is24Hour();
+    int hour = is24 ? now.get(Calendar.HOUR_OF_DAY) : now.get(Calendar.HOUR);
+    if (!is24 && hour == 0) hour = 12;
+    return String.format(Locale.ROOT, "%02d:%02d", hour, now.get(Calendar.MINUTE));
   }
 
   @Override
@@ -126,7 +137,7 @@ final class WatchFaceView extends View {
       }
     }
     shown = timeText();
-    Calendar now = Calendar.getInstance();
+    Calendar now = currentCalendar();
     String day =
         String.format(
             Locale.ROOT,

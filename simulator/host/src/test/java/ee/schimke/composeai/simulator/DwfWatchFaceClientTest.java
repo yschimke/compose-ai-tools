@@ -334,4 +334,147 @@ public class DwfWatchFaceClientTest {
     assertEquals(10000f, target.floats.get("dwf.complication.1.max").floatValue(), 0.001f);
     assertEquals(0, target.ints.get("dwf.complication.1.has_monochromatic_image").intValue());
   }
+
+  @Test
+  public void injectsWatchStatePlatformWeatherAccelAmbientAndPaletteVariables() throws Exception {
+    WatchState state = new WatchState(null, null);
+    try {
+      state.clockCommand(new JSONObject().put("is24Hour", true));
+      state.weatherCommand(
+          new JSONObject()
+              .put("available", true)
+              .put("condition", "RAIN")
+              .put("temperature", 19.5)
+              .put("temperatureHigh", 23.0)
+              .put("temperatureLow", 14.0)
+              .put("chanceOfPrecipitation", 70)
+              .put("uvIndex", 4)
+              .put(
+                  "hours",
+                  new org.json.JSONArray()
+                      .put(new JSONObject().put("condition", "CLOUDY").put("temperature", 20.0)))
+              .put(
+                  "days",
+                  new org.json.JSONArray()
+                      .put(
+                          new JSONObject()
+                              .put("condition", "RAIN")
+                              .put("chanceOfPrecipitation", 70))));
+      state.accelCommand(new JSONObject().put("x", 15.0).put("y", -8.0));
+      state.syncBattery(64, true, false, false);
+      state.syncNotifications(3);
+
+      DwfWatchFaceClient.ConfigOption emeraldOpt =
+          new DwfWatchFaceClient.ConfigOption(
+              "emerald",
+              "Emerald",
+              List.of(
+                  Integer.valueOf(0xFF00C853),
+                  Integer.valueOf(0xFF4C8C64),
+                  Integer.valueOf(0xFF00B0FF)));
+      DwfWatchFaceClient.ConfigSpec themeSetting =
+          new DwfWatchFaceClient.ConfigSpec(
+              "colorTheme", "COLOR", "Theme", "emerald", List.of(emeraldOpt));
+
+      WatchFaceClient.Slot boundedSlot =
+          new WatchFaceClient.Slot(10, new int[] {3, 5}, true, 100, 150, 200, 250);
+      DwfWatchFaceClient.Entry entry =
+          new DwfWatchFaceClient.Entry(
+              "com.example/.WatchFace",
+              "WeatherFace",
+              new File("."),
+              "watchface.rc",
+              450,
+              450,
+              "CIRCLE",
+              List.of(boundedSlot),
+              List.of(themeSetting));
+
+      DwfWatchFaceClient client = new DwfWatchFaceClient(null, entry, null);
+      FakePlayerTarget target = new FakePlayerTarget();
+      client.applyVariablesTo(target, true);
+
+      assertEquals(1, target.ints.get("dwf.is_ambient").intValue());
+      assertEquals(1, target.ints.get("dwf.is_24_hour").intValue());
+      assertEquals(64f, target.floats.get("dwf.battery_percent").floatValue(), 0.01f);
+      assertEquals(1, target.ints.get("dwf.battery_charging").intValue());
+      assertEquals(3, target.ints.get("dwf.unread_notifications").intValue());
+      assertEquals(1, target.ints.get("dwf.weather.is_available").intValue());
+      assertEquals(6, target.ints.get("dwf.weather.condition").intValue()); // RAIN -> 6
+      assertEquals(19.5f, target.floats.get("dwf.weather.temperature").floatValue(), 0.01f);
+      assertEquals(70, target.ints.get("dwf.weather.days.1.chance_of_precipitation").intValue());
+      assertEquals(1, target.ints.get("dwf.weather.hours.1.is_available").intValue());
+      assertEquals(2, target.ints.get("dwf.weather.hours.1.condition").intValue()); // CLOUDY -> 2
+      assertEquals(15f, target.floats.get("dwf.accel_angle_x").floatValue(), 0.01f);
+      assertEquals(-8f, target.floats.get("dwf.accel_angle_y").floatValue(), 0.01f);
+
+      WatchFaceDynamicColors.Palette palette = client.extractPalette();
+      assertEquals("configuration:colorTheme:emerald", palette.source);
+      assertEquals(0xFF00C853, palette.primaryArgb);
+      assertEquals(0xFF4C8C64, palette.secondaryArgb);
+      assertEquals(0xFF00B0FF, palette.tertiaryArgb);
+
+      client.start(900, 900, false);
+      List<WatchFaceClient.Slot> scaled = client.slots();
+      assertEquals(1, scaled.size());
+      assertTrue(scaled.get(0).hasBounds);
+      assertEquals(200, scaled.get(0).left);
+      assertEquals(300, scaled.get(0).top);
+      assertEquals(400, scaled.get(0).right);
+      assertEquals(500, scaled.get(0).bottom);
+    } finally {
+      WatchState.resetCurrent();
+    }
+  }
+
+  @Test
+  public void defaultSystemProviderSlotsFollowWatchStateUntilTheAgentTakesThemOver()
+      throws Exception {
+    WatchState state = new WatchState(null, null);
+    try {
+      state.syncBattery(37, false, false, false);
+      state.syncNotifications(5);
+      state.setStepGoal(8000f);
+
+      DwfWatchFaceClient.Entry entry =
+          new DwfWatchFaceClient.Entry(
+              "com.example/.WatchFace",
+              "ProviderFace",
+              new File("."),
+              "watchface.rc",
+              450,
+              450,
+              "CIRCLE",
+              List.of(
+                  new WatchFaceClient.Slot(1, new int[] {3, 5}, true),
+                  new WatchFaceClient.Slot(2, new int[] {3, 5}, true),
+                  new WatchFaceClient.Slot(3, new int[] {3}, true)),
+              List.of(),
+              Map.of(
+                  Integer.valueOf(1), "STEP_COUNT",
+                  Integer.valueOf(2), "WATCH_BATTERY",
+                  Integer.valueOf(3), "UNREAD_NOTIFICATION_COUNT"));
+
+      DwfWatchFaceClient client = new DwfWatchFaceClient(null, entry, null);
+      FakePlayerTarget target = new FakePlayerTarget();
+      client.applyVariablesTo(target, false);
+
+      assertEquals(Integer.toString(state.steps()), target.strings.get("dwf.complication.1.text"));
+      assertEquals(8000f, target.floats.get("dwf.complication.1.max").floatValue(), 0.01f);
+      assertEquals("37%", target.strings.get("dwf.complication.2.text"));
+      assertEquals(37f, target.floats.get("dwf.complication.2.value").floatValue(), 0.01f);
+      assertEquals("5", target.strings.get("dwf.complication.3.text"));
+
+      DwfWatchFaceClient.FakeComplication fake =
+          DwfWatchFaceClient.FakeComplication.fromJson(
+              new JSONObject().put("type", "SHORT_TEXT").put("text", "Agent"), 1);
+      client.putFakeComplication(1, fake);
+      target = new FakePlayerTarget();
+      client.applyVariablesTo(target, false);
+      assertEquals("Agent", target.strings.get("dwf.complication.1.text"));
+      assertEquals("37%", target.strings.get("dwf.complication.2.text"));
+    } finally {
+      WatchState.resetCurrent();
+    }
+  }
 }

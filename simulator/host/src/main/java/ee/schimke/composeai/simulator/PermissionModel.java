@@ -27,6 +27,8 @@ final class PermissionModel {
   static final String BODY_SENSORS = "android.permission.BODY_SENSORS";
   static final String BODY_SENSORS_BACKGROUND = "android.permission.BODY_SENSORS_BACKGROUND";
   static final String VISUAL_USER_SELECTED = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED";
+  static final String SET_PUSHED_WATCH_FACE_AS_ACTIVE =
+      "com.google.wear.permission.SET_PUSHED_WATCH_FACE_AS_ACTIVE";
 
   /** How a permission in a request was answered. */
   enum How {
@@ -145,6 +147,7 @@ final class PermissionModel {
     }
     SINCE.put(VISUAL_USER_SELECTED, 34);
     SINCE.put("android.permission.RANGING", 36);
+    SINCE.put(SET_PUSHED_WATCH_FACE_AS_ACTIVE, 36);
     // Android 17; before it, local network access rides on NEARBY_WIFI_DEVICES.
     SINCE.put("android.permission.ACCESS_LOCAL_NETWORK", 37);
   }
@@ -217,13 +220,15 @@ final class PermissionModel {
   /** A permission the platform defines, rather than the app or another package. */
   static boolean isPlatform(String name) {
     return name.startsWith("android.permission.")
-        || name.equals("com.android.voicemail.permission.ADD_VOICEMAIL");
+        || name.equals("com.android.voicemail.permission.ADD_VOICEMAIL")
+        || name.equals(SET_PUSHED_WATCH_FACE_AS_ACTIVE);
   }
 
   /** Whether the platform permission [name] is a runtime one: Health Connect's all are. */
   static boolean isPlatformRuntime(String name) {
     if (name.startsWith("android.permission.health.")) return true;
     if (name.equals("com.android.voicemail.permission.ADD_VOICEMAIL")) return true;
+    if (name.equals(SET_PUSHED_WATCH_FACE_AS_ACTIVE)) return true;
     return name.startsWith("android.permission.")
         && RUNTIME.contains(name.substring("android.permission.".length()));
   }

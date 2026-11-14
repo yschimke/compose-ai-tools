@@ -108,7 +108,9 @@ final class SimulatorSandbox {
                 ShadowPlatformStorage.class,
                 // Optional Wear SDK APIs are signature-only Android library classes bundled by
                 // Wear apps, not android.jar. The simulator supplies the safe haptic mapping.
-                ShadowWearHapticFeedbackConstants.class);
+                ShadowWearHapticFeedbackConstants.class,
+                // Dynamic Material 3 system colors derived from the active watch face palette.
+                SimulatorShadowResources.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class);
