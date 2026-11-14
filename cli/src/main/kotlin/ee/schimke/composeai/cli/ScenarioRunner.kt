@@ -663,16 +663,21 @@ internal object ScenarioRunner {
         when (cur) {
           is JsonObject -> cur[segment]
           is JsonArray -> {
-            val idx = segment.toIntOrNull()
-            if (idx != null && idx in cur.indices) cur[idx]
-            else {
-              // Also allow matching array element by `id`, `slotId`, or `slot`
-              // (`complications.10`).
-              cur.firstOrNull { item ->
+            if (segment.startsWith("[") && segment.endsWith("]")) {
+              val idx = segment.substring(1, segment.length - 1).toIntOrNull()
+              if (idx != null && idx in cur.indices) cur[idx] else null
+            } else {
+              val byIdentifier = cur.firstOrNull { item ->
                 item is JsonObject &&
                   ((item["id"] as? JsonPrimitive)?.contentOrNull == segment ||
                     (item["slotId"] as? JsonPrimitive)?.contentOrNull == segment ||
                     (item["slot"] as? JsonPrimitive)?.contentOrNull == segment)
+              }
+              if (byIdentifier != null) {
+                byIdentifier
+              } else {
+                val idx = segment.toIntOrNull()
+                if (idx != null && idx in cur.indices) cur[idx] else null
               }
             }
           }

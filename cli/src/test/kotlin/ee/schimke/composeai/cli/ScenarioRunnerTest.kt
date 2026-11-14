@@ -37,7 +37,9 @@ class ScenarioRunnerTest {
           - snapshot: interactive-1008
           - expect:
               status.colors.primary: "#7B61FF±16"
-              status.complications.10.text: "132 bpm"
+              status.complications.1.text: "8,420 steps"
+              status.complications.2.text: "132 bpm"
+              status.complications.[1].text: "132 bpm"
               frame.litPixelRatio: "> 0.10"
           - ambient: { enabled: true, burnIn: true }
           - snapshot: ambient-1008
@@ -96,7 +98,13 @@ class ScenarioRunnerTest {
                         buildJsonArray {
                           add(
                             buildJsonObject {
-                              put("slot", 10)
+                              put("slot", 1)
+                              put("text", "8,420 steps")
+                            },
+                          )
+                          add(
+                            buildJsonObject {
+                              put("slot", 2)
                               put("text", "132 bpm")
                             },
                           )
