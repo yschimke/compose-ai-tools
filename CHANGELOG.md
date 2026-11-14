@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.92.0](https://github.com/yschimke/compose-ai-tools/compare/v2.91.0...v2.92.0) (2026-11-14)
+
+
+### Features
+
+* add DWF watch face preview daemon and dynamic complication overrides ([#6542](https://github.com/yschimke/compose-ai-tools/issues/6542)) ([487ddd1](https://github.com/yschimke/compose-ai-tools/commit/487ddd1b6cc500dbd7c4e5ba7dc8e56d1f5e5c25))
+* **simulator:** support Wear watch face, Watch Face Push and complication scenarios ([#6544](https://github.com/yschimke/compose-ai-tools/issues/6544)) ([016ece9](https://github.com/yschimke/compose-ai-tools/commit/016ece98196ff610e89a40a14866c01b3f0a3315))
+* support DWF watch face bundles and renderer-neutral serve overrides ([#6545](https://github.com/yschimke/compose-ai-tools/issues/6545)) ([94fc8f6](https://github.com/yschimke/compose-ai-tools/commit/94fc8f6de3c387bf34e1dbae5bdf9c65ba3d212e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.1.3 ([#6538](https://github.com/yschimke/compose-ai-tools/issues/6538)) ([f35a086](https://github.com/yschimke/compose-ai-tools/commit/f35a08696ac994bdabee30c2b407a95ddf6ee1d3))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.2.0 ([#6541](https://github.com/yschimke/compose-ai-tools/issues/6541)) ([710fe9f](https://github.com/yschimke/compose-ai-tools/commit/710fe9f3cb6579db9f80bdf6322166217cbc9748))
+* translate portable overrides in static DWF fallback and keep unbridged APK lane unavailable ([#6546](https://github.com/yschimke/compose-ai-tools/issues/6546)) ([bb414aa](https://github.com/yschimke/compose-ai-tools/commit/bb414aa620289c2638e8b32b94385a9b66438998))
+
 ## [2.91.0](https://github.com/yschimke/compose-ai-tools/compare/v2.90.1...v2.91.0) (2026-11-13)
 
 
