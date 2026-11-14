@@ -70,8 +70,20 @@ public object DwfVariables {
   /** Current temperature (`RemoteFloat`). */
   public const val WEATHER_TEMPERATURE: String = "dwf.weather.temperature"
 
+  /** Daily high temperature (`RemoteFloat`). */
+  public const val WEATHER_TEMPERATURE_HIGH: String = "dwf.weather.temperature_high"
+
+  /** Daily low temperature (`RemoteFloat`). */
+  public const val WEATHER_TEMPERATURE_LOW: String = "dwf.weather.temperature_low"
+
   /** Temperature unit (`1` = Celsius, `0` = Fahrenheit, `RemoteInt`). */
   public const val WEATHER_TEMPERATURE_UNIT: String = "dwf.weather.temperature_unit"
+
+  /** Current precipitation probability in `[0, 100]` (`RemoteInt`). */
+  public const val WEATHER_CHANCE_OF_PRECIPITATION: String = "dwf.weather.chance_of_precipitation"
+
+  /** Current UV index (`RemoteInt`). */
+  public const val WEATHER_UV_INDEX: String = "dwf.weather.uv_index"
 
   /** Formatted last-updated time string for `icuText(..., [WEATHER.LAST_UPDATED])`. */
   public const val WEATHER_LAST_UPDATED_TEXT: String = "dwf.weather.last_updated_text"
@@ -90,6 +102,10 @@ public object DwfVariables {
   /** Hourly weather forecast temperature (`RemoteFloat`) for 1-based [hourOffset]. */
   public fun weatherHourTemperatureKey(hourOffset: Int): String =
     "dwf.weather.hours.$hourOffset.temperature"
+
+  /** Hourly weather forecast UV index (`RemoteInt`) for 1-based [hourOffset]. */
+  public fun weatherHourUvIndexKey(hourOffset: Int): String =
+    "dwf.weather.hours.$hourOffset.uv_index"
 
   /** Daily weather forecast availability (`RemoteBoolean`) for 1-based [dayOffset]. */
   public fun weatherDayAvailableKey(dayOffset: Int): String =
@@ -120,6 +136,9 @@ public object DwfVariables {
    */
   public fun weatherDayNightPrecipKey(dayOffset: Int): String =
     "dwf.weather.days.$dayOffset.chance_of_precipitation_night"
+
+  /** Daily weather forecast UV index (`RemoteInt`) for 1-based [dayOffset]. */
+  public fun weatherDayUvIndexKey(dayOffset: Int): String = "dwf.weather.days.$dayOffset.uv_index"
 
   /** Selected option/boolean/string value for `<ListConfiguration>` or `<BooleanConfiguration>`. */
   public fun configKey(configId: String): String = "dwf.config.$configId"

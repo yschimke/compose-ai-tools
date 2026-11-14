@@ -405,6 +405,16 @@ final class TileHost {
     index = pages().indexOf(item.tile() ? item.key() : WIDGETS_PAGE);
   }
 
+  /** Re-requests every added tile and Wear Widget (for example when dynamic theme colors change). */
+  void refreshAll() {
+    for (TileClient client : clients.values()) {
+      client.request();
+    }
+    for (WidgetClient widget : widgetClients.values()) {
+      widget.request();
+    }
+  }
+
   boolean next() {
     if (index() + 1 >= pages().size()) return false;
     index = index() + 1;

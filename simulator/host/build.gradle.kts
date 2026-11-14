@@ -161,7 +161,12 @@ dependencies {
 
 // `NetworkGate` reaches into `java.net`'s socket and resolver internals, as the launched simulator
 // JVM lets it (`LaunchCommand` opens the package there too).
-tasks.withType<Test>().configureEach { jvmArgs("--add-opens=java.base/java.net=ALL-UNNAMED") }
+tasks.withType<Test>().configureEach {
+  jvmArgs(
+    "--add-opens=java.base/java.net=ALL-UNNAMED",
+    "--add-opens=java.base/java.io=ALL-UNNAMED",
+  )
+}
 
 // The Wear tile renderer and Remote Compose View player for `--launcher`'s tiles and widgets
 // carousel. Apps do not ship them, so the simulator
@@ -305,12 +310,26 @@ val tileRendererRJar =
     from(tileRendererR.output)
   }
 
+// The players' JVM half, `androidx.compose.remote:remote-core` (a plain jar, so not an AAR above).
+// A watch face compiled from WFF plays through `DwfWatchFaceClient` in whatever app is on the
+// watch, and a resource-only face or an app without Remote Compose carries no copy of it; an app
+// that does ship one still wins, as with the renderer AARs.
+val simulatorJvmLibs =
+  configurations.create("simulatorJvmLibs") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    isTransitive = false
+  }
+
+dependencies { add("simulatorJvmLibs", libs.compose.remote.core) }
+
 dependencies {
   runtimeOnly(
     files(unpackTileRenderer.flatMap { it.jars }.map { dir -> dir.asFileTree.files.sorted() })
       .builtBy(unpackTileRenderer),
   )
   runtimeOnly(files(tileRendererRJar.flatMap { it.archiveFile }).builtBy(tileRendererRJar))
+  runtimeOnly(files(simulatorJvmLibs))
 }
 
 // The simulator JVM also loads this jar as its `-javaagent`, so a reload can redefine the app's

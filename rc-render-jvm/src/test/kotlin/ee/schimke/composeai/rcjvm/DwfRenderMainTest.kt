@@ -213,6 +213,47 @@ class DwfRenderMainTest {
     assertThat(entry.slots.single().supportedTypes).containsExactly(3, 5).inOrder()
   }
 
+  @Test
+  fun compilesApkDwfWithOverridableForecastWeatherVariables() {
+    val workDir = temp.newFolder("apk-dwf-weather")
+    val wfDir = File(workDir, "watchfaces").apply { mkdirs() }
+    File(wfDir, "weather_face.xml")
+      .writeText(
+        """
+        <WatchFace width="450" height="450" clipShape="CIRCLE">
+          <Scene backgroundColor="#FF000000">
+            <PartText x="40" y="140" width="370" height="70">
+              <Text>
+                <Font size="44" color="#FFFFFFFF">
+                  <Template>%d / %d<Parameter expression="[WEATHER.HOURS.1.TEMPERATURE]" /><Parameter expression="[WEATHER.DAYS.1.TEMPERATURE_HIGH]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent(),
+      )
+
+    val manifest = compileApkWatchFaces(workDir)
+    val rcBytes = File(workDir, manifest.watchFaces.single().rcFile).readBytes()
+    val defaultPng = renderDwfDocumentToPng(bytes = rcBytes, widthPx = 450, heightPx = 450)
+    val overriddenPng =
+      renderDwfDocumentToPng(
+        bytes = rcBytes,
+        widthPx = 450,
+        heightPx = 450,
+        seeds =
+          mapOf(
+            DwfVariables.weatherHourTemperatureKey(1) to RcNamedValue.FloatValue(5f),
+            DwfVariables.weatherDayTempHighKey(1) to RcNamedValue.FloatValue(34f),
+          ),
+      )
+    val bmpDefault = Bitmap.makeFromImage(Image.makeFromEncoded(defaultPng))
+    val bmpOverridden = Bitmap.makeFromImage(Image.makeFromEncoded(overriddenPng))
+    assertThat(pixelHash(bmpOverridden)).isNotEqualTo(pixelHash(bmpDefault))
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {

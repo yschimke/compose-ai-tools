@@ -25,6 +25,10 @@ internal class PairedLaunch(
   private val aliases: Map<String, String> = emptyMap(),
   /** Where a command naming no device goes: the first simulator, or a name [aliases] routes. */
   private val primary: String = devices.first().first,
+  /** Control command stream (defaults to stdin). */
+  private val input: java.io.Reader = System.`in`.reader(Charsets.UTF_8),
+  /** Outbound JSON-lines sink (defaults to stdout). */
+  private val output: (String) -> Unit = Companion::emit,
 ) {
 
   fun run(): Int {
@@ -34,7 +38,7 @@ internal class PairedLaunch(
     val supervisors = devices.toMap()
     if (control) {
       daemon("paired-in") {
-        System.`in`.bufferedReader().useLines { lines ->
+        java.io.BufferedReader(input).useLines { lines ->
           for (line in lines) {
             if (line.isBlank()) continue
             // A lone simulator takes every command, whatever device it names.
@@ -42,7 +46,7 @@ internal class PairedLaunch(
               if (devices.size == 1) devices.single().second
               else (deviceOf(line) ?: primary).let { supervisors[it] ?: supervisors[aliases[it]] }
             if (target == null) {
-              emit(
+              output(
                 """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are running"}""",
               )
               continue

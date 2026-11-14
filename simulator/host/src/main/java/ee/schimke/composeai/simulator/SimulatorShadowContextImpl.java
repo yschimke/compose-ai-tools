@@ -75,6 +75,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation
   @Override
   protected void sendBroadcast(Intent intent) {
+    if (WatchFaceHost.interceptComplicationUpdateBroadcast(intent)) return;
     // The device's other apps get it too; one naming another app is that app's alone.
     if (DeviceBroadcasts.send(intent, null)) return;
     if (!Navigator.appSentBroadcast(intent)) super.sendBroadcast(intent);
@@ -83,6 +84,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation
   @Override
   protected void sendBroadcast(Intent intent, String receiverPermission) {
+    if (WatchFaceHost.interceptComplicationUpdateBroadcast(intent)) return;
     if (DeviceBroadcasts.send(intent, receiverPermission)) return;
     // The receivers are the app's own, so they hold the permission when the app does; when it does
     // not, Robolectric's delivery applies the check and no manifest receiver could pass it.

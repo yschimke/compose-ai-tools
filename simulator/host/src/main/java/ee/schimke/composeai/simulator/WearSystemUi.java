@@ -90,6 +90,7 @@ final class WearSystemUi {
   private final NotificationStream stream;
   private final TileHost tiles;
   private final SystemData systemData;
+  private final WatchState watchState;
   /** Each tile's page, which keeps its rendered view while other pages show. */
   private final java.util.Map<String, FrameLayout> tilePages = new java.util.HashMap<>();
   /** Each widget's frame on the widgets page, which keeps its player across rebuilds. */
@@ -129,6 +130,7 @@ final class WearSystemUi {
     this.protocol = protocol;
     this.stream = stream;
     this.systemData = new SystemData(app);
+    this.watchState = new WatchState(app, navigator, systemData);
     this.tiles = new TileHost(app, navigator, systemData, this::tileRendered, this::widgetRendered);
     this.watchFaces =
         new WatchFaceHost(
@@ -145,8 +147,31 @@ final class WearSystemUi {
               public void builtInComplication(String text) {
                 if (faceView != null) faceView.complication(text);
               }
-            });
+            },
+            this::onThemeColorsChanged);
+    this.watchState.onChange(
+        () -> {
+          protocol.event("watchState", watchState.toJson());
+          watchFaces.onWatchStateChanged();
+          if (faceView != null) faceView.invalidate();
+        });
     stream.onChange(this::streamChanged);
+  }
+
+  void onThemeColorsChanged() {
+    tiles.refreshAll();
+    if (surface == Surface.TILES && onTop() && root != null) {
+      buildCarousel();
+    }
+    for (Navigator.Entry entry : navigator.backStack()) {
+      if (!entry.system && entry.displayId == android.view.Display.DEFAULT_DISPLAY) {
+        try {
+          navigator.recreate(android.view.Display.DEFAULT_DISPLAY);
+        } catch (RuntimeException ignored) {
+        }
+        break;
+      }
+    }
   }
 
   /** The system UI when {@code --launcher} asked for it on a Wear app, else null. */
@@ -182,7 +207,7 @@ final class WearSystemUi {
     if (now - lastTick < 1000) return;
     lastTick = now;
     faceView.tick();
-    int minute = (int) (System.currentTimeMillis() / 60_000L);
+    int minute = (int) (watchState.nowMillis() / 60_000L);
     watchFaces.tick(minute != lastMinute);
     lastMinute = minute;
     if (surface == Surface.WATCHFACE) refreshChip();
@@ -336,7 +361,12 @@ final class WearSystemUi {
         {
           JSONObject result = watchFaces.command(c);
           String op = c.optString("op", "status");
-          if (!op.equals("status") && !op.equals("uncomplication") && !op.equals("unset")) {
+          if (!op.equals("status")
+              && !op.equals("pushed")
+              && !op.equals("theme")
+              && !op.equals("tap")
+              && !op.equals("uncomplication")
+              && !op.equals("unset")) {
             show(Surface.WATCHFACE);
           }
           return result;
@@ -347,6 +377,12 @@ final class WearSystemUi {
           if (surface == Surface.TILES && onTop()) buildCarousel();
           return data;
         }
+      case "clock":
+        return watchState.clockCommand(c);
+      case "weather":
+        return watchState.weatherCommand(c);
+      case "accel":
+        return watchState.accelCommand(c);
       default:
         return null;
     }
@@ -361,6 +397,9 @@ final class WearSystemUi {
       case "tiles":
       case "watchface":
       case "health":
+      case "clock":
+      case "weather":
+      case "accel":
         return true;
       default:
         return false;
@@ -374,6 +413,7 @@ final class WearSystemUi {
    */
   void screen(ScreenPolicy.State state) {
     ambient = state != ScreenPolicy.State.ON;
+    watchState.syncDisplay(ambient, watchState.burnIn(), watchState.lowBit());
     if (faceView != null) faceView.ambient(ambient);
     watchFaces.ambient(ambient);
     if (ongoingChip != null) ongoingChip.setAlpha(ambient ? 0.5f : 1f);
@@ -576,6 +616,7 @@ final class WearSystemUi {
 
   private void streamChanged() {
     List<NotificationStream.Item> shown = stream.shown();
+    watchState.syncNotifications(shown.size());
     NotificationStream.Item interrupting = null;
     for (NotificationStream.Item item : shown) {
       if (seen.add(item.key + "@" + item.postTime) && stream.headsUp(item) && interrupting == null) {
@@ -1262,7 +1303,12 @@ final class WearSystemUi {
           {
             int dx = (int) (event.getX() - downX);
             int dy = (int) (event.getY() - downY);
-            if (claimed && Math.hypot(dx, dy) > slop * 3) ui.swiped(dx, dy);
+            double dist = Math.hypot(dx, dy);
+            if (claimed && dist > slop * 3) {
+              ui.swiped(dx, dy);
+            } else if (dist <= slop && ui.surface == Surface.WATCHFACE) {
+              ui.watchFaces.tapAt(event.getX(), event.getY());
+            }
             claimed = false;
             return true;
           }

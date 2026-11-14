@@ -1666,22 +1666,21 @@ internal class DwfExpressionCompiler(
             EvalValue.Num(state.toRemoteFloat(), isInteger = true)
           }
           "TEMPERATURE" -> {
-            if (hourSeed != null) {
-              val key = DwfVariables.weatherHourTemperatureKey(hourIdx)
-              val state =
-                weatherFloatCache.getOrPut(key) {
-                  RemoteFloat.createNamedRemoteFloat(key, hourSeed.temperature)
-                }
-              EvalValue.Num(round(state), isInteger = true)
-            } else {
-              EvalValue.Num(round(weatherTemperature + tempOffset.toFloat().rf), isInteger = true)
-            }
+            val key = DwfVariables.weatherHourTemperatureKey(hourIdx)
+            val defaultTemp = hourSeed?.temperature ?: (wd.temperature + tempOffset.toFloat())
+            val state =
+              weatherFloatCache.getOrPut(key) {
+                RemoteFloat.createNamedRemoteFloat(key, defaultTemp)
+              }
+            EvalValue.Num(round(state), isInteger = true)
           }
-          "UV_INDEX" ->
-            EvalValue.Num(
-              (hourSeed?.uvIndex?.toFloat() ?: kotlin.math.max(0, 6 - hourIdx).toFloat()).rf,
-              isInteger = true,
-            )
+          "UV_INDEX" -> {
+            val key = DwfVariables.weatherHourUvIndexKey(hourIdx)
+            val defaultUv = hourSeed?.uvIndex ?: kotlin.math.max(0, 6 - hourIdx)
+            val state =
+              weatherIntCache.getOrPut(key) { RemoteInt.createNamedRemoteInt(key, defaultUv) }
+            EvalValue.Num(state.toRemoteFloat(), isInteger = true)
+          }
           "CHANCE_OF_PRECIPITATION" -> {
             val cond = hourSeed?.condition ?: fallbackCond
             val pct = hourSeed?.chanceOfPrecipitation ?: if (cond == 6) 60 else 10
@@ -1723,34 +1722,24 @@ internal class DwfExpressionCompiler(
             EvalValue.Num(state.toRemoteFloat(), isInteger = true)
           }
           "TEMPERATURE_HIGH" -> {
-            if (daySeed != null) {
-              val key = DwfVariables.weatherDayTempHighKey(dayIdx)
-              val state =
-                weatherFloatCache.getOrPut(key) {
-                  RemoteFloat.createNamedRemoteFloat(key, daySeed.temperatureHigh)
-                }
-              EvalValue.Num(round(state), isInteger = true)
-            } else {
-              EvalValue.Num(
-                round(weatherTemperature + (3 - (dayIdx % 2)).toFloat().rf),
-                isInteger = true,
-              )
-            }
+            val key = DwfVariables.weatherDayTempHighKey(dayIdx)
+            val defaultHigh =
+              daySeed?.temperatureHigh ?: (wd.temperature + (3 - (dayIdx % 2)).toFloat())
+            val state =
+              weatherFloatCache.getOrPut(key) {
+                RemoteFloat.createNamedRemoteFloat(key, defaultHigh)
+              }
+            EvalValue.Num(round(state), isInteger = true)
           }
           "TEMPERATURE_LOW" -> {
-            if (daySeed != null) {
-              val key = DwfVariables.weatherDayTempLowKey(dayIdx)
-              val state =
-                weatherFloatCache.getOrPut(key) {
-                  RemoteFloat.createNamedRemoteFloat(key, daySeed.temperatureLow)
-                }
-              EvalValue.Num(round(state), isInteger = true)
-            } else {
-              EvalValue.Num(
-                round(weatherTemperature - (5 + (dayIdx % 2)).toFloat().rf),
-                isInteger = true,
-              )
-            }
+            val key = DwfVariables.weatherDayTempLowKey(dayIdx)
+            val defaultLow =
+              daySeed?.temperatureLow ?: (wd.temperature - (5 + (dayIdx % 2)).toFloat())
+            val state =
+              weatherFloatCache.getOrPut(key) {
+                RemoteFloat.createNamedRemoteFloat(key, defaultLow)
+              }
+            EvalValue.Num(round(state), isInteger = true)
           }
           "CHANCE_OF_PRECIPITATION" -> {
             val key = DwfVariables.weatherDayPrecipKey(dayIdx)
@@ -1766,6 +1755,12 @@ internal class DwfExpressionCompiler(
               weatherIntCache.getOrPut(key) { RemoteInt.createNamedRemoteInt(key, defaultPct) }
             EvalValue.Num(state.toRemoteFloat(), isInteger = true)
           }
+          "UV_INDEX" -> {
+            val key = DwfVariables.weatherDayUvIndexKey(dayIdx)
+            val state =
+              weatherIntCache.getOrPut(key) { RemoteInt.createNamedRemoteInt(key, wd.uvIndex) }
+            EvalValue.Num(state.toRemoteFloat(), isInteger = true)
+          }
           else -> EvalValue.Num(0f.rf, isInteger = true)
         }
       }
@@ -1775,20 +1770,35 @@ internal class DwfExpressionCompiler(
         "CONDITION" -> EvalValue.Num(weatherCondition.toRemoteFloat(), isInteger = true)
         "CONDITION_NAME" -> EvalValue.Text(weatherConditionName)
         "TEMPERATURE" -> EvalValue.Num(round(weatherTemperature), isInteger = true)
-        "TEMPERATURE_LOW" ->
-          EvalValue.Num(
-            wd.temperatureLow?.let { round(it.rf) } ?: round(weatherTemperature - 6f.rf),
-            isInteger = true,
-          )
-        "TEMPERATURE_HIGH" ->
-          EvalValue.Num(
-            wd.temperatureHigh?.let { round(it.rf) } ?: round(weatherTemperature + 3f.rf),
-            isInteger = true,
-          )
+        "TEMPERATURE_LOW" -> {
+          val key = DwfVariables.WEATHER_TEMPERATURE_LOW
+          val defaultLow = wd.temperatureLow ?: (wd.temperature - 6f)
+          val state =
+            weatherFloatCache.getOrPut(key) { RemoteFloat.createNamedRemoteFloat(key, defaultLow) }
+          EvalValue.Num(round(state), isInteger = true)
+        }
+        "TEMPERATURE_HIGH" -> {
+          val key = DwfVariables.WEATHER_TEMPERATURE_HIGH
+          val defaultHigh = wd.temperatureHigh ?: (wd.temperature + 3f)
+          val state =
+            weatherFloatCache.getOrPut(key) { RemoteFloat.createNamedRemoteFloat(key, defaultHigh) }
+          EvalValue.Num(round(state), isInteger = true)
+        }
         "TEMPERATURE_UNIT" -> EvalValue.Num(weatherTempUnit.toRemoteFloat(), isInteger = true)
-        "CHANCE_OF_PRECIPITATION" ->
-          EvalValue.Num(wd.chanceOfPrecipitation.toFloat().rf, isInteger = true)
-        "UV_INDEX" -> EvalValue.Num(wd.uvIndex.toFloat().rf, isInteger = true)
+        "CHANCE_OF_PRECIPITATION" -> {
+          val key = DwfVariables.WEATHER_CHANCE_OF_PRECIPITATION
+          val state =
+            weatherIntCache.getOrPut(key) {
+              RemoteInt.createNamedRemoteInt(key, wd.chanceOfPrecipitation)
+            }
+          EvalValue.Num(state.toRemoteFloat(), isInteger = true)
+        }
+        "UV_INDEX" -> {
+          val key = DwfVariables.WEATHER_UV_INDEX
+          val state =
+            weatherIntCache.getOrPut(key) { RemoteInt.createNamedRemoteInt(key, wd.uvIndex) }
+          EvalValue.Num(state.toRemoteFloat(), isInteger = true)
+        }
         "LAST_UPDATED" -> EvalValue.Num(0f.rf, isInteger = true, sourceTag = "WEATHER.LAST_UPDATED")
         else -> EvalValue.Num(0f.rf, isInteger = true)
       }

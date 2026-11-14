@@ -13,11 +13,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.robolectric.shadow.api.Shadow;
@@ -27,20 +31,49 @@ import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 /**
- * Installs Watch Face Format (WFF) resource APKs ({@value #PROPERTY}) into the simulator's {@code
- * PackageManager} when hosting {@code DeclarativeWatchFaceRuntime.apk}, and indexes manifest {@code
- * <property>} tags so {@link SimulatorShadowPackageManager} can answer {@code
- * PackageManager.getProperty("com.google.wear.watchface.format.version", pkg)}.
+ * Installs Watch Face Format (WFF) resource APKs ({@value #PROPERTY} or dynamically pushed via
+ * {@link WatchFacePushStore}) into the simulator's {@code PackageManager}, and indexes manifest
+ * {@code <property>} and {@code <meta-data>} tags so {@link SimulatorShadowPackageManager} can
+ * answer {@code PackageManager.getProperty("com.google.wear.watchface.format.version", pkg)} and
+ * {@code WatchFaceSlot.getMetaDataValues(key)}.
  */
 final class WffWatchFaces {
 
   static final String PROPERTY = "composeai.simulator.wffApks";
   static final String FORMAT_VERSION_PROPERTY = "com.google.wear.watchface.format.version";
 
+  static final class ApkInspection {
+    final String packageName;
+    final long versionCode;
+    final boolean hasManifest;
+    final boolean hasWatchFaceFormat;
+    final boolean hasExecutableContent;
+    final String unexpectedEntry;
+    final Map<String, List<String>> metaDataValues;
+
+    ApkInspection(
+        String packageName,
+        long versionCode,
+        boolean hasManifest,
+        boolean hasWatchFaceFormat,
+        boolean hasExecutableContent,
+        String unexpectedEntry,
+        Map<String, List<String>> metaDataValues) {
+      this.packageName = packageName;
+      this.versionCode = versionCode;
+      this.hasManifest = hasManifest;
+      this.hasWatchFaceFormat = hasWatchFaceFormat;
+      this.hasExecutableContent = hasExecutableContent;
+      this.unexpectedEntry = unexpectedEntry;
+      this.metaDataValues = metaDataValues;
+    }
+  }
+
   private static final Set<String> installedPackages = new LinkedHashSet<>();
   private static final Map<String, Spec> properties = new LinkedHashMap<>();
 
   private static final int RES_STRING_POOL_TYPE = 0x0001;
+  private static final int RES_XML_TYPE = 0x0003;
   private static final int RES_XML_RESOURCE_MAP_TYPE = 0x0180;
   private static final int RES_XML_START_ELEMENT_TYPE = 0x0102;
   private static final int RES_XML_END_ELEMENT_TYPE = 0x0103;
@@ -49,6 +82,8 @@ final class WffWatchFaces {
   private static final int ATTR_NAME = 0x01010003;
   private static final int ATTR_VALUE = 0x01010024;
   private static final int ATTR_RESOURCE = 0x01010025;
+  private static final int ATTR_VERSION_CODE = 0x0101021b;
+  private static final int ATTR_VERSION_CODE_MAJOR = 0x01010576;
 
   private static final int TYPE_REFERENCE = 0x01;
   private static final int TYPE_STRING = 0x03;
@@ -56,6 +91,14 @@ final class WffWatchFaces {
   private static final int TYPE_INT_DEC = 0x10;
   private static final int TYPE_INT_HEX = 0x11;
   private static final int TYPE_INT_BOOLEAN = 0x12;
+
+  private static final Pattern XML_PKG_PATTERN =
+      Pattern.compile("\\bpackage\\s*=\\s*\"([^\"]+)\"");
+  private static final Pattern XML_VERSION_PATTERN =
+      Pattern.compile("(?:android:)?versionCode\\s*=\\s*\"([0-9]+)\"");
+  private static final Pattern XML_PROP_OR_META_PATTERN =
+      Pattern.compile(
+          "<(?:property|meta-data)\\b[^>]*?(?:android:)?name\\s*=\\s*\"([^\"]+)\"[^>]*?(?:android:)?value\\s*=\\s*\"([^\"]*)\"[^>]*/?>");
 
   private static final class Spec {
     final String name;
@@ -84,6 +127,21 @@ final class WffWatchFaces {
       this.floatValue = floatValue;
       this.booleanValue = booleanValue;
       this.stringValue = stringValue;
+    }
+
+    String asStringValue() {
+      switch (kind) {
+        case 1:
+          return Boolean.toString(booleanValue);
+        case 2:
+          return Float.toString(floatValue);
+        case 3:
+          return Integer.toString(intValue);
+        case 4:
+          return "@" + Integer.toHexString(intValue);
+        default:
+          return stringValue == null ? "" : stringValue;
+      }
     }
 
     Object toProperty() {
@@ -139,10 +197,24 @@ final class WffWatchFaces {
     }
     String raw = System.getProperty(PROPERTY);
     if (raw == null || raw.isEmpty()) return;
-    ShadowPackageManager manager = Shadow.extract(app.getPackageManager());
     for (String entry : raw.split(File.pathSeparator)) {
       if (entry.isEmpty()) continue;
       Path apk = Path.of(entry);
+      try {
+        installDynamicApk(app, apk);
+      } catch (RuntimeException e) {
+        System.err.println("wff: cannot install " + apk + ": " + e);
+      }
+    }
+  }
+
+  /** Dynamically installs a WFF APK into {@link ShadowPackageManager} and indexes its properties. */
+  static synchronized String installDynamicApk(Application app, Path apk) {
+    ApkInspection inspection = inspectApk(apk);
+    String pkgName = inspection.packageName;
+    if (app != null) {
+      ShadowPackageManager manager = Shadow.extract(app.getPackageManager());
+      boolean parsedByFramework = false;
       try {
         Object parsed =
             ReflectionHelpers.callStaticMethod(
@@ -152,7 +224,8 @@ final class WffWatchFaces {
         ApplicationInfo ai = ReflectionHelpers.getField(parsed, "applicationInfo");
         ai.sourceDir = apk.toString();
         ai.publicSourceDir = apk.toString();
-        String pkgName = ReflectionHelpers.getField(parsed, "packageName");
+        String parsedPkg = ReflectionHelpers.getField(parsed, "packageName");
+        if (parsedPkg != null && !parsedPkg.isEmpty()) pkgName = parsedPkg;
         ReflectionHelpers.callInstanceMethod(
             manager, "addPackageInternal", ClassParameter.from(parsed.getClass(), parsed));
         try {
@@ -164,11 +237,91 @@ final class WffWatchFaces {
         } catch (PackageManager.NameNotFoundException ignored) {
           // Handled by addPackageInternal above.
         }
-        installedPackages.add(pkgName);
-        indexApkProperties(apk);
-      } catch (RuntimeException e) {
-        System.err.println("wff: cannot install " + apk + ": " + e);
+        parsedByFramework = true;
+      } catch (RuntimeException ignored) {
+        // Synthetic test APKs without full resources.arsc fall back to PackageInfo registration.
       }
+      if (!parsedByFramework && pkgName != null && !pkgName.isEmpty()) {
+        PackageInfo pkgInfo = new PackageInfo();
+        pkgInfo.packageName = pkgName;
+        pkgInfo.setLongVersionCode(inspection.versionCode);
+        ApplicationInfo ai = new ApplicationInfo();
+        ai.packageName = pkgName;
+        ai.sourceDir = apk.toString();
+        ai.publicSourceDir = apk.toString();
+        pkgInfo.applicationInfo = ai;
+        manager.installPackage(pkgInfo);
+      }
+    }
+    if (pkgName != null && !pkgName.isEmpty()) {
+      installedPackages.add(pkgName);
+    }
+    indexApkProperties(apk);
+    return pkgName;
+  }
+
+  static synchronized void uninstallPackage(Application app, String packageName) {
+    if (packageName == null || packageName.isEmpty()) return;
+    installedPackages.remove(packageName);
+    for (Iterator<Map.Entry<String, Spec>> it = properties.entrySet().iterator(); it.hasNext(); ) {
+      if (packageName.equals(it.next().getValue().packageName)) {
+        it.remove();
+      }
+    }
+    if (app != null) {
+      try {
+        ShadowPackageManager manager = Shadow.extract(app.getPackageManager());
+        manager.removePackage(packageName);
+      } catch (RuntimeException ignored) {
+      }
+    }
+  }
+
+  /** Inspects a candidate WFF APK for manifest identity, metadata, WFF signal, and code entries. */
+  static ApkInspection inspectApk(Path apk) {
+    if (apk == null || !apk.toFile().isFile()) {
+      return new ApkInspection("", 0L, false, false, false, null, Collections.emptyMap());
+    }
+    try (ZipFile zip = new ZipFile(apk.toFile())) {
+      boolean hasExec = false;
+      String unexpected = null;
+      boolean hasRawWatchFace = false;
+      Enumeration<? extends ZipEntry> entries = zip.entries();
+      while (entries.hasMoreElements()) {
+        ZipEntry entry = entries.nextElement();
+        if (entry.isDirectory()) continue;
+        String name = entry.getName();
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".dex") || lower.endsWith(".so")) {
+          hasExec = true;
+          if (unexpected == null) unexpected = name;
+        }
+        if (lower.startsWith("res/raw") && lower.endsWith(".xml")) {
+          hasRawWatchFace = true;
+        }
+      }
+      ZipEntry manifest = zip.getEntry("AndroidManifest.xml");
+      if (manifest == null) {
+        return new ApkInspection(
+            "", 0L, false, false, hasExec, unexpected, Collections.emptyMap());
+      }
+      byte[] bytes;
+      try (InputStream in = zip.getInputStream(manifest)) {
+        bytes = in.readAllBytes();
+      }
+      ManifestParsed parsed = parseManifestDetails(bytes);
+      boolean hasWff =
+          parsed.metaDataValues.containsKey(FORMAT_VERSION_PROPERTY) || hasRawWatchFace;
+      return new ApkInspection(
+          parsed.packageName,
+          parsed.versionCode,
+          !parsed.packageName.isEmpty(),
+          hasWff,
+          hasExec,
+          unexpected,
+          parsed.metaDataValues);
+    } catch (IOException e) {
+      return new ApkInspection("", 0L, false, false, false, null, Collections.emptyMap());
     }
   }
 
@@ -199,12 +352,56 @@ final class WffWatchFaces {
     }
   }
 
+  private static final class ManifestParsed {
+    String packageName = "";
+    long versionCode = 1L;
+    final Map<String, List<String>> metaDataValues = new LinkedHashMap<>();
+    final List<Spec> specs = new ArrayList<>();
+  }
+
   static synchronized void parseManifestProperties(byte[] bytes) {
-    if (bytes.length < 8) return;
+    ManifestParsed parsed = parseManifestDetails(bytes);
+    for (Spec spec : parsed.specs) {
+      properties.put(key(spec.packageName, spec.className, spec.name), spec);
+    }
+  }
+
+  private static ManifestParsed parseManifestDetails(byte[] bytes) {
+    ManifestParsed out = new ManifestParsed();
+    if (bytes == null || bytes.length < 4) return out;
+    int firstShort = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getShort(0) & 0xffff;
+    if (firstShort != RES_XML_TYPE) {
+      // Plain UTF-8 AndroidManifest.xml (supported for lightweight synthetic test APKs).
+      String text = new String(bytes, StandardCharsets.UTF_8);
+      Matcher pkgM = XML_PKG_PATTERN.matcher(text);
+      if (pkgM.find()) out.packageName = pkgM.group(1);
+      Matcher verM = XML_VERSION_PATTERN.matcher(text);
+      if (verM.find()) {
+        try {
+          out.versionCode = Long.parseLong(verM.group(1));
+        } catch (NumberFormatException ignored) {
+        }
+      }
+      Matcher propM = XML_PROP_OR_META_PATTERN.matcher(text);
+      while (propM.find()) {
+        String name = propM.group(1);
+        String val = propM.group(2);
+        addMetaValue(out.metaDataValues, name, val);
+        if (!out.packageName.isEmpty()) {
+          out.specs.add(new Spec(name, out.packageName, "", 5, 0, 0f, false, val));
+        }
+      }
+      return out;
+    }
+
+    if (bytes.length < 8) return out;
     ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     List<String> strings = Collections.emptyList();
     int[] resourceIds = new int[0];
     String packageName = "";
+    int versionCodeLow = 1;
+    int versionCodeHigh = 0;
+    boolean seenVersion = false;
     List<String> elementStack = new ArrayList<>();
     List<String> componentStack = new ArrayList<>();
     int offset = buffer.getShort(2) & 0xffff;
@@ -252,6 +449,12 @@ final class WffWatchFaces {
             attrName = text;
           } else if ("package".equals(attr)) {
             manifestPkg = text;
+          } else if (resId == ATTR_VERSION_CODE || "versionCode".equals(attr)) {
+            versionCodeLow = data;
+            seenVersion = true;
+          } else if (resId == ATTR_VERSION_CODE_MAJOR || "versionCodeMajor".equals(attr)) {
+            versionCodeHigh = data;
+            seenVersion = true;
           } else if (resId == ATTR_RESOURCE || "resource".equals(attr)) {
             hasResource = true;
             resourceData = data;
@@ -262,8 +465,15 @@ final class WffWatchFaces {
           }
         }
 
-        if ("manifest".equals(element) && manifestPkg != null) {
-          packageName = manifestPkg;
+        if ("manifest".equals(element)) {
+          if (manifestPkg != null) {
+            packageName = manifestPkg;
+            out.packageName = manifestPkg;
+          }
+          if (seenVersion) {
+            out.versionCode =
+                (((long) versionCodeHigh) << 32) | (((long) versionCodeLow) & 0xffffffffL);
+          }
         }
         String parentComponent =
             componentStack.isEmpty() ? "" : componentStack.get(componentStack.size() - 1);
@@ -276,7 +486,9 @@ final class WffWatchFaces {
           currentComponent = qualify(packageName, attrName);
         } else if ("application".equals(element)) {
           currentComponent = "";
-        } else if ("property".equals(element) && attrName != null && !packageName.isEmpty()) {
+        } else if (("property".equals(element) || "meta-data".equals(element))
+            && attrName != null
+            && !packageName.isEmpty()) {
           Spec spec =
               buildSpec(
                   attrName,
@@ -288,7 +500,10 @@ final class WffWatchFaces {
                   valueData,
                   valueText);
           if (spec != null) {
-            properties.put(key(packageName, spec.className, attrName), spec);
+            addMetaValue(out.metaDataValues, attrName, spec.asStringValue());
+            if ("property".equals(element)) {
+              out.specs.add(spec);
+            }
           }
         }
         elementStack.add(element);
@@ -300,6 +515,19 @@ final class WffWatchFaces {
         }
       }
       offset += size;
+    }
+    return out;
+  }
+
+  private static void addMetaValue(Map<String, List<String>> map, String key, String rawValue) {
+    if (key == null || rawValue == null) return;
+    List<String> list = map.computeIfAbsent(key, k -> new ArrayList<>());
+    if (rawValue.indexOf('|') >= 0) {
+      for (String part : rawValue.split("\\|")) {
+        if (!part.isEmpty()) list.add(part);
+      }
+    } else {
+      list.add(rawValue);
     }
   }
 

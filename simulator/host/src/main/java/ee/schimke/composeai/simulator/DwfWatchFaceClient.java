@@ -11,15 +11,20 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONArray;
@@ -38,6 +43,44 @@ final class DwfWatchFaceClient {
 
   interface Listener {
     void rendered(DwfWatchFaceClient face, Bitmap frame, String error);
+  }
+
+  /** Clock injected into {@code RemoteComposePlayer}'s {@code RemoteDocument} to follow WatchState. */
+  static final class MutableClock extends Clock {
+    private final DwfWatchFaceClient owner;
+    private final ZoneId fixedZone;
+
+    MutableClock(DwfWatchFaceClient owner, ZoneId fixedZone) {
+      this.owner = owner;
+      this.fixedZone = fixedZone;
+    }
+
+    @Override
+    public ZoneId getZone() {
+      if (fixedZone != null) return fixedZone;
+      WatchState ws = WatchState.current();
+      return ws != null ? ws.zoneId() : ZoneId.systemDefault();
+    }
+
+    @Override
+    public Clock withZone(ZoneId zone) {
+      return new MutableClock(owner, zone);
+    }
+
+    @Override
+    public Instant instant() {
+      return Instant.ofEpochMilli(owner.effectiveTimeMillis());
+    }
+  }
+
+  private static final class BoundWireComplication {
+    final int wireType;
+    final Object rawData;
+
+    BoundWireComplication(int wireType, Object rawData) {
+      this.wireType = wireType;
+      this.rawData = rawData;
+    }
   }
 
   static final class ConfigOption {
@@ -261,6 +304,13 @@ final class DwfWatchFaceClient {
     final List<WatchFaceClient.Slot> slots;
     final List<ConfigSpec> configurations;
 
+    /**
+     * Slot id to the WFF {@code defaultSystemProvider} (e.g. {@code STEP_COUNT}). The compiler bakes
+     * that provider's value into the document as a seed, so the simulator overrides it from {@link
+     * WatchState} for any slot the agent has not bound or faked.
+     */
+    final Map<Integer, String> defaultProviders;
+
     Entry(
         String id,
         String label,
@@ -271,6 +321,30 @@ final class DwfWatchFaceClient {
         String clipShape,
         List<WatchFaceClient.Slot> slots,
         List<ConfigSpec> configurations) {
+      this(
+          id,
+          label,
+          dir,
+          rcFile,
+          width,
+          height,
+          clipShape,
+          slots,
+          configurations,
+          Collections.emptyMap());
+    }
+
+    Entry(
+        String id,
+        String label,
+        File dir,
+        String rcFile,
+        int width,
+        int height,
+        String clipShape,
+        List<WatchFaceClient.Slot> slots,
+        List<ConfigSpec> configurations,
+        Map<Integer, String> defaultProviders) {
       this.id = id;
       this.label = label;
       this.dir = dir;
@@ -280,6 +354,7 @@ final class DwfWatchFaceClient {
       this.clipShape = clipShape;
       this.slots = slots;
       this.configurations = configurations;
+      this.defaultProviders = defaultProviders;
     }
   }
 
@@ -288,10 +363,13 @@ final class DwfWatchFaceClient {
   private final Listener listener;
   private final Map<String, String> configValues = new LinkedHashMap<>();
   private final Map<Integer, FakeComplication> complications = new LinkedHashMap<>();
+  private final Map<Integer, BoundWireComplication> boundWireComplications = new LinkedHashMap<>();
   private final Set<Integer> touchedSlots = new LinkedHashSet<>();
 
   private byte[] document;
   private View player;
+  private Long fixedTimeMillis;
+  private Bitmap lastBitmap;
   private int width;
   private int height;
   private int frames;
@@ -301,16 +379,31 @@ final class DwfWatchFaceClient {
     this.app = app;
     this.entry = entry;
     this.listener = listener;
+    this.width = entry.width;
+    this.height = entry.height;
     for (ConfigSpec cfg : entry.configurations) {
       configValues.put(cfg.id, cfg.defaultValue);
     }
   }
 
-  /** Loads compiled declarative watch faces from {@code -Dcomposeai.simulator.dwfDir}. */
+  /**
+   * Loads compiled declarative watch faces from {@code -Dcomposeai.simulator.dwfDir} (single path
+   * or {@link File#pathSeparator}-separated paths).
+   */
   static List<Entry> availableFromProperty() {
     String dirProp = System.getProperty(DWF_DIR_PROPERTY);
     if (dirProp == null || dirProp.isEmpty()) return Collections.emptyList();
-    File dir = new File(dirProp);
+    List<Entry> all = new ArrayList<>();
+    for (String part : dirProp.split(File.pathSeparator)) {
+      if (part.isEmpty()) continue;
+      all.addAll(loadEntriesFromDir(new File(part)));
+    }
+    return all;
+  }
+
+  /** Loads compiled watch face entries from a single directory containing {@code compiled-manifest.json}. */
+  static List<Entry> loadEntriesFromDir(File dir) {
+    if (dir == null) return Collections.emptyList();
     File manifestFile = new File(dir, "compiled-manifest.json");
     if (!manifestFile.isFile()) return Collections.emptyList();
     try {
@@ -329,18 +422,37 @@ final class DwfWatchFaceClient {
         String clipShape = item.optString("clipShape", "CIRCLE");
 
         List<WatchFaceClient.Slot> slots = new ArrayList<>();
+        Map<Integer, String> defaultProviders = new LinkedHashMap<>();
         JSONArray slotsArr = item.optJSONArray("slots");
         if (slotsArr != null) {
           for (int s = 0; s < slotsArr.length(); s++) {
             JSONObject slotObj = slotsArr.getJSONObject(s);
             int slotId = slotObj.getInt("id");
             boolean enabled = slotObj.optBoolean("enabled", true);
+            String provider = slotObj.optString("defaultSystemProvider", "");
+            if (!provider.isEmpty()) defaultProviders.put(Integer.valueOf(slotId), provider);
             JSONArray typesArr = slotObj.optJSONArray("supportedTypes");
             int[] types = new int[typesArr == null ? 0 : typesArr.length()];
             if (typesArr != null) {
               for (int t = 0; t < typesArr.length(); t++) types[t] = typesArr.getInt(t);
             }
-            slots.add(new WatchFaceClient.Slot(slotId, types, enabled));
+            float sx = (float) slotObj.optDouble("x", 0.0);
+            float sy = (float) slotObj.optDouble("y", 0.0);
+            float sw = (float) slotObj.optDouble("width", 0.0);
+            float sh = (float) slotObj.optDouble("height", 0.0);
+            if (sw > 0f && sh > 0f) {
+              slots.add(
+                  new WatchFaceClient.Slot(
+                      slotId,
+                      types,
+                      enabled,
+                      Math.round(sx),
+                      Math.round(sy),
+                      Math.round(sx + sw),
+                      Math.round(sy + sh)));
+            } else {
+              slots.add(new WatchFaceClient.Slot(slotId, types, enabled));
+            }
           }
         }
 
@@ -375,7 +487,8 @@ final class DwfWatchFaceClient {
             configs.add(new ConfigSpec(cfgId, kind, displayName, defaultVal, options));
           }
         }
-        result.add(new Entry(id, label, dir, rcFile, w, h, clipShape, slots, configs));
+        result.add(
+            new Entry(id, label, dir, rcFile, w, h, clipShape, slots, configs, defaultProviders));
       }
       return result;
     } catch (IOException | JSONException e) {
@@ -514,12 +627,69 @@ final class DwfWatchFaceClient {
     return error;
   }
 
+  void setFixedTimeMillis(Long timeMillis) {
+    this.fixedTimeMillis = timeMillis;
+  }
+
+  Long fixedTimeMillis() {
+    return fixedTimeMillis;
+  }
+
+  long effectiveTimeMillis() {
+    if (fixedTimeMillis != null) return fixedTimeMillis.longValue();
+    WatchState ws = WatchState.current();
+    return ws != null ? ws.nowMillis() : System.currentTimeMillis();
+  }
+
   List<WatchFaceClient.Slot> slots() {
-    return entry.slots;
+    if (width <= 0
+        || height <= 0
+        || entry.width <= 0
+        || entry.height <= 0
+        || (width == entry.width && height == entry.height)) {
+      return entry.slots;
+    }
+    float sx = width / (float) entry.width;
+    float sy = height / (float) entry.height;
+    List<WatchFaceClient.Slot> scaled = new ArrayList<>(entry.slots.size());
+    for (WatchFaceClient.Slot s : entry.slots) {
+      if (!s.hasBounds) {
+        scaled.add(s);
+      } else {
+        scaled.add(
+            new WatchFaceClient.Slot(
+                s.id,
+                s.supportedTypes,
+                s.enabled,
+                Math.round(s.left * sx),
+                Math.round(s.top * sy),
+                Math.round(s.right * sx),
+                Math.round(s.bottom * sy)));
+      }
+    }
+    return scaled;
   }
 
   Map<Integer, FakeComplication> fakeComplications() {
     return Collections.unmodifiableMap(complications);
+  }
+
+  WatchFaceDynamicColors.Palette extractPalette() {
+    for (ConfigSpec cfg : entry.configurations) {
+      if (!"COLOR".equalsIgnoreCase(cfg.kind)) continue;
+      String rawVal = configValues.getOrDefault(cfg.id, cfg.defaultValue);
+      int idx = resolveOptionIndex(cfg, rawVal);
+      if (idx >= 0 && idx < cfg.options.size()) {
+        ConfigOption opt = cfg.options.get(idx);
+        if (!opt.colorArgbs.isEmpty()) {
+          WatchFaceDynamicColors.Palette p =
+              WatchFaceDynamicColors.Palette.fromColorList(
+                  opt.colorArgbs, "configuration:" + cfg.id + ":" + opt.id);
+          if (p != null) return p;
+        }
+      }
+    }
+    return WatchFaceDynamicColors.extractFromBitmap(lastBitmap);
   }
 
   JSONArray describeConfigurations() {
@@ -579,15 +749,22 @@ final class DwfWatchFaceClient {
   void complication(int slot, int wireType, Object data, boolean ambient) {
     touchedSlots.add(Integer.valueOf(slot));
     if (data == null) {
+      boundWireComplications.remove(Integer.valueOf(slot));
       complications.remove(Integer.valueOf(slot));
     } else {
-      Object resources = app == null ? null : app.getResources();
-      complications.put(
-          Integer.valueOf(slot),
-          FakeComplication.fromWireData(
-              slot, wireType, data, resources, System.currentTimeMillis()));
+      boundWireComplications.put(Integer.valueOf(slot), new BoundWireComplication(wireType, data));
+      refreshBoundWireComplication(slot, wireType, data, effectiveTimeMillis());
     }
     render(ambient);
+  }
+
+  private void refreshBoundWireComplication(
+      int slot, int wireType, Object rawData, long nowMillis) {
+    Object activeData = ComplicationParcels.activeTimelineEntry(rawData, nowMillis);
+    Object resources = app == null ? null : app.getResources();
+    complications.put(
+        Integer.valueOf(slot),
+        FakeComplication.fromWireData(slot, wireType, activeData, resources, nowMillis));
   }
 
   void setFakeComplication(int slot, FakeComplication fake, boolean ambient) {
@@ -597,6 +774,7 @@ final class DwfWatchFaceClient {
 
   void putFakeComplication(int slot, FakeComplication fake) {
     touchedSlots.add(Integer.valueOf(slot));
+    boundWireComplications.remove(Integer.valueOf(slot));
     if (fake == null) {
       complications.remove(Integer.valueOf(slot));
     } else {
@@ -605,18 +783,25 @@ final class DwfWatchFaceClient {
   }
 
   void clearFakeComplications(boolean ambient) {
-    touchedSlots.addAll(complications.keySet());
-    complications.clear();
+    clearFakeComplicationEntries();
     render(ambient);
   }
 
   void clearFakeComplicationEntries() {
     touchedSlots.addAll(complications.keySet());
+    boundWireComplications.clear();
     complications.clear();
   }
 
   void render(boolean ambient) {
     try {
+      if (!boundWireComplications.isEmpty()) {
+        long now = effectiveTimeMillis();
+        for (Map.Entry<Integer, BoundWireComplication> e : boundWireComplications.entrySet()) {
+          refreshBoundWireComplication(
+              e.getKey().intValue(), e.getValue().wireType, e.getValue().rawData, now);
+        }
+      }
       if (player != null) {
         applyVariables(ambient);
         int wSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
@@ -631,6 +816,7 @@ final class DwfWatchFaceClient {
           canvas.clipPath(circle);
         }
         player.draw(canvas);
+        lastBitmap = bitmap;
         frames++;
         error = null;
         listener.rendered(this, bitmap, null);
@@ -642,6 +828,7 @@ final class DwfWatchFaceClient {
       if (pngFallback.isFile()) {
         Bitmap decoded = BitmapFactory.decodeFile(pngFallback.getAbsolutePath());
         if (decoded != null) {
+          lastBitmap = decoded;
           frames++;
           error = null;
           listener.rendered(this, decoded, null);
@@ -649,7 +836,7 @@ final class DwfWatchFaceClient {
         }
       }
       throw new IllegalStateException("RemoteComposePlayer unavailable for " + entry.id);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException | LinkageError e) {
       fail(e);
     }
   }
@@ -657,16 +844,38 @@ final class DwfWatchFaceClient {
   void release() {
     player = null;
     document = null;
+    lastBitmap = null;
   }
 
   private void initPlayer() {
     try {
       Class<?> playerType = load("androidx.compose.remote.player.view.RemoteComposePlayer");
       View view = (View) playerType.getConstructor(Context.class).newInstance(app);
-      playerType.getMethod("setDocument", byte[].class).invoke(view, (Object) document);
+      if (!setDocumentWithMutableClock(playerType, view)) {
+        playerType.getMethod("setDocument", byte[].class).invoke(view, (Object) document);
+      }
       player = view;
-    } catch (ReflectiveOperationException | RuntimeException e) {
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
       player = null;
+    }
+  }
+
+  private boolean setDocumentWithMutableClock(Class<?> playerType, View view) {
+    try {
+      Class<?> remoteClockType = load("androidx.compose.remote.core.RemoteClock");
+      Class<?> systemClockType = load("androidx.compose.remote.core.SystemClock");
+      Class<?> remoteDocType = load("androidx.compose.remote.player.core.RemoteDocument");
+      Object remoteClock =
+          systemClockType
+              .getConstructor(Clock.class)
+              .newInstance(new MutableClock(this, null));
+      Constructor<?> docCtor =
+          remoteDocType.getConstructor(InputStream.class, remoteClockType);
+      Object remoteDoc = docCtor.newInstance(new ByteArrayInputStream(document), remoteClock);
+      playerType.getMethod("setDocument", remoteDocType).invoke(view, remoteDoc);
+      return true;
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+      return false;
     }
   }
 
@@ -709,14 +918,123 @@ final class DwfWatchFaceClient {
     if (player == null) return;
     try {
       registerNames();
-    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
     }
     applyVariablesTo(player, ambient);
+  }
+
+  private static int resolveOptionIndex(ConfigSpec cfg, String rawVal) {
+    for (int i = 0; i < cfg.options.size(); i++) {
+      if (cfg.options.get(i).id.equals(rawVal)) {
+        return i;
+      }
+    }
+    try {
+      return Integer.parseInt(rawVal);
+    } catch (NumberFormatException ignored) {
+      return 0;
+    }
   }
 
   void applyVariablesTo(Object target, boolean ambient) {
     if (target == null) return;
     setBothInt(target, "dwf.is_ambient", ambient ? 1 : 0);
+
+    WatchState ws = WatchState.current();
+    if (ws != null) {
+      setBothInt(target, "dwf.is_24_hour", ws.is24Hour() ? 1 : 0);
+      setBothInt(target, "dwf.is_dst", ws.isDst() ? 1 : 0);
+      setBothFloat(target, "dwf.battery_percent", (float) ws.batteryPercent());
+      setBothInt(target, "dwf.battery_charging", ws.batteryCharging() ? 1 : 0);
+      setBothInt(target, "dwf.battery_is_low", ws.batteryLow() ? 1 : 0);
+      setBothInt(target, "dwf.unread_notifications", ws.unreadNotifications());
+      setBothFloat(target, "dwf.step_goal", ws.stepGoal());
+
+      setBothFloat(target, "metrics.heart_rate", ws.heartRate());
+      setBothInt(target, "metrics.day.steps", ws.steps());
+      setBothFloat(target, "metrics.day.calories", ws.calories());
+      setBothFloat(target, "metrics.day.distance", ws.distanceMeters());
+      setBothFloat(target, "metrics.day.flights_of_stairs", ws.floors());
+
+      setBothFloat(target, "dwf.accel_angle_x", ws.accelAngleX());
+      setBothFloat(target, "dwf.accel_angle_y", ws.accelAngleY());
+
+      setBothInt(target, "dwf.weather.is_available", ws.weatherAvailable() ? 1 : 0);
+      setBothInt(target, "dwf.weather.is_day", ws.weatherIsDay() ? 1 : 0);
+      setBothInt(target, "dwf.weather.condition", ws.weatherCondition());
+      setBothString(target, "dwf.weather.condition_name", ws.weatherConditionName());
+      setBothFloat(target, "dwf.weather.temperature", ws.weatherTemperature());
+      setBothFloat(target, "dwf.weather.temperature_high", ws.weatherTemperatureHigh());
+      setBothFloat(target, "dwf.weather.temperature_low", ws.weatherTemperatureLow());
+      setBothInt(target, "dwf.weather.temperature_unit", ws.weatherCelsius() ? 1 : 0);
+      setBothInt(target, "dwf.weather.chance_of_precipitation", ws.weatherPrecipitation());
+      setBothInt(target, "dwf.weather.uv_index", ws.weatherUvIndex());
+      setBothString(target, "dwf.weather.last_updated_text", ws.weatherLastUpdated());
+
+      int[] hourlyTempOffsets = {0, 1, 2, 1, 0, -1, -2, -3};
+      int[] hourlyCondDefaults = {14, 8, 8, 2, 6, 14, 1, 1};
+      for (int hr = 1; hr <= 24; hr++) {
+        WatchState.HourlyWeather hw = ws.hourlyWeather().get(Integer.valueOf(hr));
+        setBothInt(
+            target, "dwf.weather.hours." + hr + ".is_available", ws.weatherAvailable() ? 1 : 0);
+        if (hw != null) {
+          setBothInt(target, "dwf.weather.hours." + hr + ".is_day", hw.isDay ? 1 : 0);
+          setBothInt(target, "dwf.weather.hours." + hr + ".condition", hw.condition);
+          setBothFloat(target, "dwf.weather.hours." + hr + ".temperature", hw.temperature);
+          setBothInt(target, "dwf.weather.hours." + hr + ".uv_index", hw.uvIndex);
+        } else {
+          setBothInt(target, "dwf.weather.hours." + hr + ".is_day", hr <= 6 ? 1 : 0);
+          setBothInt(
+              target,
+              "dwf.weather.hours." + hr + ".condition",
+              hourlyCondDefaults[(hr - 1) % hourlyCondDefaults.length]);
+          setBothFloat(
+              target,
+              "dwf.weather.hours." + hr + ".temperature",
+              ws.weatherTemperature() + hourlyTempOffsets[(hr - 1) % hourlyTempOffsets.length]);
+          setBothInt(target, "dwf.weather.hours." + hr + ".uv_index", Math.max(0, 6 - hr));
+        }
+      }
+      int[] dailyCondDefaults = {8, 14, 2, 6, 8};
+      for (int dy = 1; dy <= 7; dy++) {
+        WatchState.DailyWeather dw = ws.dailyWeather().get(Integer.valueOf(dy));
+        setBothInt(
+            target, "dwf.weather.days." + dy + ".is_available", ws.weatherAvailable() ? 1 : 0);
+        if (dw != null) {
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_day", dw.conditionDay);
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_night", dw.conditionNight);
+          setBothFloat(target, "dwf.weather.days." + dy + ".temperature_high", dw.temperatureHigh);
+          setBothFloat(target, "dwf.weather.days." + dy + ".temperature_low", dw.temperatureLow);
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation",
+              dw.chanceOfPrecipitation);
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation_night",
+              dw.chanceOfPrecipitationNight);
+          setBothInt(target, "dwf.weather.days." + dy + ".uv_index", dw.uvIndex);
+        } else {
+          int fallbackDayCond = dailyCondDefaults[(dy - 1) % dailyCondDefaults.length];
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_day", fallbackDayCond);
+          setBothInt(target, "dwf.weather.days." + dy + ".condition_night", 1);
+          setBothFloat(
+              target,
+              "dwf.weather.days." + dy + ".temperature_high",
+              ws.weatherTemperature() + (3 - (dy % 2)));
+          setBothFloat(
+              target,
+              "dwf.weather.days." + dy + ".temperature_low",
+              ws.weatherTemperature() - (5 + (dy % 2)));
+          setBothInt(
+              target,
+              "dwf.weather.days." + dy + ".chance_of_precipitation",
+              fallbackDayCond == 6 ? 65 : 15);
+          setBothInt(target, "dwf.weather.days." + dy + ".chance_of_precipitation_night", 10);
+          setBothInt(target, "dwf.weather.days." + dy + ".uv_index", ws.weatherUvIndex());
+        }
+      }
+    }
 
     for (ConfigSpec cfg : entry.configurations) {
       String rawVal = configValues.getOrDefault(cfg.id, cfg.defaultValue);
@@ -724,20 +1042,7 @@ final class DwfWatchFaceClient {
         int b = ("true".equalsIgnoreCase(rawVal) || "1".equals(rawVal)) ? 1 : 0;
         setBothInt(target, "dwf.config." + cfg.id, b);
       } else {
-        int optionIndex = -1;
-        for (int i = 0; i < cfg.options.size(); i++) {
-          if (cfg.options.get(i).id.equals(rawVal)) {
-            optionIndex = i;
-            break;
-          }
-        }
-        if (optionIndex < 0) {
-          try {
-            optionIndex = Integer.parseInt(rawVal);
-          } catch (NumberFormatException ignored) {
-            optionIndex = 0;
-          }
-        }
+        int optionIndex = resolveOptionIndex(cfg, rawVal);
         setBothInt(target, "dwf.config." + cfg.id, optionIndex);
         if ("COLOR".equalsIgnoreCase(cfg.kind)
             && optionIndex >= 0
@@ -753,6 +1058,13 @@ final class DwfWatchFaceClient {
     for (Integer slotObj : touchedSlots) {
       if (!complications.containsKey(slotObj)) {
         resetComplicationVariables(target, slotObj.intValue());
+      }
+    }
+
+    if (ws != null) {
+      for (Map.Entry<Integer, String> p : entry.defaultProviders.entrySet()) {
+        if (touchedSlots.contains(p.getKey())) continue;
+        applyDefaultProvider(target, p.getKey().intValue(), p.getValue(), ws);
       }
     }
 
@@ -788,6 +1100,36 @@ final class DwfWatchFaceClient {
           target,
           "dwf.complication." + slot + ".has_photo_image",
           comp.hasPhotoImage != null && comp.hasPhotoImage.booleanValue() ? 1 : 0);
+    }
+  }
+
+  /**
+   * Drives a slot's default system provider from live {@link WatchState}. Only the providers the
+   * compiler seeds with a platform value are handled; the slot's type is left as compiled.
+   */
+  private void applyDefaultProvider(Object target, int slot, String provider, WatchState ws) {
+    String p = provider.toUpperCase(Locale.ROOT);
+    String prefix = "dwf.complication." + slot;
+    if (p.contains("STEP")) {
+      setBothString(target, prefix + ".text", Integer.toString(ws.steps()));
+      setBothFloat(target, prefix + ".value", (float) ws.steps());
+      setBothFloat(target, prefix + ".min", 0f);
+      setBothFloat(target, prefix + ".max", ws.stepGoal());
+    } else if (p.contains("BATTERY")) {
+      setBothString(target, prefix + ".text", ws.batteryPercent() + "%");
+      setBothFloat(target, prefix + ".value", (float) ws.batteryPercent());
+      setBothFloat(target, prefix + ".min", 0f);
+      setBothFloat(target, prefix + ".max", 100f);
+    } else if (p.contains("HEART")) {
+      setBothString(target, prefix + ".text", Integer.toString(Math.round(ws.heartRate())));
+      setBothFloat(target, prefix + ".value", ws.heartRate());
+      setBothFloat(target, prefix + ".min", 0f);
+      setBothFloat(target, prefix + ".max", 200f);
+    } else if (p.contains("NOTIFICATION")) {
+      setBothString(target, prefix + ".text", Integer.toString(ws.unreadNotifications()));
+      setBothFloat(target, prefix + ".value", (float) ws.unreadNotifications());
+      setBothFloat(target, prefix + ".min", 0f);
+      setBothFloat(target, prefix + ".max", 10f);
     }
   }
 
@@ -873,6 +1215,8 @@ final class DwfWatchFaceClient {
     Throwable cause = t;
     while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
     error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
-    listener.rendered(this, null, error);
+    if (listener != null) {
+      listener.rendered(this, null, error);
+    }
   }
 }

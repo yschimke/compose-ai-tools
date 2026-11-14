@@ -35,6 +35,11 @@ public final class Sdk {
       return type.cast(
           new com.google.wear.services.remoteinteractions.RemoteInteractionsManager(context));
     }
+    if (type
+        == com.google.wear.services.watchfaces.watchfacepush.WatchFacePushManager.class) {
+      return type.cast(
+          new com.google.wear.services.watchfaces.watchfacepush.WatchFacePushManager(context));
+    }
     return null;
   }
 
