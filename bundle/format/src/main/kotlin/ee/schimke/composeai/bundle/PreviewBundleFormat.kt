@@ -66,6 +66,12 @@ public const val BUNDLE_FIGMA_RASTER_DIR_SUFFIX: String = ".figma-raster"
  */
 public const val BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX: String = ".figma-fonts.warnings.json"
 
+/**
+ * Suffix for a Declarative Watch Face (`<WatchFace>`) complication & user-configuration metadata
+ * sidecar (`previews/<id>.watchface.json`, [WatchFaceComplicationsPayload]).
+ */
+public const val BUNDLE_WATCHFACE_SUFFIX: String = ".watchface.json"
+
 /** [injectSidecarsIntoBundle] for `previews/<id>.semantics.json`. */
 public fun injectSemanticsIntoBundle(
   bundleFile: File,
@@ -101,6 +107,13 @@ public fun injectFigmaFontWarningsIntoBundle(
   fileSystem: FileSystem = SystemFileSystem,
 ): Int =
   injectSidecarsIntoBundle(bundleFile, warningsById, BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX, fileSystem)
+
+/** [injectSidecarsIntoBundle] for `previews/<id>.watchface.json`. */
+public fun injectWatchFaceIntoBundle(
+  bundleFile: File,
+  watchFaceById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int = injectSidecarsIntoBundle(bundleFile, watchFaceById, BUNDLE_WATCHFACE_SUFFIX, fileSystem)
 
 /**
  * Inject a hybrid figma-svg's per-node raster crops (preview id → crop filename → PNG bytes) as

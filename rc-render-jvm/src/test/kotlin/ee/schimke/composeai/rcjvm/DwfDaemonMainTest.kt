@@ -1,9 +1,12 @@
 package ee.schimke.composeai.rcjvm
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.bundle.WatchFaceComplicationsPayload
+import ee.schimke.composeai.bundle.WatchFaceComplicationsProduct
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
@@ -360,10 +363,136 @@ class DwfDaemonMainTest {
         assertThat(emptyComp.slots[0].activeState.type).isEqualTo("EMPTY")
         assertThat(emptyComp.slots[1].activeState.type).isEqualTo("EMPTY")
 
-        // 7. Fetch compose/remotecompose live knob state
+        // 7. Fetch compose/remotecompose live knob state and verify sidecars on disk
         val rcData = harness.fetchRemoteCompose("dwf__raw_watchface")
         assertThat(rcData.declarations).isNotEmpty()
         assertThat(rcData.namedValues).containsKey(DwfVariables.complicationTypeKey(1))
+        assertThat(File(outputDir, "dwf__raw_watchface_0.watchface.json").isFile).isTrue()
+        assertThat(
+            File(previewsDir, "data/dwf__raw_watchface/compose-semantics.json").isFile,
+          )
+          .isTrue()
+
+        // 8. Renderer-neutral wf.* namedOverrides + clockEpochMillis
+        val clockA =
+          PreviewOverrides(
+            clockEpochMillis = 1763460630000L, // 10:10:30 UTC
+            namedOverrides =
+              mapOf(
+                "wf.slot.1.type" to PreviewOverrideValue.StringValue("SHORT_TEXT"),
+                "wf.slot.1.text" to PreviewOverrideValue.StringValue("99 BPM"),
+              ),
+          )
+        val clockB = clockA.copy(clockEpochMillis = 1763476500000L) // 14:35:00 UTC
+        val hashClockA = harness.renderAndHash("dwf__raw_watchface", clockA)
+        val hashClockB = harness.renderAndHash("dwf__raw_watchface", clockB)
+        assertThat(hashClockB).isNotEqualTo(hashClockA)
+        assertThat(harness.fetchComplications("dwf__raw_watchface").slots[0].activeState.text)
+          .isEqualTo("99 BPM")
+
+        // 9. Editing XML invalidates cached latestRenders on data/fetch
+        val updatedXml = sampleWatchFaceXml.replace("show_seconds", "show_date")
+        val xmlFile = File(rawDir, "watchface.xml")
+        xmlFile.writeText(updatedXml)
+        xmlFile.setLastModified(System.currentTimeMillis() + 5_000L)
+        val invalidatedComp = harness.fetchComplications("dwf__raw_watchface")
+        assertThat(invalidatedComp.userConfigurations.map { it.id }).containsExactly("show_date")
+
+        // 10. Malformed XML returns structured JSON-RPC error (-32022) and keeps daemon alive
+        xmlFile.writeText("<WatchFace><Unclosed")
+        xmlFile.setLastModified(System.currentTimeMillis() + 10_000L)
+        val errResp =
+          harness.requestRaw(
+            "data/fetch",
+            buildJsonObject {
+              put("previewId", "dwf__raw_watchface")
+              put("kind", WatchFaceComplicationsProduct.KIND)
+              put("inline", true)
+            },
+          )
+        val errCode = errResp["error"]?.jsonObject?.get("code")?.jsonPrimitive?.longOrNull
+        assertThat(errCode).isEqualTo(-32022L)
+
+        // Restoring valid XML recovers immediately without restarting the daemon
+        xmlFile.writeText(sampleWatchFaceXml)
+        xmlFile.setLastModified(System.currentTimeMillis() + 15_000L)
+        assertThat(harness.fetchComplications("dwf__raw_watchface").slots).hasSize(2)
+      } finally {
+        harness.close()
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun variantAuthoredComplicationColorsSurviveDefaultRangedSeed() {
+    val root = Files.createTempDirectory("dwf-variant-palette-").toFile()
+    try {
+      val resDir = File(root, "src/main/res").apply { mkdirs() }
+      val rawDir = File(resDir, "raw").apply { mkdirs() }
+      val xml =
+        """
+        <WatchFace width="400" height="400" clipShape="CIRCLE">
+          <UserConfigurations>
+            <ColorConfiguration id="accent" displayName="Accent" defaultValue="0">
+              <ColorOption id="crimson" displayName="Crimson" colors="#FFFF1744 #FFFF5252" />
+              <ColorOption id="cobalt" displayName="Cobalt" colors="#FF2979FF #FF448AFF" />
+            </ColorConfiguration>
+          </UserConfigurations>
+          <Scene backgroundColor="#FF000000">
+            <ComplicationSlot slotId="1" x="50" y="50" width="300" height="300"
+                supportedTypes="RANGED_VALUE" defaultSystemProvider="WATCH_BATTERY"
+                defaultSystemProviderType="RANGED_VALUE">
+              <BoundingOval x="0" y="0" width="300" height="300" />
+              <Complication type="RANGED_VALUE">
+                <PartDraw x="0" y="0" width="300" height="300">
+                  <Variant mode="AMBIENT" target="alpha" value="128" />
+                  <Arc centerX="150" centerY="150" width="260" height="260" startAngle="0" endAngle="270">
+                    <WeightedStroke colors="[CONFIGURATION.accent.0] [CONFIGURATION.accent.1]" thickness="24" cap="ROUND" />
+                  </Arc>
+                </PartDraw>
+              </Complication>
+            </ComplicationSlot>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent()
+      File(rawDir, "watchface.xml").writeText(xml)
+      val previewsDir = File(root, "build/compose-previews").apply { mkdirs() }
+      val outputDir = File(previewsDir, "dwf-renders").apply { mkdirs() }
+      val previewsJson = File(previewsDir, "previews.json")
+      previewsJson.writeText(
+        """{"previews":[{"id":"wf","functionName":"watchface","params":{"widthDp":400,"heightDp":400,"density":1.0,"dwfAssetPath":"raw/watchface.xml"},"captures":[{"renderOutput":"dwf-renders/wf.png"}]}]}""",
+      )
+      val harness =
+        DaemonHarness(
+          DwfDaemonConfig(
+            previewsJson = previewsJson,
+            outputDir = outputDir,
+            resourceDirs = listOf(resDir),
+            moduleProjectDir = root,
+          ),
+        )
+      try {
+        harness.request("initialize", buildJsonObject { put("protocolVersion", 2) })
+        val crimsonHash =
+          harness.renderAndHash(
+            "wf",
+            PreviewOverrides(
+              namedOverrides =
+                mapOf("wf.config.accent" to PreviewOverrideValue.StringValue("crimson")),
+            ),
+          )
+        val cobaltHash =
+          harness.renderAndHash(
+            "wf",
+            PreviewOverrides(
+              namedOverrides =
+                mapOf("wf.config.accent" to PreviewOverrideValue.StringValue("cobalt")),
+            ),
+          )
+        assertThat(cobaltHash).isNotEqualTo(crimsonHash)
       } finally {
         harness.close()
       }
@@ -435,7 +564,7 @@ class DwfDaemonMainTest {
           start()
         }
 
-    fun request(method: String, params: JsonObject): JsonElement {
+    fun requestRaw(method: String, params: JsonObject): JsonObject {
       val id = nextId++
       val req = buildJsonObject {
         put("jsonrpc", "2.0")
@@ -447,6 +576,11 @@ class DwfDaemonMainTest {
       val (respId, respObj) =
         responses.poll(30, TimeUnit.SECONDS) ?: error("Timed out waiting for response to $method")
       assertThat(respId).isEqualTo(id)
+      return respObj
+    }
+
+    fun request(method: String, params: JsonObject): JsonElement {
+      val respObj = requestRaw(method, params)
       respObj["error"]?.let { err -> error("RPC $method failed: $err") }
       return respObj["result"] ?: error("Missing result in $respObj")
     }

@@ -2418,8 +2418,30 @@ jobs:
           # previews; worse, a caller directory that happens to share the path would be scanned
           # instead. `--spec` stays caller-relative and is deliberately not prefixed.
           to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
-          args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
-          if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          scan_dirs=("$(to_dir "$MODULE")")
+          args=(--spec "$SPEC" --module-dir "${scan_dirs[0]}")
+          if [ -n "$EXTRA_MODULE" ]; then
+            extra_dir="$(to_dir "$EXTRA_MODULE")"
+            scan_dirs+=("$extra_dir")
+            args+=(--src "$extra_dir")
+          fi
+          # Declarative Watch Face (`<WatchFace>`) XML assets in `res/raw/` are discovered as
+          # previews whose `functionName` is the XML file stem, with no `.kt` source. Synthesize a
+          # stub `@Preview fun <stem>()` directory only when `<WatchFace` XMLs exist, so spec
+          # pre-flight still validates watch face names instead of rejecting codeless DWF modules.
+          dwf_stub_dir="$RUNNER_TEMP/dwf-spec-stubs"
+          rm -rf "$dwf_stub_dir"
+          for sdir in "${scan_dirs[@]}"; do
+            [ -d "$sdir" ] || continue
+            while IFS= read -r -d '' xml_file; do
+              if grep -q '<WatchFace' "$xml_file" 2>/dev/null; then
+                mkdir -p "$dwf_stub_dir"
+                stem="$(basename "$xml_file" .xml)"
+                printf '@Preview fun %s() {}\n' "$stem" >> "$dwf_stub_dir/DwfPreviewStubs.kt"
+              fi
+            done < <(find "$sdir" -path '*/build' -prune -o -type f -name '*.xml' -print0)
+          done
+          if [ -d "$dwf_stub_dir" ]; then args+=(--src "$dwf_stub_dir"); fi
           for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
           if [ "$LIVE_BUNDLE" = "true" ] || [ "$LIVE_SOURCE" = "true" ]; then
             args+=(--live-bundle)
@@ -2581,6 +2603,14 @@ jobs:
         run: |
           compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
+
+      - name: Install DWF (Skiko) render deps
+        if: ${{ !inputs.desktop-render }}
+        run: |
+          if find "${RENDER_DIR:-.}" -path '*/build' -prune -o -path '*/.git' -prune -o -type f -name '*.xml' -exec grep -q '<WatchFace' {} + 2>/dev/null; then
+            compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
+              xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
+          fi
 
       # Same font cache as the single-job pipeline. The save key carries the shard index because
       # Actions caches are immutable: N shards saving one `…-<run_id>` key would have the first win
@@ -3961,21 +3991,48 @@ jobs:
           # instead. `--spec` stays caller-relative and is deliberately not prefixed.
           to_dir() { printf '%s' "${SOURCE_ROOT:+$SOURCE_ROOT/}${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC")
+          scan_dirs=()
           if [ "$ALL_MODULES" = "true" ]; then
             while IFS= read -r discovered_source; do
-              [ -n "$discovered_source" ] && args+=(--src "$discovered_source")
+              if [ -n "$discovered_source" ]; then
+                args+=(--src "$discovered_source")
+                scan_dirs+=("$discovered_source")
+              fi
             done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
             # One source.module cannot describe a repository-wide catalog. Keep validation honest:
             # deferred coverage needs the carried live bundles, while source modules are stamped
             # per component after export.
             LIVE_SOURCE=false
           else
-            args+=(--module-dir "$(to_dir "$MODULE")")
+            mod_dir="$(to_dir "$MODULE")"
+            args+=(--module-dir "$mod_dir")
+            scan_dirs+=("$mod_dir")
           fi
           # A catalog whose previews span the primary + one extra module must
           # resolve names against BOTH, or the extra module's previews read as
           # "missing" and fail the pre-flight.
-          if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          if [ -n "$EXTRA_MODULE" ]; then
+            extra_dir="$(to_dir "$EXTRA_MODULE")"
+            args+=(--src "$extra_dir")
+            scan_dirs+=("$extra_dir")
+          fi
+          # Declarative Watch Face (`<WatchFace>`) XML assets in `res/raw/` are discovered as
+          # previews whose `functionName` is the XML file stem, with no `.kt` source. Synthesize a
+          # stub `@Preview fun <stem>()` directory only when `<WatchFace` XMLs exist, so spec
+          # pre-flight still validates watch face names instead of rejecting codeless DWF modules.
+          dwf_stub_dir="$RUNNER_TEMP/dwf-spec-stubs"
+          rm -rf "$dwf_stub_dir"
+          for sdir in "${scan_dirs[@]}"; do
+            [ -d "$sdir" ] || continue
+            while IFS= read -r -d '' xml_file; do
+              if grep -q '<WatchFace' "$xml_file" 2>/dev/null; then
+                mkdir -p "$dwf_stub_dir"
+                stem="$(basename "$xml_file" .xml)"
+                printf '@Preview fun %s() {}\n' "$stem" >> "$dwf_stub_dir/DwfPreviewStubs.kt"
+              fi
+            done < <(find "$sdir" -path '*/build' -prune -o -type f -name '*.xml' -print0)
+          done
+          if [ -d "$dwf_stub_dir" ]; then args+=(--src "$dwf_stub_dir"); fi
           # Multipreview annotations declared outside the scanned source (Wear's
           # @WearPreviewDevices/@WearPreviewFontScales, or an app's own shared
           # annotation module). Without them the scan finds nothing and every
@@ -4259,6 +4316,14 @@ jobs:
         run: |
           compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
+
+      - name: Install DWF (Skiko) render deps
+        if: ${{ !inputs.desktop-render }}
+        run: |
+          if find "${RENDER_DIR:-.}" -path '*/build' -prune -o -path '*/.git' -prune -o -type f -name '*.xml' -exec grep -q '<WatchFace' {} + 2>/dev/null; then
+            compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
+              xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
+          fi
 
       # Restore the downloadable-font cache (the matching save runs after the render,
       # below). The Android renderer's GoogleFont shadow and the figma-svg export fetch

@@ -128,7 +128,8 @@ internal class BundlePrepareCommand(
     /** Fetches the backend's daemon sidecar on first use, as `bundle render` does. */
     private fun provisionSidecars(bundle: File) {
       when (readBundleBackendForRender(bundle)) {
-        "desktop" -> {
+        "desktop",
+        "dwf" -> {
           DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
           SkikoNativeProvision.prepareInstalledDesktopSidecars()
         }

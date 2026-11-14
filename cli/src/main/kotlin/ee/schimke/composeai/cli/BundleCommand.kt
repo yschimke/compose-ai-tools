@@ -1480,7 +1480,8 @@ private fun renderBundleWithOverrides(
   // Sidecars are fetched from the compose-preview-daemon release on first use.
   try {
     when (backend) {
-      "desktop" -> {
+      "desktop",
+      "dwf" -> {
         DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
         SkikoNativeProvision.prepareInstalledDesktopSidecars()
       }
@@ -1512,7 +1513,7 @@ private fun renderBundleWithOverrides(
     if (state == null) {
       System.err.println(
         "bundle render: can't stand up a render daemon for this bundle — --knob theme overrides need " +
-          "a 'desktop'/'android' backend bundle and the matching daemon sidecars (build them with " +
+          "a 'desktop'/'android'/'dwf' backend bundle and the matching daemon sidecars (build them with " +
           ":cli:installDist). Re-run without --knob for the stock render.",
       )
       return false

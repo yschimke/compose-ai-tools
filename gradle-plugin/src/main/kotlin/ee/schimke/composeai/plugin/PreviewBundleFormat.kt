@@ -443,6 +443,12 @@ const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
 const val BUNDLE_REMOTECOMPOSE_SIDECAR_EXT: String = "remotecompose.json"
 
 /**
+ * Extension of the Declarative Watch Face complication & user-configuration metadata sidecar
+ * (`<renderDir>/<stem>.watchface.json` on disk, `previews/<id>.watchface.json` in the bundle).
+ */
+const val BUNDLE_WATCHFACE_SIDECAR_EXT: String = "watchface.json"
+
+/**
  * Extension of the render-failure sidecar: `<png>.error.json` on disk, `previews/<id>.error.json`
  * in the bundle.
  */

@@ -240,7 +240,7 @@ internal object ComposePreviewTasks {
    * task.
    */
   internal fun bundleRenderable(backendId: String, configName: String): Boolean =
-    backendId == "android" || isDesktopRenderableConfig(configName)
+    backendId == "android" || backendId == "dwf" || isDesktopRenderableConfig(configName)
 
   /**
    * The consumer runtime configuration for the desktop pipeline, in preference order;
@@ -625,14 +625,29 @@ internal object ComposePreviewTasks {
       project.tasks.named("composePreviewRenderAll").configure { dependsOn(dwfRenderTask) }
     }
 
-    registerBundleTask(
-      project = project,
-      extension = extension,
-      previewOutputDir = previewOutputDir,
-      sourceClassDirs = sourceClassDirs,
-      resolveDependencyConfigName = resolveDependencyConfigName,
-      discoverTaskName = "composePreviewDiscover",
-    )
+    val bundleTask =
+      registerBundleTask(
+        project = project,
+        extension = extension,
+        previewOutputDir = previewOutputDir,
+        sourceClassDirs = sourceClassDirs,
+        resolveDependencyConfigName = resolveDependencyConfigName,
+        discoverTaskName = "composePreviewDiscover",
+        backendId = if (hasDwfSources && !hasJvmSources(project)) "dwf" else "desktop",
+      )
+    if (hasDwfSources) {
+      bundleTask.configure {
+        moduleResourceRoots.from(sourceResourceDirs)
+        moduleResourceRoots.from(
+          project.files(
+            project.layout.projectDirectory.dir("src/main/resources"),
+            project.layout.projectDirectory.dir("src/commonMain/resources"),
+            project.layout.projectDirectory.dir("src/jvmMain/resources"),
+            project.layout.projectDirectory.dir("src/desktopMain/resources"),
+          ),
+        )
+      }
+    }
 
     // Must run at apply time, before task realization, where MutationGuard rejects `afterEvaluate`.
     setupBtaConfigurations(project, extension)

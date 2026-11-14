@@ -7,6 +7,7 @@ import ee.schimke.composeai.bundle.BUNDLE_FONTS_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_LAYOUT_SUFFIX
 import ee.schimke.composeai.bundle.BUNDLE_PREVIEWS_DIR
 import ee.schimke.composeai.bundle.BUNDLE_SEMANTICS_SUFFIX
+import ee.schimke.composeai.bundle.BUNDLE_WATCHFACE_SUFFIX
 import ee.schimke.composeai.bundle.BundleReader
 import ee.schimke.composeai.bundle.ZIP_DOS_EPOCH_MS
 import ee.schimke.composeai.imagecrop.clampTo
@@ -188,6 +189,8 @@ private val SPLIT_SIDECAR_SUFFIXES =
     // sticker.
     BUNDLE_FIGMA_FONT_WARNINGS_SUFFIX,
     ".overrides.json",
+    ".remotecompose.json",
+    BUNDLE_WATCHFACE_SUFFIX,
     ".catalog.json",
   )
 

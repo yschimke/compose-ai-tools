@@ -107,9 +107,10 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       when (manifest.backend) {
         "desktop" -> desktopDaemonLaunch()
         "android" -> androidDaemonLaunch()
+        "dwf" -> dwfDaemonLaunch(classesDir)
         else -> {
           System.err.println(
-            "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop' or 'android').",
+            "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop', 'android' or 'dwf').",
           )
           exitProcess(1)
         }
@@ -147,7 +148,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
               hasIr = hasIr,
             ),
           )
-          add("ee.schimke.composeai.daemon.DaemonMain")
+          add(launch.mainClass)
         },
       )
 
@@ -205,7 +206,44 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val classpath: String,
     val jvmArgs: List<String>,
     val sysProps: List<String>,
+    val mainClass: String = "ee.schimke.composeai.daemon.DaemonMain",
   )
+
+  private fun dwfDaemonLaunch(classesDir: File): DaemonLaunch {
+    DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP)
+    val rcjvmJars = locateBundleSidecarJars("lib-rcjvm")
+    if (rcjvmJars.isEmpty()) {
+      System.err.println(
+        "bundle daemon: backend=dwf needs `lib-rcjvm/` (looked in " +
+          "`${bundleSidecarSearchDescription("lib-rcjvm")}`).",
+      )
+      exitProcess(1)
+    }
+    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
+    if (daemonJars.isEmpty()) {
+      System.err.println(
+        "bundle daemon: backend=dwf needs `lib-daemon-desktop/` for Skiko natives (looked in " +
+          "`${bundleSidecarSearchDescription("lib-daemon-desktop")}`).",
+      )
+      exitProcess(1)
+    }
+    val skikoNative =
+      try {
+        SkikoNativeProvision.prepare(daemonJars + rcjvmJars)
+      } catch (e: IllegalStateException) {
+        System.err.println("bundle daemon: ${e.message}")
+        exitProcess(1)
+      }
+    return DaemonLaunch(
+      classpath =
+        (listOf(skikoNative) + rcjvmJars + daemonJars).distinct().joinToString(File.pathSeparator) {
+          it.absolutePath
+        },
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true"),
+      sysProps = desktopFontSysProps() + "-Dcomposeai.daemon.resDirs=${classesDir.absolutePath}",
+      mainClass = "ee.schimke.composeai.rcjvm.DwfDaemonMain",
+    )
+  }
 
   private fun desktopDaemonLaunch(): DaemonLaunch {
     // Fetched from the compose-preview-daemon release on first use; an explicit `-D…Dir` or an

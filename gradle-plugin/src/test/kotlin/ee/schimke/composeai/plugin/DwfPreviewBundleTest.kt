@@ -209,6 +209,10 @@ class DwfPreviewBundleTest {
       .writeText(
         """{"capturePlayer":"cmp-jvm","declarations":[{"name":"dwf.is_ambient","domain":"SYSTEM","default":{"type":"boolean","value":false}}]}""",
       )
+    File(dwfRendersDir, "$stem.watchface.json")
+      .writeText(
+        """{"previewId":"$stem","dwfAssetPath":"raw/watchface.xml","widthPx":450,"heightPx":450,"slots":[{"slotId":1,"supportedTypes":["SHORT_TEXT"],"defaultType":"SHORT_TEXT","activeState":{"type":"SHORT_TEXT","text":"72"}}]}""",
+      )
 
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task = project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java).get()
@@ -217,7 +221,7 @@ class DwfPreviewBundleTest {
     task.rendersDir.set(rendersDir)
     task.modulePath.set(":wear")
     task.producedBy.set("test")
-    task.backend.set("android")
+    task.backend.set("dwf")
     task.previewIds.set(emptyList())
     task.pack()
 
@@ -226,9 +230,11 @@ class DwfPreviewBundleTest {
     assertThat(entries.keys).contains("ir/$stem.rc")
     assertThat(entries.keys).contains("previews/$stem.png")
     assertThat(entries.keys).contains("previews/$stem.remotecompose.json")
+    assertThat(entries.keys).contains("previews/$stem.watchface.json")
 
     val bundleJson =
       Json.parseToJsonElement(entries.getValue("bundle.json").decodeToString()).jsonObject
+    assertThat(bundleJson["backend"]?.jsonPrimitive?.content).isEqualTo("dwf")
     val irEntry = bundleJson.getValue("intermediateRepresentations").jsonArray.single().jsonObject
     assertThat(irEntry["format"]?.jsonPrimitive?.content).isEqualTo("remotecompose")
     val rcSidecar =
@@ -237,6 +243,18 @@ class DwfPreviewBundleTest {
         )
         .jsonObject
     assertThat(rcSidecar["capturePlayer"]?.jsonPrimitive?.content).isEqualTo("cmp-jvm")
+    val wfSidecar =
+      Json.parseToJsonElement(
+          entries.getValue("previews/$stem.watchface.json").decodeToString(),
+        )
+        .jsonObject
+    assertThat(wfSidecar["dwfAssetPath"]?.jsonPrimitive?.content).isEqualTo("raw/watchface.xml")
+  }
+
+  @Test
+  fun `bundleRenderable admits codeless dwf backend on Android and KMP runtime configs`() {
+    assertThat(ComposePreviewTasks.bundleRenderable("dwf", "debugRuntimeClasspath")).isTrue()
+    assertThat(ComposePreviewTasks.bundleRenderable("dwf", "androidRuntimeClasspath")).isTrue()
   }
 
   private fun readAllZipEntries(zipBytes: ByteArray): Map<String, ByteArray> {

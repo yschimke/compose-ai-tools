@@ -2008,9 +2008,11 @@ internal class DwfExpressionCompiler(
         )
       }
 
-    private fun complicationColorCountState(slotId: Int, defaultCount: Int): RemoteInt =
+    private fun complicationColorCountState(slotId: Int): RemoteInt =
       complicationColorCountCache.getOrPut(slotId) {
-        RemoteInt.createNamedRemoteInt(DwfVariables.complicationColorCountKey(slotId), defaultCount)
+        // 0 means no host color-ramp override: each weighted stroke keeps its own variant palette
+        // (RANGED_VALUE vs GOAL_PROGRESS vs WEIGHTED_ELEMENTS) until the host sets color_count > 0.
+        RemoteInt.createNamedRemoteInt(DwfVariables.complicationColorCountKey(slotId), 0)
       }
 
     private fun complicationColorStopState(
@@ -2106,7 +2108,12 @@ internal class DwfExpressionCompiler(
       if (isComplicationColors) {
         val stopCount = maxOf(DwfVariables.MAX_COMPLICATION_COLOR_STOPS, seedColors.size)
         val defaultCount = if (seedColors.isNotEmpty()) seedColors.size else 3
-        colorCountState = complicationColorCountState(slotId, defaultCount)
+        val hostColorCount = complicationColorCountState(slotId)
+        val hasHostColors = RemoteInt(0).isLessThan(hostColorCount)
+        colorCountState =
+          hasHostColors
+            .select(hostColorCount.toRemoteFloat(), defaultCount.toFloat().rf)
+            .toRemoteInt()
         colors =
           (0 until stopCount).map { idx ->
             val defaultArgb =
@@ -2114,7 +2121,13 @@ internal class DwfExpressionCompiler(
                 ?: seedColors.lastOrNull()
                 ?: DEFAULT_COMPLICATION_STOP_COLORS[idx % DEFAULT_COMPLICATION_STOP_COLORS.size]
             if (idx < DwfVariables.MAX_COMPLICATION_COLOR_STOPS) {
-              complicationColorStopState(slotId, idx, defaultArgb)
+              val hostStop =
+                complicationColorStopState(
+                  slotId,
+                  idx,
+                  DEFAULT_COMPLICATION_STOP_COLORS[idx % DEFAULT_COMPLICATION_STOP_COLORS.size],
+                )
+              hasHostColors.select(hostStop, RemoteColor(defaultArgb))
             } else {
               RemoteColor(defaultArgb)
             }

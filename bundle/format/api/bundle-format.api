@@ -786,6 +786,7 @@ public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
 	public static final field BUNDLE_LAYOUT_SUFFIX Ljava/lang/String;
 	public static final field BUNDLE_PREVIEWS_DIR Ljava/lang/String;
 	public static final field BUNDLE_SEMANTICS_SUFFIX Ljava/lang/String;
+	public static final field BUNDLE_WATCHFACE_SUFFIX Ljava/lang/String;
 	public static final field BUNDLE_WEB_DIR Ljava/lang/String;
 	public static final fun addOrReplaceZipEntries ([BLjava/util/Map;Ljava/util/Set;)[B
 	public static synthetic fun addOrReplaceZipEntries$default ([BLjava/util/Map;Ljava/util/Set;ILjava/lang/Object;)[B
@@ -807,6 +808,8 @@ public final class ee/schimke/composeai/bundle/PreviewBundleFormatKt {
 	public static synthetic fun injectSemanticsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
 	public static final fun injectSidecarsIntoBundle (Ljava/io/File;Ljava/util/Map;Ljava/lang/String;Lokio/FileSystem;)I
 	public static synthetic fun injectSidecarsIntoBundle$default (Ljava/io/File;Ljava/util/Map;Ljava/lang/String;Lokio/FileSystem;ILjava/lang/Object;)I
+	public static final fun injectWatchFaceIntoBundle (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;)I
+	public static synthetic fun injectWatchFaceIntoBundle$default (Ljava/io/File;Ljava/util/Map;Lokio/FileSystem;ILjava/lang/Object;)I
 	public static final fun resolveInBundleTarget (Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
 	public static final fun rewriteRawZipEntries (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;)V
 	public static synthetic fun rewriteRawZipEntries$default (Ljava/io/File;Ljava/util/Map;Ljava/util/Set;Lokio/FileSystem;ILjava/lang/Object;)V
@@ -943,6 +946,239 @@ public final synthetic class ee/schimke/composeai/bundle/TrustedKey$$serializer 
 }
 
 public final class ee/schimke/composeai/bundle/TrustedKey$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceActiveComplicationDto {
+	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto$Companion;
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;FFFZZZLjava/lang/String;Ljava/lang/String;ZZZZZILjava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;FFFZZZLjava/lang/String;Ljava/lang/String;ZZZZZILjava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun accessibilitySummary (I)Ljava/lang/String;
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Z
+	public final fun component11 ()Ljava/lang/String;
+	public final fun component12 ()Ljava/lang/String;
+	public final fun component13 ()Z
+	public final fun component14 ()Z
+	public final fun component15 ()Z
+	public final fun component16 ()Z
+	public final fun component17 ()Z
+	public final fun component18 ()I
+	public final fun component19 ()Ljava/util/List;
+	public final fun component2 ()I
+	public final fun component20 ()Ljava/util/List;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()F
+	public final fun component6 ()F
+	public final fun component7 ()F
+	public final fun component8 ()Z
+	public final fun component9 ()Z
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;FFFZZZLjava/lang/String;Ljava/lang/String;ZZZZZILjava/util/List;Ljava/util/List;)Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;FFFZZZLjava/lang/String;Ljava/lang/String;ZZZZZILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccentColor ()Ljava/lang/String;
+	public final fun getColorCount ()I
+	public final fun getColors ()Ljava/util/List;
+	public final fun getGoalProgressColorsInterpolate ()Z
+	public final fun getHasGoalProgressColors ()Z
+	public final fun getHasMonochromaticImage ()Z
+	public final fun getHasPhotoImage ()Z
+	public final fun getHasRangedValueColors ()Z
+	public final fun getHasSmallImage ()Z
+	public final fun getHasWeightedElements ()Z
+	public final fun getImageColor ()Ljava/lang/String;
+	public final fun getMax ()F
+	public final fun getMin ()F
+	public final fun getRangedValueColorsInterpolate ()Z
+	public final fun getText ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public final fun getTypeCode ()I
+	public final fun getValue ()F
+	public final fun getWeights ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun semanticText ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/WatchFaceActiveComplicationDto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceActiveComplicationDto$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceComplicationSlotDto {
+	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto$Companion;
+	public fun <init> (ILee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;)V
+	public synthetic fun <init> (ILee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;
+	public final fun copy (ILee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;)Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto;ILee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActiveState ()Lee/schimke/composeai/bundle/WatchFaceActiveComplicationDto;
+	public final fun getAuthoredTypes ()Ljava/util/List;
+	public final fun getBoundingShape ()Ljava/lang/String;
+	public final fun getBounds ()Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;
+	public final fun getDefaultSystemProvider ()Ljava/lang/String;
+	public final fun getDefaultSystemProviderType ()Ljava/lang/String;
+	public final fun getSlotId ()I
+	public final fun getSupportedTypes ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun isCustomizable ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/WatchFaceComplicationSlotDto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/WatchFaceComplicationSlotDto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceComplicationSlotDto$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceComplicationsPayload {
+	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Z
+	public final fun component8 ()Ljava/util/List;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;)Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;Ljava/lang/String;Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClipShape ()Ljava/lang/String;
+	public final fun getDwfAssetPath ()Ljava/lang/String;
+	public final fun getHeightPx ()I
+	public final fun getPreviewId ()Ljava/lang/String;
+	public final fun getPreviewTime ()Ljava/lang/String;
+	public final fun getSlots ()Ljava/util/List;
+	public final fun getUserConfigurations ()Ljava/util/List;
+	public final fun getWidthPx ()I
+	public fun hashCode ()I
+	public final fun isAmbient ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/WatchFaceComplicationsPayload$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/WatchFaceComplicationsPayload;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceComplicationsPayload$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceComplicationsProduct {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceComplicationsProduct;
+	public static final field KIND Ljava/lang/String;
+	public static final field SCHEMA_VERSION I
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceSlotBoundsDto {
+	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto$Companion;
+	public fun <init> (FFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;FFFFILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()F
+	public final fun getWidth ()F
+	public final fun getX ()F
+	public final fun getY ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/WatchFaceSlotBoundsDto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/WatchFaceSlotBoundsDto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceSlotBoundsDto$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceUserConfigDto {
+	public static final field Companion Lee/schimke/composeai/bundle/WatchFaceUserConfigDto$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
+	public static synthetic fun copy$default (Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActiveValue ()Ljava/lang/String;
+	public final fun getDefaultValue ()Ljava/lang/String;
+	public final fun getDisplayName ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getOptions ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class ee/schimke/composeai/bundle/WatchFaceUserConfigDto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lee/schimke/composeai/bundle/WatchFaceUserConfigDto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lee/schimke/composeai/bundle/WatchFaceUserConfigDto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class ee/schimke/composeai/bundle/WatchFaceUserConfigDto$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

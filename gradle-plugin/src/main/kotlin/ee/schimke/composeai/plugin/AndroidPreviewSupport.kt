@@ -2812,7 +2812,7 @@ internal object AndroidPreviewSupport {
         sourceClassDirs = sourceClassDirs,
         resolveDependencyConfigName = { dependencyConfigName },
         discoverTaskName = "composePreviewDiscover",
-        backendId = "android",
+        backendId = if (codelessDwfModule) "dwf" else "android",
         // (v6) Track the files `test_config.properties` points at (resource APK dir, merged
         // manifest), since the pack action reads them by absolute path; this re-packs when content
         // changes.

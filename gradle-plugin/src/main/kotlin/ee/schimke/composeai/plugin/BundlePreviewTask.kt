@@ -503,6 +503,9 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewRemoteCompose(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"] = it
       }
+      resolvePreviewWatchFace(preview)?.let {
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_WATCHFACE_SIDECAR_EXT"] = it
+      }
     }
 
     // Catalog-token sidecars (#2167, theme tables per #2179), packed as
@@ -781,6 +784,25 @@ abstract class BundlePreviewTask : DefaultTask() {
     val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
     val captureDir = File(previewsRoot, rel).parentFile
     val sidecarName = "$stem.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"
+    val f =
+      listOfNotNull(captureDir?.let { File(it, sidecarName) }, File(rendersRoot, sidecarName))
+        .firstOrNull { it.isFile && it.length() > 0 } ?: return null
+    return f.readBytes()
+  }
+
+  /**
+   * The Declarative Watch Face complication/configuration sidecar
+   * (`<renderDir>/<stem>.watchface.json`), verbatim, or `null`.
+   */
+  private fun resolvePreviewWatchFace(preview: PreviewInfo): ByteArray? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    val leaf = rel.substringAfterLast('/')
+    val stem = if ('.' in leaf) leaf.substringBeforeLast('.') else leaf
+    val captureDir = File(previewsRoot, rel).parentFile
+    val sidecarName = "$stem.$BUNDLE_WATCHFACE_SIDECAR_EXT"
     val f =
       listOfNotNull(captureDir?.let { File(it, sidecarName) }, File(rendersRoot, sidecarName))
         .firstOrNull { it.isFile && it.length() > 0 } ?: return null
