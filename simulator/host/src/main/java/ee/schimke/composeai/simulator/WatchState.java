@@ -228,6 +228,10 @@ final class WatchState {
   }
 
   JSONObject clockCommand(JSONObject c) throws JSONException {
+    WatchFaceHost host = WatchFaceHost.current();
+    if (host != null) {
+      host.clearFixedTimeOverride();
+    }
     if (c.optBoolean("reset", false)) {
       baseSimMillis = null;
       clockFrozen = false;

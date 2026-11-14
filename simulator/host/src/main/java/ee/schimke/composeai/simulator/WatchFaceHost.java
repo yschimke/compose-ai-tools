@@ -422,34 +422,54 @@ final class WatchFaceHost {
     return c.getLong("timeMillis");
   }
 
+  void clearFixedTimeOverride() {
+    if (face != null) face.setFixedTimeMillis(null);
+    if (dwfFace != null) dwfFace.setFixedTimeMillis(null);
+  }
+
+  private void applyPinnedTimeMillis(Long timeMillis) {
+    if (timeMillis == null || WatchState.current() == null) return;
+    try {
+      WatchState.current()
+          .clockCommand(
+              new JSONObject().put("timeMillis", timeMillis.longValue()).put("frozen", true));
+    } catch (JSONException ignored) {
+    }
+  }
+
   JSONObject setByName(String target) {
     return setByName(target, null);
   }
 
   JSONObject setByName(String target, Long timeMillis) {
-    if (timeMillis != null && WatchState.current() != null) {
-      try {
-        WatchState.current()
-            .clockCommand(
-                new JSONObject().put("timeMillis", timeMillis.longValue()).put("frozen", true));
-      } catch (JSONException ignored) {
-      }
-    }
     DwfWatchFaceClient.Entry dwf = findDwfEntry(target);
     if (dwf != null && !WatchFaceClient.hostable(app)) {
-      return setDwf(dwf);
+      return setDwf(dwf, timeMillis);
     }
     if (dwf != null && !WffWatchFaces.isInstalled(target)) {
-      return setDwf(dwf);
+      return setDwf(dwf, timeMillis);
     }
     return set(resolve(target), timeMillis);
   }
 
   /** Sets one of the app's declarative (Watch Face Format) watch faces. */
   JSONObject setDwf(DwfWatchFaceClient.Entry entry) {
-    if (dwfFace != null && dwfFace.id().equals(entry.id)) return describe();
+    return setDwf(entry, null);
+  }
+
+  JSONObject setDwf(DwfWatchFaceClient.Entry entry, Long timeMillis) {
+    applyPinnedTimeMillis(timeMillis);
+    Long perFaceTime = WatchState.current() == null ? timeMillis : null;
+    if (dwfFace != null && dwfFace.id().equals(entry.id)) {
+      if (timeMillis != null || dwfFace.fixedTimeMillis() != null) {
+        dwfFace.setFixedTimeMillis(perFaceTime);
+        requestRender();
+      }
+      return describe();
+    }
     releaseFace();
     dwfFace = new DwfWatchFaceClient(app, entry, this::renderedDwf);
+    dwfFace.setFixedTimeMillis(perFaceTime);
     WatchFacePushStore.get().setActivePackageName(activeWatchFacePackage());
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
     rendering = true;
@@ -465,17 +485,21 @@ final class WatchFaceHost {
 
   JSONObject set(ComponentName component, Long timeMillis) {
     checkWatchFace(component);
+    boolean hadWatchState = WatchState.current() != null;
+    Long perFaceTime = hadWatchState ? null : timeMillis;
     if (face != null && face.component.equals(component)) {
-      if (timeMillis != null || (face.fixedTimeMillis() != null)) {
-        face.setFixedTimeMillis(timeMillis);
-        rendering = true;
-        face.render(ambient);
+      if (hadWatchState && timeMillis != null) {
+        applyPinnedTimeMillis(timeMillis);
+      } else if (timeMillis != null || face.fixedTimeMillis() != null) {
+        face.setFixedTimeMillis(perFaceTime);
+        requestRender();
       }
       return describe();
     }
+    applyPinnedTimeMillis(timeMillis);
     releaseFace();
     face = new WatchFaceClient(app, navigator, component, this::rendered);
-    face.setFixedTimeMillis(timeMillis);
+    face.setFixedTimeMillis(perFaceTime);
     WatchFacePushStore.get().setActivePackageName(component.getPackageName());
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
     rendering = true;
@@ -537,25 +561,28 @@ final class WatchFaceHost {
                 ambient, WatchState.current().burnIn(), WatchState.current().lowBit());
       }
     }
-    if (c.has("timeMillis") && WatchState.current() != null) {
-      if (c.isNull("timeMillis")) {
-        WatchState.current().clockCommand(new JSONObject().put("reset", true));
-      } else {
-        WatchState.current()
-            .clockCommand(
-                new JSONObject().put("timeMillis", c.getLong("timeMillis")).put("frozen", true));
+    if (c.has("timeMillis")) {
+      Long requested = c.isNull("timeMillis") ? null : Long.valueOf(c.getLong("timeMillis"));
+      if (WatchState.current() != null) {
+        clearFixedTimeOverride();
+        if (requested == null) {
+          WatchState.current().clockCommand(new JSONObject().put("reset", true));
+        } else {
+          WatchState.current()
+              .clockCommand(
+                  new JSONObject()
+                      .put("timeMillis", requested.longValue())
+                      .put("frozen", true));
+        }
+        return describe();
+      }
+      if (face != null) {
+        face.setFixedTimeMillis(requested);
+      } else if (dwfFace != null) {
+        dwfFace.setFixedTimeMillis(requested);
       }
     }
-    if (face != null) {
-      if (c.has("timeMillis")) {
-        face.setFixedTimeMillis(c.isNull("timeMillis") ? null : c.getLong("timeMillis"));
-      }
-      rendering = true;
-      face.render(ambient);
-    } else {
-      rendering = true;
-      dwfFace.render(ambient);
-    }
+    requestRender();
     return describe();
   }
 
@@ -1079,10 +1106,14 @@ final class WatchFaceHost {
             .put("complications", complications);
     if (face != null || dwfFace != null) {
       json.put("frames", dwfFace != null ? dwfFace.frames() : face.frames());
-      if (face != null) {
-        Long fixed = face.fixedTimeMillis();
-        if (fixed != null) json.put("timeMillis", fixed);
+      Long fixed =
+          face != null
+              ? face.fixedTimeMillis()
+              : (dwfFace != null ? dwfFace.fixedTimeMillis() : null);
+      if (fixed == null && WatchState.current() != null && WatchState.current().isClockFrozen()) {
+        fixed = Long.valueOf(WatchState.current().nowMillis());
       }
+      if (fixed != null) json.put("timeMillis", fixed);
       JSONArray slots = new JSONArray();
       for (WatchFaceClient.Slot slot : activeSlots()) {
         JSONArray types = new JSONArray();

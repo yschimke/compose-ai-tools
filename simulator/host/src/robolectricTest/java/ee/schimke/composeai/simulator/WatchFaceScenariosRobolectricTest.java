@@ -429,6 +429,52 @@ public class WatchFaceScenariosRobolectricTest {
     WatchFaceHost.resetCurrent();
   }
 
+  @Test
+  public void clockCommandReleasesPerFacePinnedTimeMillis() throws Exception {
+    WatchState state = new WatchState(app, null);
+    WatchFaceHost host =
+        new WatchFaceHost(
+            app,
+            null,
+            Protocol.create(),
+            new WatchFaceHost.Display() {
+              @Override
+              public void frame(Bitmap frame) {}
+
+              @Override
+              public void builtInComplication(String text) {}
+            });
+    try {
+      DwfWatchFaceClient.Entry entry =
+          new DwfWatchFaceClient.Entry(
+              app.getPackageName() + "/watchface",
+              "ClockTest",
+              new File("."),
+              "missing.rc",
+              450,
+              450,
+              "CIRCLE",
+              List.of(),
+              List.of());
+      host.setDwf(entry, 1_700_000_000_000L);
+      assertEquals(1_700_000_000_000L, state.nowMillis());
+      assertTrue(state.isClockFrozen());
+      assertEquals(1_700_000_000_000L, host.describe().getLong("timeMillis"));
+
+      state.clockCommand(new JSONObject().put("timeMillis", 1_700_000_600_000L));
+      assertEquals(1_700_000_600_000L, state.nowMillis());
+      assertEquals(1_700_000_600_000L, host.describe().getLong("timeMillis"));
+
+      state.clockCommand(new JSONObject().put("reset", true));
+      assertFalse(state.isClockFrozen());
+      assertFalse(host.describe().has("timeMillis"));
+    } finally {
+      host.unset();
+      WatchFaceHost.resetCurrent();
+      WatchState.resetCurrent();
+    }
+  }
+
   private File buildPushTestWffApk(String pkg, boolean includeWatchFaceXml, boolean includeDex)
       throws Exception {
     File apk = temp.newFile(pkg.replace('.', '_') + ".apk");
