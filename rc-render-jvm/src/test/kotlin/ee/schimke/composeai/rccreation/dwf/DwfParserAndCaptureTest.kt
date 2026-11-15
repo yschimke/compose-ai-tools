@@ -174,7 +174,8 @@ class DwfParserAndCaptureTest {
       "USER:${DwfVariables.IS_AMBIENT}" in namedVars || DwfVariables.IS_AMBIENT in namedVars,
     )
     assertTrue(namedVars.any { it.endsWith(DwfVariables.STEP_COUNT) })
-    assertTrue(namedVars.any { it.endsWith(DwfVariables.colorThemeKey("theme", 0)) })
+    assertTrue(namedVars.any { it.endsWith(DwfVariables.configKey("theme")) })
+    assertTrue(namedVars.any { it.endsWith(DwfVariables.colorThemeKey("theme", 1)) })
     assertTrue(namedVars.any { it.endsWith(DwfVariables.complicationTextKey(1)) })
 
     assertTrue(
