@@ -214,30 +214,42 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     preview: ServePreview,
     overrides: PreviewOverrides,
   ) {
+    val (commands, newOverriddenSlots) =
+      buildOverrideCommands(preview, overrides, daemon.overriddenSlots())
+    for ((cmd, payload) in commands) {
+      daemon.command(cmd, payload)
+    }
+    daemon.setOverriddenSlots(newOverriddenSlots)
+  }
+
+  internal fun buildOverrideCommands(
+    preview: ServePreview,
+    overrides: PreviewOverrides,
+    previouslyOverriddenSlots: Set<Int> = emptySet(),
+  ): Pair<List<Pair<String, JsonObject>>, Set<Int>> {
+    val commands = ArrayList<Pair<String, JsonObject>>()
     val rc = WatchFaceOverrides.effectiveRcNamedValues(overrides, preview.watchFace)
     val named = overrides.namedOverrides.orEmpty()
 
     val ambientState = overrides.ambient
     if (ambientState != null) {
       val isAmbient = ambientState.state == AmbientStateOverride.AMBIENT
-      daemon.command(
-        "ambient",
-        buildJsonObject {
-          put("state", if (isAmbient) "AMBIENT" else "INTERACTIVE")
-          ambientState.burnInProtectionRequired?.let { put("burnIn", it) }
-          ambientState.deviceHasLowBitAmbient?.let { put("lowBit", it) }
-        },
-      )
+      commands +=
+        "ambient" to
+          buildJsonObject {
+            put("state", if (isAmbient) "AMBIENT" else "INTERACTIVE")
+            ambientState.burnInProtectionRequired?.let { put("burnIn", it) }
+            ambientState.deviceHasLowBitAmbient?.let { put("lowBit", it) }
+          }
     } else {
       val rcAmb = (rc["dwf.is_ambient"] as? RemoteNamedValue.BooleanValue)?.value
-      daemon.command(
-        "ambient",
-        buildJsonObject { put("state", if (rcAmb == true) "AMBIENT" else "INTERACTIVE") },
-      )
+      commands +=
+        "ambient" to
+          buildJsonObject { put("state", if (rcAmb == true) "AMBIENT" else "INTERACTIVE") }
     }
 
     overrides.clockEpochMillis?.let { epochMillis ->
-      daemon.command("clock", buildJsonObject { put("timeMillis", epochMillis) })
+      commands += "clock" to buildJsonObject { put("timeMillis", epochMillis) }
     }
 
     val heartRate =
@@ -248,13 +260,12 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       (named["wf.stepCount"] as? PreviewOverrideValue.IntValue)?.value
         ?: (rc["metrics.day.steps"] as? RemoteNamedValue.IntValue)?.value
     if (heartRate != null || stepCount != null) {
-      daemon.command(
-        "health",
-        buildJsonObject {
-          heartRate?.let { put("heartRate", it) }
-          stepCount?.let { put("steps", it) }
-        },
-      )
+      commands +=
+        "health" to
+          buildJsonObject {
+            heartRate?.let { put("heartRate", it) }
+            stepCount?.let { put("steps", it) }
+          }
     }
 
     val batteryPercent =
@@ -262,21 +273,12 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         ?: (named["wf.batteryPercent"] as? PreviewOverrideValue.IntValue)?.value
         ?: (rc["dwf.battery_percent"] as? RemoteNamedValue.FloatValue)?.value?.toInt()
     if (batteryPercent != null) {
-      daemon.command("battery", buildJsonObject { put("level", batteryPercent) })
+      commands += "battery" to buildJsonObject { put("level", batteryPercent) }
     }
 
     val flavorId =
       (named["wf.flavor"] as? PreviewOverrideValue.StringValue)?.value?.takeIf { it.isNotBlank() }
         ?: (rc["dwf.flavor"] as? RemoteNamedValue.StringValue)?.value?.takeIf { it.isNotBlank() }
-    if (flavorId != null) {
-      daemon.command(
-        "watchface",
-        buildJsonObject {
-          put("op", "flavor")
-          put("id", flavorId)
-        },
-      )
-    }
 
     val configValues = LinkedHashMap<String, String>()
     for ((k, v) in named) {
@@ -293,15 +295,18 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         } ?: continue
       configValues[cfgId] = strVal
     }
-    if (configValues.isNotEmpty()) {
-      daemon.command(
-        "watchface",
+    commands +=
+      "watchface" to
         buildJsonObject {
           put("op", "config")
-          put("values", buildJsonObject { configValues.forEach { (k, v) -> put(k, v) } })
-        },
-      )
-    }
+          put("reset", true)
+          if (flavorId != null) {
+            put("flavor", flavorId)
+          }
+          if (configValues.isNotEmpty()) {
+            put("values", buildJsonObject { configValues.forEach { (k, v) -> put(k, v) } })
+          }
+        }
 
     val overriddenSlotIds = buildSet {
       for (k in rc.keys) {
@@ -314,6 +319,14 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           k.removePrefix("wf.slot.").substringBefore('.').toIntOrNull()?.let(::add)
         }
       }
+    }
+    for (staleSlot in previouslyOverriddenSlots - overriddenSlotIds) {
+      commands +=
+        "watchface" to
+          buildJsonObject {
+            put("op", "uncomplication")
+            put("slot", staleSlot)
+          }
     }
     if (overriddenSlotIds.isNotEmpty()) {
       val projectedBySlot =
@@ -347,43 +360,44 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
               isImageReference(it)
             }
         if (active != null) {
-          pushSlotComplication(
-            daemon = daemon,
-            slotId = slotId,
-            typeName = active.type,
-            text = active.text,
-            title = active.title,
-            value = active.value,
-            min = active.min,
-            max = active.max,
-            colors = active.colors,
-            weights = active.weights,
-            monochromaticImage = monoImage,
-            smallImage = smallImage,
-            photoImage = photoImage,
-          )
+          commands +=
+            buildSlotComplicationCommand(
+              slotId = slotId,
+              typeName = active.type,
+              text = active.text,
+              title = active.title,
+              value = active.value,
+              min = active.min,
+              max = active.max,
+              colors = active.colors,
+              weights = active.weights,
+              monochromaticImage = monoImage,
+              smallImage = smallImage,
+              photoImage = photoImage,
+            )
         } else {
           val typeCode = (rc["$p.type"] as? RemoteNamedValue.IntValue)?.value
           val typeName =
             typeCode?.let { WatchFaceOverrides.complicationTypeName(it) } ?: "SHORT_TEXT"
-          pushSlotComplication(
-            daemon = daemon,
-            slotId = slotId,
-            typeName = typeName,
-            text = (rc["$p.text"] as? RemoteNamedValue.StringValue)?.value,
-            title = (rc["$p.title"] as? RemoteNamedValue.StringValue)?.value,
-            value = (rc["$p.value"] as? RemoteNamedValue.FloatValue)?.value,
-            min = (rc["$p.min"] as? RemoteNamedValue.FloatValue)?.value,
-            max = (rc["$p.max"] as? RemoteNamedValue.FloatValue)?.value,
-            colors = emptyList(),
-            weights = emptyList(),
-            monochromaticImage = monoImage,
-            smallImage = smallImage,
-            photoImage = photoImage,
-          )
+          commands +=
+            buildSlotComplicationCommand(
+              slotId = slotId,
+              typeName = typeName,
+              text = (rc["$p.text"] as? RemoteNamedValue.StringValue)?.value,
+              title = (rc["$p.title"] as? RemoteNamedValue.StringValue)?.value,
+              value = (rc["$p.value"] as? RemoteNamedValue.FloatValue)?.value,
+              min = (rc["$p.min"] as? RemoteNamedValue.FloatValue)?.value,
+              max = (rc["$p.max"] as? RemoteNamedValue.FloatValue)?.value,
+              colors = emptyList(),
+              weights = emptyList(),
+              monochromaticImage = monoImage,
+              smallImage = smallImage,
+              photoImage = photoImage,
+            )
         }
       }
     }
+    return commands to overriddenSlotIds
   }
 
   private fun isImageReference(raw: String): Boolean {
@@ -394,8 +408,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       v.startsWith("data:image/", ignoreCase = true)
   }
 
-  private fun pushSlotComplication(
-    daemon: SimulatorDaemonProcess,
+  private fun buildSlotComplicationCommand(
     slotId: Int,
     typeName: String?,
     text: String?,
@@ -408,20 +421,16 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     monochromaticImage: String? = null,
     smallImage: String? = null,
     photoImage: String? = null,
-  ) {
+  ): Pair<String, JsonObject> {
     val resolvedType = typeName?.trim()?.uppercase(Locale.ROOT) ?: "SHORT_TEXT"
     if (resolvedType == "EMPTY") {
-      daemon.command(
-        "watchface",
+      return "watchface" to
         buildJsonObject {
           put("op", "uncomplication")
           put("slot", slotId)
-        },
-      )
-      return
+        }
     }
-    daemon.command(
-      "watchface",
+    return "watchface" to
       buildJsonObject {
         put("op", "complication")
         put("slot", slotId)
@@ -440,8 +449,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         if (weights.isNotEmpty()) {
           put("weights", buildJsonArray { weights.forEach { add(JsonPrimitive(it.toDouble())) } })
         }
-      },
-    )
+      }
   }
 
   private fun ensureDaemon(
@@ -703,8 +711,15 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   ) : AutoCloseable {
     private val nextId = AtomicInteger(1)
     private var lastPushedApk: String? = null
+    private var overriddenSlotsOnDaemon: Set<Int> = emptySet()
 
     fun isAlive(): Boolean = process.isAlive
+
+    fun overriddenSlots(): Set<Int> = overriddenSlotsOnDaemon
+
+    fun setOverriddenSlots(slots: Set<Int>) {
+      overriddenSlotsOnDaemon = slots
+    }
 
     fun pushWatchFace(wffApk: File) {
       val path = wffApk.canonicalPath
@@ -718,6 +733,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         },
       )
       lastPushedApk = path
+      overriddenSlotsOnDaemon = emptySet()
     }
 
     fun command(cmd: String, payload: JsonObject = JsonObject(emptyMap())): JsonElement? {

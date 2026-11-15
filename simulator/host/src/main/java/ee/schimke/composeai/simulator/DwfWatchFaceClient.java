@@ -1074,8 +1074,13 @@ final class DwfWatchFaceClient {
   }
 
   JSONArray describeFlavors() {
+    return describeFlavorSpecs(entry.flavors, activeFlavorId);
+  }
+
+  static JSONArray describeFlavorSpecs(List<FlavorSpec> specs, String activeId) {
     JSONArray out = new JSONArray();
-    for (FlavorSpec flv : entry.flavors) {
+    if (specs == null) return out;
+    for (FlavorSpec flv : specs) {
       JSONObject cfgs = new JSONObject();
       for (Map.Entry<String, String> e : flv.configurations.entrySet()) {
         try {
@@ -1101,12 +1106,28 @@ final class DwfWatchFaceClient {
           new Protocol.Json()
               .put("id", flv.id)
               .put("displayName", flv.displayName)
-              .put("active", flv.id.equals(activeFlavorId))
+              .put("active", flv.id.equals(activeId))
               .put("configurations", cfgs)
               .put("complications", comps)
               .object());
     }
     return out;
+  }
+
+  void resetConfigsToDefault() {
+    for (ConfigSpec cfg : entry.configurations) {
+      configValues.put(cfg.id, cfg.defaultValue);
+    }
+    activeFlavorId = null;
+    activeFlavorComplications.clear();
+    if (entry.defaultFlavorId != null
+        && !entry.defaultFlavorId.isEmpty()
+        && !entry.flavors.isEmpty()) {
+      FlavorSpec def = findFlavor(entry.defaultFlavorId);
+      if (def != null) {
+        applyFlavorInternal(def);
+      }
+    }
   }
 
   void setFlavor(String flavorId) {
@@ -1122,17 +1143,21 @@ final class DwfWatchFaceClient {
   }
 
   private FlavorSpec findFlavor(String raw) {
-    if (raw == null) return null;
+    return findFlavorSpec(entry.flavors, raw);
+  }
+
+  static FlavorSpec findFlavorSpec(List<FlavorSpec> specs, String raw) {
+    if (raw == null || specs == null) return null;
     String trimmed = raw.trim();
-    for (FlavorSpec flv : entry.flavors) {
+    for (FlavorSpec flv : specs) {
       if (flv.id.equals(trimmed) || flv.displayName.equalsIgnoreCase(trimmed)) {
         return flv;
       }
     }
     try {
       int idx = Integer.parseInt(trimmed);
-      if (idx >= 0 && idx < entry.flavors.size()) {
-        return entry.flavors.get(idx);
+      if (idx >= 0 && idx < specs.size()) {
+        return specs.get(idx);
       }
     } catch (NumberFormatException ignored) {
     }
@@ -1870,28 +1895,92 @@ final class DwfWatchFaceClient {
         clearBothBitmap(target, "dwf.complication." + slot + ".photo_image");
       }
 
-      if (comp.dwfTypeCode == 8 || !comp.weights.isEmpty()) {
-        setBothInt(target, "dwf.complication." + slot + ".has_weighted_elements", 1);
-      }
-      if (!comp.colors.isEmpty()) {
-        setBothInt(target, "dwf.complication." + slot + ".color_count", comp.colors.size());
-        if (comp.dwfTypeCode == 3) {
-          setBothInt(target, "dwf.complication." + slot + ".has_ranged_colors", 1);
-        } else if (comp.dwfTypeCode == 7) {
-          setBothInt(target, "dwf.complication." + slot + ".has_goal_colors", 1);
-        }
-        for (int i = 0; i < comp.colors.size() && i < 8; i++) {
-          setBothColor(
-              target, "dwf.complication." + slot + ".color." + i, comp.colors.get(i).intValue());
-        }
-      }
-      if (!comp.weights.isEmpty()) {
-        for (int i = 0; i < 8; i++) {
-          float w = i < comp.weights.size() ? comp.weights.get(i).floatValue() : 0f;
-          setBothFloat(target, "dwf.complication." + slot + ".weight." + i, w);
-        }
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_weighted_elements",
+          comp.dwfTypeCode == 8 || !comp.weights.isEmpty() ? 1 : 0);
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".color_count",
+          Math.min(comp.colors.size(), 8));
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_ranged_colors",
+          !comp.colors.isEmpty() && comp.dwfTypeCode == 3 ? 1 : 0);
+      setBothInt(
+          target,
+          "dwf.complication." + slot + ".has_goal_colors",
+          !comp.colors.isEmpty() && comp.dwfTypeCode == 7 ? 1 : 0);
+      for (int i = 0; i < 8; i++) {
+        int col = i < comp.colors.size() ? comp.colors.get(i).intValue() : 0;
+        setBothColor(target, "dwf.complication." + slot + ".color." + i, col);
+        float w = i < comp.weights.size() ? comp.weights.get(i).floatValue() : 0f;
+        setBothFloat(target, "dwf.complication." + slot + ".weight." + i, w);
       }
     }
+  }
+
+  static FakeComplication syntheticSystemProviderComplication(
+      int slot, String provider, String providerType, WatchState ws) {
+    if (provider == null) return null;
+    String p = provider.trim().toUpperCase(Locale.ROOT);
+    String t = providerType != null ? providerType.trim() : "";
+    if (p.isEmpty()
+        || "EMPTY".equals(p)
+        || "NONE".equals(p)
+        || "EMPTY".equalsIgnoreCase(t)
+        || "NOT_CONFIGURED".equalsIgnoreCase(t)) {
+      return null;
+    }
+    int wireType = parseWireComplicationType(t.isEmpty() ? "SHORT_TEXT" : t);
+    int dwfCode = parseDwfComplicationTypeCode(t.isEmpty() ? "SHORT_TEXT" : t, wireType);
+    int steps = ws != null ? ws.steps() : 5200;
+    float stepGoal = ws != null ? ws.stepGoal() : 10000f;
+    int battery = ws != null ? ws.batteryPercent() : 85;
+    float hr = ws != null ? ws.heartRate() : 72f;
+    int notifs = ws != null ? ws.unreadNotifications() : 0;
+    String text;
+    String title;
+    float value;
+    float min = 0f;
+    float max;
+    if (p.contains("STEP")) {
+      text = Integer.toString(steps);
+      title = "STEPS";
+      value = (float) steps;
+      max = stepGoal;
+    } else if (p.contains("BATTERY")) {
+      text = battery + "%";
+      title = "BAT";
+      value = (float) battery;
+      max = 100f;
+    } else if (p.contains("HEART")) {
+      text = Integer.toString(Math.round(hr));
+      title = "BPM";
+      value = hr;
+      max = 200f;
+    } else if (p.contains("NOTIFICATION")) {
+      text = Integer.toString(notifs);
+      title = "ALERTS";
+      value = (float) notifs;
+      max = 10f;
+    } else {
+      return null;
+    }
+    return new FakeComplication(
+        slot,
+        wireType,
+        dwfCode,
+        text,
+        title,
+        Float.valueOf(value),
+        Float.valueOf(min),
+        Float.valueOf(max),
+        Boolean.TRUE,
+        null,
+        null,
+        Collections.emptyList(),
+        Collections.emptyList());
   }
 
   /**
@@ -1956,6 +2045,10 @@ final class DwfWatchFaceClient {
     setBothInt(target, "dwf.complication." + slot + ".has_ranged_colors", 0);
     setBothInt(target, "dwf.complication." + slot + ".has_goal_colors", 0);
     setBothInt(target, "dwf.complication." + slot + ".color_count", 0);
+    for (int i = 0; i < 8; i++) {
+      setBothColor(target, "dwf.complication." + slot + ".color." + i, 0);
+      setBothFloat(target, "dwf.complication." + slot + ".weight." + i, 0f);
+    }
     clearBothBitmap(target, "dwf.complication." + slot + ".monochromatic_image");
     clearBothBitmap(target, "dwf.complication." + slot + ".small_image");
     clearBothBitmap(target, "dwf.complication." + slot + ".photo_image");
