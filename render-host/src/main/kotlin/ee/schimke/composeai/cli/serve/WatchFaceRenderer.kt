@@ -161,13 +161,16 @@ public object DwfRcWatchFaceRendererBackend : WatchFaceRendererBackend {
 }
 
 /**
- * Second watch-face renderer backend (`dwf-apk`), reserved for rendering `<WatchFace>` packages
- * through the Android Wear OS DWF renderer APK (`compose-preview launch` / `:simulator-host`).
+ * Second watch-face renderer backend (`dwf-apk`), rendering `<WatchFace>` packages through the
+ * Android Wear OS DWF renderer APK (`DeclarativeWatchFaceRuntime.apk` running in a
+ * `:simulator-host` daemon).
  *
- * The built-in placeholder stays `available = false` until a launch session bridge backend is
- * installed via [WatchFaceRendererRegistry.register], so registry consumers are never offered a
- * backend that cannot render and callers never silently receive `dwf-rc` pixels when explicitly
- * asking for `dwf-apk`.
+ * Resolves the runtime APK from `-Dcomposeai.watchface.apkRenderer`,
+ * `COMPOSE_PREVIEW_DWF_RENDERER_APK`, `COMPOSE_PREVIEW_DWF_RUNTIME_APK`, `DWF_RUNTIME_APK`, or the
+ * `dwf-runtime` cache directory, and delegates to [bridge] (defaulting to [DwfApkDaemonBridge]).
+ * Reports `available = false` with an actionable diagnostic when the runtime APK, simulator sidecar
+ * jars, Android SDK tools, or live watch-face bundle are absent, so callers never silently receive
+ * `dwf-rc` pixels when explicitly asking for `dwf-apk`.
  */
 public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
   override val id: String = WatchFaceRendererIds.DWF_APK
@@ -176,46 +179,63 @@ public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
 
   public const val APK_PATH_SYS_PROP: String = "composeai.watchface.apkRenderer"
   public const val APK_PATH_ENV: String = "COMPOSE_PREVIEW_DWF_RENDERER_APK"
+  public const val RUNTIME_APK_ENV: String = "COMPOSE_PREVIEW_DWF_RUNTIME_APK"
+  public const val RUNTIME_APK_ENV_ALIAS: String = "DWF_RUNTIME_APK"
+
+  @Volatile private var bridge: DwfApkSessionBridge = DwfApkDaemonBridge
+
+  /** Override the [DwfApkSessionBridge] used by `dwf-apk` (intended for custom hosts or tests). */
+  public fun setBridge(customBridge: DwfApkSessionBridge) {
+    bridge = customBridge
+  }
+
+  /** Restore the default [DwfApkDaemonBridge]. */
+  public fun resetBridge() {
+    bridge = DwfApkDaemonBridge
+  }
 
   internal fun configuredApkFile(): File? {
     val raw =
       System.getProperty(APK_PATH_SYS_PROP)?.takeIf { it.isNotBlank() }
         ?: System.getenv(APK_PATH_ENV)?.takeIf { it.isNotBlank() }
-        ?: return null
-    return File(raw).takeIf(File::isFile)
-  }
-
-  private fun unavailableReason(): String {
-    val apk = configuredApkFile()
-    return if (apk != null) {
-      "wfRenderer '$id' APK '${apk.name}' is configured, but no launch session bridge is registered on this host"
-    } else {
-      "wfRenderer '$id' is unavailable: no Wear OS DWF renderer APK launch session bridge is registered on this host"
+        ?: System.getenv(RUNTIME_APK_ENV)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() }
+    if (raw != null) {
+      return File(raw).takeIf(File::isFile)
     }
+    val cached =
+      File(
+        ee.schimke.composeai.io.composeAiCacheDir("dwf-runtime"),
+        "DeclarativeWatchFaceRuntime.apk",
+      )
+    return cached.takeIf(File::isFile)
   }
 
-  override fun infoFor(host: ServeHost, preview: ServePreview): WatchFaceRendererInfo =
-    WatchFaceRendererInfo(
+  override fun infoFor(host: ServeHost, preview: ServePreview): WatchFaceRendererInfo {
+    val activeBridge = bridge
+    val available = activeBridge.isAvailable(host, preview)
+    return WatchFaceRendererInfo(
       id = id,
       label = label,
       badgeLabel = badgeLabel,
-      available = false,
-      unavailableReason = unavailableReason(),
-      supportsLiveOverrides = false,
+      available = available,
+      unavailableReason = if (available) null else activeBridge.unavailableReason(host, preview),
+      supportsLiveOverrides = available,
       isDefault = false,
     )
+  }
 
   override fun render(
     host: ServeHost,
     preview: ServePreview,
     overrides: PreviewOverrides,
-  ): RenderOutcome = RenderOutcome.Failed(unavailableReason())
+  ): RenderOutcome = bridge.render(host, preview, overrides)
 
   override fun complications(
     host: ServeHost,
     preview: ServePreview,
     overrides: PreviewOverrides,
-  ): WatchFaceComplicationsOutcome = WatchFaceComplicationsOutcome.Unavailable(unavailableReason())
+  ): WatchFaceComplicationsOutcome = bridge.complications(host, preview, overrides)
 }
 
 /**

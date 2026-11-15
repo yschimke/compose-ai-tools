@@ -818,16 +818,27 @@ public final class ee/schimke/composeai/cli/serve/DesignReferenceSource$Companio
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public abstract interface class ee/schimke/composeai/cli/serve/DwfApkSessionBridge {
+	public abstract fun complications (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
+	public abstract fun isAvailable (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Z
+	public abstract fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
+	public abstract fun unavailableReason (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/cli/serve/DwfApkWatchFaceRendererBackend : ee/schimke/composeai/cli/serve/WatchFaceRendererBackend {
 	public static final field APK_PATH_ENV Ljava/lang/String;
 	public static final field APK_PATH_SYS_PROP Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/cli/serve/DwfApkWatchFaceRendererBackend;
+	public static final field RUNTIME_APK_ENV Ljava/lang/String;
+	public static final field RUNTIME_APK_ENV_ALIAS Ljava/lang/String;
 	public fun complications (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/WatchFaceComplicationsOutcome;
 	public fun getBadgeLabel ()Ljava/lang/String;
 	public fun getId ()Ljava/lang/String;
 	public fun getLabel ()Ljava/lang/String;
 	public fun infoFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Lee/schimke/composeai/cli/serve/WatchFaceRendererInfo;
 	public fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
+	public final fun resetBridge ()V
+	public final fun setBridge (Lee/schimke/composeai/cli/serve/DwfApkSessionBridge;)V
 }
 
 public final class ee/schimke/composeai/cli/serve/DwfRcWatchFaceRendererBackend : ee/schimke/composeai/cli/serve/WatchFaceRendererBackend {
