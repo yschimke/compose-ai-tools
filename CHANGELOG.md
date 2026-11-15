@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.93.0](https://github.com/yschimke/compose-ai-tools/compare/v2.92.0...v2.93.0) (2026-11-15)
+
+
+### Features
+
+* **render-host:** back dwf-apk renderer with :simulator-host daemon bridge ([#6553](https://github.com/yschimke/compose-ai-tools/issues/6553)) ([471630f](https://github.com/yschimke/compose-ai-tools/commit/471630f6cd2c1529248afdf19f4be95d556fdb40))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.3.1 ([#6548](https://github.com/yschimke/compose-ai-tools/issues/6548)) ([89265db](https://github.com/yschimke/compose-ai-tools/commit/89265db8a55fe52e54cdff4f195562a100d3bc5f))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.5.1 ([#6550](https://github.com/yschimke/compose-ai-tools/issues/6550)) ([16f4ee7](https://github.com/yschimke/compose-ai-tools/commit/16f4ee7e5c1eba6feaa13adbeeb366ea6aabf7e2))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.5.2 ([#6551](https://github.com/yschimke/compose-ai-tools/issues/6551)) ([5b0b789](https://github.com/yschimke/compose-ai-tools/commit/5b0b78963fdb82b1e667f94cffefd87539cd873c))
+* **deps:** update roborazzi to v1.78.0 ([#6552](https://github.com/yschimke/compose-ai-tools/issues/6552)) ([8969a66](https://github.com/yschimke/compose-ai-tools/commit/8969a66e8097b6a5743a045cc3169bd819e55c91))
+
 ## [2.92.0](https://github.com/yschimke/compose-ai-tools/compare/v2.91.0...v2.92.0) (2026-11-14)
 
 
