@@ -327,6 +327,46 @@ class DwfRenderMainTest {
     assertThat(cyanColor and 0xFF).isGreaterThan(220)
   }
 
+  @Test
+  fun clipsComplicationSlotToBoundingShape() {
+    val workDir = temp.newFolder("dwf-comp-clip")
+    val wfDir = File(workDir, "watchfaces").apply { mkdirs() }
+    File(wfDir, "comp_clip.xml")
+      .writeText(
+        """
+        <WatchFace width="450" height="450" clipShape="CIRCLE">
+          <Scene backgroundColor="#FF000000">
+            <ComplicationSlot x="175" y="175" width="100" height="100" slotId="1"
+                supportedTypes="SHORT_TEXT" defaultSystemProvider="STEP_COUNT"
+                defaultSystemProviderType="SHORT_TEXT">
+              <BoundingOval x="0" y="0" width="100" height="100" />
+              <Complication type="SHORT_TEXT">
+                <PartDraw x="0" y="0" width="100" height="100">
+                  <Ellipse x="0" y="0" width="100" height="100">
+                    <Stroke thickness="20" color="#FFFFFFFF" />
+                  </Ellipse>
+                </PartDraw>
+              </Complication>
+            </ComplicationSlot>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent(),
+      )
+
+    val manifest = compileApkWatchFaces(workDir)
+    val rcBytes = File(workDir, manifest.watchFaces.single().rcFile).readBytes()
+    val png = renderDwfDocumentToPng(bytes = rcBytes, widthPx = 450, heightPx = 450)
+    val bmp = Bitmap.makeFromImage(Image.makeFromEncoded(png))
+
+    // Inside the 100x100 oval's inner 10px stroke ring (x=178, y=225 -> 3px inside left edge):
+    // white.
+    assertThat(bmp.getColor(178, 225) and 0xFF).isGreaterThan(200)
+    // Outside the 100x100 oval (x=171, y=225 -> 4px outside left edge, within 10px half-stroke):
+    // clipped to black.
+    assertThat(bmp.getColor(171, 225) and 0xFF).isLessThan(20)
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {
