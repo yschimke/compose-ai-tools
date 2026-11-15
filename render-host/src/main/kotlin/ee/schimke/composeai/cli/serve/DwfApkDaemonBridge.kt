@@ -75,10 +75,13 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     val androidDaemonJars: List<File>,
     val dex2jarJars: List<File>,
     val androidJar: File,
-    val aapt2: File,
+    val aapt2: File?,
   )
 
-  private fun resolveEnvironment(): Pair<Environment?, String?> {
+  internal fun isEnvironmentReady(): Boolean =
+    resolveEnvironment(requireAapt2 = false).first != null
+
+  private fun resolveEnvironment(requireAapt2: Boolean = true): Pair<Environment?, String?> {
     val runtimeApk =
       DwfApkWatchFaceRendererBackend.configuredApkFile()
         ?: return null to
@@ -107,11 +110,12 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           "wfRenderer '${WatchFaceRendererIds.DWF_APK}' needs an Android SDK `android.jar` " +
             "(set ANDROID_HOME or ANDROID_SDK_ROOT)"
 
-    val aapt2 =
-      locateAapt2()
-        ?: return null to
-          "wfRenderer '${WatchFaceRendererIds.DWF_APK}' needs Android SDK `build-tools/*/aapt2` " +
-            "to package watch-face bundle resources"
+    val aapt2 = locateAapt2()
+    if (requireAapt2 && aapt2 == null) {
+      return null to
+        "wfRenderer '${WatchFaceRendererIds.DWF_APK}' needs Android SDK `build-tools/*/aapt2` " +
+          "to package watch-face bundle resources"
+    }
 
     return Environment(
       runtimeApk = runtimeApk,
@@ -127,9 +131,10 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     unavailableReason(host, preview) == null
 
   override fun unavailableReason(host: ServeHost, preview: ServePreview): String? {
-    val (_, envError) = resolveEnvironment()
+    val hasPrelinkedApk = host.hasWatchFaceResourceApk(preview.id)
+    val (_, envError) = resolveEnvironment(requireAapt2 = !hasPrelinkedApk)
     if (envError != null) return envError
-    if (!host.canDownloadExecutableBundle(preview.id)) {
+    if (!hasPrelinkedApk && !host.canDownloadExecutableBundle(preview.id)) {
       return "wfRenderer '${WatchFaceRendererIds.DWF_APK}' requires a live watch-face bundle " +
         "on this host (static snapshot catalogs without a bundle cannot run in the APK daemon)"
     }
@@ -141,17 +146,20 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     preview: ServePreview,
     overrides: PreviewOverrides,
   ): RenderOutcome {
-    val (env, envError) = resolveEnvironment()
+    val prelinkedApk = host.watchFaceResourceApk(preview.id)
+    val (env, envError) = resolveEnvironment(requireAapt2 = prelinkedApk == null)
     if (env == null) return RenderOutcome.Failed(envError ?: "DWF APK daemon unavailable")
     val bundleBytes =
-      host.executableBundle(preview.id)
-        ?: return RenderOutcome.Failed(
-          "wfRenderer '${WatchFaceRendererIds.DWF_APK}': watch-face bundle is unavailable for '${preview.id}'",
-        )
+      if (prelinkedApk != null) null
+      else
+        host.executableBundle(preview.id)
+          ?: return RenderOutcome.Failed(
+            "wfRenderer '${WatchFaceRendererIds.DWF_APK}': watch-face bundle is unavailable for '${preview.id}'",
+          )
 
     return runCatching {
       synchronized(lock) {
-        val wffApk = ensureWffApk(env, preview, bundleBytes)
+        val wffApk = ensureWffApk(env, preview, prelinkedApk, bundleBytes)
         val runtimeClasses = ensureRuntimeClasses(env)
         val daemon = ensureDaemon(env, runtimeClasses, wffApk)
         daemon.pushWatchFace(wffApk)
@@ -190,7 +198,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     preview: ServePreview,
     overrides: PreviewOverrides,
   ): WatchFaceComplicationsOutcome {
-    val (_, envError) = resolveEnvironment()
+    val (_, envError) = resolveEnvironment(requireAapt2 = !host.hasWatchFaceResourceApk(preview.id))
     if (envError != null) return WatchFaceComplicationsOutcome.Unavailable(envError)
     val base: WatchFaceComplicationsPayload =
       preview.watchFace ?: return WatchFaceComplicationsOutcome.NotFound
@@ -257,6 +265,19 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       daemon.command("battery", buildJsonObject { put("level", batteryPercent) })
     }
 
+    val flavorId =
+      (named["wf.flavor"] as? PreviewOverrideValue.StringValue)?.value?.takeIf { it.isNotBlank() }
+        ?: (rc["dwf.flavor"] as? RemoteNamedValue.StringValue)?.value?.takeIf { it.isNotBlank() }
+    if (flavorId != null) {
+      daemon.command(
+        "watchface",
+        buildJsonObject {
+          put("op", "flavor")
+          put("id", flavorId)
+        },
+      )
+    }
+
     val configValues = LinkedHashMap<String, String>()
     for ((k, v) in named) {
       if (!k.startsWith("wf.config.")) continue
@@ -303,6 +324,28 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           .orEmpty()
       for (slotId in overriddenSlotIds) {
         val active = projectedBySlot[slotId]?.activeState
+        val p = "dwf.complication.$slotId"
+        val monoImage =
+          (named["wf.slot.$slotId.monochromaticImage"] as? PreviewOverrideValue.StringValue)
+            ?.value
+            ?.takeIf { isImageReference(it) }
+            ?: (rc["$p.monochromatic_image"] as? RemoteNamedValue.StringValue)?.value?.takeIf {
+              isImageReference(it)
+            }
+        val smallImage =
+          (named["wf.slot.$slotId.smallImage"] as? PreviewOverrideValue.StringValue)
+            ?.value
+            ?.takeIf { isImageReference(it) }
+            ?: (rc["$p.small_image"] as? RemoteNamedValue.StringValue)?.value?.takeIf {
+              isImageReference(it)
+            }
+        val photoImage =
+          (named["wf.slot.$slotId.photoImage"] as? PreviewOverrideValue.StringValue)
+            ?.value
+            ?.takeIf { isImageReference(it) }
+            ?: (rc["$p.photo_image"] as? RemoteNamedValue.StringValue)?.value?.takeIf {
+              isImageReference(it)
+            }
         if (active != null) {
           pushSlotComplication(
             daemon = daemon,
@@ -315,9 +358,11 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
             max = active.max,
             colors = active.colors,
             weights = active.weights,
+            monochromaticImage = monoImage,
+            smallImage = smallImage,
+            photoImage = photoImage,
           )
         } else {
-          val p = "dwf.complication.$slotId"
           val typeCode = (rc["$p.type"] as? RemoteNamedValue.IntValue)?.value
           val typeName =
             typeCode?.let { WatchFaceOverrides.complicationTypeName(it) } ?: "SHORT_TEXT"
@@ -332,10 +377,21 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
             max = (rc["$p.max"] as? RemoteNamedValue.FloatValue)?.value,
             colors = emptyList(),
             weights = emptyList(),
+            monochromaticImage = monoImage,
+            smallImage = smallImage,
+            photoImage = photoImage,
           )
         }
       }
     }
+  }
+
+  private fun isImageReference(raw: String): Boolean {
+    val v = raw.trim()
+    return v.startsWith("http://", ignoreCase = true) ||
+      v.startsWith("https://", ignoreCase = true) ||
+      v.startsWith("file:", ignoreCase = true) ||
+      v.startsWith("data:image/", ignoreCase = true)
   }
 
   private fun pushSlotComplication(
@@ -349,6 +405,9 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     max: Float?,
     colors: List<String>,
     weights: List<Float>,
+    monochromaticImage: String? = null,
+    smallImage: String? = null,
+    photoImage: String? = null,
   ) {
     val resolvedType = typeName?.trim()?.uppercase(Locale.ROOT) ?: "SHORT_TEXT"
     if (resolvedType == "EMPTY") {
@@ -372,6 +431,9 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         value?.let { put("value", it.toDouble()) }
         min?.let { put("min", it.toDouble()) }
         max?.let { put("max", it.toDouble()) }
+        monochromaticImage?.let { put("monochromaticImage", it) }
+        smallImage?.let { put("smallImage", it) }
+        photoImage?.let { put("photoImage", it) }
         if (colors.isNotEmpty()) {
           put("colors", buildJsonArray { colors.forEach { add(JsonPrimitive(it)) } })
         }
@@ -434,32 +496,61 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     return outJar
   }
 
+  init {
+    Runtime.getRuntime()
+      .addShutdownHook(
+        Thread {
+          synchronized(lock) {
+            activeDaemon?.close()
+            activeDaemon = null
+          }
+        },
+      )
+  }
+
   private fun ensureWffApk(
     env: Environment,
     preview: ServePreview,
-    bundleBytes: ByteArray,
+    prelinkedResourceApk: ByteArray?,
+    bundleBytes: ByteArray?,
   ): File {
+    val carriedResourceApk =
+      prelinkedResourceApk
+        ?: bundleBytes?.let {
+          ee.schimke.composeai.bundle.AndroidBundleResources.extractResourceApkBytes(it)
+        }
+    val sourceBytes =
+      carriedResourceApk ?: bundleBytes ?: error("no watch-face bundle or resource APK available")
     val digest =
-      sha256Bytes(bundleBytes) + "_" + (preview.dwfAssetPath ?: preview.id).hashCode().toString(16)
+      sha256Bytes(sourceBytes) + "_" + (preview.dwfAssetPath ?: preview.id).hashCode().toString(16)
     val cacheDir = File(composeAiCacheDir("dwf-apk-daemon"), "wff-$digest")
     val apkFile = File(cacheDir, "watchface.apk")
     if (apkFile.isFile && apkFile.length() > 0L) return apkFile
 
     cacheDir.mkdirs()
+    if (carriedResourceApk != null) {
+      val tmpApk = File(cacheDir, "watchface.apk.tmp")
+      Files.write(tmpApk.toPath(), carriedResourceApk)
+      Files.move(
+        tmpApk.toPath(),
+        apkFile.toPath(),
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+      )
+      return apkFile
+    }
+
+    val rawBundleBytes = bundleBytes ?: error("watch-face bundle bytes missing")
+    val aapt2 =
+      env.aapt2
+        ?: error(
+          "wfRenderer '${WatchFaceRendererIds.DWF_APK}' needs Android SDK `build-tools/*/aapt2` " +
+            "when bundle does not carry pre-linked `android/resources.ap_`",
+        )
     val extractDir = File(cacheDir, "extracted").apply { mkdirs() }
-    ZipInputStream(ByteArrayInputStream(bundleBytes)).use { zin ->
-      var entry = zin.nextEntry
-      while (entry != null) {
-        if (!entry.isDirectory) {
-          val target = File(extractDir, entry.name)
-          if (target.canonicalPath.startsWith(extractDir.canonicalPath + File.separator)) {
-            target.parentFile?.mkdirs()
-            Files.copy(zin, target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-          }
-        }
-        zin.closeEntry()
-        entry = zin.nextEntry
-      }
+    unpackZipInto(rawBundleBytes, extractDir)
+    val appJar = File(extractDir, "classes/app.jar")
+    if (appJar.isFile && !File(extractDir, "classes/res").isDirectory) {
+      unpackZipInto(Files.readAllBytes(appJar.toPath()), File(extractDir, "classes"))
     }
 
     val resDir =
@@ -502,7 +593,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
 
     val compiledZip = File(cacheDir, "compiled-res.zip")
     runTool(
-      env.aapt2.absolutePath,
+      aapt2.absolutePath,
       "compile",
       "--dir",
       resDir.absolutePath,
@@ -511,7 +602,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     )
     val tmpApk = File(cacheDir, "watchface.apk.tmp")
     runTool(
-      env.aapt2.absolutePath,
+      aapt2.absolutePath,
       "link",
       "-I",
       env.androidJar.absolutePath,
@@ -523,6 +614,25 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     )
     Files.move(tmpApk.toPath(), apkFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     return apkFile
+  }
+
+  private fun unpackZipInto(zipBytes: ByteArray, destDir: File) {
+    destDir.mkdirs()
+    val canonicalRoot = destDir.canonicalPath + File.separator
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      var entry = zin.nextEntry
+      while (entry != null) {
+        if (!entry.isDirectory) {
+          val target = File(destDir, entry.name)
+          if (target.canonicalPath.startsWith(canonicalRoot)) {
+            target.parentFile?.mkdirs()
+            Files.copy(zin, target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+          }
+        }
+        zin.closeEntry()
+        entry = zin.nextEntry
+      }
+    }
   }
 
   private fun runTool(vararg cmd: String) {
@@ -659,22 +769,37 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           (env.simulatorJars + env.androidDaemonJars + listOf(env.androidJar))
             .distinctBy { it.absolutePath }
             .joinToString(File.pathSeparator) { it.absolutePath }
-        val cmd =
-          listOf(
-            javaBinary(),
-            "-javaagent:${simulatorHostJar.absolutePath}",
-            "-Drobolectric.offline=true",
-            "-Drobolectric.deviceconfig.sdk=35",
-            "-Dcomposeai.simulator.control=stdio",
-            "-Dcomposeai.simulator.headless=true",
-            "-Dcomposeai.simulator.wffApks=${initialWffApk.absolutePath}",
-            "-Dcomposeai.simulator.qualifiers=w454dp-h454dp-round-notlong-xhdpi-watch-notouch-keysexposed",
-            "-cp",
-            cp,
-            "ee.schimke.composeai.simulator.LaunchMain",
-            env.runtimeApk.absolutePath,
-            runtimeClasses.absolutePath,
-          )
+        val robolectricDepsDir =
+          System.getenv("COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it).absoluteFile }
+            ?.takeIf(File::isDirectory)
+        val cmd = buildList {
+          add(javaBinary())
+          add("-XX:G1PeriodicGCInterval=5000")
+          add("--enable-native-access=ALL-UNNAMED")
+          add("--add-opens=java.base/java.net=ALL-UNNAMED")
+          add("-Djava.awt.headless=true")
+          add("-javaagent:${simulatorHostJar.absolutePath}")
+          if (robolectricDepsDir != null) {
+            add("-Drobolectric.offline=true")
+            add("-Drobolectric.dependency.dir=${robolectricDepsDir.absolutePath}")
+          }
+          add("-Drobolectric.createActivityContexts=true")
+          add("-Drobolectric.useEmbeddedViewRoot=true")
+          add("-Drobolectric.deviceconfig.sdk=35")
+          add("-Dcomposeai.simulator.control=stdio")
+          add("-Dcomposeai.simulator.formFactor=wear")
+          add("-Dcomposeai.simulator.launcher=true")
+          add("-Dcomposeai.simulator.noLaunch=true")
+          add("-Dcomposeai.simulator.wffApks=${initialWffApk.absolutePath}")
+          add("-Dcomposeai.simulator.qualifiers=w227dp-h227dp-round-watch-xhdpi")
+          add("-cp")
+          add(cp)
+          add("ee.schimke.composeai.simulator.LaunchMain")
+          add(env.runtimeApk.absolutePath)
+          add(runtimeClasses.absolutePath)
+        }
         val proc = ProcessBuilder(cmd).redirectError(ProcessBuilder.Redirect.INHERIT).start()
         val writer = BufferedWriter(OutputStreamWriter(proc.outputStream, StandardCharsets.UTF_8))
         val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))

@@ -85,7 +85,11 @@ internal class DwfRuntimeCommand(
   }
 
   private fun runStatus(jsonOut: Boolean) {
-    val envApkPath = env(LaunchCommand.DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() }
+    val envApkPath =
+      System.getProperty(DWF_RENDERER_APK_SYS_PROP)?.takeIf { it.isNotBlank() }
+        ?: env(DWF_RENDERER_APK_ENV)?.takeIf { it.isNotBlank() }
+        ?: env(LaunchCommand.DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() }
+        ?: env(LaunchCommand.DWF_RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() }
     val envApk = envApkPath?.let { File(it).absoluteFile }
     val envValid = envApk?.takeIf { it.isFile }?.let { inspectRuntimeApk(it) }
     val cachedFile = cachedApkFile(cacheRoot)
@@ -259,6 +263,8 @@ internal class DwfRuntimeCommand(
     const val METADATA_FILE_NAME = "metadata.json"
     const val SCHEMA = "compose-preview-dwf-runtime/v1"
     const val WATCH_FACE_CONTROL_ACTION = "com.google.android.wearable.action.WATCH_FACE_CONTROL"
+    const val DWF_RENDERER_APK_SYS_PROP = "composeai.watchface.apkRenderer"
+    const val DWF_RENDERER_APK_ENV = "COMPOSE_PREVIEW_DWF_RENDERER_APK"
 
     val CANDIDATE_PACKAGES =
       listOf(
@@ -284,21 +290,26 @@ internal class DwfRuntimeCommand(
     }
 
     /**
-     * Resolves `--dwf-runtime auto`:
-     * 1. `$COMPOSE_PREVIEW_DWF_RUNTIME_APK` if set and valid
+     * Resolves `--dwf-runtime auto` (and default Wear/WFF launch runtime discovery):
+     * 1. `-Dcomposeai.watchface.apkRenderer`, `$COMPOSE_PREVIEW_DWF_RENDERER_APK`,
+     *    `$COMPOSE_PREVIEW_DWF_RUNTIME_APK`, or `$DWF_RUNTIME_APK` if set and valid
      * 2. Cached `DeclarativeWatchFaceRuntime.apk` in [cacheRoot]
-     * 3. Opportunistic `adb` pull if an online Wear device/emulator has the runtime package
+     * 3. Opportunistic `adb` pull if [allowAdbPull] is true and an online Wear device/emulator has
+     *    the runtime package
      * 4. `null`, letting `LaunchCommand` fall back cleanly to built-in WFF -> RemoteCompose
      */
     fun resolveAuto(
       cacheRoot: File = composeAiCacheDir(CACHE_SUBDIR),
       env: (String) -> String? = System::getenv,
+      sysProp: (String) -> String? = System::getProperty,
       adbRunner: AdbRunner = ProcessAdbRunner(env),
       allowAdbPull: Boolean = true,
       verbose: Boolean = false,
     ): File? {
       val envPath =
-        env(LaunchCommand.DWF_RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() }
+        sysProp(DWF_RENDERER_APK_SYS_PROP)?.takeIf { it.isNotBlank() }
+          ?: env(DWF_RENDERER_APK_ENV)?.takeIf { it.isNotBlank() }
+          ?: env(LaunchCommand.DWF_RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() }
           ?: env(LaunchCommand.DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() }
       if (envPath != null) {
         val envFile = File(envPath).absoluteFile

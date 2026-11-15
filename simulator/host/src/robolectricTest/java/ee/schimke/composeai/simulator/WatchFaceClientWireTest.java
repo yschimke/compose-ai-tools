@@ -137,6 +137,37 @@ public class WatchFaceClientWireTest {
     }
   }
 
+  @Test
+  public void fakeComplicationUrlDecodesIntoWireParcelableIcon() throws Exception {
+    File pngFile = temp.newFile("comp-photo.png");
+    android.graphics.Bitmap src =
+        android.graphics.Bitmap.createBitmap(24, 18, android.graphics.Bitmap.Config.ARGB_8888);
+    src.eraseColor(0xFFE91E63);
+    try (java.io.OutputStream out = Files.newOutputStream(pngFile.toPath())) {
+      src.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+    }
+    org.json.JSONObject json =
+        new org.json.JSONObject()
+            .put("slot", 3)
+            .put("type", "PHOTO_IMAGE")
+            .put("photoImage", pngFile.toURI().toString());
+    DwfWatchFaceClient.FakeComplication fake =
+        DwfWatchFaceClient.FakeComplication.fromJson(json, 3);
+    android.os.Parcelable built =
+        ComplicationParcels.buildFakeParcelable(
+            WatchFaceClientWireTest.class.getClassLoader(), fake, null);
+    android.support.wearable.complications.ComplicationData wire =
+        (android.support.wearable.complications.ComplicationData) built;
+    assertEquals(8, wire.getType());
+    android.graphics.drawable.Icon large = wire.getLargeImage();
+    org.junit.Assert.assertNotNull(large);
+    android.graphics.drawable.Drawable drawable =
+        large.loadDrawable(RuntimeEnvironment.getApplication());
+    org.junit.Assert.assertNotNull(drawable);
+    assertEquals(24, drawable.getIntrinsicWidth());
+    assertEquals(18, drawable.getIntrinsicHeight());
+  }
+
   private static List<Integer> topLevelFieldIds(Parcel parcel) {
     List<Integer> ids = new ArrayList<>();
     while (parcel.dataPosition() < parcel.dataSize()) {

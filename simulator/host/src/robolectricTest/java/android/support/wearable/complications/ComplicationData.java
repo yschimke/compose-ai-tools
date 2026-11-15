@@ -102,6 +102,10 @@ public class ComplicationData implements Parcelable {
     return mFields.getParcelable("SMALL_IMAGE");
   }
 
+  public Icon getLargeImage() {
+    return mFields.getParcelable("LARGE_IMAGE");
+  }
+
   public PendingIntent getTapAction() {
     return mFields.getParcelable("TAP_ACTION");
   }

@@ -226,6 +226,7 @@ public sealed interface DwfSceneNode {
     public val resource: String? = null,
     public val imageFilters: List<String> = emptyList(),
     public val resourceChoices: List<String> = emptyList(),
+    public val photoConfigId: String? = null,
   ) : DwfSceneNode
 
   @Immutable

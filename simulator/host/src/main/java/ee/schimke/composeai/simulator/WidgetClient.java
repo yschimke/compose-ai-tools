@@ -258,11 +258,16 @@ final class WidgetClient {
 
   private void play(byte[] document) throws ReflectiveOperationException {
     if (context == null || parent == null) return;
+    try {
+      DwfWatchFaceClient.configureRemoteCoreLimits(load("androidx.compose.remote.core.Limits"));
+    } catch (ClassNotFoundException ignored) {
+    }
     Class<?> playerType = load("androidx.compose.remote.player.view.RemoteComposePlayer");
     View view = (View) playerType.getConstructor(Context.class).newInstance(context);
+    SimulatorBitmapLoader.installOnPlayer(playerType, view, SimulatorBitmapLoader.shared());
     this.document = document;
     player = view;
-    playerType.getMethod("setDocument", byte[].class).invoke(view, (Object) document);
+    SimulatorBitmapLoader.setDocumentNormalized(playerType, view, document);
     // An override reaches only the names the document has registered, which it does as it first
     // draws: the values go in after that first frame, then on each change.
     view.getViewTreeObserver()

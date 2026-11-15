@@ -71,6 +71,7 @@ final class DeviceState {
     int oldLevel = batteryLevel;
     boolean wasCharging = plugged != 0;
     if (c.has("level")) batteryLevel = Math.max(0, Math.min(100, c.getInt("level")));
+    else if (c.has("percent")) batteryLevel = Math.max(0, Math.min(100, c.getInt("percent")));
     if (c.has("plugged")) plugged = plugged(c.getString("plugged"));
     if (c.has("charging")) {
       plugged = c.getBoolean("charging") ? BatteryManager.BATTERY_PLUGGED_AC : 0;

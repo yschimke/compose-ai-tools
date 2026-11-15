@@ -263,6 +263,22 @@ public data class CompiledApkDwfEntry(
   val previewSecond: Int,
   val slots: List<CompiledApkDwfSlot> = emptyList(),
   val configurations: List<CompiledApkDwfConfig> = emptyList(),
+  val defaultFlavorId: String? = null,
+  val flavors: List<CompiledApkDwfFlavor> = emptyList(),
+)
+
+@Serializable
+public data class CompiledApkDwfFlavor(
+  val id: String,
+  val displayName: String,
+  val configurations: Map<String, String> = emptyMap(),
+  val complications: Map<Int, CompiledApkDwfFlavorComplication> = emptyMap(),
+)
+
+@Serializable
+public data class CompiledApkDwfFlavorComplication(
+  val defaultSystemProvider: String? = null,
+  val defaultSystemProviderType: String? = null,
 )
 
 @Serializable
@@ -570,6 +586,22 @@ public fun compileApkWatchFaces(
         }
       }
 
+    val flavors =
+      doc.flavors.map { flavor ->
+        CompiledApkDwfFlavor(
+          id = flavor.id,
+          displayName = flavor.displayName ?: flavor.id,
+          configurations = flavor.configurations,
+          complications =
+            flavor.complications.mapValues { (_, pol) ->
+              CompiledApkDwfFlavorComplication(
+                defaultSystemProvider = pol.defaultSystemProvider,
+                defaultSystemProviderType = pol.defaultSystemProviderType,
+              )
+            },
+        )
+      }
+
     compiledEntries +=
       CompiledApkDwfEntry(
         id = item.id,
@@ -583,6 +615,8 @@ public fun compileApkWatchFaces(
         previewSecond = second,
         slots = slots,
         configurations = configs,
+        defaultFlavorId = doc.defaultFlavorId,
+        flavors = flavors,
       )
   }
 
@@ -604,6 +638,7 @@ public fun renderDwfDocumentToPng(
   month: Int = 11,
   dayOfMonth: Int = 18,
   typefaces: RcTypefaceLoader? = dwfTypefaces(),
+  imageLoader: ee.schimke.composeai.rcplayer.compose.RcImageLoader = defaultDwfImageLoader(),
 ): ByteArray {
   val date = runCatching {
     LocalDate.of(year, month, dayOfMonth)
@@ -631,7 +666,10 @@ public fun renderDwfDocumentToPng(
   try {
     val stateMap = mutableStateMapOf<String, RcNamedValue>().apply { putAll(seeds) }
     scene.setContent {
-      CompositionLocalProvider(LocalRcTimeSource provides fixedTime) {
+      CompositionLocalProvider(
+        LocalRcTimeSource provides fixedTime,
+        ee.schimke.composeai.rcplayer.compose.LocalRcImageLoader provides imageLoader,
+      ) {
         if (typefaces == null) {
           RcComposePlayer(bytes = bytes, modifier = Modifier.fillMaxSize(), namedValues = stateMap)
         } else {

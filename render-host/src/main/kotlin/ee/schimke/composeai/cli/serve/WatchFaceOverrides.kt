@@ -304,6 +304,11 @@ public object WatchFaceOverrides {
           named[rawKey] = PreviewOverrideValue.FloatValue(f)
           rc["metrics.day.flights_of_stairs"] = RemoteNamedValue.FloatValue(f)
         }
+        rest == "flavor" -> {
+          if (trimmed.isEmpty()) continue
+          named["wf.flavor"] = PreviewOverrideValue.StringValue(trimmed)
+          rc["dwf.flavor"] = RemoteNamedValue.StringValue(trimmed)
+        }
         rest.startsWith("config.") -> {
           val cfgId = rest.removePrefix("config.")
           if (cfgId.isBlank()) {
@@ -465,13 +470,22 @@ public object WatchFaceOverrides {
       val monoRaw =
         (fields["monochromaticImage"] ?: fields["icon"])?.trim()?.takeIf { it.isNotEmpty() }
       if (monoRaw != null) {
-        val b =
-          parseStrictBool(monoRaw)
-            ?: return WfParamParse.Invalid(
-              "$wfSlotPrefix.monochromaticImage must be a boolean, got '$monoRaw'",
+        val b = parseStrictBool(monoRaw)
+        when {
+          b != null -> {
+            named["$wfSlotPrefix.monochromaticImage"] = PreviewOverrideValue.BooleanValue(b)
+            rc["$rcPrefix.has_monochromatic_image"] = RemoteNamedValue.BooleanValue(b)
+          }
+          isImageUrl(monoRaw) -> {
+            named["$wfSlotPrefix.monochromaticImage"] = PreviewOverrideValue.StringValue(monoRaw)
+            rc["$rcPrefix.has_monochromatic_image"] = RemoteNamedValue.BooleanValue(true)
+            rc["$rcPrefix.monochromatic_image"] = RemoteNamedValue.StringValue(monoRaw)
+          }
+          else ->
+            return WfParamParse.Invalid(
+              "$wfSlotPrefix.monochromaticImage must be a boolean or image URL, got '$monoRaw'",
             )
-        named["$wfSlotPrefix.monochromaticImage"] = PreviewOverrideValue.BooleanValue(b)
-        rc["$rcPrefix.has_monochromatic_image"] = RemoteNamedValue.BooleanValue(b)
+        }
       } else if (typeCode != null) {
         rc["$rcPrefix.has_monochromatic_image"] =
           RemoteNamedValue.BooleanValue(typeCode == COMPLICATION_TYPE_MONOCHROMATIC_IMAGE)
@@ -479,13 +493,22 @@ public object WatchFaceOverrides {
 
       val smallRaw = fields["smallImage"]?.trim()?.takeIf { it.isNotEmpty() }
       if (smallRaw != null) {
-        val b =
-          parseStrictBool(smallRaw)
-            ?: return WfParamParse.Invalid(
-              "$wfSlotPrefix.smallImage must be a boolean, got '$smallRaw'",
+        val b = parseStrictBool(smallRaw)
+        when {
+          b != null -> {
+            named["$wfSlotPrefix.smallImage"] = PreviewOverrideValue.BooleanValue(b)
+            rc["$rcPrefix.has_small_image"] = RemoteNamedValue.BooleanValue(b)
+          }
+          isImageUrl(smallRaw) -> {
+            named["$wfSlotPrefix.smallImage"] = PreviewOverrideValue.StringValue(smallRaw)
+            rc["$rcPrefix.has_small_image"] = RemoteNamedValue.BooleanValue(true)
+            rc["$rcPrefix.small_image"] = RemoteNamedValue.StringValue(smallRaw)
+          }
+          else ->
+            return WfParamParse.Invalid(
+              "$wfSlotPrefix.smallImage must be a boolean or image URL, got '$smallRaw'",
             )
-        named["$wfSlotPrefix.smallImage"] = PreviewOverrideValue.BooleanValue(b)
-        rc["$rcPrefix.has_small_image"] = RemoteNamedValue.BooleanValue(b)
+        }
       } else if (typeCode != null) {
         rc["$rcPrefix.has_small_image"] =
           RemoteNamedValue.BooleanValue(typeCode == COMPLICATION_TYPE_SMALL_IMAGE)
@@ -493,13 +516,22 @@ public object WatchFaceOverrides {
 
       val photoRaw = fields["photoImage"]?.trim()?.takeIf { it.isNotEmpty() }
       if (photoRaw != null) {
-        val b =
-          parseStrictBool(photoRaw)
-            ?: return WfParamParse.Invalid(
-              "$wfSlotPrefix.photoImage must be a boolean, got '$photoRaw'",
+        val b = parseStrictBool(photoRaw)
+        when {
+          b != null -> {
+            named["$wfSlotPrefix.photoImage"] = PreviewOverrideValue.BooleanValue(b)
+            rc["$rcPrefix.has_photo_image"] = RemoteNamedValue.BooleanValue(b)
+          }
+          isImageUrl(photoRaw) -> {
+            named["$wfSlotPrefix.photoImage"] = PreviewOverrideValue.StringValue(photoRaw)
+            rc["$rcPrefix.has_photo_image"] = RemoteNamedValue.BooleanValue(true)
+            rc["$rcPrefix.photo_image"] = RemoteNamedValue.StringValue(photoRaw)
+          }
+          else ->
+            return WfParamParse.Invalid(
+              "$wfSlotPrefix.photoImage must be a boolean or image URL, got '$photoRaw'",
             )
-        named["$wfSlotPrefix.photoImage"] = PreviewOverrideValue.BooleanValue(b)
-        rc["$rcPrefix.has_photo_image"] = RemoteNamedValue.BooleanValue(b)
+        }
       } else if (typeCode != null) {
         rc["$rcPrefix.has_photo_image"] =
           RemoteNamedValue.BooleanValue(typeCode == COMPLICATION_TYPE_PHOTO_IMAGE)
@@ -693,6 +725,7 @@ public object WatchFaceOverrides {
           "calories",
           "distance",
           "floors",
+          "flavor",
         )
       for (key in scalarFields) {
         val prim = watchFace[key]?.takeUnless { it is JsonNull } as? JsonPrimitive ?: continue
@@ -1086,8 +1119,10 @@ public object WatchFaceOverrides {
     }
   }
 
-  private fun coerceImagePresence(raw: String): String =
-    when (raw.trim().lowercase(Locale.ROOT)) {
+  private fun coerceImagePresence(raw: String): String {
+    val trimmed = raw.trim()
+    if (isImageUrl(trimmed)) return trimmed
+    return when (trimmed.lowercase(Locale.ROOT)) {
       "false",
       "0",
       "none",
@@ -1095,6 +1130,15 @@ public object WatchFaceOverrides {
       "" -> "false"
       else -> "true"
     }
+  }
+
+  private fun isImageUrl(raw: String): Boolean {
+    val lower = raw.trim().lowercase(Locale.ROOT)
+    return lower.startsWith("http://") ||
+      lower.startsWith("https://") ||
+      lower.startsWith("file:") ||
+      lower.startsWith("data:image/")
+  }
 
   private fun parseStrictBool(raw: String): Boolean? =
     when (raw.trim().lowercase(Locale.ROOT)) {

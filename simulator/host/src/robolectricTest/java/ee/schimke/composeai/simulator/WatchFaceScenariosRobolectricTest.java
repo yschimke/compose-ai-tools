@@ -591,6 +591,84 @@ public class WatchFaceScenariosRobolectricTest {
     return new Outcome<>(valRef.get(), errRef.get());
   }
 
+  @Test
+  public void simulatorBitmapLoaderDecodesUrlBitmapsAndPhotosConfigOverridesPlayerTarget()
+      throws Exception {
+    Bitmap src = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+    src.eraseColor(0xFF00E676);
+    java.io.ByteArrayOutputStream pngOut = new java.io.ByteArrayOutputStream();
+    assertTrue(src.compress(Bitmap.CompressFormat.PNG, 100, pngOut));
+    byte[] greenPng = pngOut.toByteArray();
+
+    com.sun.net.httpserver.HttpServer server =
+        com.sun.net.httpserver.HttpServer.create(
+            new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/green.png",
+        exchange -> {
+          exchange.getResponseHeaders().add("Content-Type", "image/png");
+          exchange.sendResponseHeaders(200, greenPng.length);
+          exchange.getResponseBody().write(greenPng);
+          exchange.close();
+        });
+    server.start();
+    try {
+      String httpUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/green.png";
+      SimulatorBitmapLoader loader = new SimulatorBitmapLoader(true);
+      Bitmap decoded = (Bitmap) loader.decodeBitmap(httpUrl);
+      assertNotNull(decoded);
+      assertEquals(64, decoded.getWidth());
+      assertEquals(64, decoded.getHeight());
+      assertEquals(0xFF00E676, decoded.getPixel(32, 32));
+
+      Bitmap defaultPhoto = (Bitmap) loader.decodeBitmap(SimulatorBitmapLoader.DEFAULT_PHOTO_URL);
+      assertNotNull(defaultPhoto);
+      assertEquals(450, defaultPhoto.getWidth());
+      assertEquals(450, defaultPhoto.getHeight());
+
+      DwfWatchFaceClient.Entry entry =
+          new DwfWatchFaceClient.Entry(
+              "com.example/.PhotosFace",
+              "PhotosFace",
+              temp.getRoot(),
+              "watchface.rc",
+              450,
+              450,
+              "CIRCLE",
+              List.of(new WatchFaceClient.Slot(0, new int[] {8}, true)),
+              List.of(
+                  new DwfWatchFaceClient.ConfigSpec(
+                      "photoConfig", "PHOTOS", "Photos", "SINGLE", List.of())));
+      DwfWatchFaceClient client = new DwfWatchFaceClient(app, entry, loader, null);
+      client.setConfig("photoConfig", httpUrl);
+      client.putFakeComplication(
+          0,
+          DwfWatchFaceClient.FakeComplication.fromJson(
+              new JSONObject()
+                  .put("slot", 0)
+                  .put("type", "PHOTO_IMAGE")
+                  .put("photoImage", httpUrl),
+              0));
+
+      Map<String, Bitmap> capturedBitmaps = new LinkedHashMap<>();
+      Object bitmapTarget =
+          new Object() {
+            @SuppressWarnings("unused")
+            public void setUserLocalBitmap(String name, Bitmap bmp) {
+              capturedBitmaps.put(name, bmp);
+            }
+          };
+      client.applyVariablesTo(bitmapTarget, false);
+      assertNotNull(capturedBitmaps.get("dwf.config.photoConfig"));
+      assertEquals(0xFF00E676, capturedBitmaps.get("dwf.config.photoConfig").getPixel(16, 16));
+      assertNotNull(capturedBitmaps.get("dwf.complication.0.photo_image"));
+      assertEquals(
+          0xFF00E676, capturedBitmaps.get("dwf.complication.0.photo_image").getPixel(16, 16));
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private static int openField(Parcel parcel, int id) {
     int start = parcel.dataPosition();
     parcel.writeInt(0);

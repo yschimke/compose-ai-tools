@@ -477,4 +477,279 @@ public class DwfWatchFaceClientTest {
       WatchState.resetCurrent();
     }
   }
+
+  @Test
+  public void flavorsApplyPresetConfigurationsComplicationsAndPaletteAndCustomFontsResolve()
+      throws Exception {
+    File tmpDir = Files.createTempDirectory("dwf-flavors-font-test-").toFile();
+    WatchState state = new WatchState(null, null);
+    try {
+      state.clockCommand(new JSONObject().put("iso", "2026-06-15T10:08:30Z"));
+      state.syncBattery(82, false, false, false);
+
+      File fontDir = new File(tmpDir, "res/font");
+      assertTrue(fontDir.mkdirs());
+      File digital7 = new File(fontDir, "digital7.ttf");
+      Files.writeString(digital7.toPath(), "stub-ttf", StandardCharsets.UTF_8);
+      File xmlAlias = new File(fontDir, "casio_family.xml");
+      Files.writeString(
+          xmlAlias.toPath(),
+          "<font-family><font android:font=\"@font/digital7\"/></font-family>",
+          StandardCharsets.UTF_8);
+
+      assertEquals(digital7, DwfWatchFaceClient.findCustomFontFile(tmpDir, "@font/digital7", 0));
+      assertEquals(digital7, DwfWatchFaceClient.findCustomFontFile(tmpDir, "Digital7", 0));
+      assertEquals(digital7, DwfWatchFaceClient.findCustomFontFile(tmpDir, "casio_family", 0));
+      assertEquals(null, DwfWatchFaceClient.findCustomFontFile(tmpDir, "SYNC_TO_DEVICE", 0));
+
+      String manifest =
+          "{\n"
+              + "  \"watchFaces\": [\n"
+              + "    {\n"
+              + "      \"id\": \"com.google.wear.watchface.wffsamples.flavors/watchface\",\n"
+              + "      \"label\": \"Flavors\",\n"
+              + "      \"rcFile\": \"watchface.rc\",\n"
+              + "      \"width\": 450,\n"
+              + "      \"height\": 450,\n"
+              + "      \"clipShape\": \"CIRCLE\",\n"
+              + "      \"slots\": [{\"id\": 1, \"supportedTypes\": [3, 5], \"enabled\": true}],\n"
+              + "      \"configurations\": [\n"
+              + "        {\n"
+              + "          \"id\": \"themeColor\",\n"
+              + "          \"kind\": \"COLOR\",\n"
+              + "          \"displayName\": \"Theme\",\n"
+              + "          \"defaultValue\": \"0\",\n"
+              + "          \"options\": [\n"
+              + "            {\"id\": \"0\", \"displayName\": \"Blue\", \"colors\": [\"#FF4285F4\"]},\n"
+              + "            {\"id\": \"1\", \"displayName\": \"Gold\", \"colors\": [\"#FFFBBC05\"]},\n"
+              + "            {\"id\": \"2\", \"displayName\": \"Rose\", \"colors\": [\"#FFD65B80\"]}\n"
+              + "          ]\n"
+              + "        },\n"
+              + "        {\n"
+              + "          \"id\": \"clockStyle\",\n"
+              + "          \"kind\": \"LIST\",\n"
+              + "          \"displayName\": \"Style\",\n"
+              + "          \"defaultValue\": \"analog\",\n"
+              + "          \"options\": [\n"
+              + "            {\"id\": \"analog\", \"displayName\": \"Analog\"},\n"
+              + "            {\"id\": \"digital\", \"displayName\": \"Digital\"}\n"
+              + "          ]\n"
+              + "        }\n"
+              + "      ],\n"
+              + "      \"defaultFlavorId\": \"flavorZero\",\n"
+              + "      \"flavors\": [\n"
+              + "        {\n"
+              + "          \"id\": \"flavorZero\",\n"
+              + "          \"displayName\": \"Zero\",\n"
+              + "          \"configurations\": {\"themeColor\": \"0\", \"clockStyle\": \"analog\"},\n"
+              + "          \"complications\": {\"1\": {\"defaultSystemProvider\": \"EMPTY\", \"defaultSystemProviderType\": \"EMPTY\"}}\n"
+              + "        },\n"
+              + "        {\n"
+              + "          \"id\": \"flavorTwo\",\n"
+              + "          \"displayName\": \"Two\",\n"
+              + "          \"configurations\": {\"themeColor\": \"2\", \"clockStyle\": \"digital\"},\n"
+              + "          \"complications\": {\"1\": {\"defaultSystemProvider\": \"STEP_COUNT\", \"defaultSystemProviderType\": \"SHORT_TEXT\"}}\n"
+              + "        }\n"
+              + "      ]\n"
+              + "    }\n"
+              + "  ]\n"
+              + "}\n";
+      Files.writeString(
+          new File(tmpDir, "compiled-manifest.json").toPath(), manifest, StandardCharsets.UTF_8);
+
+      List<DwfWatchFaceClient.Entry> loaded = DwfWatchFaceClient.loadEntriesFromDir(tmpDir);
+      assertEquals(1, loaded.size());
+      DwfWatchFaceClient client = new DwfWatchFaceClient(null, loaded.get(0), null);
+      assertEquals("flavorZero", client.activeFlavorId());
+
+      FakePlayerTarget target = new FakePlayerTarget();
+      client.applyVariablesTo(target, false);
+      assertEquals(0, target.ints.get("dwf.config.themeColor").intValue());
+      assertEquals(0, target.ints.get("dwf.config.clockStyle").intValue());
+      assertEquals(0, target.ints.get("dwf.complication.1.type").intValue());
+
+      client.setFlavor("flavorTwo");
+      assertEquals("flavorTwo", client.activeFlavorId());
+      target = new FakePlayerTarget();
+      client.applyVariablesTo(target, false);
+      assertEquals(2, target.ints.get("dwf.config.themeColor").intValue());
+      assertEquals(1, target.ints.get("dwf.config.clockStyle").intValue());
+      assertEquals(1, target.ints.get("dwf.complication.1.type").intValue());
+      assertEquals(Integer.toString(state.steps()), target.strings.get("dwf.complication.1.text"));
+      assertEquals("STEPS", target.strings.get("dwf.complication.1.title"));
+      assertEquals(0xFFD65B80, client.extractPalette().primaryArgb);
+    } finally {
+      WatchState.resetCurrent();
+      deleteRecursively(tmpDir);
+    }
+  }
+
+  public static final class FakeLimits {
+    public static int MAX_OP_COUNT = 20_000;
+    public static int MAX_BITMAP_MEMORY = 20_971_520;
+    public static int MAX_DECOMPRESSED_SIZE = 33_554_432;
+    public static boolean ENABLE_IMAGE_URLS = false;
+    public static boolean ENABLE_IMAGE_FILES = false;
+  }
+
+  @Test
+  public void configureRemoteCoreLimitsRaisesBitmapMemoryAndEnablesUrlImages() {
+    FakeLimits.MAX_OP_COUNT = 20_000;
+    FakeLimits.MAX_BITMAP_MEMORY = 20_971_520;
+    FakeLimits.MAX_DECOMPRESSED_SIZE = 33_554_432;
+    FakeLimits.ENABLE_IMAGE_URLS = false;
+    FakeLimits.ENABLE_IMAGE_FILES = false;
+    DwfWatchFaceClient.configureRemoteCoreLimits(FakeLimits.class);
+    assertEquals(200_000, FakeLimits.MAX_OP_COUNT);
+    assertEquals(256 * 1024 * 1024, FakeLimits.MAX_BITMAP_MEMORY);
+    assertEquals(128 * 1024 * 1024, FakeLimits.MAX_DECOMPRESSED_SIZE);
+    assertTrue(FakeLimits.ENABLE_IMAGE_URLS);
+    assertTrue(FakeLimits.ENABLE_IMAGE_FILES);
+  }
+
+  @Test
+  public void simulatorBitmapLoaderResolvesHttpDataFileAndConfiguredUrls() throws Exception {
+    byte[] samplePng =
+        java.util.Base64.getDecoder()
+            .decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+    com.sun.net.httpserver.HttpServer server =
+        com.sun.net.httpserver.HttpServer.create(
+            new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/test-photo.png",
+        exchange -> {
+          exchange.getResponseHeaders().add("Content-Type", "image/png");
+          exchange.sendResponseHeaders(200, samplePng.length);
+          exchange.getResponseBody().write(samplePng);
+          exchange.close();
+        });
+    server.start();
+    try {
+      int port = server.getAddress().getPort();
+      String httpUrl = "http://127.0.0.1:" + port + "/test-photo.png";
+      SimulatorBitmapLoader loader = new SimulatorBitmapLoader(true);
+
+      byte[] httpLoaded = loader.loadBytes(httpUrl);
+      assertEquals(samplePng.length, httpLoaded.length);
+
+      String dataUrl =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      assertEquals(samplePng.length, loader.loadBytes(dataUrl).length);
+
+      loader.registerUrlBytes("https://configured.example.test/custom.png", samplePng);
+      assertEquals(
+          samplePng.length,
+          loader.loadBytes("https://configured.example.test/custom.png").length);
+      assertTrue(
+          loader.loadBytes("https://compose-preview.local/dwf/monochromatic_default.png").length
+              > 0);
+      assertTrue(
+          loader.loadBytes("https://compose-preview.local/dwf/small_default.png").length > 0);
+      assertTrue(
+          loader.loadBytes("https://compose-preview.local/dwf/photo_default.png").length > 0);
+
+      DwfWatchFaceClient.FakeComplication urlComp =
+          DwfWatchFaceClient.FakeComplication.fromJson(
+              new JSONObject()
+                  .put("slot", 0)
+                  .put("type", "PHOTO_IMAGE")
+                  .put("photoImage", httpUrl),
+              0);
+      assertEquals(httpUrl, urlComp.photoImage);
+      assertTrue(urlComp.hasPhotoImage.booleanValue());
+      assertEquals(httpUrl, urlComp.toJson().getString("photoImage"));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  public static final class StubBitmapData {
+    private final short encoding;
+    private int width;
+    private int height;
+
+    StubBitmapData(short encoding, int width, int height) {
+      this.encoding = encoding;
+      this.width = width;
+      this.height = height;
+    }
+
+    public short getEncoding() {
+      return encoding;
+    }
+
+    public int getWidth() {
+      return width;
+    }
+
+    public int getHeight() {
+      return height;
+    }
+
+    public void setWidth(int width) {
+      this.width = width;
+    }
+
+    public void setHeight(int height) {
+      this.height = height;
+    }
+  }
+
+  public static final class StubCoreDocument {
+    private final StubBitmapData[] bitmaps;
+
+    StubCoreDocument(StubBitmapData[] bitmaps) {
+      this.bitmaps = bitmaps;
+    }
+
+    public StubBitmapData[] getBitmapDataSet() {
+      return bitmaps;
+    }
+  }
+
+  public static final class StubRemoteDocument {
+    private final StubCoreDocument doc;
+
+    StubRemoteDocument(StubCoreDocument doc) {
+      this.doc = doc;
+    }
+
+    public StubCoreDocument getDocument() {
+      return doc;
+    }
+  }
+
+  @Test
+  public void normalizesPlaceholderUrlBitmapDimensionsWhilePreservingInlineBitmaps() {
+    StubBitmapData urlPlaceholder = new StubBitmapData((short) 1, 1, 1);
+    StubBitmapData filePlaceholder = new StubBitmapData((short) 2, 1, 1);
+    StubBitmapData inline1x1 = new StubBitmapData((short) 0, 1, 1);
+    StubBitmapData urlExplicit = new StubBitmapData((short) 1, 64, 64);
+
+    StubRemoteDocument remoteDoc =
+        new StubRemoteDocument(
+            new StubCoreDocument(
+                new StubBitmapData[] {urlPlaceholder, filePlaceholder, inline1x1, urlExplicit}));
+
+    int count = SimulatorBitmapLoader.normalizeUrlBitmapDimensions(remoteDoc);
+    assertEquals(2, count);
+    assertEquals(0, urlPlaceholder.getWidth());
+    assertEquals(0, urlPlaceholder.getHeight());
+    assertEquals(0, filePlaceholder.getWidth());
+    assertEquals(0, filePlaceholder.getHeight());
+    assertEquals(1, inline1x1.getWidth());
+    assertEquals(1, inline1x1.getHeight());
+    assertEquals(64, urlExplicit.getWidth());
+    assertEquals(64, urlExplicit.getHeight());
+  }
+
+  private static void deleteRecursively(File f) {
+    if (f == null || !f.exists()) return;
+    File[] children = f.listFiles();
+    if (children != null) {
+      for (File c : children) deleteRecursively(c);
+    }
+    f.delete();
+  }
 }

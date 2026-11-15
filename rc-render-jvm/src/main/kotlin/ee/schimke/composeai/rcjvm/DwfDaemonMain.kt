@@ -357,7 +357,7 @@ internal fun applyWfNamedOverrides(
     }
   }
   if (explicitBatteryLow != null) {
-    out[DwfVariables.BATTERY_IS_LOW] = RemoteNamedValue.BooleanValue(explicitBatteryLow!!)
+    out[DwfVariables.BATTERY_IS_LOW] = RemoteNamedValue.BooleanValue(explicitBatteryLow)
   }
 
   for ((slotId, fields) in slotEntries) {
@@ -1098,7 +1098,10 @@ private class DwfDaemonSession(
     try {
       val stateMap = mutableStateMapOf<String, RcNamedValue>().apply { putAll(rcSeeds) }
       scene.setContent {
-        CompositionLocalProvider(LocalRcTimeSource provides fixedTime) {
+        CompositionLocalProvider(
+          LocalRcTimeSource provides fixedTime,
+          ee.schimke.composeai.rcplayer.compose.LocalRcImageLoader provides defaultDwfImageLoader(),
+        ) {
           Box(
             Modifier.fillMaxSize().semantics {
               testTag = "watchface_root"

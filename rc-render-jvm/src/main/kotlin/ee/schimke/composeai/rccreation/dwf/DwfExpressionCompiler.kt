@@ -89,6 +89,7 @@ internal class DwfExpressionCompiler(
   }
 
   internal data class ResolvedComplicationImage(
+    val slotId: Int,
     val kind: ComplicationImageKind,
     val staticResource: String?,
     val isPresent: RemoteBoolean,
@@ -1863,6 +1864,15 @@ internal class DwfExpressionCompiler(
             min = 0f,
             max = 100f,
           )
+        "HEART" in provider ->
+          DwfComplicationSeed(
+            type = preferredType,
+            text = "${safeHr.toInt()}",
+            title = "BPM",
+            value = safeHr,
+            min = 0f,
+            max = 200f,
+          )
         "DATE" in provider || "DAY" in provider ->
           DwfComplicationSeed(
             type = preferredType,
@@ -2061,6 +2071,7 @@ internal class DwfExpressionCompiler(
         "MONOCHROMATIC_IMAGE",
         "MONOCHROMATIC_IMAGE_AMBIENT" ->
           ResolvedComplicationImage(
+            slotId = slotId,
             kind = ComplicationImageKind.MONOCHROMATIC,
             staticResource = seed.monochromaticImage,
             isPresent = hasMonoImageState(slotId, seed),
@@ -2070,6 +2081,7 @@ internal class DwfExpressionCompiler(
         "SMALL_IMAGE",
         "SMALL_IMAGE_AMBIENT" ->
           ResolvedComplicationImage(
+            slotId = slotId,
             kind = ComplicationImageKind.SMALL,
             staticResource = seed.smallImage,
             isPresent = hasSmallImageState(slotId, seed),
@@ -2079,6 +2091,7 @@ internal class DwfExpressionCompiler(
         "PHOTO_IMAGE",
         "PHOTO_IMAGE_AMBIENT" ->
           ResolvedComplicationImage(
+            slotId = slotId,
             kind = ComplicationImageKind.PHOTO,
             staticResource = seed.photoImage,
             isPresent = hasPhotoImageState(slotId, seed),

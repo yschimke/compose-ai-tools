@@ -276,6 +276,17 @@ public interface ServeHost : AutoCloseable {
   /** Whether [remoteComposeDoc] exists; bundle hosts override with a cheap existence check. */
   public fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
+  /**
+   * Compiled Android resource package (`android/resources.ap_`, or an APK) carrying binary
+   * `AndroidManifest.xml`, `resources.arsc`, and `res/raw/<watchface>.xml` for [previewId], or null
+   * when unavailable. Consumed by `dwf-apk` (`DeclarativeWatchFaceRuntime` / `WffWatchFaces`).
+   */
+  public fun watchFaceResourceApk(previewId: String): ByteArray? = null
+
+  /** Whether [watchFaceResourceApk] exists; bundle hosts override with a cheap existence check. */
+  public fun hasWatchFaceResourceApk(previewId: String): Boolean =
+    watchFaceResourceApk(previewId) != null
+
   /** The published Remote Compose player comparison behind `?format=rc`, or null. */
   public fun rcCompare(): RcCompareManifest? = null
 

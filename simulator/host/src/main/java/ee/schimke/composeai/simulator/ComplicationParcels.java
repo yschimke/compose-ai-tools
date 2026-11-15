@@ -51,14 +51,24 @@ final class ComplicationParcels {
       Parcelable titleText =
           fake.title != null ? buildComplicationText(classLoader, fake.title) : null;
 
+      boolean hasMono =
+          Boolean.TRUE.equals(fake.hasMonochromaticImage)
+              || fake.monochromaticBitmap != null
+              || hasNonBlankUrl(fake.monochromaticImage);
+      boolean hasSmall =
+          Boolean.TRUE.equals(fake.hasSmallImage)
+              || fake.smallBitmap != null
+              || hasNonBlankUrl(fake.smallImage);
+
       switch (wireType) {
         case 3: // TYPE_SHORT_TEXT
           fields.putParcelable(
               "SHORT_TEXT",
               shortText != null ? shortText : buildComplicationText(classLoader, "--"));
           if (titleText != null) fields.putParcelable("SHORT_TITLE", titleText);
-          if (Boolean.TRUE.equals(fake.hasMonochromaticImage)) {
-            fields.putParcelable("ICON", createSyntheticIcon(true));
+          if (hasMono) {
+            fields.putParcelable(
+                "ICON", resolveFakeIcon(fake.monochromaticBitmap, fake.monochromaticImage, true));
           }
           break;
         case 4: // TYPE_LONG_TEXT
@@ -66,11 +76,13 @@ final class ComplicationParcels {
               "LONG_TEXT",
               shortText != null ? shortText : buildComplicationText(classLoader, "--"));
           if (titleText != null) fields.putParcelable("LONG_TITLE", titleText);
-          if (Boolean.TRUE.equals(fake.hasMonochromaticImage)) {
-            fields.putParcelable("ICON", createSyntheticIcon(true));
+          if (hasMono) {
+            fields.putParcelable(
+                "ICON", resolveFakeIcon(fake.monochromaticBitmap, fake.monochromaticImage, true));
           }
-          if (Boolean.TRUE.equals(fake.hasSmallImage)) {
-            fields.putParcelable("SMALL_IMAGE", createSyntheticIcon(false));
+          if (hasSmall) {
+            fields.putParcelable(
+                "SMALL_IMAGE", resolveFakeIcon(fake.smallBitmap, fake.smallImage, false));
             fields.putInt("IMAGE_STYLE", 1);
           }
           break;
@@ -84,8 +96,9 @@ final class ComplicationParcels {
             fields.putFloat("MAX_VALUE", max);
             if (shortText != null) fields.putParcelable("SHORT_TEXT", shortText);
             if (titleText != null) fields.putParcelable("SHORT_TITLE", titleText);
-            if (Boolean.TRUE.equals(fake.hasMonochromaticImage)) {
-              fields.putParcelable("ICON", createSyntheticIcon(true));
+            if (hasMono) {
+              fields.putParcelable(
+                  "ICON", resolveFakeIcon(fake.monochromaticBitmap, fake.monochromaticImage, true));
             }
             break;
           }
@@ -97,23 +110,27 @@ final class ComplicationParcels {
             fields.putFloat("TARGET_VALUE", target);
             if (shortText != null) fields.putParcelable("SHORT_TEXT", shortText);
             if (titleText != null) fields.putParcelable("SHORT_TITLE", titleText);
-            if (Boolean.TRUE.equals(fake.hasMonochromaticImage)) {
-              fields.putParcelable("ICON", createSyntheticIcon(true));
+            if (hasMono) {
+              fields.putParcelable(
+                  "ICON", resolveFakeIcon(fake.monochromaticBitmap, fake.monochromaticImage, true));
             }
             break;
           }
         case 6: // TYPE_ICON / MONOCHROMATIC_IMAGE
-          fields.putParcelable("ICON", createSyntheticIcon(true));
+          fields.putParcelable(
+              "ICON", resolveFakeIcon(fake.monochromaticBitmap, fake.monochromaticImage, true));
           if (shortText != null) {
             fields.putParcelable("CONTENT_DESCRIPTION", shortText);
           }
           break;
         case 7: // TYPE_SMALL_IMAGE
-          fields.putParcelable("SMALL_IMAGE", createSyntheticIcon(false));
+          fields.putParcelable(
+              "SMALL_IMAGE", resolveFakeIcon(fake.smallBitmap, fake.smallImage, false));
           fields.putInt("IMAGE_STYLE", 1); // IMAGE_STYLE_PHOTO
           break;
         case 8: // TYPE_LARGE_IMAGE / PHOTO_IMAGE
-          fields.putParcelable("LARGE_IMAGE", createSyntheticIcon(false));
+          fields.putParcelable(
+              "LARGE_IMAGE", resolveFakeIcon(fake.photoBitmap, fake.photoImage, false));
           break;
         case 0: // EMPTY -> wire TYPE_EMPTY is 2 in ComplicationData
           wireType = 2;
@@ -176,6 +193,23 @@ final class ComplicationParcels {
     } finally {
       parcel.recycle();
     }
+  }
+
+  private static boolean hasNonBlankUrl(String url) {
+    return url != null && !url.trim().isEmpty();
+  }
+
+  private static Icon resolveFakeIcon(Object directBitmap, String imageUrl, boolean monochrome) {
+    if (directBitmap instanceof Bitmap) {
+      return Icon.createWithBitmap((Bitmap) directBitmap);
+    }
+    if (hasNonBlankUrl(imageUrl)) {
+      Object decoded = SimulatorBitmapLoader.shared().decodeBitmap(imageUrl.trim());
+      if (decoded instanceof Bitmap) {
+        return Icon.createWithBitmap((Bitmap) decoded);
+      }
+    }
+    return createSyntheticIcon(monochrome);
   }
 
   private static Icon createSyntheticIcon(boolean monochrome) {

@@ -257,6 +257,131 @@ class DwfPreviewBundleTest {
     assertThat(ComposePreviewTasks.bundleRenderable("dwf", "androidRuntimeClasspath")).isTrue()
   }
 
+  @Test
+  fun `BundlePreviewTask carries Android resource APK for codeless dwf backend without test_config`() {
+    val outDir = tmp.newFolder("dwf-bundle-ap")
+    val stem = "dwf__raw_watchface"
+    val manifest =
+      PreviewManifest(
+        module = ":wear",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = stem,
+              functionName = "watchface",
+              className = "",
+              params = PreviewParams(name = "watchface", dwfAssetPath = "raw/watchface.xml"),
+              captures = listOf(Capture(renderOutput = "dwf-renders/$stem.png")),
+            ),
+          ),
+      )
+    val previewsJson =
+      File(outDir, "previews.json").apply {
+        writeText(json.encodeToString(PreviewManifest.serializer(), manifest))
+      }
+    val rendersDir = File(outDir, "renders").apply { mkdirs() }
+    val dwfRendersDir = File(outDir, "dwf-renders").apply { mkdirs() }
+    val tinyPng =
+      byteArrayOf(
+        0x89.toByte(),
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+        0x00,
+        0x00,
+        0x00,
+        0x0D,
+        0x49,
+        0x48,
+        0x44,
+        0x52,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x08,
+        0x06,
+        0x00,
+        0x00,
+        0x00,
+        0x1F,
+        0x15,
+        0xC4.toByte(),
+        0x89.toByte(),
+        0x00,
+        0x00,
+        0x00,
+        0x0A,
+        0x49,
+        0x44,
+        0x41,
+        0x54,
+        0x78,
+        0x9C.toByte(),
+        0x63,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x05,
+        0x00,
+        0x01,
+        0x0D,
+        0x0A,
+        0x2D,
+        0xB4.toByte(),
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x49,
+        0x45,
+        0x4E,
+        0x44,
+        0xAE.toByte(),
+        0x42,
+        0x60,
+        0x82.toByte(),
+      )
+    File(dwfRendersDir, "$stem.png").writeBytes(tinyPng)
+    File(dwfRendersDir, "$stem.rc").writeBytes(byteArrayOf(1, 2, 3, 4))
+
+    val stagedInputs = tmp.newFolder("dwf-staged-res")
+    val apBytes = ByteArray(16) { (it + 1).toByte() }
+    val resourceApk =
+      File(stagedInputs, "resources-debugUnitTest.ap_").apply { writeBytes(apBytes) }
+    val mergedManifest =
+      File(stagedInputs, "AndroidManifest.xml").apply {
+        writeText("""<manifest package="com.example.watchface"/>""")
+      }
+
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val task = project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java).get()
+    task.previewsJson.set(previewsJson)
+    task.output.set(File(outDir, "bundle.png"))
+    task.rendersDir.set(rendersDir)
+    task.modulePath.set(":wear")
+    task.producedBy.set("test")
+    task.backend.set("dwf")
+    task.previewIds.set(emptyList())
+    task.androidUnitTestConfig.from(resourceApk, mergedManifest)
+    task.pack()
+
+    val zipBytes = extractZipBytes(task.output.get().asFile.readBytes())
+    val entries = readAllZipEntries(zipBytes)
+    assertThat(entries["android/resources.ap_"]).isEqualTo(apBytes)
+    assertThat(entries.keys).contains("android/AndroidManifest.xml")
+  }
+
   private fun readAllZipEntries(zipBytes: ByteArray): Map<String, ByteArray> {
     val map = LinkedHashMap<String, ByteArray>()
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->

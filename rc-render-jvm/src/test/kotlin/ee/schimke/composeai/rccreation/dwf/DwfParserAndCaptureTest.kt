@@ -305,7 +305,7 @@ class DwfParserAndCaptureTest {
                   DwfComplicationSeed(
                     type = "WEIGHTED_ELEMENTS",
                     text = "Text w/ Icon & Title",
-                    monochromaticImage = "builtin:battery",
+                    monochromaticImage = "https://example.test/dwf/battery.png",
                     rangedValueColors = listOf(0xFF00FFFF.toInt(), 0xFF00FF00.toInt()),
                     rangedValueColorsInterpolate = true,
                     weightedElementsColors =
@@ -323,5 +323,19 @@ class DwfParserAndCaptureTest {
         .toSet()
     assertTrue("14:28" in textOps, "Expected seeded weather lastUpdatedText in RcDocument")
     assertTrue("--" in textOps, "Expected fallback '--' literal for unavailable heart rate")
+
+    val urlBitmapOps =
+      rcDoc.operations
+        .filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcBitmapData>()
+        .filter { it.encoding == ee.schimke.composeai.rcplayer.protocol.RcBitmapData.ENCODING_URL }
+    val urlBitmaps = urlBitmapOps.map { String(it.data, Charsets.UTF_8) }
+    assertTrue(
+      "https://example.test/dwf/battery.png" in urlBitmaps,
+      "Expected ENCODING_URL bitmap op for complication URL in RcDocument, got $urlBitmaps",
+    )
+    assertTrue(
+      urlBitmapOps.all { it.width == 1 && it.height == 1 },
+      "Expected ENCODING_URL bitmap ops to use 1x1 wire placeholder dimensions, got $urlBitmapOps",
+    )
   }
 }
