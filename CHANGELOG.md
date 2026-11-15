@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.94.0](https://github.com/yschimke/compose-ai-tools/compare/v2.93.0...v2.94.0) (2026-11-15)
+
+
+### Features
+
+* default watch-face previews to dwf-apk and support URL images ([#6554](https://github.com/yschimke/compose-ai-tools/issues/6554)) ([1d164a1](https://github.com/yschimke/compose-ai-tools/commit/1d164a1e641e4f818c9473ca7719bc25d8c9b99b))
+
+
+### Bug Fixes
+
+* **watchface:** support flavor config on APK host and reset complication colors ([#6557](https://github.com/yschimke/compose-ai-tools/issues/6557)) ([36a21e6](https://github.com/yschimke/compose-ai-tools/commit/36a21e6b9f9d2ffcb38f832abdf71bb156a551e3))
+
 ## [2.93.0](https://github.com/yschimke/compose-ai-tools/compare/v2.92.0...v2.93.0) (2026-11-15)
 
 
