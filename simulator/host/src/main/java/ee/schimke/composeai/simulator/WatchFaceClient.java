@@ -236,6 +236,8 @@ final class WatchFaceClient {
   private final Map<Integer, Object> complications = new LinkedHashMap<>();
   /** Slot IDs populated by a flavor's default provider policy rather than an explicit override. */
   private final Set<Integer> flavorManagedSlots = new LinkedHashSet<>();
+  /** Slot IDs explicitly overridden via {@link #complication(int, Object, boolean)}. */
+  private final Set<Integer> explicitComplicationSlots = new LinkedHashSet<>();
   /** Selected user style option wire bytes by setting ID. */
   private final Map<String, byte[]> userStyle = new LinkedHashMap<>();
   /** Selected user style option string IDs by setting ID. */
@@ -248,6 +250,8 @@ final class WatchFaceClient {
   private volatile String defaultFlavorId;
   private volatile List<DwfWatchFaceClient.FlavorSpec> flavors = Collections.emptyList();
   private volatile String activeFlavorId;
+  private volatile DwfWatchFaceClient.FlavorSpec activeFlavorSpec;
+  private volatile Set<Integer> lastExternallyBoundSlots = Collections.emptySet();
   private volatile Long fixedTimeMillis;
   private volatile Bitmap lastBitmap;
   private int width;
@@ -266,6 +270,10 @@ final class WatchFaceClient {
       this.defaultFlavorId = cat.defaultFlavorId;
       this.flavors = cat.flavors;
       this.activeFlavorId = cat.defaultFlavorId;
+      this.activeFlavorSpec =
+          cat.defaultFlavorId != null
+              ? DwfWatchFaceClient.findFlavorSpec(cat.flavors, cat.defaultFlavorId)
+              : null;
     }
   }
 
@@ -275,6 +283,10 @@ final class WatchFaceClient {
     this.flavors = specs;
     if (this.activeFlavorId == null) {
       this.activeFlavorId = fallbackDefaultId;
+      this.activeFlavorSpec =
+          fallbackDefaultId != null
+              ? DwfWatchFaceClient.findFlavorSpec(specs, fallbackDefaultId)
+              : null;
     }
   }
 
@@ -341,6 +353,7 @@ final class WatchFaceClient {
     }
     clearFlavorManagedComplications();
     activeFlavorId = null;
+    activeFlavorSpec = null;
     if (defaultFlavorId != null && !defaultFlavorId.isEmpty() && !flavors.isEmpty()) {
       DwfWatchFaceClient.FlavorSpec def = DwfWatchFaceClient.findFlavorSpec(flavors, defaultFlavorId);
       if (def != null) {
@@ -366,7 +379,9 @@ final class WatchFaceClient {
   private void clearFlavorManagedComplications() {
     synchronized (complications) {
       for (Integer slotId : flavorManagedSlots) {
-        complications.remove(slotId);
+        if (!explicitComplicationSlots.contains(slotId)) {
+          complications.remove(slotId);
+        }
       }
       flavorManagedSlots.clear();
     }
@@ -375,28 +390,59 @@ final class WatchFaceClient {
   private void applyFlavorPreset(
       DwfWatchFaceClient.FlavorSpec spec, Set<Integer> externallyBoundSlots) {
     activeFlavorId = spec.id;
+    activeFlavorSpec = spec;
     for (Map.Entry<String, String> e : spec.configurations.entrySet()) {
       setConfig(e.getKey(), e.getValue());
     }
-    WatchState ws = WatchState.current();
-    for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
-        spec.complications.entrySet()) {
-      Integer slotId = e.getKey();
-      if (externallyBoundSlots != null && externallyBoundSlots.contains(slotId)) continue;
-      DwfWatchFaceClient.FlavorComplicationPolicy pol = e.getValue();
-      DwfWatchFaceClient.FakeComplication fake =
-          DwfWatchFaceClient.syntheticSystemProviderComplication(
-              slotId.intValue(), pol.defaultSystemProvider, pol.defaultSystemProviderType, ws);
-      Slot targetSlot = null;
-      for (Slot s : slots) {
-        if (s.id == slotId.intValue()) {
-          targetSlot = s;
-          break;
+    rebuildFlavorComplications(WatchState.current(), externallyBoundSlots);
+  }
+
+  void refreshFlavorComplications(Set<Integer> externallyBoundSlots) {
+    rebuildFlavorComplications(WatchState.current(), externallyBoundSlots);
+  }
+
+  private void rebuildFlavorComplications(WatchState ws, Set<Integer> externallyBoundSlots) {
+    if (externallyBoundSlots != null) {
+      lastExternallyBoundSlots = Set.copyOf(externallyBoundSlots);
+    }
+    Set<Integer> boundSlots =
+        externallyBoundSlots != null ? externallyBoundSlots : lastExternallyBoundSlots;
+    DwfWatchFaceClient.FlavorSpec spec = activeFlavorSpec;
+    synchronized (complications) {
+      for (Integer slotId : new ArrayList<>(flavorManagedSlots)) {
+        boolean keepInSpec = spec != null && spec.complications.containsKey(slotId);
+        boolean overridden =
+            explicitComplicationSlots.contains(slotId)
+                || (boundSlots != null && boundSlots.contains(slotId));
+        if (!keepInSpec || overridden) {
+          if (!overridden) {
+            complications.remove(slotId);
+          }
+          flavorManagedSlots.remove(slotId);
         }
       }
-      synchronized (complications) {
+      if (spec == null) return;
+      for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
+          spec.complications.entrySet()) {
+        Integer slotId = e.getKey();
+        if (explicitComplicationSlots.contains(slotId)
+            || (boundSlots != null && boundSlots.contains(slotId))) {
+          continue;
+        }
+        DwfWatchFaceClient.FlavorComplicationPolicy pol = e.getValue();
+        DwfWatchFaceClient.FakeComplication fake =
+            DwfWatchFaceClient.syntheticSystemProviderComplication(
+                slotId.intValue(), pol.defaultSystemProvider, pol.defaultSystemProviderType, ws);
+        Slot targetSlot = null;
+        for (Slot s : slots) {
+          if (s.id == slotId.intValue()) {
+            targetSlot = s;
+            break;
+          }
+        }
         if (fake == null) {
           complications.remove(slotId);
+          flavorManagedSlots.remove(slotId);
         } else {
           Parcelable built =
               ComplicationParcels.buildFakeParcelable(app.getClassLoader(), fake, targetSlot);
@@ -421,7 +467,7 @@ final class WatchFaceClient {
     }
     if (matched == null) {
       if ("flavor".equals(settingId) && hasFlavors()) {
-        setFlavor(value, Collections.emptySet());
+        setFlavor(value, lastExternallyBoundSlots);
         return;
       }
       if (!currentSchema.isEmpty()) {
@@ -578,8 +624,16 @@ final class WatchFaceClient {
   void complication(int slotId, Object data, boolean ambient) {
     synchronized (complications) {
       flavorManagedSlots.remove(slotId);
-      if (data == null) complications.remove(slotId);
-      else complications.put(slotId, data);
+      if (data == null) {
+        explicitComplicationSlots.remove(slotId);
+        complications.remove(slotId);
+      } else {
+        explicitComplicationSlots.add(slotId);
+        complications.put(slotId, data);
+      }
+    }
+    if (data == null) {
+      rebuildFlavorComplications(WatchState.current(), null);
     }
     render(ambient);
   }
@@ -606,6 +660,7 @@ final class WatchFaceClient {
         pinned != null
             ? pinned.longValue()
             : (ws != null ? ws.nowMillis() : System.currentTimeMillis());
+    rebuildFlavorComplications(ws, null);
     Map<Integer, Object> snapshot = new LinkedHashMap<>();
     synchronized (complications) {
       for (Map.Entry<Integer, Object> e : complications.entrySet()) {

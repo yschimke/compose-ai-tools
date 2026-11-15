@@ -199,6 +199,9 @@ final class WatchFaceHost {
       }
       refreshDuePeriodicSources(now);
     }
+    if (face != null) {
+      face.refreshFlavorComplications(externallyBoundAppSlots());
+    }
     requestRender();
   }
 
@@ -832,6 +835,9 @@ final class WatchFaceHost {
       rendering = true;
       face.complication(slot, null, ambient);
     }
+    if (face != null) {
+      face.refreshFlavorComplications(externallyBoundAppSlots());
+    }
     if (dwfFace != null) {
       rendering = true;
       dwfFace.setFakeComplication(slot, null, ambient);
@@ -865,6 +871,9 @@ final class WatchFaceHost {
         rendering = true;
         dwfFace.clearFakeComplications(ambient);
       }
+    }
+    if (face != null) {
+      face.refreshFlavorComplications(externallyBoundAppSlots());
     }
     showBuiltInComplication();
     return describe();
