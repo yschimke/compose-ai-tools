@@ -411,7 +411,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     // `stringResource(R.string.…)` need the app's resource table and R classes on a detached
     // daemon. Null without a prior render or binary resources.
     val androidResources =
-      if (backend.get() == "android") resolveAndroidResources(irZipFiles) else null
+      if (backend.get() == "android" || backend.get() == "dwf") resolveAndroidResources(irZipFiles)
+      else null
 
     // v7 data-extension carriage (when enabled): reports from `dataExtensionReports` plus
     // conventional fallbacks ([CONVENTIONAL_DATA_EXTENSION_REPORTS]), since the standard a11y flow
@@ -921,48 +922,67 @@ abstract class BundlePreviewTask : DefaultTask() {
     // `test_config.properties` is nested in AGP's config directory, so walk the input as a file
     // tree (`.files` only returns the directory). Try the dedicated input, then the unit-test
     // runtime classpath, which also carries it.
-    val configFile =
+    val allResourceFiles =
       sequenceOf(androidUnitTestConfig, androidUnitTestRuntimeClasspath)
         .flatMap { it.asFileTree.files.asSequence() }
-        .firstOrNull { it.isFile && it.name == "test_config.properties" }
-    if (configFile == null) {
-      logger.warn(
-        "composePreviewBundle: no test_config.properties on the unit-test config / runtime-classpath " +
-          "inputs — a detached daemon can't resolve app resources (stringResource / tile themes). " +
-          "Run composePreviewRender first so AGP generates it.",
-      )
-      return null
-    }
-    val props = Properties().apply { configFile.inputStream().use { load(it) } }
-    val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
-    val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
-    val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
-    // AGP writes these relative to the module dir, as Robolectric resolves them; a plain
-    // `File(path)` would use the build's CWD. Absolute paths pass through; fall back to the module
-    // root before `/build/`.
-    val baseDir =
-      moduleProjectDir.asFile.orNull
-        ?: configFile.absolutePath.substringBeforeLast("/build/").let(::File).takeIf {
-          it.isDirectory
+        .filter { it.isFile }
+        .toList()
+    val configFile = allResourceFiles.firstOrNull { it.name == "test_config.properties" }
+    val apkFile: File?
+    val manifestFile: File?
+    val pkg: String?
+    if (configFile != null) {
+      val props = Properties().apply { configFile.inputStream().use { load(it) } }
+      val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
+      val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
+      pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
+      // AGP writes these relative to the module dir, as Robolectric resolves them; a plain
+      // `File(path)` would use the build's CWD. Absolute paths pass through; fall back to the
+      // module root before `/build/`.
+      val baseDir =
+        moduleProjectDir.asFile.orNull
+          ?: configFile.absolutePath.substringBeforeLast("/build/").let(::File).takeIf {
+            it.isDirectory
+          }
+      fun resolveModulePath(p: String): File? {
+        if (p.isEmpty()) return null
+        val f = File(p)
+        return when {
+          f.isAbsolute -> f
+          baseDir != null -> File(baseDir, p)
+          else -> f
         }
-    fun resolveModulePath(p: String): File? {
-      if (p.isEmpty()) return null
-      val f = File(p)
-      return when {
-        f.isAbsolute -> f
-        baseDir != null -> File(baseDir, p)
-        else -> f
       }
-    }
-    val apkFile = resolveModulePath(apkPath)
-    val manifestFile = resolveModulePath(manifestPath)
-    if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
-      logger.warn(
-        "composePreviewBundle: the merged resource APK / manifest from test_config.properties is " +
-          "missing (apk='$apkPath', manifest='$manifestPath') — a detached daemon can't resolve app " +
-          "resources (stringResource / tile themes).",
-      )
-      return null
+      apkFile = resolveModulePath(apkPath)
+      manifestFile = resolveModulePath(manifestPath)
+      if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
+        if (backend.get() == "android") {
+          logger.warn(
+            "composePreviewBundle: the merged resource APK / manifest from test_config.properties is " +
+              "missing (apk='$apkPath', manifest='$manifestPath') — a detached daemon can't resolve app " +
+              "resources (stringResource / tile themes).",
+          )
+        }
+        return null
+      }
+    } else {
+      // Codeless DWF modules never run AGP's unit-test config writer, so fall back to any staged
+      // `apk_for_local_test/*.ap_` and merged `AndroidManifest.xml` directly on the config inputs.
+      val directApk = allResourceFiles.firstOrNull { it.extension.equals("ap_", ignoreCase = true) }
+      val directManifest = allResourceFiles.firstOrNull { it.name == "AndroidManifest.xml" }
+      if (directApk == null || directManifest == null) {
+        if (backend.get() == "android") {
+          logger.warn(
+            "composePreviewBundle: no test_config.properties on the unit-test config / runtime-classpath " +
+              "inputs — a detached daemon can't resolve app resources (stringResource / tile themes). " +
+              "Run composePreviewRender first so AGP generates it.",
+          )
+        }
+        return null
+      }
+      apkFile = directApk
+      manifestFile = directManifest
+      pkg = null
     }
     // Drop merged-AAR file resources a render never inflates; `resources.arsc` stays byte-identical
     // and resources authored in this build are retained. See [AndroidResourcePruner] and

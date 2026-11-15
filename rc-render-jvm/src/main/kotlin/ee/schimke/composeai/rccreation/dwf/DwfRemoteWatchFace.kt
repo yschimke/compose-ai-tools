@@ -34,11 +34,13 @@ import ee.schimke.composeai.rccreation.compose.state.RemoteInt
 import ee.schimke.composeai.rccreation.compose.state.RemotePaint
 import ee.schimke.composeai.rccreation.compose.state.RemotePaintingStyle
 import ee.schimke.composeai.rccreation.compose.state.RemotePathFillType
+import ee.schimke.composeai.rccreation.compose.state.RemoteState
 import ee.schimke.composeai.rccreation.compose.state.RemoteString
 import ee.schimke.composeai.rccreation.compose.state.RemoteStrokeCap
 import ee.schimke.composeai.rccreation.compose.state.asRemoteImageBitmap
 import ee.schimke.composeai.rccreation.compose.state.clamp
 import ee.schimke.composeai.rccreation.compose.state.cos
+import ee.schimke.composeai.rccreation.compose.state.createNamedRemoteImageBitmap
 import ee.schimke.composeai.rccreation.compose.state.lerp
 import ee.schimke.composeai.rccreation.compose.state.max
 import ee.schimke.composeai.rccreation.compose.state.min
@@ -50,6 +52,7 @@ import ee.schimke.composeai.rccreation.compose.text.RemoteTypeface
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDrawTextAnchored
+import ee.schimke.composeai.rcplayer.protocol.RcProfileOperations
 
 /**
  * Emits a parsed [DwfDocument] (Declarative Watch Face / Watch Face Format XML) as a
@@ -88,12 +91,19 @@ public fun DwfWatchFace(
   )
 }
 
+private val DwfSupportedOperations: Set<Int> =
+  RcProfileOperations.of(
+    CoreDocument.DOCUMENT_API_LEVEL,
+    RcProfiles.PROFILE_ANDROIDX or RcProfiles.PROFILE_EXPERIMENTAL,
+  ) + RcProfileOperations.WEAR_WIDGETS
+
 private val DwfCaptureProfile: Profile =
   Profile(
     CoreDocument.DOCUMENT_API_LEVEL,
     RcProfiles.PROFILE_ANDROIDX or RcProfiles.PROFILE_EXPERIMENTAL,
-  ) { info, _, _ ->
-    RemoteDocumentWriter(info.width, info.height, info.densityBehavior)
+    { DwfSupportedOperations },
+  ) { info, profile, _ ->
+    RemoteDocumentWriter(info, null, profile)
   }
 
 /**
@@ -175,6 +185,7 @@ private class DwfCanvasRenderer(
   private val options: DwfRenderOptions,
 ) {
   private val remoteBitmaps = HashMap<String, RemoteImageBitmap?>()
+  private val namedBitmaps = HashMap<String, RemoteImageBitmap>()
   private val bitmapFonts = HashMap<String, CompiledBitmapFont?>()
 
   private data class CompiledBitmapFont(
@@ -185,6 +196,10 @@ private class DwfCanvasRenderer(
   )
 
   private fun resolveRemoteBitmap(name: String): RemoteImageBitmap? {
+    normalizeDwfImageUrl(name)?.let { url ->
+      val cacheKey = "url:$url"
+      return remoteBitmaps.getOrPut(cacheKey) { RemoteImageBitmap(url) }
+    }
     val key = normalizeDwfResourceKey(name)
     if (remoteBitmaps.containsKey(key)) return remoteBitmaps[key]
     val decoded = resources.resolveImage(name)?.asRemoteImageBitmap()
@@ -380,16 +395,13 @@ private class DwfCanvasRenderer(
           w,
           h ->
           val resName = node.resource ?: node.resourceChoices.firstOrNull()
-          if (resName != null) {
+          if (node.photoConfigId != null) {
+            renderPhotoConfigImage(node.photoConfigId, resName, alphaFactor, tint, w, h)
+          } else if (resName != null) {
             val compImage = compiler.resolveComplicationImageResource(resName)
             if (compImage != null) {
               drawConditionally(compImage.isPresent) {
-                val renderedStatic =
-                  !compImage.staticResource.isNullOrBlank() &&
-                    tryRenderImageOrVector(compImage.staticResource, alphaFactor, tint, w, h)
-                if (!renderedStatic) {
-                  renderProceduralComplicationImage(compImage, alphaFactor, tint, w, h)
-                }
+                renderComplicationImage(compImage, alphaFactor, tint, w, h)
               }
             } else {
               renderImageOrVector(resName, alphaFactor, tint, w, h)
@@ -1676,6 +1688,38 @@ private class DwfCanvasRenderer(
     tryRenderImageOrVector(resName, alphaFactor, tint, dstW, dstH)
   }
 
+  private fun RemoteDrawScope.drawRemoteBitmap(
+    bmp: RemoteImageBitmap,
+    alphaFactor: RemoteFloat,
+    tint: RemoteColor?,
+    dstW: RemoteFloat,
+    dstH: RemoteFloat,
+  ) {
+    val paint = RemotePaint {
+      isAntiAlias = true
+      color = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
+      if (tint != null) {
+        colorFilter =
+          RemoteBlendModeColorFilter(applyAlpha(tint, alphaFactor), RemoteBlendMode.SrcIn)
+      }
+    }
+    remoteCanvas.drawScaledBitmap(
+      bmp,
+      0f.rf,
+      0f.rf,
+      bmp.width,
+      bmp.height,
+      0f.rf,
+      0f.rf,
+      dstW,
+      dstH,
+      ImageScaling.SCALE_FILL_BOUNDS,
+      1f.rf,
+      null,
+      paint,
+    )
+  }
+
   private fun RemoteDrawScope.tryRenderImageOrVector(
     resName: String,
     alphaFactor: RemoteFloat,
@@ -1685,33 +1729,10 @@ private class DwfCanvasRenderer(
   ): Boolean {
     val bmp = resolveRemoteBitmap(resName)
     if (bmp != null) {
-      val paint = RemotePaint {
-        isAntiAlias = true
-        color = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
-        if (tint != null) {
-          colorFilter =
-            RemoteBlendModeColorFilter(applyAlpha(tint, alphaFactor), RemoteBlendMode.SrcIn)
-        }
-      }
-      remoteCanvas.drawScaledBitmap(
-        bmp,
-        0f.rf,
-        0f.rf,
-        bmp.width,
-        bmp.height,
-        0f.rf,
-        0f.rf,
-        dstW,
-        dstH,
-        ImageScaling.SCALE_FILL_BOUNDS,
-        1f.rf,
-        null,
-        paint,
-      )
+      drawRemoteBitmap(bmp, alphaFactor, tint, dstW, dstH)
       return true
     }
-    val vec =
-      resources.resolveVectorDrawable(resName) ?: resolveBuiltinDwfComplicationVector(resName)
+    val vec = resources.resolveVectorDrawable(resName)
     if (vec != null) {
       renderVectorDrawable(vec, alphaFactor, tint, dstW, dstH)
       return true
@@ -1719,107 +1740,99 @@ private class DwfCanvasRenderer(
     return false
   }
 
-  private fun RemoteDrawScope.renderProceduralComplicationImage(
+  private fun RemoteDrawScope.renderPhotoConfigImage(
+    configId: String,
+    defaultResource: String?,
+    alphaFactor: RemoteFloat,
+    tint: RemoteColor?,
+    dstW: RemoteFloat,
+    dstH: RemoteFloat,
+  ) {
+    val varKey = DwfVariables.photoConfigImageKey(configId)
+    val configured = options.configurationDefaults[configId]?.takeIf { it.isNotBlank() }
+    val source = configured ?: defaultResource
+    val bmp =
+      namedBitmaps.getOrPut(varKey) {
+        val url = normalizeDwfImageUrl(source)
+        if (url != null) {
+          RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
+        } else {
+          val localImg = source?.let(resources::resolveImage)
+          if (localImg != null) {
+            RemoteImageBitmap.createNamedRemoteImageBitmap(
+              varKey,
+              localImg,
+              RemoteState.Domain.User,
+            )
+          } else {
+            RemoteImageBitmap.createNamedRemoteImageBitmap(
+              varKey,
+              DwfVariables.DEFAULT_PHOTO_IMAGE_URL,
+              RemoteState.Domain.User,
+            )
+          }
+        }
+      }
+    drawRemoteBitmap(bmp, alphaFactor, tint, dstW, dstH)
+  }
+
+  private fun RemoteDrawScope.renderComplicationImage(
     compImage: DwfExpressionCompiler.ResolvedComplicationImage,
     alphaFactor: RemoteFloat,
     tint: RemoteColor?,
     dstW: RemoteFloat,
     dstH: RemoteFloat,
   ) {
-    when (compImage.kind) {
-      DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC -> {
-        val fgColor = applyAlpha(tint ?: compImage.imageColor, alphaFactor)
-        val fgPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = fgColor
-        }
-        val mainStar =
-          RemotePath("M12,2 L14.8,9.2 L22,12 L14.8,14.8 L12,22 L9.2,14.8 L2,12 L9.2,9.2 Z")
-        val sparkle =
-          RemotePath("M19,3 L19.8,5.2 L22,6 L19.8,6.8 L19,9 L18.2,6.8 L16,6 L18.2,5.2 Z")
-        scale(dstW / 24f.rf, dstH / 24f.rf, RemoteOffset(0f.rf, 0f.rf)) {
-          remoteCanvas.drawPath(mainStar, RemotePathFillType.NonZero, fgPaint)
-          remoteCanvas.drawPath(sparkle, RemotePathFillType.NonZero, fgPaint)
-        }
+    val varKey =
+      when (compImage.kind) {
+        DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC ->
+          DwfVariables.complicationMonochromaticImageKey(compImage.slotId)
+        DwfExpressionCompiler.ComplicationImageKind.SMALL ->
+          DwfVariables.complicationSmallImageKey(compImage.slotId)
+        DwfExpressionCompiler.ComplicationImageKind.PHOTO ->
+          DwfVariables.complicationPhotoImageKey(compImage.slotId)
       }
-      DwfExpressionCompiler.ComplicationImageKind.SMALL -> {
-        val badgePaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor)
-        }
-        remoteCanvas.drawOval(0f.rf, 0f.rf, dstW, dstH, badgePaint)
-        val emblemPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(compImage.imageColor, alphaFactor)
-        }
-        val bolt = RemotePath("M13,4 L7,13 L11.5,13 L10.5,20 L17,11 L12.5,11 Z")
-        scale(dstW / 24f.rf, dstH / 24f.rf, RemoteOffset(0f.rf, 0f.rf)) {
-          remoteCanvas.drawPath(bolt, RemotePathFillType.NonZero, emblemPaint)
-        }
+    val defaultUrl =
+      when (compImage.kind) {
+        DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC ->
+          DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL
+        DwfExpressionCompiler.ComplicationImageKind.SMALL -> DwfVariables.DEFAULT_SMALL_IMAGE_URL
+        DwfExpressionCompiler.ComplicationImageKind.PHOTO -> DwfVariables.DEFAULT_PHOTO_IMAGE_URL
       }
-      DwfExpressionCompiler.ComplicationImageKind.PHOTO -> {
-        val baseDarkPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(RemoteColor(0xFF0E1624.toInt()), alphaFactor)
-        }
-        remoteCanvas.drawRect(0f.rf, 0f.rf, dstW, dstH, baseDarkPaint)
-
-        val skyWashPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor * 0.48f.rf)
-        }
-        remoteCanvas.drawOval(
-          dstW * (-0.2f).rf,
-          dstH * (-0.35f).rf,
-          dstW * 1.2f.rf,
-          dstH * 0.78f.rf,
-          skyWashPaint,
-        )
-
-        val orbPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(compImage.imageColor, alphaFactor * 0.75f.rf)
-        }
-        remoteCanvas.drawCircle(
-          dstW * 0.68f.rf,
-          dstH * 0.30f.rf,
-          min(dstW, dstH) * 0.14f.rf,
-          orbPaint,
-        )
-
-        val farHillPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(tint ?: compImage.accentColor, alphaFactor * 0.34f.rf)
-        }
-        remoteCanvas.drawOval(
-          dstW * (-0.30f).rf,
-          dstH * 0.56f.rf,
-          dstW * 0.92f.rf,
-          dstH * 1.35f.rf,
-          farHillPaint,
-        )
-
-        val nearHillPaint = RemotePaint {
-          isAntiAlias = true
-          style = RemotePaintingStyle.Fill
-          color = applyAlpha(RemoteColor(0xFF09101B.toInt()), alphaFactor * 0.78f.rf)
-        }
-        remoteCanvas.drawOval(
-          dstW * 0.12f.rf,
-          dstH * 0.65f.rf,
-          dstW * 1.35f.rf,
-          dstH * 1.40f.rf,
-          nearHillPaint,
-        )
+    val effectiveTint =
+      when (compImage.kind) {
+        DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC -> tint ?: compImage.imageColor
+        DwfExpressionCompiler.ComplicationImageKind.SMALL,
+        DwfExpressionCompiler.ComplicationImageKind.PHOTO -> tint
+      }
+    val staticRes = compImage.staticResource?.takeIf { it.isNotBlank() }
+    val explicitUrl = normalizeDwfImageUrl(staticRes)
+    if (staticRes != null && explicitUrl == null) {
+      val localImg = resources.resolveImage(staticRes)
+      if (localImg != null) {
+        val namedLocal =
+          namedBitmaps.getOrPut(varKey) {
+            RemoteImageBitmap.createNamedRemoteImageBitmap(
+              varKey,
+              localImg,
+              RemoteState.Domain.User,
+            )
+          }
+        drawRemoteBitmap(namedLocal, alphaFactor, effectiveTint, dstW, dstH)
+        return
+      }
+      val localVec = resources.resolveVectorDrawable(staticRes)
+      if (localVec != null) {
+        renderVectorDrawable(localVec, alphaFactor, effectiveTint, dstW, dstH)
+        return
       }
     }
+    val url = explicitUrl ?: defaultUrl
+    val bmp =
+      namedBitmaps.getOrPut(varKey) {
+        RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
+      }
+    drawRemoteBitmap(bmp, alphaFactor, effectiveTint, dstW, dstH)
   }
 
   private fun RemoteDrawScope.renderVectorDrawable(

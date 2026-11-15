@@ -70,6 +70,24 @@ public object AndroidBundleResources {
   }
 
   /**
+   * Return the compiled resource APK bytes (`android/resources.ap_`) from [zipBytes] without
+   * extracting to disk, or null when the bundle carries none. Consumed by `dwf-apk` hosts that
+   * install Watch Face Format packages directly into `WffWatchFaces`.
+   */
+  public fun extractResourceApkBytes(zipBytes: ByteArray): ByteArray? {
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        if (!entry.isDirectory && entry.name == "android/resources.ap_") {
+          return zin.readBytes()
+        }
+        zin.closeEntry()
+      }
+    }
+    return null
+  }
+
+  /**
    * Write Robolectric's `com/android/tools/test_config.properties` under [root], pointing at
    * [resourceApk] and [mergedManifest] (binary-resources mode). [applicationPackage], if recorded,
    * is written as `android_custom_package`. Returns [root] for the daemon `-cp`.

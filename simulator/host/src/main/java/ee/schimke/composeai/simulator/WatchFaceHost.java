@@ -407,14 +407,56 @@ final class WatchFaceHost {
           WatchFacePushStore.get().removeFromControl(app, id);
           return describe();
         }
+      case "imageLoader":
+        return configureImageLoader(c);
       case "status":
         return describe();
       default:
         throw new IllegalArgumentException(
             "watchface op "
                 + op
-                + ": use set, render, unset, config, complication, uncomplication, tap, theme, push, pushed, removePush or status");
+                + ": use set, render, unset, config, complication, uncomplication, tap, theme, imageLoader, push, pushed, removePush or status");
     }
+  }
+
+  private JSONObject configureImageLoader(JSONObject c) throws JSONException {
+    SimulatorBitmapLoader loader = SimulatorBitmapLoader.shared();
+    if (c.optBoolean("clearCache", false)) {
+      loader.clearCache();
+    }
+    JSONObject urls = c.optJSONObject("urls");
+    if (urls != null) {
+      for (Iterator<String> it = urls.keys(); it.hasNext(); ) {
+        String targetUrl = it.next();
+        registerImageSource(loader, targetUrl, urls.getString(targetUrl));
+      }
+    }
+    if (c.has("url") && !c.isNull("url")) {
+      String targetUrl = c.getString("url");
+      String src = c.optString("source", c.optString("file", c.optString("base64", "")));
+      if (!src.isEmpty()) {
+        registerImageSource(loader, targetUrl, src);
+      }
+    }
+    if (dwfFace != null) {
+      rendering = true;
+      dwfFace.render(ambient);
+      updateDynamicColors(dwfFace.extractPalette());
+    }
+    return describe();
+  }
+
+  private static void registerImageSource(
+      SimulatorBitmapLoader loader, String targetUrl, String source) {
+    if (targetUrl == null || source == null) return;
+    String s = source.trim();
+    if (s.isEmpty()) return;
+    if (s.startsWith("base64:")) {
+      byte[] decoded = java.util.Base64.getDecoder().decode(s.substring("base64:".length()).trim());
+      loader.registerUrlBytes(targetUrl, decoded);
+      return;
+    }
+    loader.registerUrlProvider(targetUrl, () -> loader.loadBytes(s));
   }
 
   private static Long parseTimeMillis(JSONObject c) throws JSONException {
@@ -514,19 +556,24 @@ final class WatchFaceHost {
       throw new IllegalStateException(
           "watchface op config requires an active hosted watch face");
     }
+    String flavorId = c.has("flavor") && !c.isNull("flavor") ? c.getString("flavor") : "";
     JSONObject values = c.optJSONObject("values");
-    String singleCfgId = c.has("configId") ? c.getString("configId") : c.optString("id", "");
+    String singleCfgId =
+        c.has("configId") ? c.getString("configId") : (c.has("value") ? c.optString("id", "") : "");
     if (dwfFace != null) {
+      if (!flavorId.isEmpty()) {
+        dwfFace.setFlavor(flavorId);
+      }
       if (values != null) {
         for (Iterator<String> it = values.keys(); it.hasNext(); ) {
           String k = it.next();
           dwfFace.setConfig(k, String.valueOf(values.get(k)));
         }
-      } else {
-        if (singleCfgId.isEmpty()) {
-          throw new JSONException("watchface op config requires 'configId', 'id', or 'values'");
-        }
+      } else if (!singleCfgId.isEmpty()) {
         dwfFace.setConfig(singleCfgId, String.valueOf(c.get("value")));
+      } else if (flavorId.isEmpty()) {
+        throw new JSONException(
+            "watchface op config requires 'flavor', 'configId', 'id', or 'values'");
       }
       rendering = true;
       dwfFace.render(ambient);
@@ -1131,6 +1178,12 @@ final class WatchFaceHost {
     }
     if (dwfFace != null) {
       json.put("configurations", dwfFace.describeConfigurations());
+      if (dwfFace.hasFlavors()) {
+        json.put(
+            "flavor",
+            dwfFace.activeFlavorId() != null ? dwfFace.activeFlavorId() : JSONObject.NULL);
+        json.put("flavors", dwfFace.describeFlavors());
+      }
     } else if (face != null) {
       json.put("configurations", face.describeConfigurations());
     }

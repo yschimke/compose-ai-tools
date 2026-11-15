@@ -14,13 +14,23 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.sun.net.httpserver.HttpServer
+import ee.schimke.composeai.rcjvm.ConfiguredUrlRcImageLoader
+import ee.schimke.composeai.rcjvm.DwfSampleUrlAssets
+import ee.schimke.composeai.rcjvm.defaultDwfImageLoader
+import ee.schimke.composeai.rcplayer.compose.LocalRcImageLoader
 import ee.schimke.composeai.rcplayer.compose.LocalRcTimeSource
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
+import ee.schimke.composeai.rcplayer.compose.RcImageLoader
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSnapshot
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSource
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.InetSocketAddress
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -246,7 +256,7 @@ class DwfRenderTest {
                 2 to
                   DwfComplicationSeed(
                     type = "WEIGHTED_ELEMENTS",
-                    monochromaticImage = "builtin:battery",
+                    monochromaticImage = DwfSampleUrlAssets.BATTERY_ICON_URL,
                     weightedElementsColors =
                       listOf(0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFF0000FF.toInt()),
                     weightedElementsWeights = listOf(3f, 3f, 2f),
@@ -321,6 +331,89 @@ class DwfRenderTest {
     )
   }
 
+  @Test
+  fun rendersHttpUrlImagesViaConfiguredImageLoader() = runBlocking {
+    val redPng = solidArgbPng(120, 120, 0xFFFF1744.toInt())
+    val cyanPng = solidArgbPng(120, 120, 0xFF00E5FF.toInt())
+    val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    server.createContext("/photo.png") { exchange ->
+      exchange.responseHeaders.add("Content-Type", "image/png")
+      exchange.sendResponseHeaders(200, redPng.size.toLong())
+      exchange.responseBody.use { it.write(redPng) }
+    }
+    server.start()
+    try {
+      val port = server.address.port
+      val httpPhotoUrl = "http://127.0.0.1:$port/photo.png"
+      val xml =
+        """
+        <WatchFace width="450" height="450" clipShape="CIRCLE">
+          <UserConfigurations>
+            <PhotosConfiguration id="photoConfig" configType="SINGLE" />
+          </UserConfigurations>
+          <Scene backgroundColor="#FF000000">
+            <PartImage x="50" y="50" width="160" height="160">
+              <Photos source="[CONFIGURATION.photoConfig]" />
+            </PartImage>
+            <ComplicationSlot x="240" y="50" width="160" height="160" slotId="1" supportedTypes="PHOTO_IMAGE">
+              <Complication type="PHOTO_IMAGE">
+                <PartImage x="0" y="0" width="160" height="160">
+                  <Image resource="[COMPLICATION.PHOTO_IMAGE]" />
+                </PartImage>
+              </Complication>
+            </ComplicationSlot>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent()
+
+      val rcBytes =
+        captureDwfRemoteDocumentBytes(
+          xml = xml,
+          options =
+            DwfRenderOptions(
+              configurationDefaults = mapOf("photoConfig" to httpPhotoUrl),
+              complicationDefaults =
+                mapOf(
+                  1 to
+                    DwfComplicationSeed(
+                      type = "PHOTO_IMAGE",
+                      photoImage = "https://configured.example.test/slot1.png",
+                    ),
+                ),
+            ),
+        )
+
+      val loader =
+        ConfiguredUrlRcImageLoader(allowNetwork = true)
+          .withPngBytes(mapOf("https://configured.example.test/slot1.png" to cyanPng))
+      val rendered = renderFrame(rcBytes, hour = 10, minute = 10, second = 0, imageLoader = loader)
+
+      val leftArgb = rendered.getColor(130, 130)
+      assertEquals(0xFF, (leftArgb ushr 16) and 0xFF)
+      assertTrue(((leftArgb ushr 8) and 0xFF) < 40)
+
+      val rightArgb = rendered.getColor(320, 130)
+      assertTrue(((rightArgb ushr 16) and 0xFF) < 20)
+      assertTrue(((rightArgb ushr 8) and 0xFF) > 200)
+      assertEquals(0xFF, rightArgb and 0xFF)
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  private fun solidArgbPng(width: Int, height: Int, argb: Int): ByteArray {
+    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+    for (y in 0 until height) {
+      for (x in 0 until width) {
+        img.setRGB(x, y, argb)
+      }
+    }
+    val out = ByteArrayOutputStream()
+    ImageIO.write(img, "PNG", out)
+    return out.toByteArray()
+  }
+
   private fun assertEqualsArgbAlpha(expectedAlpha: Int, argb: Int) {
     val actualAlpha = (argb ushr 24) and 0xFF
     assertEquals(expectedAlpha, actualAlpha)
@@ -333,6 +426,7 @@ class DwfRenderTest {
     second: Int,
     overrides: Map<String, RcNamedValue> = emptyMap(),
     typefaces: ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader? = null,
+    imageLoader: RcImageLoader = defaultDwfImageLoader(),
   ): Bitmap {
     val fixedTime =
       object : RcTimeSource {
@@ -356,7 +450,10 @@ class DwfRenderTest {
     try {
       val stateMap = mutableStateMapOf<String, RcNamedValue>().apply { putAll(overrides) }
       scene.setContent {
-        CompositionLocalProvider(LocalRcTimeSource provides fixedTime) {
+        CompositionLocalProvider(
+          LocalRcTimeSource provides fixedTime,
+          LocalRcImageLoader provides imageLoader,
+        ) {
           if (typefaces == null) {
             RcComposePlayer(
               bytes = rcBytes,

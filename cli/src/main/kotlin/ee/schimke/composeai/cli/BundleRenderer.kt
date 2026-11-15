@@ -144,7 +144,7 @@ class BundleRenderer(
 
     return when (manifest.backend) {
       "desktop" -> renderDesktop(classesDir, libJars, manifest, previews, local)
-      "dwf" -> renderDwf(workDir, classesDir, previews, selectedJson)
+      "dwf" -> renderDwf(workDir, zipBytes, classesDir, previews, selectedJson)
       "android" ->
         renderAndroid(
           workDir,
@@ -165,10 +165,24 @@ class BundleRenderer(
 
   private fun renderDwf(
     workDir: File,
+    zipBytes: ByteArray,
     classesDir: File,
     previews: PreviewManifest,
     previewsJsonRaw: String,
   ): Result {
+    val previewsJsonFile = workDir.resolve("previews.json").apply { writeText(previewsJsonRaw) }
+    val requestedRenderer = System.getProperty("composeai.watchface.renderer")?.trim()
+    if (
+      !requestedRenderer.equals(
+        ee.schimke.composeai.cli.serve.WatchFaceRendererIds.DWF_RC,
+        ignoreCase = true,
+      )
+    ) {
+      renderDwfViaApkBackend(workDir, zipBytes, previews, previewsJsonFile, requestedRenderer)
+        ?.let {
+          return it
+        }
+    }
     DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.DESKTOP, log = logSink)
     val rcjvmJars = locateBundleSidecarJars("lib-rcjvm")
     if (rcjvmJars.isEmpty()) {
@@ -188,7 +202,6 @@ class BundleRenderer(
       (listOf(skikoNative) + rcjvmJars + desktopJars).distinct().joinToString(File.pathSeparator) {
         it.absolutePath
       }
-    val previewsJsonFile = workDir.resolve("previews.json").apply { writeText(previewsJsonRaw) }
     val dwfOutDir = workDir.resolve("dwf-renders").apply { mkdirs() }
     val javaBin = locateJava()
     val command =
@@ -225,6 +238,134 @@ class BundleRenderer(
         failed += FailedPreview(preview.id, exitCode, tail)
         logSink("FAILED ${preview.id} (exit=$exitCode)")
         if (verbose) logSink(tail)
+      }
+    }
+    return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
+  }
+
+  private fun renderDwfViaApkBackend(
+    workDir: File,
+    zipBytes: ByteArray,
+    previews: PreviewManifest,
+    previewsJsonFile: File,
+    requestedRenderer: String?,
+  ): Result? {
+    if (previews.previews.isEmpty()) return null
+    val explicitApk =
+      requestedRenderer.equals(
+        ee.schimke.composeai.cli.serve.WatchFaceRendererIds.DWF_APK,
+        ignoreCase = true,
+      )
+    // Provision the Android sidecar when a DWF runtime APK is configured on the host so `dwf-apk`
+    // has Robolectric available on cold `bundle render` runs too.
+    if (explicitApk || DwfRuntimeCommand.resolveAuto(allowAdbPull = false) != null) {
+      DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID, log = logSink)
+    }
+    val sidecarsDir = workDir.resolve("previews-sidecars").apply { mkdirs() }
+    ee.schimke.composeai.cli.serve.ServeBundleDaemon.extractKnobSidecars(
+      zipBytes,
+      sidecarsDir,
+      fileSystem,
+    )
+    val servePreviews =
+      ee.schimke.composeai.cli.serve.ServeBundleDaemon.readPreviews(
+        previewsJsonFile,
+        sidecarsDir,
+        fileSystem,
+      )
+    val firstServePreview = servePreviews.firstOrNull() ?: return null
+    val resourceApkBytes = AndroidBundleResources.extractResourceApkBytes(zipBytes)
+    val bundleHost =
+      object : ee.schimke.composeai.cli.serve.ServeHost {
+        override val previews: List<ee.schimke.composeai.cli.serve.ServePreview> = servePreviews
+        override val label: String = bundleFile.name
+
+        override fun canDownloadExecutableBundle(previewId: String): Boolean = true
+
+        override fun executableBundle(previewId: String): ByteArray = zipBytes
+
+        override fun hasWatchFaceResourceApk(previewId: String): Boolean = resourceApkBytes != null
+
+        override fun watchFaceResourceApk(previewId: String): ByteArray? = resourceApkBytes
+
+        override fun render(
+          previewId: String,
+          overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides,
+        ): ee.schimke.composeai.cli.serve.RenderOutcome =
+          ee.schimke.composeai.cli.serve.RenderOutcome.NotFound
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides,
+          codec: ee.schimke.composeai.daemon.protocol.StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (ee.schimke.composeai.daemon.protocol.StreamFrameParams) -> Unit,
+        ): ee.schimke.composeai.cli.serve.StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+      }
+
+    val backend =
+      ee.schimke.composeai.cli.serve.WatchFaceRendererRegistry.resolveFor(
+        bundleHost,
+        firstServePreview,
+        requestedRenderer,
+      ) ?: return null
+    if (backend.id != ee.schimke.composeai.cli.serve.WatchFaceRendererIds.DWF_APK) {
+      return null
+    }
+    val info = backend.infoFor(bundleHost, firstServePreview)
+    if (!info.available) {
+      if (explicitApk) {
+        val reason = info.unavailableReason ?: "dwf-apk unavailable"
+        outputDir.mkdirs()
+        val failed = previews.previews.map { FailedPreview(it.id, 1, reason) }
+        return Result(
+          previewCount = previews.previews.size,
+          succeeded = emptyList(),
+          failed = failed,
+        )
+      }
+      return null
+    }
+
+    outputDir.mkdirs()
+    val byId = servePreviews.associateBy { it.id }
+    val succeeded = mutableListOf<RenderedPreview>()
+    val failed = mutableListOf<FailedPreview>()
+    for (preview in previews.previews) {
+      val servePreview = byId[preview.id]
+      if (servePreview == null) {
+        failed +=
+          FailedPreview(preview.id, 1, "preview '${preview.id}' missing from ServePreview list")
+        continue
+      }
+      val outFile =
+        outputDir.resolve(ee.schimke.composeai.bundle.producer.previewPngName(preview.id))
+      when (
+        val outcome =
+          backend.render(
+            bundleHost,
+            servePreview,
+            ee.schimke.composeai.daemon.protocol.PreviewOverrides(),
+          )
+      ) {
+        is ee.schimke.composeai.cli.serve.RenderOutcome.Ok -> {
+          outFile.writeBytes(outcome.png)
+          succeeded += RenderedPreview(preview.id, outFile)
+          if (verbose) logSink("rendered ${preview.id} (dwf-apk) → ${outFile.path}")
+        }
+        is ee.schimke.composeai.cli.serve.RenderOutcome.Failed -> {
+          failed += FailedPreview(preview.id, 1, outcome.reason)
+          logSink("FAILED ${preview.id} (dwf-apk: ${outcome.reason})")
+        }
+        else -> {
+          failed += FailedPreview(preview.id, 1, outcome.toString())
+          logSink("FAILED ${preview.id} ($outcome)")
+        }
       }
     }
     return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)

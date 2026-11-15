@@ -56,6 +56,8 @@ internal enum class ApkFormFactor(
     val formFactor: ApkFormFactor,
     val projectedActivity: String?,
     val isWffWatchFace: Boolean = false,
+    val minSdkVersion: Int? = null,
+    val isWatchFacePushClient: Boolean = false,
   )
 
   companion object {
@@ -90,11 +92,14 @@ internal enum class ApkFormFactor(
         val isWff =
           (WATCH_FACE_FORMAT_PROPERTY in signals.properties || hasWatchFaceXml) &&
             dexEntries.isEmpty()
+        val isPushClient = PUSH_WATCH_FACES_PERMISSION in signals.permissions
         val dex = dexEntries.asSequence().map { zip.getInputStream(it).readBytes() }
         Detected(
           if (isWff) WEAR else classify(signals, dex),
           signals.projectedActivities.firstOrNull(),
           isWffWatchFace = isWff,
+          minSdkVersion = signals.minSdkVersion,
+          isWatchFacePushClient = isPushClient,
         )
       }
     }
@@ -129,6 +134,7 @@ internal enum class ApkFormFactor(
 
     const val WATCH_FEATURE = "android.hardware.type.watch"
     const val WATCH_FACE_FORMAT_PROPERTY = "com.google.wear.watchface.format.version"
+    const val PUSH_WATCH_FACES_PERMISSION = "com.google.wear.permission.PUSH_WATCH_FACES"
     const val XR_FEATURE_PREFIX = "android.software.xr.api."
     /** Jetpack XR's two spellings of the projected (glasses) display category. */
     val XR_PROJECTED = setOf("android.hardware.display.category.XR_PROJECTED", "xr_projected")
@@ -173,6 +179,10 @@ internal data class ManifestSignals(
   val packageName: String = "",
   /** `<property android:name="…">` names declared in the manifest. */
   val properties: Set<String> = emptySet(),
+  /** `<uses-sdk android:minSdkVersion="…">` when declared as an integer SDK level. */
+  val minSdkVersion: Int? = null,
+  /** `<uses-permission android:name="…">` names declared in the manifest. */
+  val permissions: Set<String> = emptySet(),
 ) {
   companion object {
     private const val RES_STRING_POOL_TYPE = 0x0001
@@ -181,9 +191,12 @@ internal data class ManifestSignals(
     private const val UTF8_FLAG = 0x100
 
     private const val ATTR_NAME = 0x01010003
+    private const val ATTR_MIN_SDK_VERSION = 0x0101020c
     private const val ATTR_REQUIRED = 0x0101028e
 
     private const val TYPE_STRING = 0x03
+    private const val TYPE_INT_DEC = 0x10
+    private const val TYPE_INT_HEX = 0x11
     private const val TYPE_INT_BOOLEAN = 0x12
 
     /**
@@ -196,7 +209,9 @@ internal data class ManifestSignals(
       val required = linkedSetOf<String>()
       val projected = mutableListOf<String>()
       val properties = linkedSetOf<String>()
+      val permissions = linkedSetOf<String>()
       var packageName = ""
+      var minSdkVersion: Int? = null
       var strings: List<String> = emptyList()
       var resourceIds = IntArray(0)
       var offset = buffer.getShort(2).toInt() and 0xffff // the file header's size
@@ -215,6 +230,8 @@ internal data class ManifestSignals(
             val element = strings.getOrNull(buffer.getInt(ext + 4)) ?: ""
             if (
               element == "manifest" ||
+                element == "uses-sdk" ||
+                element == "uses-permission" ||
                 element == "uses-feature" ||
                 element == "property" ||
                 element == "activity" ||
@@ -227,6 +244,7 @@ internal data class ManifestSignals(
               var isRequired = true
               var category: String? = null
               var manifestPackage: String? = null
+              var parsedMinSdk: Int? = null
               for (i in 0 until count) {
                 val at = ext + attributeStart + i * attributeSize
                 val nameIndex = buffer.getInt(at + 4)
@@ -246,9 +264,19 @@ internal data class ManifestSignals(
                   id == ATTR_REQUIRED || attribute == "required" ->
                     isRequired =
                       if (dataType == TYPE_INT_BOOLEAN) data != 0 else text?.toBoolean() ?: true
+                  id == ATTR_MIN_SDK_VERSION || attribute == "minSdkVersion" ->
+                    parsedMinSdk =
+                      if (dataType == TYPE_INT_DEC || dataType == TYPE_INT_HEX) data
+                      else text?.toIntOrNull()
                   attribute == "requiredDisplayCategory" -> category = text
                   attribute == "package" -> manifestPackage = text
                 }
+              }
+              if (element == "uses-sdk" && parsedMinSdk != null && parsedMinSdk > 0) {
+                minSdkVersion = parsedMinSdk
+              }
+              if (element == "uses-permission" && name != null) {
+                permissions += name
               }
               if (element == "uses-feature" && name != null) {
                 features += name
@@ -270,7 +298,15 @@ internal data class ManifestSignals(
         }
         offset += size
       }
-      return ManifestSignals(features, required, projected, packageName, properties)
+      return ManifestSignals(
+        features,
+        required,
+        projected,
+        packageName,
+        properties,
+        minSdkVersion,
+        permissions,
+      )
     }
 
     /** An activity name as the manifest writes it (`.Glasses`, `Glasses`, or qualified). */

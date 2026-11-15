@@ -1,5 +1,7 @@
 package ee.schimke.composeai.rcjvm
 
+import androidx.compose.remote.core.Operation
+import androidx.compose.remote.core.RemoteComposeBuffer
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.rccreation.dwf.DwfComplicationSeed
 import ee.schimke.composeai.rccreation.dwf.DwfParser
@@ -271,7 +273,7 @@ class DwfWearOsSamplesValidationTest {
                 0 to
                   DwfComplicationSeed(
                     type = "PHOTO_IMAGE",
-                    photoImage = "builtin:photo_aquarium",
+                    photoImage = DwfSampleUrlAssets.PHOTO_AQUARIUM_URL,
                     text = "",
                     title = "",
                   ),
@@ -289,7 +291,7 @@ class DwfWearOsSamplesValidationTest {
                 2 to
                   DwfComplicationSeed(
                     type = "SMALL_IMAGE",
-                    smallImage = "builtin:watch_board",
+                    smallImage = DwfSampleUrlAssets.WATCH_BOARD_URL,
                     text = "",
                     title = "",
                   ),
@@ -298,7 +300,7 @@ class DwfWearOsSamplesValidationTest {
                     type = "WEIGHTED_ELEMENTS",
                     text = "w/Icon",
                     title = "",
-                    monochromaticImage = "builtin:battery",
+                    monochromaticImage = DwfSampleUrlAssets.BATTERY_ICON_URL,
                     weightedElementsColors =
                       listOf(0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFF0000FF.toInt()),
                     weightedElementsWeights = listOf(3f, 3f, 2f),
@@ -308,7 +310,7 @@ class DwfWearOsSamplesValidationTest {
                     type = "LONG_TEXT",
                     title = "Long Title",
                     text = "Text w/ Icon & Title",
-                    monochromaticImage = "builtin:battery",
+                    monochromaticImage = DwfSampleUrlAssets.BATTERY_ICON_URL,
                   ),
               ),
           ),
@@ -324,6 +326,54 @@ class DwfWearOsSamplesValidationTest {
     assertThat(countNonBlackPixelsInBand(rendered, 45, 158)).isGreaterThan(1500)
     assertThat(countNonBlackPixelsInBand(rendered, 169, 282)).isGreaterThan(3000)
     assertThat(countNonBlackPixelsInBand(rendered, 310, 380)).isGreaterThan(1200)
+  }
+
+  @Test
+  fun photosMaskSupportsCustomUrlViaConfiguredImageLoader() {
+    val resDir = sampleResDir("PhotosMask")
+    val resolver = DwfResourceDirectoryResolver(listOf(resDir))
+    val doc = DwfParser.parse(File(resDir, "raw/watchface.xml").readText(), resolver)
+    val customUrl = "https://photos.example.test/custom-emerald.png"
+    val rcBytes = runBlocking {
+      captureDwfRemoteDocumentBytes(
+        doc,
+        resolver,
+        DwfRenderOptions(
+          is24HourDefault = false,
+          configurationDefaults = mapOf("photoConfig" to customUrl),
+        ),
+      )
+    }
+
+    val customImg = BufferedImage(300, 300, BufferedImage.TYPE_INT_ARGB)
+    val g = customImg.createGraphics()
+    try {
+      g.color = java.awt.Color(0x00, 0xC8, 0x53)
+      g.fillRect(0, 0, 300, 300)
+    } finally {
+      g.dispose()
+    }
+    val pngBuf = java.io.ByteArrayOutputStream()
+    ImageIO.write(customImg, "PNG", pngBuf)
+
+    val configuredLoader =
+      ConfiguredUrlRcImageLoader(allowNetwork = false)
+        .withPngBytes(mapOf(customUrl to pngBuf.toByteArray()))
+    val pngBytes =
+      renderDwfDocumentToPng(
+        bytes = rcBytes,
+        widthPx = 450,
+        heightPx = 450,
+        hour = 10,
+        minute = 8,
+        second = 0,
+        imageLoader = configuredLoader,
+      )
+    val rendered = checkNotNull(ImageIO.read(ByteArrayInputStream(pngBytes)))
+    // Inside the rounded-hexagon mask (center-left), the custom URL emerald photo shows through.
+    assertRgbNear(0xFF00C853.toInt(), rendered.getRGB(140, 225), tolerance = 8)
+    // Outside the hexagon mask near the corner, the scene background stays black.
+    assertRgbNear(0xFF000000.toInt(), rendered.getRGB(45, 45), tolerance = 6)
   }
 
   @Test
@@ -549,5 +599,63 @@ class DwfWearOsSamplesValidationTest {
       }
     }
     return count
+  }
+
+  @Test
+  fun allSevenSamplesInflateInAndroidRemoteComposeBufferAndExportFlavors() {
+    val samples =
+      listOf(
+        "SimpleAnalog",
+        "SimpleDigital",
+        "PhotosMask",
+        "PhotosMulti",
+        "Flavors",
+        "Complications",
+        "Weather",
+      )
+    androidx.compose.remote.core.Limits.ENABLE_IMAGE_URLS = true
+    androidx.compose.remote.core.Limits.ENABLE_IMAGE_FILES = true
+    for (sample in samples) {
+      val resDir = sampleResDir(sample)
+      val resolver = DwfResourceDirectoryResolver(listOf(resDir))
+      val doc = DwfParser.parse(File(resDir, "raw/watchface.xml").readText(), resolver)
+      val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, DwfRenderOptions()) }
+      val buffer = RemoteComposeBuffer.fromInputStream(ByteArrayInputStream(rcBytes))
+      val ops = ArrayList<Operation>()
+      buffer.inflateFromBuffer(ops)
+      assertThat(ops).isNotEmpty()
+      val urlBitmapOps =
+        ops.filterIsInstance<androidx.compose.remote.core.operations.BitmapData>().filter {
+          it.encoding == androidx.compose.remote.core.operations.BitmapData.ENCODING_URL
+        }
+      for (op in urlBitmapOps) {
+        assertThat(op.width).isEqualTo(1)
+        assertThat(op.height).isEqualTo(1)
+      }
+    }
+
+    val workDir = Files.createTempDirectory("dwf-flavors-compile-test").toFile()
+    try {
+      val wfDir = File(workDir, "watchfaces").apply { mkdirs() }
+      val flavorsRes = sampleResDir("Flavors")
+      flavorsRes.copyRecursively(File(workDir, "res"), overwrite = true)
+      File(flavorsRes, "raw/watchface.xml").copyTo(File(wfDir, "watchface.xml"), overwrite = true)
+
+      val manifest = compileApkWatchFaces(workDir)
+      assertThat(manifest.watchFaces).hasSize(1)
+      val entry = manifest.watchFaces.single()
+      assertThat(entry.defaultFlavorId).isEqualTo("flavorZero")
+      assertThat(entry.flavors.map { it.id })
+        .containsExactly("flavorZero", "flavorOne", "flavorTwo")
+        .inOrder()
+      val two = entry.flavors.first { it.id == "flavorTwo" }
+      assertThat(two.configurations["themeColor"]).isEqualTo("2")
+      assertThat(two.configurations["clockAppearance"]).isEqualTo("2")
+      assertThat(two.configurations["showHr"]).isEqualTo("TRUE")
+      assertThat(two.complications[0]?.defaultSystemProvider).isEqualTo("STEP_COUNT")
+      assertThat(two.complications[0]?.defaultSystemProviderType).isEqualTo("SHORT_TEXT")
+    } finally {
+      workDir.deleteRecursively()
+    }
   }
 }

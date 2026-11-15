@@ -197,6 +197,36 @@ class ApkFormFactorTest {
         ApkFormFactor.Detected(ApkFormFactor.WEAR, null, isWffWatchFace = true),
         ApkFormFactor.inspect(byXml),
       )
+
+      val pushClient = File(root, "watchface-push-client.apk")
+      ZipOutputStream(pushClient.outputStream()).use { zip ->
+        zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
+        zip.write(
+          manifest(
+            Element("manifest", mapOf("package" to "com.google.android.wearable.watchfacepush")),
+            Element("uses-sdk", mapOf("minSdkVersion" to 36)),
+            Element("uses-feature", mapOf("name" to "android.hardware.type.watch")),
+            Element(
+              "uses-permission",
+              mapOf("name" to ApkFormFactor.PUSH_WATCH_FACES_PERMISSION),
+            ),
+          ),
+        )
+        zip.closeEntry()
+        zip.putNextEntry(ZipEntry("classes.dex"))
+        zip.write("dex\n035\u0000".toByteArray())
+        zip.closeEntry()
+      }
+      assertEquals(
+        ApkFormFactor.Detected(
+          ApkFormFactor.WEAR,
+          null,
+          isWffWatchFace = false,
+          minSdkVersion = 36,
+          isWatchFacePushClient = true,
+        ),
+        ApkFormFactor.inspect(pushClient),
+      )
     } finally {
       root.deleteRecursively()
     }
@@ -237,6 +267,8 @@ class ApkFormFactorTest {
               .put(0.toByte())
               .put(0x12.toByte())
               .putInt(if (value) -1 else 0)
+          is Int ->
+            chunk.putInt(-1).putShort(8.toShort()).put(0.toByte()).put(0x10.toByte()).putInt(value)
           else -> {
             val text = index(value.toString())
             chunk.putInt(text).putShort(8.toShort()).put(0.toByte()).put(0x03.toByte()).putInt(text)

@@ -580,12 +580,17 @@ public final class WatchFacePushStore {
         System.getProperty(
             DWF_CACHE_ROOT_PROPERTY,
             ensureStorageDir().resolve("compiled-cache").toAbsolutePath().toString());
+    String skikoDir = System.getProperty("composeai.simulator.dwfSkikoDir", "");
     if (!extractorCp.isEmpty()) {
       try {
         List<String> cmd = new ArrayList<>();
         cmd.add(javaBin);
         cmd.add("-Xmx512m");
         cmd.add("-Djava.awt.headless=true");
+        cmd.add("--enable-native-access=ALL-UNNAMED");
+        if (!skikoDir.isEmpty()) {
+          cmd.add("-Dcomposeai.cli.skikoDir=" + skikoDir);
+        }
         cmd.add("-cp");
         cmd.add(extractorCp);
         cmd.add(COMPILER_MAIN);

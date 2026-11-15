@@ -254,10 +254,24 @@ public object DwfParser {
         )
       }
       "PartImage" -> {
+        val photosEl = el.firstChild("Photos")
         val directImage =
           el.firstChild("Image")?.attr("resource")
-            ?: el.firstChild("Photos")?.attr("defaultImageResource")
+            ?: photosEl?.attr("defaultImageResource")
             ?: el.attr("resource")
+        val photoSource = photosEl?.attr("source")?.trim()
+        val photoConfigId =
+          if (
+            photoSource != null &&
+              photoSource.startsWith("[CONFIGURATION.", ignoreCase = true) &&
+              photoSource.endsWith("]")
+          ) {
+            photoSource.substring("[CONFIGURATION.".length, photoSource.length - 1).trim().takeIf {
+              it.isNotEmpty()
+            }
+          } else {
+            null
+          }
         val choices =
           el
             .firstChild("Images")
@@ -271,6 +285,7 @@ public object DwfParser {
           resource = directImage ?: choices.firstOrNull(),
           imageFilters = filters,
           resourceChoices = choices,
+          photoConfigId = photoConfigId,
         )
       }
       "PartAnimatedImage" -> {

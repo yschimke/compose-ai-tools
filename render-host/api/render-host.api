@@ -3740,6 +3740,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public fun hasRemoteComposeDoc (Ljava/lang/String;)Z
 	public fun hasScrollExportFor (Ljava/lang/String;)Z
 	public fun hasSvgExportFor (Ljava/lang/String;)Z
+	public fun hasWatchFaceResourceApk (Ljava/lang/String;)Z
 	public fun keepLiveWarm ()V
 	public fun knownDifferenceArtifact (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Artifact;
 	public fun knownDifferences ()Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Document;
@@ -3780,6 +3781,7 @@ public abstract interface class ee/schimke/composeai/cli/serve/ServeHost : java/
 	public fun themeOptimizationSnapshot ()Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public fun themeReplayColors (Ljava/lang/String;)Ljava/util/Map;
 	public fun warmBakedRender (Ljava/lang/String;)V
+	public fun watchFaceResourceApk (Ljava/lang/String;)[B
 }
 
 public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
@@ -3825,6 +3827,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun hasRemoteComposeDoc (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun hasScrollExportFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun hasSvgExportFor (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
+	public static fun hasWatchFaceResourceApk (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Z
 	public static fun keepLiveWarm (Lee/schimke/composeai/cli/serve/ServeHost;)V
 	public static fun knownDifferenceArtifact (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Artifact;
 	public static fun knownDifferences (Lee/schimke/composeai/cli/serve/ServeHost;)Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Document;
@@ -3863,6 +3866,7 @@ public final class ee/schimke/composeai/cli/serve/ServeHost$DefaultImpls {
 	public static fun themeOptimizationSnapshot (Lee/schimke/composeai/cli/serve/ServeHost;)Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public static fun themeReplayColors (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)Ljava/util/Map;
 	public static fun warmBakedRender (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)V
+	public static fun watchFaceResourceApk (Lee/schimke/composeai/cli/serve/ServeHost;Ljava/lang/String;)[B
 }
 
 public final class ee/schimke/composeai/cli/serve/ServeHostKt {
@@ -4255,6 +4259,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public fun hasRemoteComposeDoc (Ljava/lang/String;)Z
 	public fun hasScrollExportFor (Ljava/lang/String;)Z
 	public fun hasSvgExportFor (Ljava/lang/String;)Z
+	public fun hasWatchFaceResourceApk (Ljava/lang/String;)Z
 	public fun keepLiveWarm ()V
 	public fun knownDifferenceArtifact (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Artifact;
 	public fun knownDifferences ()Lee/schimke/composeai/cli/serve/ServeKnownDifferences$Document;
@@ -4295,6 +4300,7 @@ public final class ee/schimke/composeai/cli/serve/ServeRenderHost : ee/schimke/c
 	public fun themeOptimizationSnapshot ()Lee/schimke/composeai/cli/serve/ThemeOptimizationSnapshot;
 	public fun themeReplayColors (Ljava/lang/String;)Ljava/util/Map;
 	public fun warmBakedRender (Ljava/lang/String;)V
+	public fun watchFaceResourceApk (Ljava/lang/String;)[B
 }
 
 public final class ee/schimke/composeai/cli/serve/ServeRenderHost$Companion {
@@ -5072,10 +5078,12 @@ public final class ee/schimke/composeai/cli/serve/WatchFaceRendererRegistry {
 	public static final field INSTANCE Lee/schimke/composeai/cli/serve/WatchFaceRendererRegistry;
 	public final fun all ()Ljava/util/List;
 	public final fun defaultBackend ()Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
+	public final fun defaultBackendFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
 	public final fun register (Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;)V
 	public final fun renderersFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;)Ljava/util/List;
 	public final fun resetDefaults ()V
 	public final fun resolve (Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
+	public final fun resolveFor (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Ljava/lang/String;)Lee/schimke/composeai/cli/serve/WatchFaceRendererBackend;
 }
 
 public final class ee/schimke/composeai/cli/serve/WireTagEntry {

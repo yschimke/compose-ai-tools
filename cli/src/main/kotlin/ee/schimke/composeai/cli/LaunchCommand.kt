@@ -99,21 +99,6 @@ internal class LaunchCommand(private val args: List<String>) {
         }
     if (apk != null && !apk.isFile) fail("no such APK: $apk")
     if (standby && apk == null) fail("--standby restarts an app: launch <app.apk> --standby")
-    val dwfRuntimeFlag = args.flagValue("--dwf-runtime")
-    val dwfRuntime =
-      when {
-        dwfRuntimeFlag.equals("auto", ignoreCase = true) ->
-          DwfRuntimeCommand.resolveAuto(verbose = verbose)
-        dwfRuntimeFlag != null ->
-          File(dwfRuntimeFlag).absoluteFile.also {
-            if (!it.isFile) fail("no such --dwf-runtime APK: $it")
-          }
-        else ->
-          (System.getenv(DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() }
-              ?: System.getenv(DWF_RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() })
-            ?.let { File(it).absoluteFile }
-            ?.also { if (!it.isFile) fail("no such --dwf-runtime APK: $it") }
-      }
     val watchfaceFlag = args.flagValue("--watchface")
     val watchfaceApk =
       watchfaceFlag
@@ -124,6 +109,41 @@ internal class LaunchCommand(private val args: List<String>) {
         ?: if (watchfaceApk != null)
           ApkFormFactor.Detected(ApkFormFactor.WEAR, null, isWffWatchFace = true)
         else ApkFormFactor.Detected(ApkFormFactor.PHONE, null)
+    val isWearTarget =
+      detected.isWffWatchFace ||
+        detected.formFactor == ApkFormFactor.WEAR ||
+        args.flagValue("--form-factor")?.equals(ApkFormFactor.WEAR.id, ignoreCase = true) == true
+    val dwfRuntimeFlag = args.flagValue("--dwf-runtime")
+    val dwfRuntime =
+      when {
+        dwfRuntimeFlag.equals("none", ignoreCase = true) ||
+          dwfRuntimeFlag.equals("rc", ignoreCase = true) ||
+          dwfRuntimeFlag.equals("builtin", ignoreCase = true) -> null
+        dwfRuntimeFlag.equals("auto", ignoreCase = true) ->
+          DwfRuntimeCommand.resolveAuto(verbose = verbose)
+        dwfRuntimeFlag != null ->
+          File(dwfRuntimeFlag).absoluteFile.also {
+            if (!it.isFile) fail("no such --dwf-runtime APK: $it")
+          }
+        else -> {
+          val explicitEnv =
+            (System.getProperty(DwfRuntimeCommand.DWF_RENDERER_APK_SYS_PROP)?.takeIf {
+              it.isNotBlank()
+            }
+              ?: System.getenv(DwfRuntimeCommand.DWF_RENDERER_APK_ENV)?.takeIf { it.isNotBlank() }
+              ?: System.getenv(DWF_RUNTIME_ENV)?.takeIf { it.isNotBlank() }
+              ?: System.getenv(DWF_RUNTIME_APK_ENV_ALIAS)?.takeIf { it.isNotBlank() })
+          if (explicitEnv != null) {
+            File(explicitEnv).absoluteFile.also {
+              if (!it.isFile) fail("no such --dwf-runtime APK: $it")
+            }
+          } else if (isWearTarget) {
+            DwfRuntimeCommand.resolveAuto(allowAdbPull = false, verbose = verbose)
+          } else {
+            null
+          }
+        }
+      }
     val useDwfRuntime = detected.isWffWatchFace && dwfRuntime != null
 
     val java =
@@ -327,11 +347,15 @@ internal class LaunchCommand(private val args: List<String>) {
         robolectricJars.joinToString(File.pathSeparator) { it.path },
       )
       put("composeai.simulator.dwfCacheRoot", simulatorCacheDir.absolutePath)
+      System.getProperty("composeai.cli.skikoDir")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { put("composeai.simulator.dwfSkikoDir", it) }
     }
+    val defaultSdk = maxOf(AndroidBundleLaunch.DEFAULT_SDK, detected.minSdkVersion ?: 0)
     val options =
       Options(
         sdk =
-          (args.flagValue("--sdk")?.toIntOrNull() ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
+          (args.flagValue("--sdk")?.toIntOrNull() ?: defaultSdk).coerceIn(
             AndroidBundleLaunch.MIN_SDK,
             AndroidBundleLaunch.MAX_SDK,
           ),
@@ -353,13 +377,15 @@ internal class LaunchCommand(private val args: List<String>) {
         installProviders = "--no-providers" !in args,
         showAgent = "--hide-agent" !in args,
         displays = args.flagValuesAll("--display"),
-        // A device with nothing started on it, or one showing a watch face, shows its system UI.
+        // A device with nothing started on it, or one showing or pushing a watch face, shows its
+        // system UI underneath any launched activity.
         launcher =
           hostApk == null ||
             adb ||
             "--launcher" in args ||
             (watchface != null && formFactor == ApkFormFactor.WEAR) ||
             hasDwf ||
+            detected.isWatchFacePushClient ||
             args.flagValuesAll("--widget").isNotEmpty() ||
             args.flagValuesAll("--tile").isNotEmpty(),
         noLaunch =
@@ -1599,10 +1625,11 @@ internal class LaunchCommand(private val args: List<String>) {
         --watchface <face>    Wear: set an androidx watch face service, Declarative Watch Face
                               Format resource id, WFF package, or WFF .apk file at launch
                               (implies --launcher).
-        --dwf-runtime <apk>   Wear: DeclarativeWatchFaceRuntime.apk (or `auto` to resolve from
-                              COMPOSE_PREVIEW_DWF_RUNTIME_APK, the `dwf-runtime` cache, or an
-                              adb-connected Wear emulator, falling back to the built-in WFF
-                              compiler). Converted once and cached; pre-warm with --prepare.
+        --dwf-runtime <apk>   Wear: DeclarativeWatchFaceRuntime.apk (used automatically on Wear
+                              when cached in `dwf-runtime` or set via COMPOSE_PREVIEW_DWF_RUNTIME_APK;
+                              pass `auto` to also pull from an adb-connected Wear emulator, or
+                              `none` to force the built-in WFF -> RemoteCompose compiler).
+                              Converted once and cached; pre-warm with --prepare.
         --theme-from-watchface, --no-theme-from-watchface
                               Apply Material 3 dynamic system colors derived from the active
                               Wear watch face to Tiles, Glance widgets, and apps (default: on).

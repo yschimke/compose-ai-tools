@@ -235,6 +235,56 @@ class ScenarioRunnerTest {
     }
   }
 
+  @Test
+  fun `fails expect automatically when watchface status reports render error`() {
+    val reportDir = Files.createTempDirectory("scenario-wf-error-test-").toFile()
+    try {
+      val spec =
+        ScenarioRunner.parseScenario(
+          """
+          name: unexpected-watchface-render-error
+          steps:
+            - expect:
+                kind: dwf
+          """
+            .trimIndent(),
+          jsonFormat = false,
+        )
+      val fakeTransport =
+        object : ScenarioRunner.Transport {
+          override fun awaitReady(expectedDevices: Int, timeoutMs: Long) {}
+
+          override fun send(command: JsonObject, timeoutMs: Long): JsonObject = buildJsonObject {
+            put("ok", true)
+            put(
+              "result",
+              buildJsonObject {
+                put("kind", "dwf")
+                put(
+                  "error",
+                  "IllegalStateException: RemoteComposeView disabled: Bitmap memory 53MB!",
+                )
+              },
+            )
+          }
+
+          override fun events(): List<JsonObject> = emptyList()
+
+          override fun close() {}
+        }
+
+      val report = ScenarioRunner.execute(spec, reportDir, fakeTransport)
+      assertFalse(report.passed)
+      assertTrue(
+        report.steps.single().assertions.any {
+          !it.passed && it.key == "status.error" && it.actual.contains("Bitmap memory 53MB!")
+        },
+      )
+    } finally {
+      reportDir.deleteRecursively()
+    }
+  }
+
   private fun writeSyntheticWatchFrame(file: File, ambient: Boolean) {
     val img = BufferedImage(100, 100, BufferedImage.TYPE_INT_ARGB)
     val g = img.createGraphics()

@@ -34,10 +34,40 @@ class DwfRuntimeCommandTest {
         DwfRuntimeCommand.resolveAuto(
           cacheRoot = cacheDir,
           env = { null },
+          sysProp = { null },
           allowAdbPull = false,
         )
       assertNotNull(resolved)
       assertEquals(DwfRuntimeCommand.cachedApkFile(cacheDir).canonicalPath, resolved.canonicalPath)
+
+      // resolveAuto also honors COMPOSE_PREVIEW_DWF_RENDERER_APK and
+      // composeai.watchface.apkRenderer.
+      val emptyCache = Files.createTempDirectory("dwf-runtime-empty-").toFile()
+      try {
+        val fromRendererEnv =
+          DwfRuntimeCommand.resolveAuto(
+            cacheRoot = emptyCache,
+            env = { key ->
+              if (key == DwfRuntimeCommand.DWF_RENDERER_APK_ENV) validApk.path else null
+            },
+            sysProp = { null },
+            allowAdbPull = false,
+          )
+        assertEquals(validApk.canonicalPath, assertNotNull(fromRendererEnv).canonicalPath)
+
+        val fromSysProp =
+          DwfRuntimeCommand.resolveAuto(
+            cacheRoot = emptyCache,
+            env = { null },
+            sysProp = { key ->
+              if (key == DwfRuntimeCommand.DWF_RENDERER_APK_SYS_PROP) validApk.path else null
+            },
+            allowAdbPull = false,
+          )
+        assertEquals(validApk.canonicalPath, assertNotNull(fromSysProp).canonicalPath)
+      } finally {
+        emptyCache.deleteRecursively()
+      }
     } finally {
       validApk.delete()
       wffNoDexApk.delete()

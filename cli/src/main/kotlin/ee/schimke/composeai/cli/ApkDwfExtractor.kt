@@ -134,8 +134,9 @@ internal object ApkDwfExtractor {
   ): File? {
     val rcJvmJars = locateBundleSidecarJars("lib-rcjvm")
     if (rcJvmJars.isEmpty()) return null
+    val skikoNative = runCatching { SkikoNativeProvision.prepare(rcJvmJars) }.getOrNull()
 
-    val key = cacheKey(apk, rcJvmJars)
+    val key = cacheKey(apk, rcJvmJars, skikoNative)
     val workDir = cacheRoot.resolve("dwf/$key")
     val compiledManifest = File(workDir, "compiled-manifest.json")
     if (compiledManifest.isFile && compiledManifest.length() > 0L) {
@@ -197,8 +198,12 @@ internal object ApkDwfExtractor {
     File(workDir, "watchfaces-input.json").writeText(json.encodeToString(extractedInputs))
 
     val desktopJars = locateBundleSidecarJars("lib-daemon-desktop")
-    val runtimeSidecar = desktopJars.ifEmpty { robolectricJars }
-    val classpath = (rcJvmJars + runtimeSidecar).joinToString(File.pathSeparator) { it.path }
+    val runtimeSidecar =
+      desktopJars.ifEmpty { robolectricJars }.filterNot { it.name.startsWith("skiko-awt") }
+    val classpath =
+      (listOfNotNull(skikoNative) + rcJvmJars + runtimeSidecar)
+        .distinctBy { it.absolutePath }
+        .joinToString(File.pathSeparator) { it.path }
     val command =
       listOf(
         javaBinary.path,
@@ -521,9 +526,13 @@ internal object ApkDwfExtractor {
   private fun looksLikeWatchFaceXml(xml: String): Boolean =
     xml.contains("<WatchFace") && xml.contains("<Scene")
 
-  private fun cacheKey(apk: File, rcJvmJars: List<File>): String {
+  private fun cacheKey(apk: File, rcJvmJars: List<File>, skikoNative: File?): String {
     val digest = MessageDigest.getInstance("SHA-256")
+    digest.update("dwf-v3\n".toByteArray())
     digest.update("${apk.absolutePath}:${apk.length()}:${apk.lastModified()}\n".toByteArray())
+    skikoNative?.let {
+      digest.update("skiko:${it.name}:${it.length()}:${it.lastModified()}\n".toByteArray())
+    }
     for (jar in rcJvmJars.sortedBy { it.name }) {
       digest.update("${jar.name}:${jar.length()}:${jar.lastModified()}\n".toByteArray())
     }

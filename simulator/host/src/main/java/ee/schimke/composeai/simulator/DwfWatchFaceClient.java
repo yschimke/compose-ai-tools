@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Path;
+import android.graphics.Typeface;
 import android.view.View;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -14,6 +15,7 @@ import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Clock;
@@ -21,12 +23,16 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -40,6 +46,8 @@ final class DwfWatchFaceClient {
 
   static final String DWF_DIR_PROPERTY = "composeai.simulator.dwfDir";
   static final String WATCHFACE_PROPERTY = "composeai.simulator.watchface";
+  private static final int PLAYER_MAX_OP_COUNT = 200_000;
+  private static final Pattern FONT_REF_PATTERN = Pattern.compile("@font/([A-Za-z0-9_.-]+)");
 
   interface Listener {
     void rendered(DwfWatchFaceClient face, Bitmap frame, String error);
@@ -95,6 +103,34 @@ final class DwfWatchFaceClient {
     }
   }
 
+  static final class FlavorComplicationPolicy {
+    final String defaultSystemProvider;
+    final String defaultSystemProviderType;
+
+    FlavorComplicationPolicy(String defaultSystemProvider, String defaultSystemProviderType) {
+      this.defaultSystemProvider = defaultSystemProvider;
+      this.defaultSystemProviderType = defaultSystemProviderType;
+    }
+  }
+
+  static final class FlavorSpec {
+    final String id;
+    final String displayName;
+    final Map<String, String> configurations;
+    final Map<Integer, FlavorComplicationPolicy> complications;
+
+    FlavorSpec(
+        String id,
+        String displayName,
+        Map<String, String> configurations,
+        Map<Integer, FlavorComplicationPolicy> complications) {
+      this.id = id;
+      this.displayName = displayName;
+      this.configurations = configurations;
+      this.complications = complications;
+    }
+  }
+
   static final class FakeComplication {
     final int slot;
     final int wireType;
@@ -107,6 +143,14 @@ final class DwfWatchFaceClient {
     final Boolean hasMonochromaticImage;
     final Boolean hasSmallImage;
     final Boolean hasPhotoImage;
+    final String monochromaticImage;
+    final String smallImage;
+    final String photoImage;
+    final Object monochromaticBitmap;
+    final Object smallBitmap;
+    final Object photoBitmap;
+    final List<Integer> colors;
+    final List<Float> weights;
 
     FakeComplication(
         int slot,
@@ -120,6 +164,84 @@ final class DwfWatchFaceClient {
         Boolean hasMonochromaticImage,
         Boolean hasSmallImage,
         Boolean hasPhotoImage) {
+      this(
+          slot,
+          wireType,
+          dwfTypeCode,
+          text,
+          title,
+          value,
+          min,
+          max,
+          hasMonochromaticImage,
+          hasSmallImage,
+          hasPhotoImage,
+          Collections.emptyList(),
+          Collections.emptyList(),
+          null,
+          null,
+          null,
+          null,
+          null,
+          null);
+    }
+
+    FakeComplication(
+        int slot,
+        int wireType,
+        int dwfTypeCode,
+        String text,
+        String title,
+        Float value,
+        Float min,
+        Float max,
+        Boolean hasMonochromaticImage,
+        Boolean hasSmallImage,
+        Boolean hasPhotoImage,
+        List<Integer> colors,
+        List<Float> weights) {
+      this(
+          slot,
+          wireType,
+          dwfTypeCode,
+          text,
+          title,
+          value,
+          min,
+          max,
+          hasMonochromaticImage,
+          hasSmallImage,
+          hasPhotoImage,
+          colors,
+          weights,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null);
+    }
+
+    FakeComplication(
+        int slot,
+        int wireType,
+        int dwfTypeCode,
+        String text,
+        String title,
+        Float value,
+        Float min,
+        Float max,
+        Boolean hasMonochromaticImage,
+        Boolean hasSmallImage,
+        Boolean hasPhotoImage,
+        List<Integer> colors,
+        List<Float> weights,
+        String monochromaticImage,
+        String smallImage,
+        String photoImage,
+        Object monochromaticBitmap,
+        Object smallBitmap,
+        Object photoBitmap) {
       this.slot = slot;
       this.wireType = wireType;
       this.dwfTypeCode = dwfTypeCode;
@@ -131,6 +253,14 @@ final class DwfWatchFaceClient {
       this.hasMonochromaticImage = hasMonochromaticImage;
       this.hasSmallImage = hasSmallImage;
       this.hasPhotoImage = hasPhotoImage;
+      this.colors = colors != null ? colors : Collections.emptyList();
+      this.weights = weights != null ? weights : Collections.emptyList();
+      this.monochromaticImage = monochromaticImage;
+      this.smallImage = smallImage;
+      this.photoImage = photoImage;
+      this.monochromaticBitmap = monochromaticBitmap;
+      this.smallBitmap = smallBitmap;
+      this.photoBitmap = photoBitmap;
     }
 
     static FakeComplication fromJson(JSONObject c, int defaultSlot) throws JSONException {
@@ -143,20 +273,88 @@ final class DwfWatchFaceClient {
       Float value = c.has("value") && !c.isNull("value") ? (float) c.getDouble("value") : null;
       Float min = c.has("min") && !c.isNull("min") ? (float) c.getDouble("min") : null;
       Float max = c.has("max") && !c.isNull("max") ? (float) c.getDouble("max") : null;
+
+      String monoUrl = optNonEmptyString(c, "monochromaticImage", "iconUrl");
+      String smallUrl = optNonEmptyString(c, "smallImage", "smallImageUrl");
+      String photoUrl = optNonEmptyString(c, "photoImage", "photoImageUrl", "largeImage");
+      String genericUrl = optNonEmptyString(c, "imageUrl", "url");
+      if (genericUrl != null && monoUrl == null && smallUrl == null && photoUrl == null) {
+        if (dwfTypeCode == 4) monoUrl = genericUrl;
+        else if (dwfTypeCode == 5) smallUrl = genericUrl;
+        else photoUrl = genericUrl;
+      }
+
       Boolean hasMono =
           c.has("hasMonochromaticImage")
               ? Boolean.valueOf(c.getBoolean("hasMonochromaticImage"))
-              : null;
+              : (monoUrl != null ? Boolean.TRUE : null);
       Boolean hasSmall =
-          c.has("hasSmallImage") ? Boolean.valueOf(c.getBoolean("hasSmallImage")) : null;
+          c.has("hasSmallImage")
+              ? Boolean.valueOf(c.getBoolean("hasSmallImage"))
+              : (smallUrl != null ? Boolean.TRUE : null);
       Boolean hasPhoto =
-          c.has("hasPhotoImage") ? Boolean.valueOf(c.getBoolean("hasPhotoImage")) : null;
+          c.has("hasPhotoImage")
+              ? Boolean.valueOf(c.getBoolean("hasPhotoImage"))
+              : (photoUrl != null ? Boolean.TRUE : null);
+      List<Integer> colors = new ArrayList<>();
+      JSONArray colArr = c.optJSONArray("colors");
+      if (colArr != null) {
+        for (int i = 0; i < colArr.length(); i++) {
+          Integer parsed = parseArgbColor(colArr.get(i));
+          if (parsed != null) colors.add(parsed);
+        }
+      }
+      List<Float> weights = new ArrayList<>();
+      JSONArray weightArr = c.optJSONArray("weights");
+      if (weightArr != null) {
+        for (int i = 0; i < weightArr.length(); i++) {
+          weights.add(Float.valueOf((float) weightArr.getDouble(i)));
+        }
+      }
       return new FakeComplication(
-          slot, wireType, dwfTypeCode, text, title, value, min, max, hasMono, hasSmall, hasPhoto);
+          slot,
+          wireType,
+          dwfTypeCode,
+          text,
+          title,
+          value,
+          min,
+          max,
+          hasMono,
+          hasSmall,
+          hasPhoto,
+          colors,
+          weights,
+          monoUrl,
+          smallUrl,
+          photoUrl,
+          null,
+          null,
+          null);
+    }
+
+    private static String optNonEmptyString(JSONObject obj, String... keys) throws JSONException {
+      for (String k : keys) {
+        if (obj.has(k) && !obj.isNull(k)) {
+          String v = obj.getString(k).trim();
+          if (!v.isEmpty()) return v;
+        }
+      }
+      return null;
     }
 
     static FakeComplication fromWireData(
         int slot, int fallbackWireType, Object data, Object resources, long nowMillis) {
+      return fromWireData(slot, fallbackWireType, data, resources, null, nowMillis);
+    }
+
+    static FakeComplication fromWireData(
+        int slot,
+        int fallbackWireType,
+        Object data,
+        Object resources,
+        Object context,
+        long nowMillis) {
       int actualWireType = optionalInt(data, "getType", fallbackWireType);
       String shortText = wireTextAt(data, "getShortText", resources, nowMillis);
       String longText = wireTextAt(data, "getLongText", resources, nowMillis);
@@ -178,6 +376,16 @@ final class DwfWatchFaceClient {
       Boolean hasMono = optionalImagePresent(data, "hasIcon", "getIcon");
       Boolean hasSmall = optionalImagePresent(data, "hasSmallImage", "getSmallImage");
       Boolean hasPhoto = optionalImagePresent(data, "hasLargeImage", "getLargeImage");
+      Object monoBmp =
+          Boolean.TRUE.equals(hasMono) ? extractWireIconBitmap(data, "getIcon", context, 64) : null;
+      Object smallBmp =
+          Boolean.TRUE.equals(hasSmall)
+              ? extractWireIconBitmap(data, "getSmallImage", context, 96)
+              : null;
+      Object photoBmp =
+          Boolean.TRUE.equals(hasPhoto)
+              ? extractWireIconBitmap(data, "getLargeImage", context, 450)
+              : null;
 
       return new FakeComplication(
           slot,
@@ -190,7 +398,25 @@ final class DwfWatchFaceClient {
           max,
           hasMono,
           hasSmall,
-          hasPhoto);
+          hasPhoto,
+          Collections.emptyList(),
+          Collections.emptyList(),
+          null,
+          null,
+          null,
+          monoBmp,
+          smallBmp,
+          photoBmp);
+    }
+
+    private static Object extractWireIconBitmap(
+        Object data, String getter, Object context, int fallbackSize) {
+      if (data == null || context == null) return null;
+      try {
+        return AndroidWireIconDecoder.decode(data, getter, context, fallbackSize);
+      } catch (RuntimeException | LinkageError ignored) {
+        return null;
+      }
     }
 
     private static String wireTextAt(
@@ -268,6 +494,9 @@ final class DwfWatchFaceClient {
       if (value != null) json.put("value", value.doubleValue());
       if (min != null) json.put("min", min.doubleValue());
       if (max != null) json.put("max", max.doubleValue());
+      if (monochromaticImage != null) json.put("monochromaticImage", monochromaticImage);
+      if (smallImage != null) json.put("smallImage", smallImage);
+      if (photoImage != null) json.put("photoImage", photoImage);
       return json.object();
     }
   }
@@ -311,6 +540,9 @@ final class DwfWatchFaceClient {
      */
     final Map<Integer, String> defaultProviders;
 
+    final String defaultFlavorId;
+    final List<FlavorSpec> flavors;
+
     Entry(
         String id,
         String label,
@@ -331,7 +563,9 @@ final class DwfWatchFaceClient {
           clipShape,
           slots,
           configurations,
-          Collections.emptyMap());
+          Collections.emptyMap(),
+          null,
+          Collections.emptyList());
     }
 
     Entry(
@@ -345,6 +579,34 @@ final class DwfWatchFaceClient {
         List<WatchFaceClient.Slot> slots,
         List<ConfigSpec> configurations,
         Map<Integer, String> defaultProviders) {
+      this(
+          id,
+          label,
+          dir,
+          rcFile,
+          width,
+          height,
+          clipShape,
+          slots,
+          configurations,
+          defaultProviders,
+          null,
+          Collections.emptyList());
+    }
+
+    Entry(
+        String id,
+        String label,
+        File dir,
+        String rcFile,
+        int width,
+        int height,
+        String clipShape,
+        List<WatchFaceClient.Slot> slots,
+        List<ConfigSpec> configurations,
+        Map<Integer, String> defaultProviders,
+        String defaultFlavorId,
+        List<FlavorSpec> flavors) {
       this.id = id;
       this.label = label;
       this.dir = dir;
@@ -354,20 +616,28 @@ final class DwfWatchFaceClient {
       this.clipShape = clipShape;
       this.slots = slots;
       this.configurations = configurations;
-      this.defaultProviders = defaultProviders;
+      this.defaultProviders = defaultProviders != null ? defaultProviders : Collections.emptyMap();
+      this.defaultFlavorId = defaultFlavorId;
+      this.flavors = flavors != null ? flavors : Collections.emptyList();
     }
   }
 
   private final Application app;
   private final Entry entry;
+  private final SimulatorBitmapLoader bitmapLoader;
   private final Listener listener;
   private final Map<String, String> configValues = new LinkedHashMap<>();
   private final Map<Integer, FakeComplication> complications = new LinkedHashMap<>();
   private final Map<Integer, BoundWireComplication> boundWireComplications = new LinkedHashMap<>();
   private final Set<Integer> touchedSlots = new LinkedHashSet<>();
+  private final Map<Integer, FlavorComplicationPolicy> activeFlavorComplications =
+      new LinkedHashMap<>();
+  private final Map<String, Typeface> customFontCache = new HashMap<>();
 
+  private String activeFlavorId;
   private byte[] document;
   private View player;
+  private String initError;
   private Long fixedTimeMillis;
   private Bitmap lastBitmap;
   private int width;
@@ -376,13 +646,25 @@ final class DwfWatchFaceClient {
   private String error;
 
   DwfWatchFaceClient(Application app, Entry entry, Listener listener) {
+    this(app, entry, SimulatorBitmapLoader.shared(), listener);
+  }
+
+  DwfWatchFaceClient(
+      Application app, Entry entry, SimulatorBitmapLoader bitmapLoader, Listener listener) {
     this.app = app;
     this.entry = entry;
+    this.bitmapLoader = bitmapLoader != null ? bitmapLoader : SimulatorBitmapLoader.shared();
     this.listener = listener;
     this.width = entry.width;
     this.height = entry.height;
     for (ConfigSpec cfg : entry.configurations) {
       configValues.put(cfg.id, cfg.defaultValue);
+    }
+    if (entry.defaultFlavorId != null && !entry.defaultFlavorId.isEmpty() && !entry.flavors.isEmpty()) {
+      FlavorSpec def = findFlavor(entry.defaultFlavorId);
+      if (def != null) {
+        applyFlavorInternal(def);
+      }
     }
   }
 
@@ -487,8 +769,73 @@ final class DwfWatchFaceClient {
             configs.add(new ConfigSpec(cfgId, kind, displayName, defaultVal, options));
           }
         }
+
+        String defaultFlavorId =
+            item.has("defaultFlavorId") && !item.isNull("defaultFlavorId")
+                ? item.optString("defaultFlavorId", "")
+                : "";
+        if (defaultFlavorId.isEmpty()) defaultFlavorId = null;
+        List<FlavorSpec> flavors = new ArrayList<>();
+        JSONArray flavorsArr = item.optJSONArray("flavors");
+        if (flavorsArr != null) {
+          for (int f = 0; f < flavorsArr.length(); f++) {
+            JSONObject flvObj = flavorsArr.getJSONObject(f);
+            String flvId = flvObj.getString("id");
+            String flvName = flvObj.optString("displayName", flvId);
+            Map<String, String> flvConfigs = new LinkedHashMap<>();
+            JSONObject flvCfgObj = flvObj.optJSONObject("configurations");
+            if (flvCfgObj != null) {
+              for (Iterator<String> it = flvCfgObj.keys(); it.hasNext(); ) {
+                String k = it.next();
+                flvConfigs.put(k, String.valueOf(flvCfgObj.get(k)));
+              }
+            }
+            Map<Integer, FlavorComplicationPolicy> flvComps = new LinkedHashMap<>();
+            JSONObject flvCompObj = flvObj.optJSONObject("complications");
+            if (flvCompObj != null) {
+              for (Iterator<String> it = flvCompObj.keys(); it.hasNext(); ) {
+                String k = it.next();
+                try {
+                  int slotKey = Integer.parseInt(k.trim());
+                  JSONObject polObj = flvCompObj.optJSONObject(k);
+                  if (polObj != null) {
+                    String sysProv =
+                        polObj.has("defaultSystemProvider")
+                                && !polObj.isNull("defaultSystemProvider")
+                            ? polObj.optString("defaultSystemProvider", "")
+                            : "";
+                    String sysType =
+                        polObj.has("defaultSystemProviderType")
+                                && !polObj.isNull("defaultSystemProviderType")
+                            ? polObj.optString("defaultSystemProviderType", "")
+                            : "";
+                    flvComps.put(
+                        Integer.valueOf(slotKey),
+                        new FlavorComplicationPolicy(
+                            sysProv.isEmpty() ? null : sysProv,
+                            sysType.isEmpty() ? null : sysType));
+                  }
+                } catch (NumberFormatException ignored) {
+                }
+              }
+            }
+            flavors.add(new FlavorSpec(flvId, flvName, flvConfigs, flvComps));
+          }
+        }
         result.add(
-            new Entry(id, label, dir, rcFile, w, h, clipShape, slots, configs, defaultProviders));
+            new Entry(
+                id,
+                label,
+                dir,
+                rcFile,
+                w,
+                h,
+                clipShape,
+                slots,
+                configs,
+                defaultProviders,
+                defaultFlavorId,
+                flavors));
       }
       return result;
     } catch (IOException | JSONException e) {
@@ -718,6 +1065,87 @@ final class DwfWatchFaceClient {
     return out;
   }
 
+  boolean hasFlavors() {
+    return !entry.flavors.isEmpty();
+  }
+
+  String activeFlavorId() {
+    return activeFlavorId;
+  }
+
+  JSONArray describeFlavors() {
+    JSONArray out = new JSONArray();
+    for (FlavorSpec flv : entry.flavors) {
+      JSONObject cfgs = new JSONObject();
+      for (Map.Entry<String, String> e : flv.configurations.entrySet()) {
+        try {
+          cfgs.put(e.getKey(), e.getValue());
+        } catch (JSONException ignored) {
+        }
+      }
+      JSONObject comps = new JSONObject();
+      for (Map.Entry<Integer, FlavorComplicationPolicy> e : flv.complications.entrySet()) {
+        Protocol.Json pol = new Protocol.Json();
+        if (e.getValue().defaultSystemProvider != null) {
+          pol.put("defaultSystemProvider", e.getValue().defaultSystemProvider);
+        }
+        if (e.getValue().defaultSystemProviderType != null) {
+          pol.put("defaultSystemProviderType", e.getValue().defaultSystemProviderType);
+        }
+        try {
+          comps.put(String.valueOf(e.getKey()), pol.object());
+        } catch (JSONException ignored) {
+        }
+      }
+      out.put(
+          new Protocol.Json()
+              .put("id", flv.id)
+              .put("displayName", flv.displayName)
+              .put("active", flv.id.equals(activeFlavorId))
+              .put("configurations", cfgs)
+              .put("complications", comps)
+              .object());
+    }
+    return out;
+  }
+
+  void setFlavor(String flavorId) {
+    FlavorSpec spec = findFlavor(flavorId);
+    if (spec == null) {
+      throw new IllegalArgumentException(
+          "Watch face " + entry.id + " has no flavor '" + flavorId + "'");
+    }
+    for (ConfigSpec cfg : entry.configurations) {
+      configValues.put(cfg.id, cfg.defaultValue);
+    }
+    applyFlavorInternal(spec);
+  }
+
+  private FlavorSpec findFlavor(String raw) {
+    if (raw == null) return null;
+    String trimmed = raw.trim();
+    for (FlavorSpec flv : entry.flavors) {
+      if (flv.id.equals(trimmed) || flv.displayName.equalsIgnoreCase(trimmed)) {
+        return flv;
+      }
+    }
+    try {
+      int idx = Integer.parseInt(trimmed);
+      if (idx >= 0 && idx < entry.flavors.size()) {
+        return entry.flavors.get(idx);
+      }
+    } catch (NumberFormatException ignored) {
+    }
+    return null;
+  }
+
+  private void applyFlavorInternal(FlavorSpec flavor) {
+    activeFlavorId = flavor.id;
+    configValues.putAll(flavor.configurations);
+    activeFlavorComplications.clear();
+    activeFlavorComplications.putAll(flavor.complications);
+  }
+
   void setConfig(String configId, String value) {
     ConfigSpec spec = null;
     for (ConfigSpec c : entry.configurations) {
@@ -727,6 +1155,10 @@ final class DwfWatchFaceClient {
       }
     }
     if (spec == null) {
+      if ("flavor".equals(configId) && hasFlavors()) {
+        setFlavor(value);
+        return;
+      }
       throw new IllegalArgumentException(
           "Watch face " + entry.id + " has no configuration '" + configId + "'");
     }
@@ -764,7 +1196,7 @@ final class DwfWatchFaceClient {
     Object resources = app == null ? null : app.getResources();
     complications.put(
         Integer.valueOf(slot),
-        FakeComplication.fromWireData(slot, wireType, activeData, resources, nowMillis));
+        FakeComplication.fromWireData(slot, wireType, activeData, resources, app, nowMillis));
   }
 
   void setFakeComplication(int slot, FakeComplication fake, boolean ambient) {
@@ -809,6 +1241,13 @@ final class DwfWatchFaceClient {
         player.measure(wSpec, hSpec);
         player.layout(0, 0, width, height);
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        // ColorAttribute extends PaintOperation inside CanvasOperations (Phase 2 of
+        // CoreDocument.paint), whereas alpha-multiplying FloatExpressions live in top-level
+        // mOperations (Phase 1). A warm-up draw populates ColorAttribute outputs and marks
+        // dependent top-level FloatExpressions dirty so the real draw pass renders settled RGBA
+        // colors on the very same frame (including frame 1 and palette switches).
+        player.draw(new Canvas(bitmap));
+        bitmap.eraseColor(0);
         Canvas canvas = new Canvas(bitmap);
         if ("CIRCLE".equalsIgnoreCase(entry.clipShape) || FormFactor.isRound()) {
           Path circle = new Path();
@@ -816,6 +1255,10 @@ final class DwfWatchFaceClient {
           canvas.clipPath(circle);
         }
         player.draw(canvas);
+        String innerErr = readInnerPlayerError(player);
+        if (innerErr != null) {
+          throw new IllegalStateException("RemoteComposeView disabled: " + innerErr);
+        }
         lastBitmap = bitmap;
         frames++;
         error = null;
@@ -835,7 +1278,10 @@ final class DwfWatchFaceClient {
           return;
         }
       }
-      throw new IllegalStateException("RemoteComposePlayer unavailable for " + entry.id);
+      throw new IllegalStateException(
+          "RemoteComposePlayer unavailable for "
+              + entry.id
+              + (initError != null ? ": " + initError : ""));
     } catch (RuntimeException | LinkageError e) {
       fail(e);
     }
@@ -847,17 +1293,264 @@ final class DwfWatchFaceClient {
     lastBitmap = null;
   }
 
+  private static final int PLAYER_MAX_BITMAP_MEMORY_BYTES = 256 * 1024 * 1024;
+  private static final int PLAYER_MAX_DECOMPRESSED_BYTES = 128 * 1024 * 1024;
+
   private void initPlayer() {
+    initError = null;
     try {
+      configureRemoteCoreLimits();
       Class<?> playerType = load("androidx.compose.remote.player.view.RemoteComposePlayer");
       View view = (View) playerType.getConstructor(Context.class).newInstance(app);
+      try {
+        playerType
+            .getMethod("setMaxOpCount", int.class)
+            .invoke(view, Integer.valueOf(PLAYER_MAX_OP_COUNT));
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      try {
+        playerType
+            .getMethod("setMaxBitmapMemory", int.class)
+            .invoke(view, Integer.valueOf(PLAYER_MAX_BITMAP_MEMORY_BYTES));
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      SimulatorBitmapLoader.installOnPlayer(playerType, view, bitmapLoader);
+      installCustomTypefaceResolver(playerType, view);
       if (!setDocumentWithMutableClock(playerType, view)) {
         playerType.getMethod("setDocument", byte[].class).invoke(view, (Object) document);
       }
       player = view;
     } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+      Throwable cause = e;
+      while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+      initError = cause.getClass().getSimpleName() + ": " + cause.getMessage();
       player = null;
     }
+  }
+
+  private void configureRemoteCoreLimits() {
+    try {
+      configureRemoteCoreLimits(load("androidx.compose.remote.core.Limits"));
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+  }
+
+  static void configureRemoteCoreLimits(Class<?> limitsType) {
+    if (limitsType == null) return;
+    raiseStaticIntField(limitsType, "MAX_OP_COUNT", PLAYER_MAX_OP_COUNT);
+    raiseStaticIntField(limitsType, "MAX_BITMAP_MEMORY", PLAYER_MAX_BITMAP_MEMORY_BYTES);
+    raiseStaticIntField(limitsType, "MAX_DECOMPRESSED_SIZE", PLAYER_MAX_DECOMPRESSED_BYTES);
+    setStaticBooleanField(limitsType, "ENABLE_IMAGE_URLS", true);
+    setStaticBooleanField(limitsType, "ENABLE_IMAGE_FILES", true);
+  }
+
+  private static void raiseStaticIntField(Class<?> owner, String fieldName, int minValue) {
+    try {
+      Field f = owner.getField(fieldName);
+      int current = f.getInt(null);
+      if (current < minValue) {
+        f.setInt(null, minValue);
+      }
+    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+  }
+
+  private static void setStaticBooleanField(Class<?> owner, String fieldName, boolean value) {
+    try {
+      Field f = owner.getField(fieldName);
+      f.setBoolean(null, value);
+    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+  }
+
+  private void installCustomTypefaceResolver(Class<?> playerType, View view) {
+    try {
+      Method getResolver = playerType.getMethod("getTypefaceResolver");
+      Class<?> resolverType = getResolver.getReturnType();
+      Object delegate = getResolver.invoke(view);
+      Method setResolver = playerType.getMethod("setTypefaceResolver", resolverType);
+      Object proxy =
+          Proxy.newProxyInstance(
+              resolverType.getClassLoader(),
+              new Class<?>[] {resolverType},
+              (proxyObj, method, args) -> {
+                String methodName = method.getName();
+                if ("equals".equals(methodName)) {
+                  return Boolean.valueOf(proxyObj == (args != null && args.length > 0 ? args[0] : null));
+                }
+                if ("hashCode".equals(methodName)) {
+                  return Integer.valueOf(System.identityHashCode(proxyObj));
+                }
+                if ("toString".equals(methodName)) {
+                  return "DwfCustomTypefaceResolver(" + entry.id + ")";
+                }
+                if ("resolve".equals(methodName)
+                    && args != null
+                    && args.length >= 3
+                    && args[0] instanceof String) {
+                  String family = (String) args[0];
+                  int weight = args[1] instanceof Number ? ((Number) args[1]).intValue() : 400;
+                  boolean italic =
+                      args[2] instanceof Boolean && ((Boolean) args[2]).booleanValue();
+                  Typeface custom = resolveCustomTypeface(family, weight, italic);
+                  if (custom != null) {
+                    Class<?> fontInstanceType = method.getReturnType();
+                    return Proxy.newProxyInstance(
+                        fontInstanceType.getClassLoader(),
+                        new Class<?>[] {fontInstanceType},
+                        (fiProxy, fiMethod, fiArgs) -> {
+                          String fiName = fiMethod.getName();
+                          if ("getTypeface".equals(fiName)
+                              || "applyVariationSettings".equals(fiName)) {
+                            return custom;
+                          }
+                          if ("equals".equals(fiName)) {
+                            return Boolean.valueOf(
+                                fiProxy == (fiArgs != null && fiArgs.length > 0 ? fiArgs[0] : null));
+                          }
+                          if ("hashCode".equals(fiName)) {
+                            return Integer.valueOf(System.identityHashCode(fiProxy));
+                          }
+                          if ("toString".equals(fiName)) {
+                            return "DwfFontInstance(" + family + ")";
+                          }
+                          return null;
+                        });
+                  }
+                }
+                if (delegate != null) {
+                  return method.invoke(delegate, args);
+                }
+                return null;
+              });
+      setResolver.invoke(view, proxy);
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+  }
+
+  private Typeface resolveCustomTypeface(String family, int weight, boolean italic) {
+    File fontFile = findCustomFontFile(entry.dir, family, 0);
+    if (fontFile == null) return null;
+    try {
+      String cacheKey = fontFile.getAbsolutePath();
+      Typeface base = customFontCache.get(cacheKey);
+      if (base == null) {
+        base = Typeface.createFromFile(fontFile);
+        if (base == null) return null;
+        customFontCache.put(cacheKey, base);
+      }
+      int clampedWeight = Math.max(100, Math.min(900, weight));
+      try {
+        return Typeface.create(base, clampedWeight, italic);
+      } catch (RuntimeException | LinkageError ignored) {
+        int style =
+            clampedWeight >= 600
+                ? (italic ? Typeface.BOLD_ITALIC : Typeface.BOLD)
+                : (italic ? Typeface.ITALIC : Typeface.NORMAL);
+        return Typeface.create(base, style);
+      }
+    } catch (RuntimeException | LinkageError ignored) {
+      return null;
+    }
+  }
+
+  static File findCustomFontFile(File entryDir, String rawFamily, int depth) {
+    if (entryDir == null || rawFamily == null || depth > 4) return null;
+    String stem = rawFamily.trim();
+    if (stem.startsWith("@font/")) stem = stem.substring("@font/".length());
+    int slash = stem.lastIndexOf('/');
+    if (slash >= 0) stem = stem.substring(slash + 1);
+    int dot = stem.lastIndexOf('.');
+    if (dot > 0) stem = stem.substring(0, dot);
+    String lower = stem.trim().toLowerCase(Locale.ROOT);
+    if (lower.isEmpty()
+        || "default".equals(lower)
+        || "sans-serif".equals(lower)
+        || "sans_serif".equals(lower)
+        || "serif".equals(lower)
+        || "monospace".equals(lower)
+        || "roboto".equals(lower)
+        || "roboto_flex".equals(lower)
+        || "sync_to_device".equals(lower)) {
+      return null;
+    }
+    File resRoot = new File(entryDir, "res");
+    File[] resDirs = resRoot.listFiles();
+    if (resDirs == null) return null;
+    String[] exts = {".ttf", ".otf", ".ttc"};
+    File xmlCandidate = null;
+    for (File sub : resDirs) {
+      if (!sub.isDirectory() || !sub.getName().startsWith("font")) continue;
+      for (String ext : exts) {
+        File exact = new File(sub, stem + ext);
+        if (exact.isFile()) return exact;
+      }
+      File[] files = sub.listFiles();
+      if (files == null) continue;
+      for (File f : files) {
+        if (!f.isFile()) continue;
+        String fname = f.getName();
+        int fdot = fname.lastIndexOf('.');
+        String fstem = (fdot > 0 ? fname.substring(0, fdot) : fname).toLowerCase(Locale.ROOT);
+        String fext = (fdot > 0 ? fname.substring(fdot) : "").toLowerCase(Locale.ROOT);
+        if (!fstem.equals(lower)) continue;
+        if (".ttf".equals(fext) || ".otf".equals(fext) || ".ttc".equals(fext)) {
+          return f;
+        }
+        if (".xml".equals(fext) && xmlCandidate == null) {
+          xmlCandidate = f;
+        }
+      }
+    }
+    if (xmlCandidate != null) {
+      try {
+        String xmlText = Files.readString(xmlCandidate.toPath(), StandardCharsets.UTF_8);
+        Matcher m = FONT_REF_PATTERN.matcher(xmlText);
+        if (m.find()) {
+          return findCustomFontFile(entryDir, m.group(1), depth + 1);
+        }
+      } catch (IOException ignored) {
+      }
+    }
+    return null;
+  }
+
+  private static String readInnerPlayerError(View player) {
+    if (player == null) return null;
+    try {
+      for (Class<?> k = player.getClass(); k != null; k = k.getSuperclass()) {
+        for (Field field : k.getDeclaredFields()) {
+          if (!field.getType().getName().endsWith(".RemoteComposeView")) continue;
+          field.setAccessible(true);
+          Object inner = field.get(player);
+          if (inner == null) return null;
+          boolean disabled = false;
+          String msg = null;
+          for (Class<?> ik = inner.getClass(); ik != null; ik = ik.getSuperclass()) {
+            try {
+              Field disField = ik.getDeclaredField("mDisable");
+              disField.setAccessible(true);
+              Object dv = disField.get(inner);
+              if (dv instanceof Boolean) disabled = ((Boolean) dv).booleanValue();
+            } catch (NoSuchFieldException ignored) {
+            }
+            try {
+              Field errField = ik.getDeclaredField("mErrorMessage");
+              errField.setAccessible(true);
+              Object ev = errField.get(inner);
+              if (ev instanceof String && !((String) ev).isEmpty()) msg = (String) ev;
+            } catch (NoSuchFieldException ignored) {
+            }
+          }
+          if (disabled || (msg != null && !msg.isEmpty())) {
+            return msg != null ? msg : "player disabled";
+          }
+          return null;
+        }
+      }
+    } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+    return null;
   }
 
   private boolean setDocumentWithMutableClock(Class<?> playerType, View view) {
@@ -872,9 +1565,13 @@ final class DwfWatchFaceClient {
       Constructor<?> docCtor =
           remoteDocType.getConstructor(InputStream.class, remoteClockType);
       Object remoteDoc = docCtor.newInstance(new ByteArrayInputStream(document), remoteClock);
+      SimulatorBitmapLoader.normalizeUrlBitmapDimensions(remoteDoc);
       playerType.getMethod("setDocument", remoteDocType).invoke(view, remoteDoc);
       return true;
-    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+      Throwable cause = e;
+      while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+      initError = cause.getClass().getSimpleName() + ": " + cause.getMessage();
       return false;
     }
   }
@@ -1038,7 +1735,17 @@ final class DwfWatchFaceClient {
 
     for (ConfigSpec cfg : entry.configurations) {
       String rawVal = configValues.getOrDefault(cfg.id, cfg.defaultValue);
-      if ("BOOLEAN".equalsIgnoreCase(cfg.kind)) {
+      if ("PHOTOS".equalsIgnoreCase(cfg.kind)) {
+        if (SimulatorBitmapLoader.isImageUrl(rawVal)
+            || (rawVal != null && !rawVal.isEmpty() && !rawVal.equals(cfg.defaultValue))) {
+          Object photoBmp = bitmapLoader.decodeBitmap(rawVal);
+          if (photoBmp != null) {
+            setBothBitmap(target, "dwf.config." + cfg.id, photoBmp);
+          }
+        } else {
+          clearBothBitmap(target, "dwf.config." + cfg.id);
+        }
+      } else if ("BOOLEAN".equalsIgnoreCase(cfg.kind)) {
         int b = ("true".equalsIgnoreCase(rawVal) || "1".equals(rawVal)) ? 1 : 0;
         setBothInt(target, "dwf.config." + cfg.id, b);
       } else {
@@ -1063,8 +1770,38 @@ final class DwfWatchFaceClient {
 
     if (ws != null) {
       for (Map.Entry<Integer, String> p : entry.defaultProviders.entrySet()) {
-        if (touchedSlots.contains(p.getKey())) continue;
-        applyDefaultProvider(target, p.getKey().intValue(), p.getValue(), ws);
+        if (touchedSlots.contains(p.getKey()) || activeFlavorComplications.containsKey(p.getKey())) {
+          continue;
+        }
+        applyDefaultProvider(target, p.getKey().intValue(), p.getValue(), false, ws);
+      }
+    }
+
+    for (Map.Entry<Integer, FlavorComplicationPolicy> fp : activeFlavorComplications.entrySet()) {
+      Integer slotObj = fp.getKey();
+      if (touchedSlots.contains(slotObj)) continue;
+      int slot = slotObj.intValue();
+      FlavorComplicationPolicy pol = fp.getValue();
+      String prov =
+          pol.defaultSystemProvider != null
+              ? pol.defaultSystemProvider.trim()
+              : entry.defaultProviders.getOrDefault(slotObj, "");
+      String pType =
+          pol.defaultSystemProviderType != null ? pol.defaultSystemProviderType.trim() : "";
+      if ("EMPTY".equalsIgnoreCase(prov)
+          || "NONE".equalsIgnoreCase(prov)
+          || "EMPTY".equalsIgnoreCase(pType)
+          || "NOT_CONFIGURED".equalsIgnoreCase(pType)) {
+        resetComplicationVariables(target, slot);
+      } else {
+        if (!pType.isEmpty()) {
+          int wire = parseWireComplicationType(pType);
+          int dwfCode = parseDwfComplicationTypeCode(pType, wire);
+          setBothInt(target, "dwf.complication." + slot + ".type", dwfCode);
+        }
+        if (ws != null && !prov.isEmpty()) {
+          applyDefaultProvider(target, slot, prov, true, ws);
+        }
       }
     }
 
@@ -1100,33 +1837,105 @@ final class DwfWatchFaceClient {
           target,
           "dwf.complication." + slot + ".has_photo_image",
           comp.hasPhotoImage != null && comp.hasPhotoImage.booleanValue() ? 1 : 0);
+
+      Object monoBmp =
+          comp.monochromaticBitmap != null
+              ? comp.monochromaticBitmap
+              : (comp.monochromaticImage != null
+                  ? bitmapLoader.decodeBitmap(comp.monochromaticImage)
+                  : null);
+      if (monoBmp != null) {
+        setBothBitmap(target, "dwf.complication." + slot + ".monochromatic_image", monoBmp);
+      } else if (comp.monochromaticImage == null && comp.monochromaticBitmap == null) {
+        clearBothBitmap(target, "dwf.complication." + slot + ".monochromatic_image");
+      }
+
+      Object smallBmp =
+          comp.smallBitmap != null
+              ? comp.smallBitmap
+              : (comp.smallImage != null ? bitmapLoader.decodeBitmap(comp.smallImage) : null);
+      if (smallBmp != null) {
+        setBothBitmap(target, "dwf.complication." + slot + ".small_image", smallBmp);
+      } else if (comp.smallImage == null && comp.smallBitmap == null) {
+        clearBothBitmap(target, "dwf.complication." + slot + ".small_image");
+      }
+
+      Object photoBmp =
+          comp.photoBitmap != null
+              ? comp.photoBitmap
+              : (comp.photoImage != null ? bitmapLoader.decodeBitmap(comp.photoImage) : null);
+      if (photoBmp != null) {
+        setBothBitmap(target, "dwf.complication." + slot + ".photo_image", photoBmp);
+      } else if (comp.photoImage == null && comp.photoBitmap == null) {
+        clearBothBitmap(target, "dwf.complication." + slot + ".photo_image");
+      }
+
+      if (comp.dwfTypeCode == 8 || !comp.weights.isEmpty()) {
+        setBothInt(target, "dwf.complication." + slot + ".has_weighted_elements", 1);
+      }
+      if (!comp.colors.isEmpty()) {
+        setBothInt(target, "dwf.complication." + slot + ".color_count", comp.colors.size());
+        if (comp.dwfTypeCode == 3) {
+          setBothInt(target, "dwf.complication." + slot + ".has_ranged_colors", 1);
+        } else if (comp.dwfTypeCode == 7) {
+          setBothInt(target, "dwf.complication." + slot + ".has_goal_colors", 1);
+        }
+        for (int i = 0; i < comp.colors.size() && i < 8; i++) {
+          setBothColor(
+              target, "dwf.complication." + slot + ".color." + i, comp.colors.get(i).intValue());
+        }
+      }
+      if (!comp.weights.isEmpty()) {
+        for (int i = 0; i < 8; i++) {
+          float w = i < comp.weights.size() ? comp.weights.get(i).floatValue() : 0f;
+          setBothFloat(target, "dwf.complication." + slot + ".weight." + i, w);
+        }
+      }
     }
   }
 
   /**
-   * Drives a slot's default system provider from live {@link WatchState}. Only the providers the
-   * compiler seeds with a platform value are handled; the slot's type is left as compiled.
+   * Drives a slot's default system provider from live {@link WatchState}. When {@code
+   * includeTitleAndIcon} is true (flavor switch), also populates a sensible title and monochromatic
+   * icon flag so slots whose compiled default was {@code EMPTY} render full content.
    */
-  private void applyDefaultProvider(Object target, int slot, String provider, WatchState ws) {
+  private void applyDefaultProvider(
+      Object target, int slot, String provider, boolean includeTitleAndIcon, WatchState ws) {
     String p = provider.toUpperCase(Locale.ROOT);
     String prefix = "dwf.complication." + slot;
     if (p.contains("STEP")) {
       setBothString(target, prefix + ".text", Integer.toString(ws.steps()));
+      if (includeTitleAndIcon) {
+        setBothString(target, prefix + ".title", "STEPS");
+        setBothInt(target, prefix + ".has_monochromatic_image", 1);
+      }
       setBothFloat(target, prefix + ".value", (float) ws.steps());
       setBothFloat(target, prefix + ".min", 0f);
       setBothFloat(target, prefix + ".max", ws.stepGoal());
     } else if (p.contains("BATTERY")) {
       setBothString(target, prefix + ".text", ws.batteryPercent() + "%");
+      if (includeTitleAndIcon) {
+        setBothString(target, prefix + ".title", "BAT");
+        setBothInt(target, prefix + ".has_monochromatic_image", 1);
+      }
       setBothFloat(target, prefix + ".value", (float) ws.batteryPercent());
       setBothFloat(target, prefix + ".min", 0f);
       setBothFloat(target, prefix + ".max", 100f);
     } else if (p.contains("HEART")) {
       setBothString(target, prefix + ".text", Integer.toString(Math.round(ws.heartRate())));
+      if (includeTitleAndIcon) {
+        setBothString(target, prefix + ".title", "BPM");
+        setBothInt(target, prefix + ".has_monochromatic_image", 1);
+      }
       setBothFloat(target, prefix + ".value", ws.heartRate());
       setBothFloat(target, prefix + ".min", 0f);
       setBothFloat(target, prefix + ".max", 200f);
     } else if (p.contains("NOTIFICATION")) {
       setBothString(target, prefix + ".text", Integer.toString(ws.unreadNotifications()));
+      if (includeTitleAndIcon) {
+        setBothString(target, prefix + ".title", "ALERTS");
+        setBothInt(target, prefix + ".has_monochromatic_image", 1);
+      }
       setBothFloat(target, prefix + ".value", (float) ws.unreadNotifications());
       setBothFloat(target, prefix + ".min", 0f);
       setBothFloat(target, prefix + ".max", 10f);
@@ -1143,6 +1952,13 @@ final class DwfWatchFaceClient {
     setBothInt(target, "dwf.complication." + slot + ".has_monochromatic_image", 0);
     setBothInt(target, "dwf.complication." + slot + ".has_small_image", 0);
     setBothInt(target, "dwf.complication." + slot + ".has_photo_image", 0);
+    setBothInt(target, "dwf.complication." + slot + ".has_weighted_elements", 0);
+    setBothInt(target, "dwf.complication." + slot + ".has_ranged_colors", 0);
+    setBothInt(target, "dwf.complication." + slot + ".has_goal_colors", 0);
+    setBothInt(target, "dwf.complication." + slot + ".color_count", 0);
+    clearBothBitmap(target, "dwf.complication." + slot + ".monochromatic_image");
+    clearBothBitmap(target, "dwf.complication." + slot + ".small_image");
+    clearBothBitmap(target, "dwf.complication." + slot + ".photo_image");
   }
 
   private void setBothInt(Object target, String key, int value) {
@@ -1163,6 +1979,16 @@ final class DwfWatchFaceClient {
   private void setBothColor(Object target, String key, int argb) {
     setUserColor(target, key, argb);
     setUserColor(target, "USER:" + key, argb);
+  }
+
+  private void setBothBitmap(Object target, String key, Object bitmap) {
+    setUserBitmap(target, key, bitmap);
+    setUserBitmap(target, "USER:" + key, bitmap);
+  }
+
+  private void clearBothBitmap(Object target, String key) {
+    clearUserBitmap(target, key);
+    clearUserBitmap(target, "USER:" + key);
   }
 
   private void setUserInt(Object target, String name, int value) {
@@ -1204,6 +2030,51 @@ final class DwfWatchFaceClient {
           .getMethod("setUserLocalString", String.class, String.class)
           .invoke(target, name, value);
     } catch (ReflectiveOperationException | RuntimeException ignored) {
+    }
+  }
+
+  private void setUserBitmap(Object target, String name, Object bitmap) {
+    if (bitmap == null) return;
+    try {
+      for (Method m : target.getClass().getMethods()) {
+        if ("setUserLocalBitmap".equals(m.getName()) && m.getParameterCount() == 2) {
+          m.invoke(target, name, bitmap);
+          return;
+        }
+      }
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+  }
+
+  private void clearUserBitmap(Object target, String name) {
+    try {
+      target.getClass().getMethod("clearUserLocalBitmap", String.class).invoke(target, name);
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+  }
+
+  private static final class AndroidWireIconDecoder {
+    static Object decode(Object data, String getter, Object contextObj, int fallbackSize) {
+      if (!(contextObj instanceof Context)) return null;
+      Context context = (Context) contextObj;
+      try {
+        Object iconObj = data.getClass().getMethod(getter).invoke(data);
+        if (iconObj == null) return null;
+        Method loadDrawable = iconObj.getClass().getMethod("loadDrawable", Context.class);
+        Object drawableObj = loadDrawable.invoke(iconObj, context);
+        if (!(drawableObj instanceof android.graphics.drawable.Drawable)) return null;
+        android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) drawableObj;
+        int w = d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : fallbackSize;
+        int h = d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : fallbackSize;
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        if (bmp == null) return null;
+        Canvas canvas = new Canvas(bmp);
+        d.setBounds(0, 0, w, h);
+        d.draw(canvas);
+        return bmp;
+      } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+        return null;
+      }
     }
   }
 

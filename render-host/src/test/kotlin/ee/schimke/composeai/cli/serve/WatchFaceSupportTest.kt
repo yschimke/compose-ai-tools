@@ -115,7 +115,7 @@ class WatchFaceSupportTest {
   @Test
   fun `WatchFaceRendererRegistry exposes dwf-rc and dwf-apk and allows custom backend registration`() {
     assertEquals(
-      listOf(WatchFaceRendererIds.DWF_RC, WatchFaceRendererIds.DWF_APK),
+      listOf(WatchFaceRendererIds.DWF_APK, WatchFaceRendererIds.DWF_RC),
       WatchFaceRendererRegistry.all().map { it.id },
     )
     assertEquals(WatchFaceRendererIds.DWF_RC, WatchFaceRendererRegistry.resolve(null)?.id)
@@ -188,12 +188,19 @@ class WatchFaceSupportTest {
       }
 
     val renderers = WatchFaceRendererRegistry.renderersFor(fakeHost, preview)
-    assertEquals(2, renderers.size)
+    assertEquals(
+      listOf(WatchFaceRendererIds.DWF_APK, WatchFaceRendererIds.DWF_RC),
+      renderers.map { it.id },
+    )
     assertTrue(renderers.first { it.id == WatchFaceRendererIds.DWF_RC }.isDefault)
     assertTrue(!renderers.first { it.id == WatchFaceRendererIds.DWF_APK }.available)
+    assertEquals(
+      WatchFaceRendererIds.DWF_RC,
+      WatchFaceRendererRegistry.resolveFor(fakeHost, preview, null)?.id,
+    )
 
-    // Even when an APK file path is configured on disk, the built-in placeholder stays unavailable
-    // until a real launch session bridge backend is registered.
+    // Even when an APK file path is configured on disk, the built-in backend stays unavailable
+    // when sidecars / live watch-face bundle are absent on the host.
     val tempApk = Files.createTempFile("fake-dwf-renderer", ".apk").toFile()
     try {
       System.setProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP, tempApk.absolutePath)
@@ -239,7 +246,8 @@ class WatchFaceSupportTest {
     assertEquals("95 BPM", projectedPortable.slots.single().activeState.text)
     assertEquals("ember", projectedPortable.userConfigurations.single().activeValue)
 
-    // Register a custom launch-backed `dwf-apk` test double and verify dispatch + projection.
+    // Register a custom launch-backed `dwf-apk` test double and verify it becomes the default
+    // watch-face renderer whenever available.
     val customApkBackend =
       object : WatchFaceRendererBackend {
         override val id: String = WatchFaceRendererIds.DWF_APK
@@ -269,6 +277,15 @@ class WatchFaceSupportTest {
           WatchFaceOverrides.projectComplicationsOutcome(preview.watchFace!!, overrides, id)
       }
     WatchFaceRendererRegistry.register(customApkBackend)
+
+    val renderersWithApk = WatchFaceRendererRegistry.renderersFor(fakeHost, preview)
+    assertTrue(renderersWithApk.first { it.id == WatchFaceRendererIds.DWF_APK }.isDefault)
+    assertTrue(!renderersWithApk.first { it.id == WatchFaceRendererIds.DWF_RC }.isDefault)
+    assertEquals(WatchFaceRendererIds.DWF_APK, WatchFaceRendererRegistry.resolve(null)?.id)
+    assertEquals(
+      WatchFaceRendererIds.DWF_APK,
+      WatchFaceRendererRegistry.resolveFor(fakeHost, preview, null)?.id,
+    )
 
     val resolvedApk = assertNotNull(WatchFaceRendererRegistry.resolve(WatchFaceRendererIds.DWF_APK))
     val renderRes =
@@ -432,7 +449,8 @@ class WatchFaceSupportTest {
       File("/nonexistent/dwf-runtime.apk").takeIf(File::isFile),
     )
 
-    // Custom DwfApkSessionBridge receives infoFor, render, and complications calls.
+    // Custom DwfApkSessionBridge receives infoFor, render, and complications calls, and becomes the
+    // default watch-face backend when available.
     DwfApkWatchFaceRendererBackend.setBridge(
       object : DwfApkSessionBridge {
         override fun isAvailable(host: ServeHost, preview: ServePreview): Boolean = true
@@ -459,7 +477,13 @@ class WatchFaceSupportTest {
     )
     val bridgeInfo = DwfApkWatchFaceRendererBackend.infoFor(fakeHost, preview)
     assertTrue(bridgeInfo.available)
+    assertTrue(bridgeInfo.isDefault)
     assertNull(bridgeInfo.unavailableReason)
+    assertEquals(WatchFaceRendererIds.DWF_APK, WatchFaceRendererRegistry.resolve(null)?.id)
+    assertEquals(
+      WatchFaceRendererIds.DWF_APK,
+      WatchFaceRendererRegistry.resolveFor(fakeHost, preview, null)?.id,
+    )
     val bridgeRender =
       assertIs<RenderOutcome.Ok>(
         DwfApkWatchFaceRendererBackend.render(fakeHost, preview, PreviewOverrides()),
@@ -470,5 +494,41 @@ class WatchFaceSupportTest {
         DwfApkWatchFaceRendererBackend.complications(fakeHost, preview, PreviewOverrides()),
       )
     assertEquals(WatchFaceRendererIds.DWF_APK, bridgeComps.rendererId)
+  }
+
+  @Test
+  fun `WatchFaceOverrides preserves complication image URLs and flavor overrides`() {
+    val photoUrl = "https://compose-preview.local/dwf/photo-image.png"
+    val monoDataUrl = "data:image/png;base64,iVBORw0KGgo="
+    val parsed =
+      assertIs<WatchFaceOverrides.WfParamParse.Ok>(
+        WatchFaceOverrides.parseWfParams(
+          mapOf(
+            "wf.flavor" to "autumn",
+            "wf.slot.1.type" to "PHOTO_IMAGE",
+            "wf.slot.1.photoImage" to photoUrl,
+            "wf.slot.2.type" to "SHORT_TEXT",
+            "wf.slot.2.monochromaticImage" to monoDataUrl,
+          ),
+        ),
+      )
+    assertEquals(PreviewOverrideValue.StringValue("autumn"), parsed.namedOverrides["wf.flavor"])
+    assertEquals(RemoteNamedValue.StringValue("autumn"), parsed.rcNamedValues["dwf.flavor"])
+    assertEquals(
+      PreviewOverrideValue.StringValue(photoUrl),
+      parsed.namedOverrides["wf.slot.1.photoImage"],
+    )
+    assertEquals(
+      RemoteNamedValue.BooleanValue(true),
+      parsed.rcNamedValues["dwf.complication.1.has_photo_image"],
+    )
+    assertEquals(
+      RemoteNamedValue.StringValue(photoUrl),
+      parsed.rcNamedValues["dwf.complication.1.photo_image"],
+    )
+    assertEquals(
+      PreviewOverrideValue.StringValue(monoDataUrl),
+      parsed.namedOverrides["wf.slot.2.monochromaticImage"],
+    )
   }
 }

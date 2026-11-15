@@ -155,16 +155,20 @@ private fun RcContent(
     remember(bytes) { mutableStateMapOf<String, RcNamedValue>().apply { putAll(seeds) } }
   val theme = if (dark) RcPlayerTheme.Dark else RcPlayerTheme.Light
   // The player's own default is the only way to say "no host faces"; the parameter is not nullable.
-  if (typefaces == null) {
-    RcComposePlayer(bytes, modifier, theme = theme, namedValues = namedValues)
-  } else {
-    RcComposePlayer(
-      bytes,
-      modifier,
-      theme = theme,
-      namedValues = namedValues,
-      typefaces = typefaces,
-    )
+  CompositionLocalProvider(
+    ee.schimke.composeai.rcplayer.compose.LocalRcImageLoader provides defaultDwfImageLoader(),
+  ) {
+    if (typefaces == null) {
+      RcComposePlayer(bytes, modifier, theme = theme, namedValues = namedValues)
+    } else {
+      RcComposePlayer(
+        bytes,
+        modifier,
+        theme = theme,
+        namedValues = namedValues,
+        typefaces = typefaces,
+      )
+    }
   }
 }
 

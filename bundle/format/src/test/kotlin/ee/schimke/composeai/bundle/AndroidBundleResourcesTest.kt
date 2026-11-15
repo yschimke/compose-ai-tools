@@ -67,6 +67,12 @@ class AndroidBundleResourcesTest {
     val zip = zipOf(mapOf("android/resources.ap_" to "APK".toByteArray()))
 
     assertNull(AndroidBundleResources.extract(zip, File(dir, "android")))
+    assertEquals("APK", AndroidBundleResources.extractResourceApkBytes(zip)?.decodeToString())
+    assertNull(
+      AndroidBundleResources.extractResourceApkBytes(
+        zipOf(mapOf("previews.json" to "{}".toByteArray())),
+      ),
+    )
   }
 
   @Test

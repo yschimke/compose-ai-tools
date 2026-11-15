@@ -143,6 +143,9 @@ public object DwfVariables {
   /** Selected option/boolean/string value for `<ListConfiguration>` or `<BooleanConfiguration>`. */
   public fun configKey(configId: String): String = "dwf.config.$configId"
 
+  /** Dynamic bitmap (`RemoteImageBitmap`) bound to `<PhotosConfiguration id="...">`. */
+  public fun photoConfigImageKey(configId: String): String = "dwf.config.$configId"
+
   /** Resolved ARGB theme color for `<ColorConfiguration id="...">` at [colorIndex]. */
   public fun colorThemeKey(configId: String, colorIndex: Int = 0): String =
     "dwf.color.$configId.$colorIndex"
@@ -177,7 +180,23 @@ public object DwfVariables {
   public fun complicationHasPhotoImageKey(slotId: Int): String =
     "dwf.complication.$slotId.has_photo_image"
 
-  /** Foreground/tint color (`RemoteColor`) for procedural complication icons in [slotId]. */
+  /** URL-backed `RemoteImageBitmap` for `MONOCHROMATIC_IMAGE` in [slotId]. */
+  public fun complicationMonochromaticImageKey(slotId: Int): String =
+    "dwf.complication.$slotId.monochromatic_image"
+
+  /** URL-backed `RemoteImageBitmap` for `SMALL_IMAGE` in [slotId]. */
+  public fun complicationSmallImageKey(slotId: Int): String = "dwf.complication.$slotId.small_image"
+
+  /** URL-backed `RemoteImageBitmap` for `PHOTO_IMAGE` in [slotId]. */
+  public fun complicationPhotoImageKey(slotId: Int): String = "dwf.complication.$slotId.photo_image"
+
+  public const val DEFAULT_IMAGE_URL_BASE: String = "https://compose-preview.local/dwf/"
+  public const val DEFAULT_MONOCHROMATIC_IMAGE_URL: String =
+    "${DEFAULT_IMAGE_URL_BASE}monochromatic_default.png"
+  public const val DEFAULT_SMALL_IMAGE_URL: String = "${DEFAULT_IMAGE_URL_BASE}small_default.png"
+  public const val DEFAULT_PHOTO_IMAGE_URL: String = "${DEFAULT_IMAGE_URL_BASE}photo_default.png"
+
+  /** Foreground/tint color (`RemoteColor`) for complication icons in [slotId]. */
   public fun complicationImageColorKey(slotId: Int): String = "dwf.complication.$slotId.image_color"
 
   /** Badge/backdrop accent color (`RemoteColor`) for `SMALL_IMAGE` / `PHOTO_IMAGE` in [slotId]. */

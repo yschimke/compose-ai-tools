@@ -199,11 +199,20 @@ public data class DwfComplicationSeed(
   public val value: Float = 72f,
   public val min: Float = 0f,
   public val max: Float = 100f,
-  /** Optional resource or `builtin:*` icon name for `[COMPLICATION.MONOCHROMATIC_IMAGE]`. */
+  /**
+   * Optional image URL (`https://...`, `file://...`, `data:...`) or local resource name for
+   * `[COMPLICATION.MONOCHROMATIC_IMAGE]`.
+   */
   public val monochromaticImage: String? = null,
-  /** Optional resource or `builtin:*` image name for `[COMPLICATION.SMALL_IMAGE]`. */
+  /**
+   * Optional image URL (`https://...`, `file://...`, `data:...`) or local resource name for
+   * `[COMPLICATION.SMALL_IMAGE]`.
+   */
   public val smallImage: String? = null,
-  /** Optional resource or `builtin:*` background photo name for `[COMPLICATION.PHOTO_IMAGE]`. */
+  /**
+   * Optional image URL (`https://...`, `file://...`, `data:...`) or local resource name for
+   * `[COMPLICATION.PHOTO_IMAGE]`.
+   */
   public val photoImage: String? = null,
   /** Optional ARGB color ramp for `[COMPLICATION.RANGED_VALUE_COLORS]`. */
   public val rangedValueColors: List<Int> = emptyList(),
@@ -299,146 +308,29 @@ public data class DwfRenderOptions(
   public val applyWatchShapeClip: Boolean = true,
 )
 
-internal fun resolveBuiltinDwfComplicationVector(rawName: String): DwfVectorDrawable? {
-  val key = rawName.trim().lowercase().removePrefix("builtin:")
-  return when (key) {
-    "battery",
-    "ic_battery" ->
-      DwfVectorDrawable(
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-        nodes =
-          listOf(
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M10,2 L14,2 L14,4 L17,4 L17,22 L7,22 L7,4 L10,4 Z",
-              fillColor = 0xFFFFFFFF.toInt(),
-            ),
-          ),
-      )
-    "watch_board",
-    "ic_watch_board" ->
-      DwfVectorDrawable(
-        viewportWidth = 64f,
-        viewportHeight = 64f,
-        nodes =
-          listOf(
-            // Easel legs
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M24,46 L18,56 M32,46 L32,56 M40,46 L46,56",
-              strokeColor = 0xFFCFD8DC.toInt(),
-              strokeWidth = 2.5f,
-              strokeLineCap = DwfStrokeCap.ROUND,
-            ),
-            // Blue presentation board body
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M10,14 L54,14 L54,45 L10,45 Z",
-              fillColor = 0xFF1995D1.toInt(),
-            ),
-            // Top & bottom board bars
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M8,11 L56,11 L56,15 L8,15 Z M9,44 L55,44 L55,46.5 L9,46.5 Z",
-              fillColor = 0xFFECEFF1.toInt(),
-            ),
-            // Watch strap top & bottom
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M28,17 L36,17 L36,21 L28,21 Z M28,38 L36,38 L36,42 L28,42 Z",
-              fillColor = 0xFFFFFFFF.toInt(),
-            ),
-            // Watch case outline
-            DwfVectorDrawable.Node.PathNode(
-              pathData =
-                "M25,21 L39,21 Q42,21 42,24 L42,35 Q42,38 39,38 L25,38 Q22,38 22,35 L22,24 Q22,21 25,21 Z",
-              strokeColor = 0xFFFFFFFF.toInt(),
-              strokeWidth = 2.4f,
-            ),
-          ),
-      )
-    "steps",
-    "ic_steps" ->
-      DwfVectorDrawable(
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-        nodes =
-          listOf(
-            DwfVectorDrawable.Node.PathNode(
-              pathData =
-                "M7,14 C5.5,14 4.5,12.5 4.5,10.5 C4.5,8 6,5 8,5 C10,5 11,7.5 11,10 C11,12.5 9,14 7,14 Z " +
-                  "M17,19 C15,19 13.5,17.5 13.5,15 C13.5,12.5 14.5,10 16.5,10 C18.5,10 20,13 20,15.5 C20,17.5 18.5,19 17,19 Z",
-              fillColor = 0xFFFFFFFF.toInt(),
-            ),
-          ),
-      )
-    "heart",
-    "ic_heart" ->
-      DwfVectorDrawable(
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-        nodes =
-          listOf(
-            DwfVectorDrawable.Node.PathNode(
-              pathData =
-                "M12,21 L10.55,19.7 C5.4,15.0 2,11.9 2,8.1 C2,5.0 4.4,2.6 7.5,2.6 C9.2,2.6 10.9,3.4 12,4.7 C13.1,3.4 14.8,2.6 16.5,2.6 C19.6,2.6 22,5.0 22,8.1 C22,11.9 18.6,15.0 13.45,19.7 Z",
-              fillColor = 0xFFFFFFFF.toInt(),
-            ),
-          ),
-      )
-    "sun",
-    "ic_sun" ->
-      DwfVectorDrawable(
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-        nodes =
-          listOf(
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M12,6 A6,6 0 1,1 11.99,6 Z",
-              fillColor = 0xFFFFD54F.toInt(),
-            ),
-          ),
-      )
-    "photo_aquarium" ->
-      DwfVectorDrawable(
-        viewportWidth = 450f,
-        viewportHeight = 450f,
-        nodes =
-          listOf(
-            // Deep aquarium blue backdrop
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M0,0 L450,0 L450,450 L0,450 Z",
-              fillColor = 0xFF0B6AD4.toInt(),
-            ),
-            // Lighter upper water glow
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M0,0 L450,0 L450,250 Q225,300 0,220 Z",
-              fillColor = 0xFF1E88E5.toInt(),
-              fillAlpha = 0.85f,
-            ),
-            // Warm golden jellyfish bells
-            DwfVectorDrawable.Node.PathNode(
-              pathData =
-                "M110,95 C110,55 175,55 175,100 C175,125 110,125 110,95 Z " +
-                  "M290,55 C290,25 355,25 355,60 C355,80 290,80 290,55 Z " +
-                  "M385,175 C385,140 445,140 445,180 C445,205 385,205 385,175 Z",
-              fillColor = 0xFFD9A45B.toInt(),
-              fillAlpha = 0.72f,
-            ),
-            // Lower aquarium ledge silhouette
-            DwfVectorDrawable.Node.PathNode(
-              pathData = "M0,210 L450,255 L450,450 L0,450 Z",
-              fillColor = 0xFF0A2E5C.toInt(),
-              fillAlpha = 0.88f,
-            ),
-            // Foreground dark silhouette on left/bottom
-            DwfVectorDrawable.Node.PathNode(
-              pathData =
-                "M0,105 C75,95 125,145 120,220 L250,245 L300,155 L315,255 C280,350 220,420 155,450 L0,450 Z",
-              fillColor = 0xFF041428.toInt(),
-              fillAlpha = 0.92f,
-            ),
-          ),
-      )
-    else -> null
+/**
+ * Normalizes an external image URL (`https://...`, `http://...`, `file:...`, `data:image/...`, or
+ * custom `scheme://...` URIs), returning `null` when [raw] is a local resource reference (such as
+ * `bg_dial` or `@drawable/bg_dial`).
+ */
+public fun normalizeDwfImageUrl(raw: String?): String? {
+  val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+  if (trimmed.startsWith("@") || trimmed.startsWith("[")) return null
+  val lower = trimmed.lowercase()
+  if (
+    lower.startsWith("http://") ||
+      lower.startsWith("https://") ||
+      lower.startsWith("file:") ||
+      lower.startsWith("data:image/") ||
+      "://" in lower
+  ) {
+    return trimmed
   }
+  return null
 }
+
+/** Returns `true` when [raw] denotes a URL-loaded image rather than an inline APK drawable. */
+public fun isDwfImageUrl(raw: String?): Boolean = normalizeDwfImageUrl(raw) != null
 
 /** Normalizes `@drawable/foo`, `res/drawable/foo.png`, or `foo` to `"foo"`. */
 public fun normalizeDwfResourceKey(raw: String): String {

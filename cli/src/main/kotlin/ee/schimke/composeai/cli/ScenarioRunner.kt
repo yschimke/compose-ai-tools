@@ -261,8 +261,23 @@ internal object ScenarioRunner {
           lastCommandResult = (reply["result"] as? JsonObject) ?: reply
         }
 
-        // Optional host wait (`wait: 250` or `wait: { ms: 250 }`).
+        // Optional wall-clock sleep (`sleep: 1500` or `wait: { ms: 250, wallMs: 1500 }`) so real
+        // background threads such as Dispatchers.IO complete before pumping the main looper.
+        val sleepEl = step["sleep"]
         val waitEl = step["wait"]
+        val wallMs =
+          when (sleepEl) {
+            is JsonPrimitive -> sleepEl.longOrNull ?: 0L
+            is JsonObject -> (sleepEl["ms"] as? JsonPrimitive)?.longOrNull ?: 0L
+            else -> 0L
+          } +
+            ((waitEl as? JsonObject)?.let { (it["wallMs"] as? JsonPrimitive)?.longOrNull ?: 0L }
+              ?: 0L)
+        if (wallMs > 0L) {
+          Thread.sleep(wallMs)
+        }
+
+        // Optional host wait (`wait: 250` or `wait: { ms: 250 }`).
         if (waitEl != null) {
           val ms =
             when (waitEl) {
@@ -432,7 +447,9 @@ internal object ScenarioRunner {
     }
 
     if ("cmd" in step) {
-      val filtered = step.filterKeys { it != "snapshot" && it != "expect" && it != "wait" }
+      val filtered = step.filterKeys {
+        it != "snapshot" && it != "expect" && it != "wait" && it != "sleep"
+      }
       commands += withDevice(filtered)
       return commands
     }
@@ -532,6 +549,22 @@ internal object ScenarioRunner {
       } else {
         flattened[k] = v
       }
+    }
+
+    val statusError =
+      (status["error"] as? JsonPrimitive)
+        ?.takeIf { it.isString }
+        ?.content
+        ?.takeIf { it.isNotBlank() }
+    if (statusError != null && "error" !in flattened && "status.error" !in flattened) {
+      outcomes +=
+        AssertionOutcome(
+          key = "status.error",
+          passed = false,
+          expected = JsonNull,
+          actual = statusError,
+          detail = "watch face reported render error: $statusError",
+        )
     }
 
     for ((key, expected) in flattened) {

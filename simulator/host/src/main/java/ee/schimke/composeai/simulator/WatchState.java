@@ -274,6 +274,8 @@ final class WatchState {
       }
     } else if (c.has("time") && !c.isNull("time")) {
       resolvedMillis = Long.valueOf(parseTimeSpec(c.getString("time"), nowMillis(), zoneId()));
+    } else if (c.has("iso") && !c.isNull("iso")) {
+      resolvedMillis = Long.valueOf(parseTimeSpec(c.getString("iso"), nowMillis(), zoneId()));
     } else if (c.has("hour") || c.has("minute") || c.has("second")) {
       ZonedDateTime cur = Instant.ofEpochMilli(nowMillis()).atZone(zoneId());
       int h = c.optInt("hour", cur.getHour());

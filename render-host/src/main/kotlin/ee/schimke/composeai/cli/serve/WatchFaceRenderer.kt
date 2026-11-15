@@ -83,7 +83,7 @@ public interface WatchFaceRendererBackend {
 }
 
 /**
- * Default DWF renderer backend (`dwf-rc`): compiles `<WatchFace>` XML to RemoteCompose and renders
+ * Fallback DWF renderer backend (`dwf-rc`): compiles `<WatchFace>` XML to RemoteCompose and renders
  * frames via `DwfDaemonMain` on a live [ServeHost], with a stateless fallback to
  * [RcJvmServerRenderer] when a static catalog carries `ir/<id>.rc` without a live daemon seat.
  */
@@ -106,7 +106,7 @@ public object DwfRcWatchFaceRendererBackend : WatchFaceRendererBackend {
         if (available) null
         else "Neither a live DWF daemon nor a captured RemoteCompose document is available",
       supportsLiveOverrides = live || rcFallback,
-      isDefault = true,
+      isDefault = false,
     )
   }
 
@@ -161,7 +161,7 @@ public object DwfRcWatchFaceRendererBackend : WatchFaceRendererBackend {
 }
 
 /**
- * Second watch-face renderer backend (`dwf-apk`), rendering `<WatchFace>` packages through the
+ * Primary watch-face renderer backend (`dwf-apk`), rendering `<WatchFace>` packages through the
  * Android Wear OS DWF renderer APK (`DeclarativeWatchFaceRuntime.apk` running in a
  * `:simulator-host` daemon).
  *
@@ -194,6 +194,15 @@ public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
     bridge = DwfApkDaemonBridge
   }
 
+  internal fun hasReadyEnvironment(): Boolean {
+    val activeBridge = bridge
+    return if (activeBridge === DwfApkDaemonBridge) {
+      DwfApkDaemonBridge.isEnvironmentReady()
+    } else {
+      true
+    }
+  }
+
   internal fun configuredApkFile(): File? {
     val raw =
       System.getProperty(APK_PATH_SYS_PROP)?.takeIf { it.isNotBlank() }
@@ -221,7 +230,7 @@ public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
       available = available,
       unavailableReason = if (available) null else activeBridge.unavailableReason(host, preview),
       supportsLiveOverrides = available,
-      isDefault = false,
+      isDefault = available,
     )
   }
 
@@ -241,14 +250,15 @@ public object DwfApkWatchFaceRendererBackend : WatchFaceRendererBackend {
 /**
  * Process-wide registry of [WatchFaceRendererBackend]s.
  *
- * Pre-populated with [DwfRcWatchFaceRendererBackend] (`dwf-rc`, default) and
- * [DwfApkWatchFaceRendererBackend] (`dwf-apk`). Additional or replacement backends (for example a
- * live `launch` simulator bridge for `dwf-apk`, or test doubles) can be installed via [register].
+ * Pre-populated with [DwfApkWatchFaceRendererBackend] (`dwf-apk`, preferred default when available)
+ * and [DwfRcWatchFaceRendererBackend] (`dwf-rc`, fallback when `dwf-apk` is unavailable).
+ * Additional or replacement backends (for example a live `launch` simulator bridge for `dwf-apk`,
+ * or test doubles) can be installed via [register].
  */
 public object WatchFaceRendererRegistry {
   private val backends =
     CopyOnWriteArrayList<WatchFaceRendererBackend>(
-      listOf(DwfRcWatchFaceRendererBackend, DwfApkWatchFaceRendererBackend),
+      listOf(DwfApkWatchFaceRendererBackend, DwfRcWatchFaceRendererBackend),
     )
 
   /** All registered watch-face renderer backends in display order. */
@@ -260,14 +270,70 @@ public object WatchFaceRendererRegistry {
     return backends.firstOrNull { it.id.equals(normalized, ignoreCase = true) }
   }
 
-  /** The default backend used when no `wfRenderer` parameter is supplied (`dwf-rc`). */
-  public fun defaultBackend(): WatchFaceRendererBackend =
-    backends.firstOrNull { it.id == WatchFaceRendererIds.DWF_RC } ?: DwfRcWatchFaceRendererBackend
+  /**
+   * Look up a backend for [preview] on [host] by its wire [id] (case-insensitive), selecting
+   * [defaultBackendFor] when [id] is null or blank, or returning null when [id] is unknown.
+   */
+  public fun resolveFor(
+    host: ServeHost,
+    preview: ServePreview,
+    id: String?,
+  ): WatchFaceRendererBackend? {
+    val normalized =
+      id?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return defaultBackendFor(host, preview)
+    return backends.firstOrNull { it.id.equals(normalized, ignoreCase = true) }
+  }
+
+  /**
+   * The default backend when no host/preview context is supplied: prefers `dwf-apk` when a custom
+   * `dwf-apk` backend or ready `DeclarativeWatchFaceRuntime.apk` environment is present, falling
+   * back to `dwf-rc` otherwise.
+   */
+  public fun defaultBackend(): WatchFaceRendererBackend {
+    val apkBackend = backends.firstOrNull {
+      it.id.equals(WatchFaceRendererIds.DWF_APK, ignoreCase = true)
+    }
+    if (
+      apkBackend != null &&
+        (apkBackend !== DwfApkWatchFaceRendererBackend ||
+          DwfApkWatchFaceRendererBackend.hasReadyEnvironment())
+    ) {
+      return apkBackend
+    }
+    return backends.firstOrNull { it.id.equals(WatchFaceRendererIds.DWF_RC, ignoreCase = true) }
+      ?: DwfRcWatchFaceRendererBackend
+  }
+
+  /**
+   * The default backend for [preview] on [host]: prefers `dwf-apk` whenever available, falling back
+   * to the first available backend (`dwf-rc`) when `dwf-apk` cannot run on [host].
+   */
+  public fun defaultBackendFor(host: ServeHost, preview: ServePreview): WatchFaceRendererBackend {
+    val apkBackend = backends.firstOrNull {
+      it.id.equals(WatchFaceRendererIds.DWF_APK, ignoreCase = true)
+    }
+    if (apkBackend != null && apkBackend.infoFor(host, preview).available) {
+      return apkBackend
+    }
+    return backends.firstOrNull { it.infoFor(host, preview).available }
+      ?: backends.firstOrNull { it.id.equals(WatchFaceRendererIds.DWF_RC, ignoreCase = true) }
+      ?: DwfRcWatchFaceRendererBackend
+  }
 
   /** Renderer descriptors for [preview] on [host], or empty when [preview] is not a watch face. */
   public fun renderersFor(host: ServeHost, preview: ServePreview): List<WatchFaceRendererInfo> {
     if (!preview.isWatchFace) return emptyList()
-    return backends.map { it.infoFor(host, preview) }
+    val infos = backends.map { it.infoFor(host, preview) }
+    val defaultId =
+      infos
+        .firstOrNull {
+          it.id.equals(WatchFaceRendererIds.DWF_APK, ignoreCase = true) && it.available
+        }
+        ?.id
+        ?: infos.firstOrNull { it.available }?.id
+        ?: infos.firstOrNull { it.id.equals(WatchFaceRendererIds.DWF_RC, ignoreCase = true) }?.id
+        ?: infos.firstOrNull()?.id
+    return infos.map { info -> info.copy(isDefault = info.id.equals(defaultId, ignoreCase = true)) }
   }
 
   /** Register or replace a [WatchFaceRendererBackend] by [WatchFaceRendererBackend.id]. */
@@ -280,9 +346,10 @@ public object WatchFaceRendererRegistry {
     }
   }
 
-  /** Restore the built-in backend set (`dwf-rc`, `dwf-apk`); intended for tests. */
+  /** Restore the built-in backend set (`dwf-apk`, `dwf-rc`); intended for tests. */
   public fun resetDefaults() {
+    DwfApkWatchFaceRendererBackend.resetBridge()
     backends.clear()
-    backends.addAll(listOf(DwfRcWatchFaceRendererBackend, DwfApkWatchFaceRendererBackend))
+    backends.addAll(listOf(DwfApkWatchFaceRendererBackend, DwfRcWatchFaceRendererBackend))
   }
 }
