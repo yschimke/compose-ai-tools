@@ -404,7 +404,15 @@ private class DwfCanvasRenderer(
                 renderComplicationImage(compImage, alphaFactor, tint, w, h)
               }
             } else {
-              renderImageOrVector(resName, alphaFactor, tint, w, h)
+              renderImageOrVectorWithColorConfig(
+                resName,
+                node.geometry.tintColor,
+                compiler,
+                alphaFactor,
+                tint,
+                w,
+                h,
+              )
             }
           }
         }
@@ -653,7 +661,15 @@ private class DwfCanvasRenderer(
         val drawContent: RemoteDrawScope.() -> Unit = {
           val drewResource =
             hand.resource?.let { resName ->
-              tryRenderImageOrVector(resName, alphaFactor, tint, w, h)
+              renderImageOrVectorWithColorConfig(
+                resName,
+                hand.geometry.tintColor,
+                compiler,
+                alphaFactor,
+                tint,
+                w,
+                h,
+              )
             } ?: false
           if (hand.children.isNotEmpty()) {
             renderNodeList(hand.children, compiler, alphaFactor, tint)
@@ -711,10 +727,43 @@ private class DwfCanvasRenderer(
     parentW: RemoteFloat,
     parentH: RemoteFloat,
   ) {
+    val hasNonUnitAlpha = (alphaFactor.constantValueOrNull ?: 0f) < 0.999f
     for (fill in shape.fills) {
-      val paint =
-        buildFillPaint(fill, compiler, alphaFactor, inheritedTint, RemoteSize(parentW, parentH))
-      drawPrimitive(shape.primitive, compiler, paint)
+      val colorConfigOptions =
+        if (
+          hasNonUnitAlpha &&
+            inheritedTint == null &&
+            fill.transforms.isEmpty() &&
+            fill.variants.isEmpty()
+        ) {
+          compiler.resolveColorConfigurationOptions(fill.color)
+        } else {
+          null
+        }
+      if (colorConfigOptions != null) {
+        val (configState, optionColors) = colorConfigOptions
+        if (alphaFactor.constantValueOrNull == null) {
+          val sharedColor = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
+          remoteCanvas.drawRect(0f.rf, 0f.rf, 0f.rf, 0f.rf, RemotePaint { color = sharedColor })
+        }
+        for ((idx, optArgb) in optionColors.withIndex()) {
+          drawConditionally(configState.isEqualTo(RemoteInt(idx))) {
+            val paint =
+              buildFillPaint(
+                fill,
+                compiler,
+                alphaFactor,
+                RemoteColor(optArgb),
+                RemoteSize(parentW, parentH),
+              )
+            drawPrimitive(shape.primitive, compiler, paint)
+          }
+        }
+      } else {
+        val paint =
+          buildFillPaint(fill, compiler, alphaFactor, inheritedTint, RemoteSize(parentW, parentH))
+        drawPrimitive(shape.primitive, compiler, paint)
+      }
     }
     for (stroke in shape.strokes) {
       if (
@@ -731,15 +780,47 @@ private class DwfCanvasRenderer(
           inheritedTint,
         )
       } else {
-        val paint =
-          buildStrokePaint(
-            stroke,
-            compiler,
-            alphaFactor,
-            inheritedTint,
-            RemoteSize(parentW, parentH),
-          )
-        drawPrimitive(shape.primitive, compiler, paint)
+        val colorConfigOptions =
+          if (
+            hasNonUnitAlpha &&
+              inheritedTint == null &&
+              stroke.transforms.isEmpty() &&
+              stroke.variants.isEmpty()
+          ) {
+            compiler.resolveColorConfigurationOptions(stroke.color)
+          } else {
+            null
+          }
+        if (colorConfigOptions != null) {
+          val (configState, optionColors) = colorConfigOptions
+          if (alphaFactor.constantValueOrNull == null) {
+            val sharedColor = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
+            remoteCanvas.drawRect(0f.rf, 0f.rf, 0f.rf, 0f.rf, RemotePaint { color = sharedColor })
+          }
+          for ((idx, optArgb) in optionColors.withIndex()) {
+            drawConditionally(configState.isEqualTo(RemoteInt(idx))) {
+              val paint =
+                buildStrokePaint(
+                  stroke,
+                  compiler,
+                  alphaFactor,
+                  RemoteColor(optArgb),
+                  RemoteSize(parentW, parentH),
+                )
+              drawPrimitive(shape.primitive, compiler, paint)
+            }
+          }
+        } else {
+          val paint =
+            buildStrokePaint(
+              stroke,
+              compiler,
+              alphaFactor,
+              inheritedTint,
+              RemoteSize(parentW, parentH),
+            )
+          drawPrimitive(shape.primitive, compiler, paint)
+        }
       }
     }
     if (shape.primitive is DwfDrawPrimitive.Arc) {
@@ -1678,6 +1759,45 @@ private class DwfCanvasRenderer(
     }
   }
 
+  private fun RemoteDrawScope.renderImageOrVectorWithColorConfig(
+    resName: String,
+    tintColorExpr: String?,
+    compiler: DwfExpressionCompiler,
+    alphaFactor: RemoteFloat,
+    tint: RemoteColor?,
+    dstW: RemoteFloat,
+    dstH: RemoteFloat,
+  ): Boolean {
+    val colorConfigOptions =
+      if (tint != null && tint.constantValueOrNull == null) {
+        compiler.resolveColorConfigurationOptions(tintColorExpr)
+      } else {
+        null
+      }
+    if (colorConfigOptions != null) {
+      val (configState, optionColors) = colorConfigOptions
+      if (alphaFactor.constantValueOrNull == null) {
+        val sharedColor = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
+        remoteCanvas.drawRect(
+          0f.rf,
+          0f.rf,
+          0f.rf,
+          0f.rf,
+          RemotePaint { color = sharedColor },
+        )
+      }
+      for ((idx, optArgb) in optionColors.withIndex()) {
+        drawConditionally(configState.isEqualTo(RemoteInt(idx))) {
+          renderImageOrVector(resName, alphaFactor, RemoteColor(optArgb), dstW, dstH)
+        }
+      }
+      return resources.resolveImage(resName) != null ||
+        normalizeDwfImageUrl(resName) != null ||
+        resources.resolveVectorDrawable(resName) != null
+    }
+    return tryRenderImageOrVector(resName, alphaFactor, tint, dstW, dstH)
+  }
+
   private fun RemoteDrawScope.renderImageOrVector(
     resName: String,
     alphaFactor: RemoteFloat,
@@ -1699,8 +1819,9 @@ private class DwfCanvasRenderer(
       isAntiAlias = true
       color = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), alphaFactor)
       if (tint != null) {
-        colorFilter =
-          RemoteBlendModeColorFilter(applyAlpha(tint, alphaFactor), RemoteBlendMode.SrcIn)
+        val filterColor =
+          tint.constantValueOrNull?.let(::RemoteColor) ?: applyAlpha(tint, alphaFactor)
+        colorFilter = RemoteBlendModeColorFilter(filterColor, RemoteBlendMode.SrcIn)
       }
     }
     remoteCanvas.drawScaledBitmap(

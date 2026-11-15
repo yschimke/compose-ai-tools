@@ -107,6 +107,9 @@ internal class DwfExpressionCompiler(
   fun listConfigurationState(configId: String): RemoteInt =
     sharedVariables.listConfigurationState(configId)
 
+  fun resolveColorConfigurationOptions(rawColorExpr: String?): Pair<RemoteInt, List<Int>>? =
+    sharedVariables.resolveColorConfigurationOptions(rawColorExpr)
+
   fun listOptionIndex(configId: String, optionId: String): Int =
     sharedVariables.listOptionIndex(configId, optionId)
 
@@ -1571,6 +1574,37 @@ internal class DwfExpressionCompiler(
           }
         RemoteInt.createNamedRemoteInt(DwfVariables.configKey(configId), defaultIdx)
       }
+
+    fun resolveColorConfigurationOptions(rawColorExpr: String?): Pair<RemoteInt, List<Int>>? {
+      val trimmed = rawColorExpr?.trim() ?: return null
+      if (!trimmed.startsWith("[CONFIGURATION.") || !trimmed.endsWith("]")) return null
+      val rest = trimmed.removePrefix("[CONFIGURATION.").removeSuffix("]")
+      val dot = rest.lastIndexOf('.')
+      val candidateId = if (dot > 0) rest.substring(0, dot) else rest
+      val colorIdx = (if (dot > 0) rest.substring(dot + 1).toIntOrNull() else null) ?: 0
+      val cfg =
+        (configsById[rest] ?: configsById[candidateId]) as? DwfUserConfiguration.ColorConfiguration
+          ?: return null
+      if (cfg.options.isEmpty()) return null
+      val state =
+        listConfigCache.getOrPut(cfg.id) {
+          val desired = effectiveConfigOverrides[cfg.id] ?: cfg.defaultValue
+          val defaultIdx =
+            if (desired == null) {
+              0
+            } else {
+              cfg.options.indexOfFirst { it.id == desired }.takeIf { it >= 0 }
+                ?: desired.toIntOrNull()
+                ?: 0
+            }
+          RemoteInt.createNamedRemoteInt(DwfVariables.configKey(cfg.id), defaultIdx)
+        }
+      val optionColors =
+        cfg.options.map { opt ->
+          opt.colors.getOrNull(colorIdx) ?: opt.colors.firstOrNull() ?: 0xFFFFFFFF.toInt()
+        }
+      return state to optionColors
+    }
 
     fun booleanConfigurationState(configId: String): RemoteBoolean =
       boolConfigCache.getOrPut(configId) {

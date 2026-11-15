@@ -254,6 +254,79 @@ class DwfRenderMainTest {
     assertThat(pixelHash(bmpOverridden)).isNotEqualTo(pixelHash(bmpDefault))
   }
 
+  @Test
+  fun rendersPartImageWithNamedTintColorAndDynamicAlphaTransform() {
+    val workDir = temp.newFolder("apk-dwf-tint")
+    val resDir = File(workDir, "res").apply { mkdirs() }
+    val drawableDir = File(resDir, "drawable").apply { mkdirs() }
+    val wfDir = File(workDir, "watchfaces").apply { mkdirs() }
+
+    val whiteImg = java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = whiteImg.createGraphics()
+    g.color = java.awt.Color(255, 255, 255, 255)
+    g.fillRect(0, 0, 64, 64)
+    g.dispose()
+    javax.imageio.ImageIO.write(whiteImg, "PNG", File(drawableDir, "logo.png"))
+
+    File(wfDir, "tint_face.xml")
+      .writeText(
+        """
+        <WatchFace width="450" height="450" clipShape="CIRCLE">
+          <UserConfigurations>
+            <ColorConfiguration id="accent" displayName="Accent" defaultValue="0">
+              <ColorOption id="0" displayName="Lime" colors="#BAFA08 #9099A6 #1B1E24" />
+              <ColorOption id="1" displayName="Cyan" colors="#0EDBFF #9099A6 #1B1E24" />
+            </ColorConfiguration>
+            <ListConfiguration id="showGroup" displayName="Show Group" defaultValue="0">
+              <ListOption id="0" displayName="Show" />
+              <ListOption id="1" displayName="Hide" />
+            </ListConfiguration>
+            <ListConfiguration id="showLogo" displayName="Show Logo" defaultValue="0">
+              <ListOption id="0" displayName="Show" />
+              <ListOption id="1" displayName="Hide" />
+            </ListConfiguration>
+          </UserConfigurations>
+          <Scene backgroundColor="#FF000000">
+            <Group x="100" y="100" width="250" height="250">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="alpha" value="[CONFIGURATION.showGroup] == 0 ? 255 : 0" />
+              <PartImage x="0" y="0" width="250" height="250" tintColor="[CONFIGURATION.accent.0]">
+                <Variant mode="AMBIENT" target="alpha" value="0" />
+                <Transform target="alpha" value="[CONFIGURATION.showLogo] == 0 ? 255 : 0" />
+                <Image resource="logo" />
+              </PartImage>
+            </Group>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent(),
+      )
+
+    val manifest = compileApkWatchFaces(workDir)
+    val rcBytes = File(workDir, manifest.watchFaces.single().rcFile).readBytes()
+    val png = renderDwfDocumentToPng(bytes = rcBytes, widthPx = 450, heightPx = 450)
+    val bmp = Bitmap.makeFromImage(Image.makeFromEncoded(png))
+    val centerColor = bmp.getColor(225, 225)
+    val r = (centerColor ushr 16) and 0xFF
+    val gr = (centerColor ushr 8) and 0xFF
+    val b = centerColor and 0xFF
+    assertThat(r).isGreaterThan(150)
+    assertThat(gr).isGreaterThan(220)
+    assertThat(b).isLessThan(30)
+
+    val cyanPng =
+      renderDwfDocumentToPng(
+        bytes = rcBytes,
+        widthPx = 450,
+        heightPx = 450,
+        seeds = mapOf(DwfVariables.configKey("accent") to RcNamedValue.Integer(1)),
+      )
+    val cyanColor = Bitmap.makeFromImage(Image.makeFromEncoded(cyanPng)).getColor(225, 225)
+    assertThat((cyanColor ushr 16) and 0xFF).isLessThan(30)
+    assertThat((cyanColor ushr 8) and 0xFF).isGreaterThan(200)
+    assertThat(cyanColor and 0xFF).isGreaterThan(220)
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {

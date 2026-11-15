@@ -1615,13 +1615,15 @@ final class DwfWatchFaceClient {
       }
     }
     if (context == null) return;
-    Class<?> bufferType = load("androidx.compose.remote.core.RemoteComposeBuffer");
-    Object buffer =
-        bufferType
-            .getMethod("fromInputStream", InputStream.class)
-            .invoke(null, new ByteArrayInputStream(document));
-    ArrayList<Object> ops = new ArrayList<>();
-    bufferType.getMethod("inflateFromBuffer", ArrayList.class).invoke(buffer, ops);
+    Object remoteDoc = player.getClass().getMethod("getDocument").invoke(player);
+    Object coreDoc =
+        remoteDoc != null ? remoteDoc.getClass().getMethod("getDocument").invoke(remoteDoc) : null;
+    @SuppressWarnings("unchecked")
+    List<Object> ops =
+        coreDoc != null
+            ? (List<Object>) coreDoc.getClass().getMethod("getOperations").invoke(coreDoc)
+            : null;
+    if (ops == null) return;
     Class<?> named = load("androidx.compose.remote.core.operations.NamedVariable");
     Method register =
         load("androidx.compose.remote.core.RemoteContext")
@@ -2105,6 +2107,17 @@ final class DwfWatchFaceClient {
   }
 
   private void setUserColor(Object target, String name, int argb) {
+    boolean set = false;
+    if (!name.startsWith("USER:")) {
+      try {
+        target
+            .getClass()
+            .getMethod("setColor", String.class, int.class)
+            .invoke(target, name, argb);
+        set = true;
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+    }
     try {
       target
           .getClass()
@@ -2113,7 +2126,9 @@ final class DwfWatchFaceClient {
       return;
     } catch (ReflectiveOperationException | RuntimeException ignored) {
     }
-    setUserInt(target, name, argb);
+    if (!set) {
+      setUserInt(target, name, argb);
+    }
   }
 
   private void setUserString(Object target, String name, String value) {
