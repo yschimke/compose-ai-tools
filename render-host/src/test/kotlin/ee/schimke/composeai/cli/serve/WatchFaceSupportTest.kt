@@ -60,6 +60,7 @@ class WatchFaceSupportTest {
   @AfterTest
   fun resetRegistry() {
     WatchFaceRendererRegistry.resetDefaults()
+    DwfApkWatchFaceRendererBackend.resetBridge()
     System.clearProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP)
   }
 
@@ -369,5 +370,105 @@ class WatchFaceSupportTest {
     } finally {
       dir.deleteRecursively()
     }
+  }
+
+  @Test
+  fun `DwfApkWatchFaceRendererBackend delegates to DwfApkSessionBridge and resolves configured APK`() {
+    val preview =
+      ServePreview(
+        id = "dwf__bridge_test",
+        label = "bridge_test",
+        watchFace =
+          WatchFaceComplicationsPayload(
+            previewId = "dwf__bridge_test",
+            dwfAssetPath = "raw/watchface.xml",
+            widthPx = 450,
+            heightPx = 450,
+            clipShape = "CIRCLE",
+            previewTime = "10:10:30",
+            isAmbient = false,
+            slots = emptyList(),
+          ),
+        dwfAssetPath = "raw/watchface.xml",
+      )
+    val fakeHost =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(preview)
+        override val label: String = "test"
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.NotFound
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: ee.schimke.composeai.daemon.protocol.StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (ee.schimke.composeai.daemon.protocol.StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+      }
+
+    // Without a runtime APK or custom bridge, infoFor reports unavailable with an actionable
+    // reason.
+    val missingInfo = DwfApkWatchFaceRendererBackend.infoFor(fakeHost, preview)
+    assertEquals(WatchFaceRendererIds.DWF_APK, missingInfo.id)
+    assertTrue(!missingInfo.available || DwfApkWatchFaceRendererBackend.configuredApkFile() != null)
+
+    // configuredApkFile() resolves a real file passed via APK_PATH_SYS_PROP.
+    val tmpApk = Files.createTempFile("dwf-runtime-", ".apk").toFile()
+    try {
+      System.setProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP, tmpApk.absolutePath)
+      assertEquals(tmpApk, DwfApkWatchFaceRendererBackend.configuredApkFile())
+    } finally {
+      System.clearProperty(DwfApkWatchFaceRendererBackend.APK_PATH_SYS_PROP)
+      tmpApk.delete()
+    }
+    assertNull(
+      File("/nonexistent/dwf-runtime.apk").takeIf(File::isFile),
+    )
+
+    // Custom DwfApkSessionBridge receives infoFor, render, and complications calls.
+    DwfApkWatchFaceRendererBackend.setBridge(
+      object : DwfApkSessionBridge {
+        override fun isAvailable(host: ServeHost, preview: ServePreview): Boolean = true
+
+        override fun unavailableReason(host: ServeHost, preview: ServePreview): String? = null
+
+        override fun render(
+          host: ServeHost,
+          preview: ServePreview,
+          overrides: PreviewOverrides,
+        ): RenderOutcome = RenderOutcome.Ok(byteArrayOf(7, 8, 9), RenderOutcome.Generation.DAEMON)
+
+        override fun complications(
+          host: ServeHost,
+          preview: ServePreview,
+          overrides: PreviewOverrides,
+        ): WatchFaceComplicationsOutcome =
+          WatchFaceOverrides.projectComplicationsOutcome(
+            preview.watchFace!!,
+            overrides,
+            WatchFaceRendererIds.DWF_APK,
+          )
+      },
+    )
+    val bridgeInfo = DwfApkWatchFaceRendererBackend.infoFor(fakeHost, preview)
+    assertTrue(bridgeInfo.available)
+    assertNull(bridgeInfo.unavailableReason)
+    val bridgeRender =
+      assertIs<RenderOutcome.Ok>(
+        DwfApkWatchFaceRendererBackend.render(fakeHost, preview, PreviewOverrides()),
+      )
+    assertEquals(listOf<Byte>(7, 8, 9), bridgeRender.png.toList())
+    val bridgeComps =
+      assertIs<WatchFaceComplicationsOutcome.Ok>(
+        DwfApkWatchFaceRendererBackend.complications(fakeHost, preview, PreviewOverrides()),
+      )
+    assertEquals(WatchFaceRendererIds.DWF_APK, bridgeComps.rendererId)
   }
 }
