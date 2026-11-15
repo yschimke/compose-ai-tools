@@ -1,0 +1,152 @@
+{
+  "samples": {
+    "wff-simple-analog": {
+      "ambient": {
+        "sim28": 0.9741,
+        "sim32": 0.9745,
+        "mae": 0.97
+      },
+      "config_theme1": {
+        "sim28": 0.751,
+        "sim32": 0.7513,
+        "mae": 20.63
+      },
+      "config_theme3": {
+        "sim28": 0.7508,
+        "sim32": 0.7511,
+        "mae": 27.56
+      },
+      "interactive": {
+        "sim28": 0.9965,
+        "sim32": 0.9968,
+        "mae": 0.23
+      }
+    },
+    "wff-simple-digital": {
+      "ambient": {
+        "sim28": 0.9723,
+        "sim32": 0.9734,
+        "mae": 3.39
+      },
+      "interactive": {
+        "sim28": 0.9696,
+        "sim32": 0.9703,
+        "mae": 4.08
+      }
+    },
+    "wff-complications": {
+      "ambient": {
+        "sim28": 0.8876,
+        "sim32": 0.893,
+        "mae": 10.25
+      },
+      "default": {
+        "sim28": 0.8573,
+        "sim32": 0.8577,
+        "mae": 26.17
+      },
+      "populated": {
+        "sim28": 0.9388,
+        "sim32": 0.9401,
+        "mae": 8.62
+      },
+      "theme1": {
+        "sim28": 0.94,
+        "sim32": 0.941,
+        "mae": 8.5
+      }
+    },
+    "wff-flavors": {
+      "ambient": {
+        "sim28": 0.9857,
+        "sim32": 0.9859,
+        "mae": 1.57
+      },
+      "default": {
+        "sim28": 0.9776,
+        "sim32": 0.9781,
+        "mae": 3.01
+      }
+    },
+    "wff-photos-mask": {
+      "ambient": {
+        "sim28": 0.9688,
+        "sim32": 0.9693,
+        "mae": 6.62
+      },
+      "interactive": {
+        "sim28": 0.9922,
+        "sim32": 0.9931,
+        "mae": 0.87
+      }
+    },
+    "wff-photos-multi": {
+      "ambient": {
+        "sim28": 0.9556,
+        "sim32": 0.9561,
+        "mae": 6.66
+      },
+      "interactive": {
+        "sim28": 0.9922,
+        "sim32": 0.9931,
+        "mae": 0.96
+      }
+    },
+    "wff-weather": {
+      "ambient": {
+        "sim28": 0.8094,
+        "sim32": 0.812,
+        "mae": 28.73
+      },
+      "clear_day": {
+        "sim28": 0.841,
+        "sim32": 0.8437,
+        "mae": 25.5
+      },
+      "rain_night": {
+        "sim28": 0.8408,
+        "sim32": 0.8433,
+        "mae": 25.63
+      },
+      "unavailable": {
+        "sim28": 0.6434,
+        "sim32": 0.6464,
+        "mae": 55.31
+      }
+    },
+    "watchface-push-firefly": {
+      "ambient": {
+        "sim28": 0.9312,
+        "sim32": 0.9321,
+        "mae": 18.68
+      },
+      "interactive": {
+        "sim28": 0.9405,
+        "sim32": 0.9411,
+        "mae": 8.32
+      }
+    },
+    "casino-gshark": {
+      "ambient": {
+        "sim28": 0.8342,
+        "sim32": 0.8766,
+        "mae": 22.67
+      },
+      "analogHands1": {
+        "sim28": 0.8146,
+        "sim32": 0.8469,
+        "mae": 14.61
+      },
+      "interactive": {
+        "sim28": 0.7352,
+        "sim32": 0.7788,
+        "mae": 25.75
+      },
+      "theme2": {
+        "sim28": 0.7352,
+        "sim32": 0.7788,
+        "mae": 26.1
+      }
+    }
+  }
+}
