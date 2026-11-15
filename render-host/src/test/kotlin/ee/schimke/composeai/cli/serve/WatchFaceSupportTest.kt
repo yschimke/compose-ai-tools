@@ -531,4 +531,62 @@ class WatchFaceSupportTest {
       parsed.namedOverrides["wf.slot.2.monochromaticImage"],
     )
   }
+
+  @Test
+  fun `DwfApkDaemonBridge emits watchface config op with flavor and clears stale slot overrides`() {
+    val preview =
+      ServePreview(
+        id = "dwf__flavors_test",
+        label = "flavors_test",
+        watchFace =
+          WatchFaceComplicationsPayload(
+            previewId = "dwf__flavors_test",
+            dwfAssetPath = "raw/watchface.xml",
+            widthPx = 450,
+            heightPx = 450,
+            clipShape = "CIRCLE",
+            previewTime = "10:10:30",
+            isAmbient = false,
+            slots = emptyList(),
+          ),
+        dwfAssetPath = "raw/watchface.xml",
+      )
+    val parsed =
+      assertIs<WatchFaceOverrides.WfParamParse.Ok>(
+        WatchFaceOverrides.parseWfParams(
+          mapOf(
+            "wf.flavor" to "autumn",
+            "wf.config.clockStyle" to "digital",
+            "wf.slot.1.type" to "SHORT_TEXT",
+            "wf.slot.1.text" to "84",
+          ),
+        ),
+      )
+    val overrides =
+      PreviewOverrides(
+        namedOverrides = parsed.namedOverrides,
+        remoteCompose =
+          ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.Builder()
+            .also { it.namedValues = parsed.rcNamedValues }
+            .build(),
+      )
+    val (commands, overriddenSlots) =
+      DwfApkDaemonBridge.buildOverrideCommands(
+        preview = preview,
+        overrides = overrides,
+        previouslyOverriddenSlots = setOf(1, 2),
+      )
+    assertEquals(setOf(1), overriddenSlots)
+
+    val wfCommands = commands.filter { it.first == "watchface" }.map { it.second }
+    assertTrue(wfCommands.none { it["op"]?.toString()?.contains("flavor") == true })
+
+    val configCmd = wfCommands.single { it["op"]?.toString() == "\"config\"" }
+    assertEquals("\"autumn\"", configCmd["flavor"]?.toString())
+    assertEquals("true", configCmd["reset"]?.toString())
+    assertTrue(configCmd["values"]?.toString()?.contains("\"clockStyle\":\"digital\"") == true)
+
+    val uncompCmd = wfCommands.single { it["op"]?.toString() == "\"uncomplication\"" }
+    assertEquals("2", uncompCmd["slot"]?.toString())
+  }
 }

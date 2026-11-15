@@ -23,8 +23,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
@@ -232,6 +234,8 @@ final class WatchFaceClient {
           });
   /** Complication data by slot id, as the app's {@code ComplicationData} (Parcelable) objects. */
   private final Map<Integer, Object> complications = new LinkedHashMap<>();
+  /** Slot IDs populated by a flavor's default provider policy rather than an explicit override. */
+  private final Set<Integer> flavorManagedSlots = new LinkedHashSet<>();
   /** Selected user style option wire bytes by setting ID. */
   private final Map<String, byte[]> userStyle = new LinkedHashMap<>();
   /** Selected user style option string IDs by setting ID. */
@@ -241,6 +245,9 @@ final class WatchFaceClient {
   private volatile IBinder headless;
   private volatile List<Slot> slots = Collections.emptyList();
   private volatile List<StyleSetting> schema = Collections.emptyList();
+  private volatile String defaultFlavorId;
+  private volatile List<DwfWatchFaceClient.FlavorSpec> flavors = Collections.emptyList();
+  private volatile String activeFlavorId;
   private volatile Long fixedTimeMillis;
   private volatile Bitmap lastBitmap;
   private int width;
@@ -254,6 +261,33 @@ final class WatchFaceClient {
     this.navigator = navigator;
     this.component = component;
     this.listener = listener;
+    WffWatchFaces.FlavorsCatalog cat = WffWatchFaces.flavorsForPackage(component.getPackageName());
+    if (cat != null && !cat.flavors.isEmpty()) {
+      this.defaultFlavorId = cat.defaultFlavorId;
+      this.flavors = cat.flavors;
+      this.activeFlavorId = cat.defaultFlavorId;
+    }
+  }
+
+  void setFallbackFlavors(String fallbackDefaultId, List<DwfWatchFaceClient.FlavorSpec> specs) {
+    if (!this.flavors.isEmpty() || specs == null || specs.isEmpty()) return;
+    this.defaultFlavorId = fallbackDefaultId;
+    this.flavors = specs;
+    if (this.activeFlavorId == null) {
+      this.activeFlavorId = fallbackDefaultId;
+    }
+  }
+
+  boolean hasFlavors() {
+    return !flavors.isEmpty();
+  }
+
+  String activeFlavorId() {
+    return activeFlavorId;
+  }
+
+  JSONArray describeFlavors() {
+    return DwfWatchFaceClient.describeFlavorSpecs(flavors, activeFlavorId);
   }
 
   /** Whether [app] can host a watch face: it carries the library's control service. */
@@ -300,6 +334,81 @@ final class WatchFaceClient {
     return lastBitmap;
   }
 
+  void resetConfigsToDefault(Set<Integer> externallyBoundSlots) {
+    synchronized (userStyle) {
+      userStyle.clear();
+      userStyleIds.clear();
+    }
+    clearFlavorManagedComplications();
+    activeFlavorId = null;
+    if (defaultFlavorId != null && !defaultFlavorId.isEmpty() && !flavors.isEmpty()) {
+      DwfWatchFaceClient.FlavorSpec def = DwfWatchFaceClient.findFlavorSpec(flavors, defaultFlavorId);
+      if (def != null) {
+        applyFlavorPreset(def, externallyBoundSlots);
+      }
+    }
+  }
+
+  void setFlavor(String flavorId, Set<Integer> externallyBoundSlots) {
+    DwfWatchFaceClient.FlavorSpec spec = DwfWatchFaceClient.findFlavorSpec(flavors, flavorId);
+    if (spec == null) {
+      throw new IllegalArgumentException(
+          "Watch face " + component + " has no flavor '" + flavorId + "'");
+    }
+    synchronized (userStyle) {
+      userStyle.clear();
+      userStyleIds.clear();
+    }
+    clearFlavorManagedComplications();
+    applyFlavorPreset(spec, externallyBoundSlots);
+  }
+
+  private void clearFlavorManagedComplications() {
+    synchronized (complications) {
+      for (Integer slotId : flavorManagedSlots) {
+        complications.remove(slotId);
+      }
+      flavorManagedSlots.clear();
+    }
+  }
+
+  private void applyFlavorPreset(
+      DwfWatchFaceClient.FlavorSpec spec, Set<Integer> externallyBoundSlots) {
+    activeFlavorId = spec.id;
+    for (Map.Entry<String, String> e : spec.configurations.entrySet()) {
+      setConfig(e.getKey(), e.getValue());
+    }
+    WatchState ws = WatchState.current();
+    for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
+        spec.complications.entrySet()) {
+      Integer slotId = e.getKey();
+      if (externallyBoundSlots != null && externallyBoundSlots.contains(slotId)) continue;
+      DwfWatchFaceClient.FlavorComplicationPolicy pol = e.getValue();
+      DwfWatchFaceClient.FakeComplication fake =
+          DwfWatchFaceClient.syntheticSystemProviderComplication(
+              slotId.intValue(), pol.defaultSystemProvider, pol.defaultSystemProviderType, ws);
+      Slot targetSlot = null;
+      for (Slot s : slots) {
+        if (s.id == slotId.intValue()) {
+          targetSlot = s;
+          break;
+        }
+      }
+      synchronized (complications) {
+        if (fake == null) {
+          complications.remove(slotId);
+        } else {
+          Parcelable built =
+              ComplicationParcels.buildFakeParcelable(app.getClassLoader(), fake, targetSlot);
+          if (built != null) {
+            complications.put(slotId, built);
+            flavorManagedSlots.add(slotId);
+          }
+        }
+      }
+    }
+  }
+
   /** Sets a user style option on this headless watch face instance. */
   void setConfig(String settingId, String value) {
     List<StyleSetting> currentSchema = schema;
@@ -310,9 +419,15 @@ final class WatchFaceClient {
         break;
       }
     }
-    if (matched == null && !currentSchema.isEmpty()) {
-      throw new IllegalArgumentException(
-          "Watch face " + component + " has no configuration '" + settingId + "'");
+    if (matched == null) {
+      if ("flavor".equals(settingId) && hasFlavors()) {
+        setFlavor(value, Collections.emptySet());
+        return;
+      }
+      if (!currentSchema.isEmpty()) {
+        throw new IllegalArgumentException(
+            "Watch face " + component + " has no configuration '" + settingId + "'");
+      }
     }
     byte[] wireBytes = encodeStyleSelection(matched, value);
     synchronized (userStyle) {
@@ -438,6 +553,20 @@ final class WatchFaceClient {
             headless = instance;
             slots = readSlots(instance);
             schema = readStyleSchema(instance);
+            synchronized (userStyle) {
+              for (Map.Entry<String, String> sel : new LinkedHashMap<>(userStyleIds).entrySet()) {
+                StyleSetting matched = null;
+                for (StyleSetting s : schema) {
+                  if (s.id.equals(sel.getKey())) {
+                    matched = s;
+                    break;
+                  }
+                }
+                if (matched != null) {
+                  userStyle.put(sel.getKey(), encodeStyleSelection(matched, sel.getValue()));
+                }
+              }
+            }
             renderNow(ambient);
           } catch (Throwable e) {
             post(null, e);
@@ -448,6 +577,7 @@ final class WatchFaceClient {
   /** Sets (or clears, with null) a slot's data and renders again. */
   void complication(int slotId, Object data, boolean ambient) {
     synchronized (complications) {
+      flavorManagedSlots.remove(slotId);
       if (data == null) complications.remove(slotId);
       else complications.put(slotId, data);
     }

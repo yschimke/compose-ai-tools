@@ -669,6 +669,50 @@ public class WatchFaceScenariosRobolectricTest {
     }
   }
 
+  @Test
+  public void wffWatchFacesParsesXmlAndApkFlavorsCatalog() throws Exception {
+    String xml =
+        "<WatchFace width=\"450\" height=\"450\">\n"
+            + "  <UserConfigurations>\n"
+            + "    <ColorConfiguration id=\"theme\" displayName=\"Theme\" defaultValue=\"0\"/>\n"
+            + "    <Flavors defaultValue=\"spring\">\n"
+            + "      <Flavor id=\"spring\" displayName=\"Spring\">\n"
+            + "        <Configuration id=\"theme\" optionId=\"1\"/>\n"
+            + "        <ComplicationSlot slotId=\"1\">\n"
+            + "          <DefaultProviderPolicy defaultSystemProvider=\"STEP_COUNT\" defaultSystemProviderType=\"SHORT_TEXT\"/>\n"
+            + "        </ComplicationSlot>\n"
+            + "      </Flavor>\n"
+            + "      <Flavor id=\"autumn\" displayName=\"Autumn\">\n"
+            + "        <Configuration id=\"theme\" optionId=\"3\"/>\n"
+            + "      </Flavor>\n"
+            + "    </Flavors>\n"
+            + "  </UserConfigurations>\n"
+            + "  <Scene/>\n"
+            + "</WatchFace>";
+    File apk = temp.newFile("flavors.apk");
+    try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(apk.toPath()))) {
+      zos.putNextEntry(new ZipEntry("res/raw/watchface.xml"));
+      zos.write(xml.getBytes(StandardCharsets.UTF_8));
+      zos.closeEntry();
+    }
+    WffWatchFaces.FlavorsCatalog catalog = WffWatchFaces.parseApkFlavors(apk.toPath());
+    assertEquals("spring", catalog.defaultFlavorId);
+    assertEquals(2, catalog.flavors.size());
+    assertEquals("spring", catalog.flavors.get(0).id);
+    assertEquals("1", catalog.flavors.get(0).configurations.get("theme"));
+    assertEquals(
+        "STEP_COUNT", catalog.flavors.get(0).complications.get(1).defaultSystemProvider);
+    assertEquals("autumn", catalog.flavors.get(1).id);
+    assertEquals("3", catalog.flavors.get(1).configurations.get("theme"));
+
+    DwfWatchFaceClient.FakeComplication synth =
+        DwfWatchFaceClient.syntheticSystemProviderComplication(
+            1, "STEP_COUNT", "SHORT_TEXT", WatchState.current());
+    assertNotNull(synth);
+    assertEquals(3, synth.wireType);
+    assertEquals("STEPS", synth.title);
+  }
+
   private static int openField(Parcel parcel, int id) {
     int start = parcel.dataPosition();
     parcel.writeInt(0);

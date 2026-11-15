@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
@@ -17,11 +18,16 @@ public class DwfWatchFaceClientTest {
 
   public static final class FakePlayerTarget {
     final Map<String, Integer> ints = new HashMap<>();
+    final Map<String, Integer> colors = new HashMap<>();
     final Map<String, Float> floats = new HashMap<>();
     final Map<String, String> strings = new HashMap<>();
 
     public void setUserLocalInt(String name, int value) {
       ints.put(name, Integer.valueOf(value));
+    }
+
+    public void setUserLocalColor(String name, int value) {
+      colors.put(name, Integer.valueOf(value));
     }
 
     public void setUserLocalFloat(String name, float value) {
@@ -742,6 +748,76 @@ public class DwfWatchFaceClientTest {
     assertEquals(1, inline1x1.getHeight());
     assertEquals(64, urlExplicit.getWidth());
     assertEquals(64, urlExplicit.getHeight());
+  }
+
+  @Test
+  public void replacingFakeComplicationWithoutColorsOrWeightsResetsPaletteAndWeightVariables()
+      throws Exception {
+    DwfWatchFaceClient.Entry entry =
+        new DwfWatchFaceClient.Entry(
+            "com.example/.ComplicationsFace",
+            "ComplicationsFace",
+            new File("."),
+            "watchface.rc",
+            450,
+            450,
+            "CIRCLE",
+            List.of(
+                new WatchFaceClient.Slot(1, new int[] {3, 4, 13, 14}, true),
+                new WatchFaceClient.Slot(2, new int[] {3, 14}, true)),
+            List.of());
+    DwfWatchFaceClient client = new DwfWatchFaceClient(null, entry, null);
+    FakePlayerTarget target = new FakePlayerTarget();
+
+    client.putFakeComplication(
+        1,
+        DwfWatchFaceClient.FakeComplication.fromJson(
+            new JSONObject()
+                .put("slot", 1)
+                .put("type", "RANGED_VALUE")
+                .put("value", 75)
+                .put("min", 0)
+                .put("max", 100)
+                .put("colors", new JSONArray().put("#FFFF0000").put("#FF00FF00")),
+            1));
+    client.putFakeComplication(
+        2,
+        DwfWatchFaceClient.FakeComplication.fromJson(
+            new JSONObject()
+                .put("slot", 2)
+                .put("type", "WEIGHTED_ELEMENTS")
+                .put("colors", new JSONArray().put("#FF0000FF"))
+                .put("weights", new JSONArray().put(0.6).put(0.4)),
+            2));
+    client.applyVariablesTo(target, false);
+    assertEquals(2, target.ints.get("dwf.complication.1.color_count").intValue());
+    assertEquals(1, target.ints.get("dwf.complication.1.has_ranged_colors").intValue());
+    assertEquals(0xFFFF0000, target.colors.get("dwf.complication.1.color.0").intValue());
+    assertEquals(1, target.ints.get("dwf.complication.2.has_weighted_elements").intValue());
+    assertEquals(0.6f, target.floats.get("dwf.complication.2.weight.0").floatValue(), 0.001f);
+
+    // Replace both slots with plain SHORT_TEXT complications omitting colors and weights.
+    client.putFakeComplication(
+        1,
+        DwfWatchFaceClient.FakeComplication.fromJson(
+            new JSONObject().put("slot", 1).put("type", "SHORT_TEXT").put("text", "Plain"), 1));
+    client.putFakeComplication(
+        2,
+        DwfWatchFaceClient.FakeComplication.fromJson(
+            new JSONObject().put("slot", 2).put("type", "SHORT_TEXT").put("text", "Simple"), 2));
+    client.applyVariablesTo(target, false);
+
+    assertEquals(0, target.ints.get("dwf.complication.1.color_count").intValue());
+    assertEquals(0, target.ints.get("dwf.complication.1.has_ranged_colors").intValue());
+    assertEquals(0, target.ints.get("dwf.complication.1.has_goal_colors").intValue());
+    assertEquals(0, target.colors.get("dwf.complication.1.color.0").intValue());
+    assertEquals(0, target.colors.get("dwf.complication.1.color.1").intValue());
+
+    assertEquals(0, target.ints.get("dwf.complication.2.has_weighted_elements").intValue());
+    assertEquals(0, target.ints.get("dwf.complication.2.color_count").intValue());
+    assertEquals(0, target.colors.get("dwf.complication.2.color.0").intValue());
+    assertEquals(0f, target.floats.get("dwf.complication.2.weight.0").floatValue(), 0.001f);
+    assertEquals(0f, target.floats.get("dwf.complication.2.weight.1").floatValue(), 0.001f);
   }
 
   private static void deleteRecursively(File f) {

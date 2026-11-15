@@ -374,6 +374,14 @@ final class WatchFaceHost {
         return render(c);
       case "config":
         return configureFace(c);
+      case "flavor":
+        {
+          JSONObject normalized = new JSONObject(c.toString());
+          if (!normalized.has("flavor") && normalized.has("id")) {
+            normalized.put("flavor", normalized.get("id"));
+          }
+          return configureFace(normalized);
+        }
       case "unset":
         return unset();
       case "complication":
@@ -541,6 +549,10 @@ final class WatchFaceHost {
     applyPinnedTimeMillis(timeMillis);
     releaseFace();
     face = new WatchFaceClient(app, navigator, component, this::rendered);
+    DwfWatchFaceClient.Entry fallbackDwf = findDwfEntry(component.getPackageName());
+    if (fallbackDwf != null) {
+      face.setFallbackFlavors(fallbackDwf.defaultFlavorId, fallbackDwf.flavors);
+    }
     face.setFixedTimeMillis(perFaceTime);
     WatchFacePushStore.get().setActivePackageName(component.getPackageName());
     DisplayMetrics metrics = app.getResources().getDisplayMetrics();
@@ -551,16 +563,32 @@ final class WatchFaceHost {
     return describe();
   }
 
+  private Set<Integer> externallyBoundAppSlots() {
+    Set<Integer> bound = new LinkedHashSet<>(fakeOnWireFace.keySet());
+    for (Source s : sources) {
+      if (s.appFace) bound.add(Integer.valueOf(s.slot));
+    }
+    return bound;
+  }
+
   private JSONObject configureFace(JSONObject c) throws JSONException {
     if (dwfFace == null && face == null) {
       throw new IllegalStateException(
           "watchface op config requires an active hosted watch face");
     }
+    boolean reset = c.optBoolean("reset", false);
     String flavorId = c.has("flavor") && !c.isNull("flavor") ? c.getString("flavor") : "";
     JSONObject values = c.optJSONObject("values");
     String singleCfgId =
         c.has("configId") ? c.getString("configId") : (c.has("value") ? c.optString("id", "") : "");
+    if (!reset && flavorId.isEmpty() && values == null && singleCfgId.isEmpty()) {
+      throw new JSONException(
+          "watchface op config requires 'flavor', 'configId', 'id', or 'values'");
+    }
     if (dwfFace != null) {
+      if (reset) {
+        dwfFace.resetConfigsToDefault();
+      }
       if (!flavorId.isEmpty()) {
         dwfFace.setFlavor(flavorId);
       }
@@ -571,22 +599,23 @@ final class WatchFaceHost {
         }
       } else if (!singleCfgId.isEmpty()) {
         dwfFace.setConfig(singleCfgId, String.valueOf(c.get("value")));
-      } else if (flavorId.isEmpty()) {
-        throw new JSONException(
-            "watchface op config requires 'flavor', 'configId', 'id', or 'values'");
       }
       rendering = true;
       dwfFace.render(ambient);
     } else {
+      Set<Integer> externalSlots = externallyBoundAppSlots();
+      if (reset) {
+        face.resetConfigsToDefault(externalSlots);
+      }
+      if (!flavorId.isEmpty()) {
+        face.setFlavor(flavorId, externalSlots);
+      }
       if (values != null) {
         for (Iterator<String> it = values.keys(); it.hasNext(); ) {
           String k = it.next();
           face.setConfig(k, String.valueOf(values.get(k)));
         }
-      } else {
-        if (singleCfgId.isEmpty()) {
-          throw new JSONException("watchface op config requires 'configId', 'id', or 'values'");
-        }
+      } else if (!singleCfgId.isEmpty()) {
         face.setConfig(singleCfgId, String.valueOf(c.get("value")));
       }
       rendering = true;
@@ -1186,6 +1215,12 @@ final class WatchFaceHost {
       }
     } else if (face != null) {
       json.put("configurations", face.describeConfigurations());
+      if (face.hasFlavors()) {
+        json.put(
+            "flavor",
+            face.activeFlavorId() != null ? face.activeFlavorId() : JSONObject.NULL);
+        json.put("flavors", face.describeFlavors());
+      }
     }
     json.put("error", error == null ? JSONObject.NULL : error);
     json.put("available", available());
