@@ -167,4 +167,49 @@ class ComposeLineFloorTest {
     assertThat(upgrade("androidx.compose.ui", "")).isNull()
     assertThat(upgrade("androidx.compose.ui", null)).isNull()
   }
+
+  @Test
+  fun `kotlinx-coroutines below the daemon link floor is raised to it`() {
+    val coroutinesFloor = AndroidPreviewSupport.RENDERER_COROUTINES_LINK_FLOOR_VERSION
+    assertThat(
+        AndroidPreviewSupport.coroutinesFloorUpgrade(
+          "org.jetbrains.kotlinx",
+          "kotlinx-coroutines-core-jvm",
+          "1.9.0",
+        ),
+      )
+      .isEqualTo(coroutinesFloor)
+    assertThat(
+        AndroidPreviewSupport.coroutinesFloorUpgrade(
+          "org.jetbrains.kotlinx",
+          "kotlinx-coroutines-bom",
+          "1.9.0",
+        ),
+      )
+      .isEqualTo(coroutinesFloor)
+    assertThat(
+        AndroidPreviewSupport.coroutinesFloorUpgrade(
+          "org.jetbrains.kotlinx",
+          "kotlinx-coroutines-core-jvm",
+          coroutinesFloor,
+        ),
+      )
+      .isNull()
+    assertThat(
+        AndroidPreviewSupport.coroutinesFloorUpgrade(
+          "org.jetbrains.kotlinx",
+          "kotlinx-coroutines-core-jvm",
+          "1.12.0",
+        ),
+      )
+      .isNull()
+    assertThat(
+        AndroidPreviewSupport.coroutinesFloorUpgrade(
+          "org.jetbrains.kotlinx",
+          "kotlinx-serialization-json",
+          "1.7.0",
+        ),
+      )
+      .isNull()
+  }
 }

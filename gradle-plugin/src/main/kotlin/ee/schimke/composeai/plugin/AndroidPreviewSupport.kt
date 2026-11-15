@@ -291,6 +291,13 @@ internal object AndroidPreviewSupport {
   internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String = "1.10.0"
 
   /**
+   * Lowest `kotlinx-coroutines` version `compose-preview-daemon` links against; 3.28.0+ is compiled
+   * against 1.11.0 (`BuildersKt.runBlockingK$default`), which throws `NoSuchMethodError` against
+   * 1.9.x on the render classpath.
+   */
+  internal const val RENDERER_COROUTINES_LINK_FLOOR_VERSION: String = "1.11.0"
+
+  /**
    * `androidx.compose.*` groups on the compose-ui version line; not material / material3, which
    * version independently.
    */
@@ -311,6 +318,20 @@ internal object AndroidPreviewSupport {
     val current = version?.takeIf { it.isNotBlank() } ?: return null
     return if (isBelowVersion(current, RENDERER_COMPOSE_LINK_FLOOR_VERSION)) {
       RENDERER_COMPOSE_LINK_FLOOR_VERSION
+    } else {
+      null
+    }
+  }
+
+  /**
+   * [RENDERER_COROUTINES_LINK_FLOOR_VERSION] if [group]:[name] is a `kotlinx-coroutines-*` module
+   * or BOM whose [version] is provably below it, else `null`.
+   */
+  internal fun coroutinesFloorUpgrade(group: String, name: String, version: String?): String? {
+    if (group != "org.jetbrains.kotlinx" || !name.startsWith("kotlinx-coroutines-")) return null
+    val current = version?.takeIf { it.isNotBlank() } ?: return null
+    return if (isBelowVersion(current, RENDERER_COROUTINES_LINK_FLOOR_VERSION)) {
+      RENDERER_COROUTINES_LINK_FLOOR_VERSION
     } else {
       null
     }
@@ -517,6 +538,13 @@ internal object AndroidPreviewSupport {
         useTarget("org.hamcrest:hamcrest-core:1.3")
         because(
           "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it",
+        )
+      }
+      coroutinesFloorUpgrade(requested.group, requested.name, requested.version)?.let { floored ->
+        useVersion(floored)
+        because(
+          "compose-preview-daemon links against kotlinx-coroutines $floored " +
+            "(BuildersKt.runBlockingK\$default); older coroutines throw NoSuchMethodError at render time.",
         )
       }
     }
