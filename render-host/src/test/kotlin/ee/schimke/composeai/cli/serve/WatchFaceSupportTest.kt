@@ -581,12 +581,74 @@ class WatchFaceSupportTest {
     val wfCommands = commands.filter { it.first == "watchface" }.map { it.second }
     assertTrue(wfCommands.none { it["op"]?.toString()?.contains("flavor") == true })
 
-    val configCmd = wfCommands.single { it["op"]?.toString() == "\"config\"" }
+    val configIdx = wfCommands.indexOfFirst { it["op"]?.toString() == "\"config\"" }
+    val uncompIdx = wfCommands.indexOfFirst { it["op"]?.toString() == "\"uncomplication\"" }
+    assertTrue(uncompIdx >= 0 && configIdx >= 0 && uncompIdx < configIdx)
+
+    val configCmd = wfCommands[configIdx]
     assertEquals("\"autumn\"", configCmd["flavor"]?.toString())
     assertEquals("true", configCmd["reset"]?.toString())
     assertTrue(configCmd["values"]?.toString()?.contains("\"clockStyle\":\"digital\"") == true)
 
-    val uncompCmd = wfCommands.single { it["op"]?.toString() == "\"uncomplication\"" }
+    val uncompCmd = wfCommands[uncompIdx]
     assertEquals("2", uncompCmd["slot"]?.toString())
+  }
+
+  @Test
+  fun `dwf-apk bridge decodes PNG+ZIP carriers and extracts Android resources from classes app jar`() {
+    val pngCarrier =
+      java.util.Base64.getDecoder()
+        .decode(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUB" +
+            "AScY42YAAAAASUVORK5CYII=",
+        )
+    val appJarBytes =
+      java.io.ByteArrayOutputStream().let { baos ->
+        java.util.zip.ZipOutputStream(baos).use { zout ->
+          zout.putNextEntry(java.util.zip.ZipEntry("META-INF/MANIFEST.MF"))
+          zout.write("Manifest-Version: 1.0\n".toByteArray())
+          zout.closeEntry()
+          zout.putNextEntry(java.util.zip.ZipEntry("com/example/Dummy.class"))
+          zout.write(byteArrayOf(0xCA.toByte(), 0xFE.toByte(), 0xBA.toByte(), 0xBE.toByte()))
+          zout.closeEntry()
+          zout.putNextEntry(java.util.zip.ZipEntry("raw/watchface.xml"))
+          zout.write("<WatchFace width=\"450\" height=\"450\"/>".toByteArray())
+          zout.closeEntry()
+          zout.putNextEntry(java.util.zip.ZipEntry("values-round/strings.xml"))
+          zout.write("<resources/>".toByteArray())
+          zout.closeEntry()
+        }
+        baos.toByteArray()
+      }
+    val outerZipBytes =
+      java.io.ByteArrayOutputStream().let { baos ->
+        java.util.zip.ZipOutputStream(baos).use { zout ->
+          zout.putNextEntry(java.util.zip.ZipEntry("classes/app.jar"))
+          zout.write(appJarBytes)
+          zout.closeEntry()
+          zout.putNextEntry(java.util.zip.ZipEntry("android/resources.ap_"))
+          zout.write("PRELINKED".toByteArray())
+          zout.closeEntry()
+        }
+        baos.toByteArray()
+      }
+    val polyglot = pngCarrier + outerZipBytes
+    val decoded = DwfApkDaemonBridge.decodeBundleZipBytes(polyglot)
+    assertEquals(
+      "PRELINKED",
+      ee.schimke.composeai.bundle.AndroidBundleResources.extractResourceApkBytes(decoded)
+        ?.decodeToString(),
+    )
+
+    val outDir = java.nio.file.Files.createTempDirectory("dwf-jar-res").toFile()
+    try {
+      assertTrue(DwfApkDaemonBridge.extractJarAndroidResources(appJarBytes, outDir))
+      assertTrue(java.io.File(outDir, "raw/watchface.xml").isFile)
+      assertTrue(java.io.File(outDir, "values-round/strings.xml").isFile)
+      assertTrue(!java.io.File(outDir, "META-INF/MANIFEST.MF").exists())
+      assertTrue(!java.io.File(outDir, "com/example/Dummy.class").exists())
+    } finally {
+      outDir.deleteRecursively()
+    }
   }
 }

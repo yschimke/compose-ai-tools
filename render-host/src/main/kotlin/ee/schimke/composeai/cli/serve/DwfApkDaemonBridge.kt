@@ -295,19 +295,6 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         } ?: continue
       configValues[cfgId] = strVal
     }
-    commands +=
-      "watchface" to
-        buildJsonObject {
-          put("op", "config")
-          put("reset", true)
-          if (flavorId != null) {
-            put("flavor", flavorId)
-          }
-          if (configValues.isNotEmpty()) {
-            put("values", buildJsonObject { configValues.forEach { (k, v) -> put(k, v) } })
-          }
-        }
-
     val overriddenSlotIds = buildSet {
       for (k in rc.keys) {
         if (k.startsWith("dwf.complication.")) {
@@ -328,6 +315,19 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
             put("slot", staleSlot)
           }
     }
+
+    commands +=
+      "watchface" to
+        buildJsonObject {
+          put("op", "config")
+          put("reset", true)
+          if (flavorId != null) {
+            put("flavor", flavorId)
+          }
+          if (configValues.isNotEmpty()) {
+            put("values", buildJsonObject { configValues.forEach { (k, v) -> put(k, v) } })
+          }
+        }
     if (overriddenSlotIds.isNotEmpty()) {
       val projectedBySlot =
         preview.watchFace
@@ -516,19 +516,107 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       )
   }
 
+  private val PNG_SIG = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+  private val ANDROID_RES_TYPE_PREFIXES =
+    listOf(
+      "anim",
+      "animator",
+      "color",
+      "drawable",
+      "font",
+      "interpolator",
+      "layout",
+      "menu",
+      "mipmap",
+      "navigation",
+      "raw",
+      "transition",
+      "values",
+      "xml",
+    )
+
+  internal fun decodeBundleZipBytes(bytes: ByteArray): ByteArray {
+    if (bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) return bytes
+    if (bytes.size >= PNG_SIG.size && PNG_SIG.indices.all { bytes[it] == PNG_SIG[it] }) {
+      var offset = PNG_SIG.size
+      while (offset + 12 <= bytes.size) {
+        val length =
+          ((bytes[offset].toInt() and 0xff) shl 24) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 16) or
+            ((bytes[offset + 2].toInt() and 0xff) shl 8) or
+            (bytes[offset + 3].toInt() and 0xff)
+        if (length < 0 || offset.toLong() + 12L + length.toLong() > bytes.size.toLong()) break
+        val type = String(bytes, offset + 4, 4, Charsets.US_ASCII)
+        offset += 12 + length
+        if (type == "IEND") {
+          return if (offset < bytes.size) bytes.copyOfRange(offset, bytes.size) else ByteArray(0)
+        }
+      }
+    }
+    return bytes
+  }
+
+  internal fun extractJarAndroidResources(jarBytes: ByteArray, resOutDir: File): Boolean {
+    var extractedAny = false
+    val canonicalRoot = resOutDir.canonicalPath + File.separator
+    ZipInputStream(ByteArrayInputStream(jarBytes)).use { zin ->
+      var entry = zin.nextEntry
+      while (entry != null) {
+        if (!entry.isDirectory) {
+          val normalized = entry.name.removePrefix("/").removePrefix("res/")
+          val slash = normalized.indexOf('/')
+          if (slash > 0) {
+            val topDir = normalized.substring(0, slash)
+            val baseType = topDir.substringBefore('-')
+            if (baseType in ANDROID_RES_TYPE_PREFIXES) {
+              val target = File(resOutDir, normalized)
+              if (target.canonicalPath.startsWith(canonicalRoot)) {
+                target.parentFile?.mkdirs()
+                Files.copy(zin, target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                extractedAny = true
+              }
+            }
+          }
+        }
+        zin.closeEntry()
+        entry = zin.nextEntry
+      }
+    }
+    return extractedAny
+  }
+
+  internal fun resolveRobolectricDepsDir(): File? {
+    val explicit =
+      System.getProperty("robolectric.dependency.dir")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR")?.takeIf { it.isNotBlank() }
+    if (explicit != null) {
+      return File(explicit).absoluteFile.takeIf(File::isDirectory)
+    }
+    val cached = composeAiCacheDir("robolectric-deps")
+    return cached.takeIf { dir ->
+      dir.isDirectory &&
+        dir.listFiles()?.any { f ->
+          f.isFile && f.name.startsWith("android-all-instrumented-") && f.name.endsWith(".jar")
+        } == true
+    }
+  }
+
   private fun ensureWffApk(
     env: Environment,
     preview: ServePreview,
     prelinkedResourceApk: ByteArray?,
     bundleBytes: ByteArray?,
   ): File {
+    val decodedBundleZip = bundleBytes?.let(::decodeBundleZipBytes)
     val carriedResourceApk =
       prelinkedResourceApk
-        ?: bundleBytes?.let {
+        ?: decodedBundleZip?.let {
           ee.schimke.composeai.bundle.AndroidBundleResources.extractResourceApkBytes(it)
         }
     val sourceBytes =
-      carriedResourceApk ?: bundleBytes ?: error("no watch-face bundle or resource APK available")
+      carriedResourceApk
+        ?: decodedBundleZip
+        ?: error("no watch-face bundle or resource APK available")
     val digest =
       sha256Bytes(sourceBytes) + "_" + (preview.dwfAssetPath ?: preview.id).hashCode().toString(16)
     val cacheDir = File(composeAiCacheDir("dwf-apk-daemon"), "wff-$digest")
@@ -547,7 +635,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       return apkFile
     }
 
-    val rawBundleBytes = bundleBytes ?: error("watch-face bundle bytes missing")
+    val rawBundleZip = decodedBundleZip ?: error("watch-face bundle bytes missing")
     val aapt2 =
       env.aapt2
         ?: error(
@@ -555,15 +643,20 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
             "when bundle does not carry pre-linked `android/resources.ap_`",
         )
     val extractDir = File(cacheDir, "extracted").apply { mkdirs() }
-    unpackZipInto(rawBundleBytes, extractDir)
+    unpackZipInto(rawBundleZip, extractDir)
     val appJar = File(extractDir, "classes/app.jar")
-    if (appJar.isFile && !File(extractDir, "classes/res").isDirectory) {
-      unpackZipInto(Files.readAllBytes(appJar.toPath()), File(extractDir, "classes"))
+    val jarResDir = File(extractDir, "jar-res")
+    if (
+      appJar.isFile &&
+        !File(extractDir, "classes/res").isDirectory &&
+        !File(extractDir, "res").isDirectory
+    ) {
+      extractJarAndroidResources(Files.readAllBytes(appJar.toPath()), jarResDir)
     }
 
     val resDir =
-      listOf(File(extractDir, "classes/res"), File(extractDir, "res")).firstOrNull {
-        it.isDirectory
+      listOf(File(extractDir, "classes/res"), File(extractDir, "res"), jarResDir).firstOrNull {
+        it.isDirectory && !it.list().isNullOrEmpty()
       } ?: error("bundle has no res/ directory for watch face '${preview.id}'")
 
     val xmlDir = File(resDir, "xml").apply { mkdirs() }
@@ -785,11 +878,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           (env.simulatorJars + env.androidDaemonJars + listOf(env.androidJar))
             .distinctBy { it.absolutePath }
             .joinToString(File.pathSeparator) { it.absolutePath }
-        val robolectricDepsDir =
-          System.getenv("COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { File(it).absoluteFile }
-            ?.takeIf(File::isDirectory)
+        val robolectricDepsDir = resolveRobolectricDepsDir()
         val cmd = buildList {
           add(javaBinary())
           add("-XX:G1PeriodicGCInterval=5000")

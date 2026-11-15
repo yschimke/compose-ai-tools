@@ -711,6 +711,62 @@ public class WatchFaceScenariosRobolectricTest {
     assertNotNull(synth);
     assertEquals(3, synth.wireType);
     assertEquals("STEPS", synth.title);
+
+    WatchState ws = new WatchState(app, null);
+    ws.syncBattery(82, false, false, false);
+    DwfWatchFaceClient.FlavorSpec batteryFlavor =
+        new DwfWatchFaceClient.FlavorSpec(
+            "batteryFlavor",
+            "Battery Flavor",
+            Map.of(),
+            Map.of(
+                1,
+                new DwfWatchFaceClient.FlavorComplicationPolicy("WATCH_BATTERY", "SHORT_TEXT")));
+    WatchFaceClient wfClient =
+        new WatchFaceClient(
+            app,
+            null,
+            new android.content.ComponentName(app, "com.example.TestFace"),
+            (f, bmp, err) -> {});
+    wfClient.setFallbackFlavors("batteryFlavor", List.of(batteryFlavor));
+    wfClient.setFlavor("batteryFlavor", java.util.Collections.emptySet());
+    ComplicationData initialComp = (ComplicationData) wfClient.complications().get(1);
+    assertNotNull(initialComp);
+    assertEquals(
+        "82%", initialComp.getShortText().getTextAt(app.getResources(), 1000L).toString());
+
+    // Changing WatchState battery updates the flavor-managed complication on refresh.
+    ws.syncBattery(37, false, false, false);
+    wfClient.refreshFlavorComplications(java.util.Collections.emptySet());
+    ComplicationData updatedComp = (ComplicationData) wfClient.complications().get(1);
+    assertNotNull(updatedComp);
+    assertEquals(
+        "37%", updatedComp.getShortText().getTextAt(app.getResources(), 1000L).toString());
+
+    // Explicit slot override wins until cleared, then flavor policy restores.
+    Parcelable customComp =
+        ComplicationParcels.buildFakeParcelable(
+            app.getClassLoader(),
+            DwfWatchFaceClient.FakeComplication.fromJson(
+                new JSONObject().put("slot", 1).put("type", "SHORT_TEXT").put("text", "CUSTOM"),
+                1),
+            null);
+    wfClient.complication(1, customComp, false);
+    wfClient.refreshFlavorComplications(java.util.Collections.emptySet());
+    assertEquals(
+        "CUSTOM",
+        ((ComplicationData) wfClient.complications().get(1))
+            .getShortText()
+            .getTextAt(app.getResources(), 1000L)
+            .toString());
+
+    wfClient.complication(1, null, false);
+    assertEquals(
+        "37%",
+        ((ComplicationData) wfClient.complications().get(1))
+            .getShortText()
+            .getTextAt(app.getResources(), 1000L)
+            .toString());
   }
 
   private static int openField(Parcel parcel, int id) {
