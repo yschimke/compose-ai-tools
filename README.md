@@ -60,7 +60,7 @@ None of this is required to get value from the tool.
   and [`compose-preview-ci`](https://github.com/yschimke/skills/tree/main/skills/compose-preview-ci)
   skills review UI PRs and set that CI up.
 - **[UI Builder](https://ui.coo.ee/start)** — design a new screen with an agent.
-- **[Whole-app simulator](docs/SIMULATOR.md)** — `compose-preview launch app.apk`, no emulator.
+- **[Whole-app simulator](docs/SIMULATOR.md)** — `compose-preview android-simulator app.apk`, no emulator ([site](https://preview.coo.ee/start/simulator/)).
 - **[Data products](https://preview.coo.ee/start/reference/)** — structured data
   alongside each PNG: accessibility findings, layout trees, theme tokens, recomposition heat maps,
   drawn text, resource captures, and more.

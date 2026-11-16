@@ -1,22 +1,27 @@
 # Running an APK in the Robolectric simulator
 
-`compose-preview launch <app.apk>` runs an Android app in Robolectric's simulator: a desktop
+> The user-facing guide — what the simulator can test and where its gaps are — is the
+> [simulator site](https://preview.coo.ee/start/simulator/) (source: `site/simulator/`). This file
+> is the full reference.
+
+`compose-preview android-simulator <app.apk>` (originally `compose-preview launch`, kept as an
+alias that takes the same flags) runs an Android app in Robolectric's simulator: a desktop
 window showing the app, driven by mouse and keyboard, or — with `--control stdio` — a JSON-lines
 control channel an agent drives instead. No emulator, no device, no `adb`.
 
 ```
-compose-preview launch app-debug.apk                               # a window
-compose-preview launch app-debug.apk --control stdio               # a window an agent drives
-compose-preview launch app-debug.apk --control stdio --headless    # the agent, no window
-compose-preview launch app-debug.apk --prepare                     # convert and cache only
-compose-preview launch phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
-compose-preview launch app-debug.apk --display 1280x720,name=TV    # with an external display
-compose-preview launch app-debug.apk --launcher                    # over a home screen, with widgets
-compose-preview launch --form-factor wear                          # no app: a watch face, nothing installed
-compose-preview launch --watchface wf.apk --install comp.apk       # a WFF watch face and its complication app
-compose-preview launch wf.apk --scenario scenario.jsonl            # scripted scenario run with screenshots + assertions
-compose-preview launch --adb                                       # a device adb and Android Studio see
-compose-preview launch agent.apk --install app.apk --control stdio # two apps on one device
+compose-preview android-simulator app-debug.apk                               # a window
+compose-preview android-simulator app-debug.apk --control stdio               # a window an agent drives
+compose-preview android-simulator app-debug.apk --control stdio --headless    # the agent, no window
+compose-preview android-simulator app-debug.apk --prepare                     # convert and cache only
+compose-preview android-simulator phone.apk --pair wear.apk --control stdio   # a phone and its watch, paired
+compose-preview android-simulator app-debug.apk --display 1280x720,name=TV    # with an external display
+compose-preview android-simulator app-debug.apk --launcher                    # over a home screen, with widgets
+compose-preview android-simulator --form-factor wear                          # no app: a watch face, nothing installed
+compose-preview android-simulator --watchface wf.apk --install comp.apk       # a WFF watch face and its complication app
+compose-preview android-simulator wf.apk --scenario scenario.jsonl            # scripted scenario run with screenshots + assertions
+compose-preview android-simulator --adb                                       # a device adb and Android Studio see
+compose-preview android-simulator agent.apk --install app.apk --control stdio # two apps on one device
 ```
 
 With `--control stdio` the window stays up, so a person can watch the agent work: every tap
@@ -67,7 +72,7 @@ What it does not do, and this command adds:
 ## How it works
 
 ```
-compose-preview launch app.apk
+compose-preview android-simulator app.apk
  ├─ ApkClassConverter (own JVM, lib-dex2jar/)      APK dex ─► classes.jar   [cached by APK sha256]
  └─ simulator JVM (Java 21+)
      classpath: lib-simulator/  (Robolectric simulator + :simulator-host)
@@ -1388,7 +1393,7 @@ quit and launch again.
 
 ## As a device: adb and Android Studio
 
-`compose-preview launch` with no APK boots the device itself: the system UI with nothing installed,
+`compose-preview android-simulator` with no APK boots the device itself: the system UI with nothing installed,
 the phone's home screen or, with `--form-factor wear`, the watch face. Underneath it is a
 generated package with a manifest and nothing else (`SystemApk`), and `:simulator-host`'s
 `NoAppActivity` stands in for a launcher activity and finishes at once, so the home screen is what
@@ -1398,9 +1403,9 @@ shows.
 an emulator.
 
 ```
-compose-preview launch --adb                          # emulator-5554, a phone, nothing installed
-compose-preview launch --adb --form-factor wear       # a watch
-compose-preview launch --adb app.apk                  # with app.apk installed (not started)
+compose-preview android-simulator --adb                          # emulator-5554, a phone, nothing installed
+compose-preview android-simulator --adb --form-factor wear       # a watch
+compose-preview android-simulator --adb app.apk                  # with app.apk installed (not started)
 
 adb devices                                           # emulator-5554  device
 adb install app-debug.apk                             # Performing Streamed Install / Success
@@ -1412,7 +1417,7 @@ adb uninstall com.example
 ```
 
 ```
-compose-preview launch --adb   (this process: the device)
+compose-preview android-simulator --adb   (this process: the device)
  ├─ adb transport   127.0.0.1:5555    the adbd protocol: shell (v1, v2), exec, abb_exec, sync
  ├─ console         127.0.0.1:5554    avd name/path/id, geo fix, power, rotate, kill
  ├─ emulator gRPC   127.0.0.1:8554    EmulatorController: display frames, touch, keys
@@ -1827,7 +1832,7 @@ What the apps share:
   under it. It is a temporary directory, deleted when the launch ends.
 
 ```
-compose-preview launch agent.apk --install probe.apk --sdk 36 --control stdio
+compose-preview android-simulator agent.apk --install probe.apk --sdk 36 --control stdio
 → {"id":1,"cmd":"packages"}
 ← {"device":"phone/ee.schimke.agent","id":1,"ok":true,"result":{"packages":["ee.schimke.agent","ee.schimke.probe"],…}}
    (the agent calls executeAppFunction("ee.schimke.probe", "…ProbeFunctions#add", {a: 20, b: 22}):
@@ -1905,7 +1910,7 @@ or the watch's for a Wear app), the watch's app, and apps beside the first. With
 argument the first `--app` is the one on screen.
 
 ```
-compose-preview launch --app phone:notes.apk --app phone:agent.apk \
+compose-preview android-simulator --app phone:notes.apk --app phone:agent.apk \
                        --app watch:notes-wear.apk --app watch:fitness.apk --control stdio
 ```
 

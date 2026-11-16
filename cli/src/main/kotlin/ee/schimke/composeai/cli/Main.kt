@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.simulator.AndroidSimulatorCommand
+import ee.schimke.composeai.cli.simulator.DwfRuntimeCommand
 import kotlin.system.exitProcess
 
 /**
@@ -15,6 +17,8 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "render-cases" to { a -> RenderCasesCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
+    "android-simulator" to { a -> AndroidSimulatorCommand(a).run() },
+    // The original name of `android-simulator`, kept as a trampoline to it.
     "launch" to { a -> LaunchCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
     "guidelines" to
@@ -148,12 +152,14 @@ private fun printUsage(full: Boolean = false) {
       show-resources   Render Android XML resource previews (vector / adaptive-icon / …)
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       mcp              MCP server lifecycle for agents: serve | install | doctor
+      android-simulator
+                       Run an APK in Robolectric's simulator: no emulator, no device
       version          Print the installed bundle version and exit
       help             Show this message (`help --all` for every command + flag)
 
     Command groups (each command is also callable directly by its name):
       inspect   a11y · guidelines · diff-semantics · devices · extensions · history · profile · rc
-      capture   render-matrix · record · bundle · launch
+      capture   render-matrix · record · bundle · launch (= android-simulator)
       share     serve · ui-builder · design · share-preview
       setup     update · provision · init-script · pin · auth · bazel · buck
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
@@ -207,11 +213,14 @@ private fun printFullUsage() {
                        (pure-JVM); mp4/webm need ffmpeg on PATH. Scripts may include Maestro-style
                        assert.visible / assert.notVisible events (with a target); a failed assertion
                        still writes the recording but exits non-zero (code 2).
-      launch           Run an APK in Robolectric's simulator: a window driven by mouse and keyboard,
+      android-simulator
+                       Run an APK in Robolectric's simulator: a window driven by mouse and keyboard,
                        or with --control stdio a JSON-lines channel to tap, type, screenshot,
                        read the UI hierarchy, start activities/services and send broadcasts.
                        The APK's dex is converted once and cached. Needs Java 21+ and an
-                       Android SDK. See docs/SIMULATOR.md.
+                       Android SDK. `android-simulator dwf-runtime` manages the Wear watch-face
+                       runtime it uses. See preview.coo.ee/start/simulator/ and docs/SIMULATOR.md.
+      launch           The original name of `android-simulator`: the same command and flags.
       a11y             Render previews with the a11y data extension on and
                        print ATF findings. `show --with-extension a11y` runs the same
                        daemon pass; `a11y` also exits non-zero when ATF data is
@@ -450,7 +459,7 @@ private fun printFullUsage() {
                            `debug` (a release-only Android library) uses that variant.
       --gradle-arg <arg>   Extra argument forwarded to every Gradle invocation (repeatable),
                            for example `--gradle-arg=-PcomposePreview.rcPlayer=view`. Also
-                           accepted by `launch`.
+                           accepted by `android-simulator` (`launch`).
       --daemon             doctor: also spawn each module's preview daemon and confirm the
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`

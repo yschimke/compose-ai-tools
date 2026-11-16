@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Smoke-tests `compose-preview launch`: a sample APK in the simulator, headless, driven over the
-control channel the way an agent drives it.
+"""Smoke-tests `compose-preview android-simulator` (`launch` is its trampoline): a sample APK in
+the simulator, headless, driven over the control channel the way an agent drives it.
 
     simulator_smoke.py --cli <compose-preview> --apk <apk> --check surface-view|host-natives \\
         [--sdk 35] [--java <JDK 21 home>] [--out <dir>]
@@ -124,7 +124,7 @@ def color_counts(rows: list[bytes], top: int, bottom: int) -> dict[str, int]:
 # --- The simulator -------------------------------------------------------------------------------
 
 class Simulator:
-    """`compose-preview launch … --control stdio`, its stdout read as protocol lines."""
+    """`compose-preview android-simulator … --control stdio`, its stdout read as protocol lines."""
 
     def __init__(self, command: list[str], stderr_path: Path, env: dict[str, str]):
         self.stderr_path = stderr_path
@@ -268,7 +268,7 @@ def main() -> int:
 
     out = Path(args.out).absolute()
     out.mkdir(parents=True, exist_ok=True)
-    command = [args.cli, "launch", args.apk, "--headless", "--control", "stdio", "--sdk", args.sdk]
+    command = [args.cli, "android-simulator", args.apk, "--headless", "--control", "stdio", "--sdk", args.sdk]
     if args.java:
         command += ["--java", args.java]
     print("$ " + " ".join(command), flush=True)

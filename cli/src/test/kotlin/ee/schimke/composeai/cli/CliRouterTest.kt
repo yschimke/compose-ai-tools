@@ -214,6 +214,40 @@ class CliRouterTest {
   }
 
   @Test
+  fun `android-simulator is a core command and launch stays its trampoline`() {
+    assertTrue("android-simulator" in CliRouter.CORE)
+    assertEquals(
+      CliRouter.Route.Run("android-simulator", listOf("app.apk", "--control", "stdio")),
+      CliRouter.route(arrayOf("android-simulator", "app.apk", "--control", "stdio")),
+    )
+    // The original name, flat and grouped, still routes: to the trampoline that runs the same code.
+    assertEquals(
+      CliRouter.Route.Run("launch", listOf("app.apk")),
+      CliRouter.route(arrayOf("launch", "app.apk")),
+    )
+    assertEquals(
+      CliRouter.Route.Run("launch", listOf("app.apk")),
+      CliRouter.route(arrayOf("capture", "launch", "app.apk")),
+    )
+    assertTrue(LaunchCommand.USAGE.contains("compose-preview android-simulator <app.apk>"))
+  }
+
+  @Test
+  fun `launch and android-simulator accept the same simulator flags`() {
+    val argv = listOf("app.apk", "--control", "stdio", "--launcher", "--pair", "w.apk", "--adb")
+    assertEquals(emptyList(), CliFlagValidation.unknownFlags("launch", argv))
+    assertEquals(emptyList(), CliFlagValidation.unknownFlags("android-simulator", argv))
+    // `android-simulator dwf-runtime …` reads dwf-runtime's flags too.
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags(
+        "android-simulator",
+        listOf("dwf-runtime", "install", "--apk", "r.apk", "--force"),
+      ),
+    )
+  }
+
+  @Test
   fun `unknown valued flag before a command still routes to that command for validation`() {
     assertEquals(
       CliRouter.Route.Run("render", listOf("--fitler", "Button")),
