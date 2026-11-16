@@ -27,7 +27,8 @@ MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio,
 
 - [PR review and preview CI](https://github.com/yschimke/skills/tree/main/skills/compose-preview-review): Optional review and CI skills (`compose-preview-review`, `compose-preview-ci`; Claude Code: `/plugin install compose-review@compose-agent-plugins`) and the `apply` GitHub Action that posts before/after renders on PRs.
 - [UI Builder](https://ui.coo.ee/start): Design a new screen with an agent, then export Compose code.
-- [Whole-app simulator](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md): Run an APK without an emulator with `compose-preview launch`.
+- [Android simulator](https://preview.coo.ee/start/simulator/): Run an APK without an emulator with `compose-preview android-simulator` (formerly `launch`); permissions, notifications, launcher widgets.
+- [Android simulator: Wear OS](https://preview.coo.ee/start/simulator/wear/): Tiles, Wear Widgets, complications, Declarative Watch Faces and Data Layer pairing in the simulator.
 
 ## Core documentation
 

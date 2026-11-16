@@ -9,7 +9,17 @@ package ee.schimke.composeai.cli
 internal object CliRouter {
   /** Top-level commands shown first and not nested under a group. */
   val CORE: List<String> =
-    listOf("browse", "render", "show", "list", "show-resources", "doctor", "mcp")
+    listOf(
+      "browse",
+      "render",
+      "show",
+      "list",
+      "show-resources",
+      "doctor",
+      "mcp",
+      // A standalone feature rather than a preview verb: a whole APK on a simulated device.
+      "android-simulator",
+    )
 
   /**
    * Command groups, in display order. `compose-preview <group> <command>` dispatches to the
@@ -37,8 +47,8 @@ internal object CliRouter {
           // compile` stays with them since it is one codec.
           "rc",
         ),
-      // `launch` runs a whole APK rather than one preview, but captures the same way: render,
-      // screenshot, drive.
+      // `launch` is `android-simulator` under its original name (a trampoline, see LaunchCommand):
+      // it runs a whole APK rather than one preview, but captures the same way.
       "capture" to listOf("render-matrix", "render-cases", "record", "bundle", "launch"),
       // `build-host`, `ui-builder`, `design` and `a2ui` sit with `serve` because they are faces of
       // the same server binary: `build-host` is the Gradle half `serve` spawns, `ui-builder`

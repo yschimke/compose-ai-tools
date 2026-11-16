@@ -8,6 +8,7 @@ import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.expandZipBytesSafely
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
+import ee.schimke.composeai.cli.simulator.DwfRuntimeCommand
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
 import ee.schimke.composeai.previewdata.PreviewInfo

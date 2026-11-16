@@ -109,9 +109,10 @@ relevant one when it comes up.
   `install.sh --skills compose-preview-review,compose-preview-ci`.
 - **[UI Builder](https://ui.coo.ee/start)** — design a new screen with an agent
   in the browser, then export it as Compose code.
-- **[Whole-app simulator](https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md)**
-  — `compose-preview launch app.apk` runs an APK without an emulator, for
-  navigation, deep links, Wear OS and more.
+- **[Android simulator](./simulator/)** — `compose-preview android-simulator
+  app.apk` runs a whole APK without an emulator: permissions, notifications,
+  home-screen widgets, and [Wear OS](./simulator/wear/) tiles, complications,
+  watch faces and a paired phone.
 - **[Data products](./reference/)** — structured data alongside each PNG:
   accessibility findings, layout trees, theme tokens, recomposition heat maps,
   drawn text, and more.

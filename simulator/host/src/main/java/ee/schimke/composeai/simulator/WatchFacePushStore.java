@@ -49,7 +49,7 @@ public final class WatchFacePushStore {
   static final String DWF_JAVA_PROPERTY = "composeai.simulator.dwfJava";
   static final String DWF_ROBOLECTRIC_CP_PROPERTY = "composeai.simulator.dwfRobolectricClasspath";
   static final String DWF_CACHE_ROOT_PROPERTY = "composeai.simulator.dwfCacheRoot";
-  private static final String COMPILER_MAIN = "ee.schimke.composeai.cli.ApkDwfCompilerMain";
+  private static final String COMPILER_MAIN = "ee.schimke.composeai.cli.simulator.ApkDwfCompilerMain";
 
   static final class StoredSlot {
     final String slotId;
