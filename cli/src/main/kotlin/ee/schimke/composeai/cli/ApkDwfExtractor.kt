@@ -571,7 +571,7 @@ internal object ApkDwfExtractor {
 
   private fun cacheKey(apk: File, rcJvmJars: List<File>, skikoNative: File?): String {
     val digest = MessageDigest.getInstance("SHA-256")
-    digest.update("dwf-v4\n".toByteArray())
+    digest.update("dwf-v5\n".toByteArray())
     digest.update("${apk.absolutePath}:${apk.length()}:${apk.lastModified()}\n".toByteArray())
     skikoNative?.let {
       digest.update("skiko:${it.name}:${it.length()}:${it.lastModified()}\n".toByteArray())
