@@ -307,6 +307,14 @@ private class DwfCanvasRenderer(
           inheritedAlphaFactor = 1f.rf,
           inheritedTint = null,
         )
+        drawConditionally(compiler.isAmbient) {
+          val ambientDimPaint = RemotePaint {
+            isAntiAlias = false
+            style = RemotePaintingStyle.Fill
+            color = RemoteColor(0x26000000)
+          }
+          remoteCanvas.drawRect(0f.rf, 0f.rf, docW.rf, docH.rf, ambientDimPaint)
+        }
         remoteCanvas.restoreToCount(saveCount)
       }
     }
