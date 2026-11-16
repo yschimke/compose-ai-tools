@@ -68,7 +68,7 @@ internal class DeviceHost(
         ". `adb devices` lists it; `adb connect localhost:${config.adbPort}` if it does not.",
     )
     registerWithAdbServer(config.adbPort)
-    // What a control client (the MCP server's simulator_adb) addresses the device by.
+    // What a control client (the MCP server's android_simulator_adb) addresses the device by.
     device.event(
       buildJsonObject {
         put("event", "device")

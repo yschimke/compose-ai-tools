@@ -72,6 +72,24 @@ default when there's no display.
 
 ![An agent's tap and swipe drawn over the window]({{ ev }}/agent-tap.png)
 
+**From an MCP host.** The local MCP server (`compose-preview mcp serve`, see
+[Agents & MCP](../mcp/)) wraps the control channel as its own set of tools,
+each titled "Android simulator: …" so they read apart from the preview tools:
+
+| Tool | Does |
+| --- | --- |
+| `android_simulator_launch` | starts an APK (or a Gradle `project`, a watch face, a pair) and returns a simulator id |
+| `android_simulator_command` | sends one control-channel command and returns its result and events |
+| `android_simulator_screenshot` | the display as an image |
+| `android_simulator_watchface_snapshot` | a watch face's status and a frame |
+| `android_simulator_logs` | the tail of the app's logcat and Robolectric's log |
+| `android_simulator_restart` / `_update` / `_reload` | a fresh JVM, a rebuilt APK, or a hot-swapped edit |
+| `android_simulator_adb` | adb against a simulator launched with `adb` |
+| `android_simulator_stop` | ends one |
+
+Earlier MCP releases called these `simulator_*`. Those names still work but
+are no longer listed.
+
 **As a device.** `--adb` makes the simulator a device that `adb` and Android
 Studio see, the way they see an emulator (`emulator-5554`): `adb install`,
 `shell`, `push` / `pull`, the emulator console, and the gRPC endpoint that
