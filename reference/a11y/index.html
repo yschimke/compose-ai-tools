@@ -1,0 +1,469 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    .site-nav > ul.nav-list:first-child > li > a,
+    
+    .site-nav > ul.nav-list:first-child > li > ul > li:not(:nth-child(1)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(1) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(3) > button svg,
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(1) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list,
+    .site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list > li.nav-list-item:nth-child(1) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Accessibility | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Accessibility" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/reference/a11y/" />
+<meta property="og:url" content="https://preview.coo.ee/start/reference/a11y/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Accessibility" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Accessibility","url":"https://preview.coo.ee/start/reference/a11y/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      <nav aria-label="Breadcrumb" class="breadcrumb-nav">
+  <ol class="breadcrumb-nav-list">
+    <li class="breadcrumb-nav-list-item"><a href="/start/reference/">Reference</a></li>
+    <li class="breadcrumb-nav-list-item"><span>Accessibility</span></li>
+  </ol>
+</nav>
+
+
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="accessibility">
+  
+  
+    <a href="#accessibility" class="anchor-heading" aria-labelledby="accessibility"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Accessibility
+  
+  
+</h1>
+    
+
+<p>Run the Accessibility Test Framework (ATF) over each rendered preview
+and surface the findings, the semantic hierarchy, the annotated overlay
+PNG, and a 48 dp touch-target audit as four related kinds.</p>
+<h2 id="at-a-glance">
+  
+  
+    <a href="#at-a-glance" class="anchor-heading" aria-labelledby="at-a-glance"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> At a glance
+  
+  
+</h2>
+    
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Kinds</td>
+      <td><code class="language-plaintext highlighter-rouge">a11y/atf</code>, <code class="language-plaintext highlighter-rouge">a11y/hierarchy</code>, <code class="language-plaintext highlighter-rouge">a11y/overlay</code>, <code class="language-plaintext highlighter-rouge">a11y/touchTargets</code></td>
+    </tr>
+    <tr>
+      <td>Schema version</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>Modules</td>
+      <td><code class="language-plaintext highlighter-rouge">:data-a11y-core</code> (published) · <code class="language-plaintext highlighter-rouge">:data-a11y-connector</code> · <code class="language-plaintext highlighter-rouge">:data-a11y-hierarchy-android</code></td>
+    </tr>
+    <tr>
+      <td>Render mode</td>
+      <td>a11y (daemon-only — opt in via the VS Code chip toggle or <code class="language-plaintext highlighter-rouge">compose-preview a11y</code>; standalone <code class="language-plaintext highlighter-rouge">composePreviewRender</code> Gradle task does not produce a11y data)</td>
+    </tr>
+    <tr>
+      <td>Cost</td>
+      <td>low</td>
+    </tr>
+    <tr>
+      <td>Token usage</td>
+      <td>~100 tok inline (e.g. <code class="language-plaintext highlighter-rouge">a11y/atf</code> ~370 chars); +~1.5 k per <code class="language-plaintext highlighter-rouge">a11y/overlay</code> PNG read. See <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md">token usage</a>.</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td>inline (JSON) · path (overlay PNG)</td>
+    </tr>
+    <tr>
+      <td>Platforms</td>
+      <td>Android</td>
+    </tr>
+  </tbody>
+</table></div>
+<h2 id="what-it-answers">
+  
+  
+    <a href="#what-it-answers" class="anchor-heading" aria-labelledby="what-it-answers"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it answers
+  
+  
+</h2>
+    
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">a11y/atf</code></strong> — does this preview violate WCAG / Android a11y best practices? Each <code class="language-plaintext highlighter-rouge">AccessibilityFinding</code> carries a check id, severity, source, and the node it implicates. The renderer keeps <code class="language-plaintext highlighter-rouge">LocalInspectionMode = false</code> so Compose populates real semantics; infinite animations tick through rather than parking on the paused frame clock (true regardless of the a11y opt-in).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">a11y/hierarchy</code></strong> — what does an assistive technology see? Per-node <code class="language-plaintext highlighter-rouge">label</code>, <code class="language-plaintext highlighter-rouge">role</code>, <code class="language-plaintext highlighter-rouge">states</code>, <code class="language-plaintext highlighter-rouge">merged</code>, <code class="language-plaintext highlighter-rouge">boundsInScreen</code>. Read it the same way TalkBack would.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">a11y/overlay</code></strong> — the rendered PNG with finding bounding boxes baked in. Pure-image; <code class="language-plaintext highlighter-rouge">transport=path</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">a11y/touchTargets</code></strong> — every interactive node with its measured bounds vs. the 48 dp Material minimum, with overlap detection between adjacent targets.</li>
+</ul>
+<h2 id="what-it-does-not-answer">
+  
+  
+    <a href="#what-it-does-not-answer" class="anchor-heading" aria-labelledby="what-it-does-not-answer"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it does NOT answer
+  
+  
+</h2>
+    
+
+<ul>
+  <li>It is not a substitute for testing with real assistive technology — TalkBack on a real device may surface gestures or focus order issues that a single static frame can’t.</li>
+  <li>It does not opine on copy quality (placeholder text, jargon). Use <a href="../strings"><code class="language-plaintext highlighter-rouge">text/strings</code></a> for that.</li>
+  <li>Findings are advisory, not pass/fail; severity is the agent’s signal.</li>
+</ul>
+<h2 id="use-cases">
+  
+  
+    <a href="#use-cases" class="anchor-heading" aria-labelledby="use-cases"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Use cases
+  
+  
+</h2>
+    
+
+<ul>
+  <li>PR review: gate UI PRs on no new <code class="language-plaintext highlighter-rouge">ERROR</code>-severity findings; reviewers can paste the overlay PNG inline.</li>
+  <li>Refactor confidence: diff <code class="language-plaintext highlighter-rouge">a11y/hierarchy</code> before/after a state-hoisting change to confirm semantics didn’t regress.</li>
+  <li>Density audit: sweep all previews for <code class="language-plaintext highlighter-rouge">a11y/touchTargets</code> violations on a Wear watch face where small targets matter most.</li>
+</ul>
+<h2 id="payload-shape">
+  
+  
+    <a href="#payload-shape" class="anchor-heading" aria-labelledby="payload-shape"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Payload shape
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">AccessibilityFindingsPayload</code>, <code class="language-plaintext highlighter-rouge">AccessibilityHierarchyPayload</code>,
+<code class="language-plaintext highlighter-rouge">AccessibilityTouchTargetsPayload</code>, <code class="language-plaintext highlighter-rouge">AccessibilityOverlayArtifact</code>
+(path-only) — defined in
+<a href="https://github.com/yschimke/compose-ai-tools/tree/main/data/a11y/core"><code class="language-plaintext highlighter-rouge">:data-a11y-core</code></a>.</p>
+
+<div class="language-jsonc highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// a11y/atf</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"findings"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w"> </span><span class="nl">"checkId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TouchTargetSize"</span><span class="p">,</span><span class="w"> </span><span class="nl">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ERROR"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Submit"</span><span class="p">,</span><span class="w"> </span><span class="nl">"boundsInScreen"</span><span class="p">:</span><span class="w"> </span><span class="s2">"48,200,144,232"</span><span class="w"> </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+
+</span><span class="c1">// a11y/hierarchy</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"nodes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w"> </span><span class="nl">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Submit"</span><span class="p">,</span><span class="w"> </span><span class="nl">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Button"</span><span class="p">,</span><span class="w"> </span><span class="nl">"states"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Enabled"</span><span class="p">],</span><span class="w">
+      </span><span class="nl">"merged"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nl">"boundsInScreen"</span><span class="p">:</span><span class="w"> </span><span class="s2">"48,200,144,232"</span><span class="w"> </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+<h2 id="enabling">
+  
+  
+    <a href="#enabling" class="anchor-heading" aria-labelledby="enabling"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Enabling
+  
+  
+</h2>
+    
+
+<p>A11y data products are produced exclusively by the preview daemon. There
+is no Gradle DSL or property knob — opt in per invocation through one
+of:</p>
+
+<ul>
+  <li><strong>VS Code chip toggle</strong> — clicking an <code class="language-plaintext highlighter-rouge">a11y/*</code> chip on a preview card
+routes a per-preview <code class="language-plaintext highlighter-rouge">data/subscribe</code> through the daemon. The next
+render attaches the post-capture walk and stamps <code class="language-plaintext highlighter-rouge">a11y-atf.json</code>,
+<code class="language-plaintext highlighter-rouge">a11y-hierarchy.json</code>, <code class="language-plaintext highlighter-rouge">a11y-overlay.png</code>, and <code class="language-plaintext highlighter-rouge">a11y-touchTargets.json</code>
+under <code class="language-plaintext highlighter-rouge">build/compose-previews/data/&lt;id&gt;/</code>.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">compose-preview a11y</code></strong> — the CLI command spins up a temporary
+daemon, renders with the a11y subscription on, drains the findings,
+and shuts down.</li>
+  <li><strong>MCP / agent flows</strong> — the daemon’s <code class="language-plaintext highlighter-rouge">data/subscribe</code> request enables
+any subset of <code class="language-plaintext highlighter-rouge">a11y/*</code> kinds for a given preview.</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">compose-preview serve</code> viewer</strong> — ticking <strong>Overlays → Inspect →
+Accessibility</strong> fetches <code class="language-plaintext highlighter-rouge">/render/&lt;id&gt;.a11y</code>, which merges <code class="language-plaintext highlighter-rouge">a11y/hierarchy</code>,
+<code class="language-plaintext highlighter-rouge">a11y/atf</code> and <code class="language-plaintext highlighter-rouge">a11y/touchTargets</code> for the frame currently on screen (the
+same overrides, so the bounds line up with the pixels). The viewer draws
+each screen-reader stop as a box on the render with a legend beside it —
+label, role, states, touch-target size, and any ATF finding — rather than
+compositing an overlay into the PNG.</li>
+</ul>
+
+<p>The standalone <code class="language-plaintext highlighter-rouge">:composePreviewRenderAll</code> Gradle task does NOT produce a11y
+sidecars — it’s a normal-render-only path.</p>
+<h2 id="companion-products">
+  
+  
+    <a href="#companion-products" class="anchor-heading" aria-labelledby="companion-products"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Companion products
+  
+  
+</h2>
+    
+
+<ul>
+  <li><a href="../layout-inspector">Layout inspector</a> — <code class="language-plaintext highlighter-rouge">compose/semantics</code> for testTag / role / mergeMode without the ATF audit.</li>
+  <li><a href="../strings">Strings</a> — <code class="language-plaintext highlighter-rouge">text/strings</code> for drawn-text quality next to assistive labels.</li>
+</ul>
+
+<p>See also the agent-facing review guidance in
+<a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/a11y.md"><code class="language-plaintext highlighter-rouge">skills/compose-preview/references/a11y.md</code></a>.</p>
+
+          
+
+          
+            
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+

@@ -1,0 +1,861 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    
+    .site-nav > ul.nav-list:first-child > li:not(:nth-child(2)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(2) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(2) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(2) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Install | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Install" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/install/" />
+<meta property="og:url" content="https://preview.coo.ee/start/install/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Install" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Install","url":"https://preview.coo.ee/start/install/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="install">
+  
+  
+    <a href="#install" class="anchor-heading" aria-labelledby="install"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Install
+  
+  
+</h1>
+    
+
+<p><strong>New here? Start at the <a href="../">home page</a>.</strong> This page is the reference for the
+parts this repository owns: the CLI’s build integration, the Gradle plugin,
+CI, and requirements.</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>You want</th>
+      <th>Go to</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Your coding agent rendering previews (Claude Code, Codex, Antigravity)</td>
+      <td>The <code class="language-plaintext highlighter-rouge">compose-preview</code> plugin from <a href="https://github.com/yschimke/compose-agent-plugins">compose-agent-plugins</a>; the commands are under <a href="#agents">Agents</a></td>
+    </tr>
+    <tr>
+      <td>Any other agent, or just the CLI</td>
+      <td><code class="language-plaintext highlighter-rouge">install.sh</code>, under <a href="#cli">CLI</a>; flags, <code class="language-plaintext highlighter-rouge">npx skills</code> and updating are in <a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md">compose-preview setup</a></td>
+    </tr>
+    <tr>
+      <td>Other hosts, and per-host MCP wiring</td>
+      <td><a href="https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md">host setup</a></td>
+    </tr>
+    <tr>
+      <td>The local vs hosted MCP server, and the one hosted URL</td>
+      <td><a href="../mcp/#two-mcp-servers-local-and-hosted">Agents &amp; MCP</a></td>
+    </tr>
+  </tbody>
+</table></div>
+<h2 id="cli">
+  
+  
+    <a href="#cli" class="anchor-heading" aria-labelledby="cli"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> CLI
+  
+  
+</h2>
+    
+
+<p>The <code class="language-plaintext highlighter-rouge">compose-preview</code> binary works against any Compose project with <strong>no
+build edits</strong> — it injects the preview plugin at runtime via a bundled
+Gradle init script. Install it (and the two default agent skills) with:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl <span class="nt">-fsSL</span> https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
+</code></pre></div></div>
+
+<p>Then:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview doctor    <span class="c"># check Java + project compatibility</span>
+compose-preview list      <span class="c"># scan @Preview annotations</span>
+compose-preview render    <span class="c"># render every @Preview to PNG</span>
+compose-preview browse    <span class="c"># Storybook-like local component browser</span>
+compose-preview render-matrix <span class="nt">--id</span> com.example.MyPreview <span class="se">\</span>
+    <span class="nt">--ui-mode</span> light,dark <span class="nt">--font-scale</span> 1.0,2.0   <span class="c"># one preview across a grid</span>
+compose-preview render-cases remote-document-cases.json <span class="nt">--id</span> com.example.MyRemotePreview <span class="se">\</span>
+    <span class="nt">--contact-sheet</span>                             <span class="c"># Remote Compose documents with their data</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">render-cases</code> draws Remote Compose documents someone else produced, each with its own named values,
+size and light or dark mode, on the Android lane, so each plays on the platform’s own player under
+Robolectric. The file is compose-preview-contracts’ <code class="language-plaintext highlighter-rouge">RemoteDocumentCasesV1</code>
+(<code class="language-plaintext highlighter-rouge">compose-preview/remote-document-cases/v1</code>): each case’s <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">document</code>, <code class="language-plaintext highlighter-rouge">widthDp</code>, <code class="language-plaintext highlighter-rouge">heightDp</code>,
+<code class="language-plaintext highlighter-rouge">dark</code>, <code class="language-plaintext highlighter-rouge">profile</code> and <code class="language-plaintext highlighter-rouge">namedValues</code>, in the daemon’s own vocabulary. Each case replays in place of a
+host Remote Compose preview, so <code class="language-plaintext highlighter-rouge">--id</code> names one in a module with the Remote Compose connector on
+its render classpath. Livery’s <code class="language-plaintext highlighter-rouge">renderLiveryPreviews</code> writes one for every template in a catalog
+(<code class="language-plaintext highlighter-rouge">remote-document-cases.json</code>); <code class="language-plaintext highlighter-rouge">--player</code> picks <code class="language-plaintext highlighter-rouge">androidx-embedded</code> (the
+default), <code class="language-plaintext highlighter-rouge">androidx-view</code> or <code class="language-plaintext highlighter-rouge">cmp-android</code>.</p>
+
+<p><code class="language-plaintext highlighter-rouge">browse</code> scans every valid preview module and starts a loopback-only server. When a conventional
+executable CMP Wasm browser project owns the previews or depends on their module (including the
+common <code class="language-plaintext highlighter-rouge">:shared:ui</code> → <code class="language-plaintext highlighter-rouge">:webApp</code> split), its distribution is built and attached automatically.
+Java/Android-only composables remain available as rendered snapshots with their sample source.
+<code class="language-plaintext highlighter-rouge">--module :shared:ui</code> is an optional narrowing control, not required setup.</p>
+
+<p>Because the CLI auto-injects, projects that already apply
+<code class="language-plaintext highlighter-rouge">com.android.application</code> / <code class="language-plaintext highlighter-rouge">com.android.library</code> / <code class="language-plaintext highlighter-rouge">org.jetbrains.compose</code>
+work without touching <code class="language-plaintext highlighter-rouge">build.gradle.kts</code>. Projects that already declare the
+plugin are detected and left alone, so mixed setups don’t conflict.</p>
+<h2 id="pinning-one-version-for-every-entrypoint">
+  
+  
+    <a href="#pinning-one-version-for-every-entrypoint" class="anchor-heading" aria-labelledby="pinning-one-version-for-every-entrypoint"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Pinning one version for every entrypoint
+  
+  
+</h2>
+    
+
+<p>compose-preview reaches a project through several doors — the CLI, the VS Code
+extension, the CI actions, an explicitly applied Gradle plugin — and by default
+each one uses whatever version <em>it</em> was installed at. On a project with more
+than one door in use that drifts, and a CLI newer than the plugin it’s driving
+fails in a way that reads like a project misconfiguration (“no modules have the
+compose-preview plugin applied”) rather than the version skew it is.</p>
+
+<p>Pin the project once:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview pin <span class="nt">--cli</span>      <span class="c"># pin to the CLI you just installed</span>
+compose-preview pin 1.1.0      <span class="c"># …or to a specific release</span>
+compose-preview pin            <span class="c"># show the pin, and whether your CLI matches</span>
+</code></pre></div></div>
+
+<p>That writes a single line to your <code class="language-plaintext highlighter-rouge">gradle.properties</code>:</p>
+
+<div class="language-properties highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="py">composePreview.version</span><span class="p">=</span><span class="s">1.1.0</span>
+</code></pre></div></div>
+
+<p>From then on the CLI auto-injects <strong>that</strong> plugin version, the VS Code extension
+applies it too, and CI installs it with <code class="language-plaintext highlighter-rouge">version: pin</code> on the
+<a href="https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install"><code class="language-plaintext highlighter-rouge">install</code></a>
+action (the <a href="https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply"><code class="language-plaintext highlighter-rouge">apply</code></a>
+action’s default <code class="language-plaintext highlighter-rouge">cli-version: auto</code> picks it up with no workflow change). If a
+project already pins <code class="language-plaintext highlighter-rouge">composePreviewCli</code> in <code class="language-plaintext highlighter-rouge">gradle/libs.versions.toml</code>, that’s
+read as a pin too — nothing to add.</p>
+
+<p><code class="language-plaintext highlighter-rouge">compose-preview doctor</code> reports the pin, its source, and whether the CLI on your
+<code class="language-plaintext highlighter-rouge">$PATH</code> matches it. Unpinned projects keep working exactly as before; the pin is
+opt-in.</p>
+
+<p>The pin governs the <strong>auto-injected</strong> plugin — the zero-config path above. A module
+that declares <code class="language-plaintext highlighter-rouge">id("ee.schimke.composeai.preview") version "…"</code> itself keeps its own
+version, and <code class="language-plaintext highlighter-rouge">compose-preview pin</code> never edits build scripts or version catalogs:
+auto-inject already leaves such a module alone, so its declaration is the single
+source of truth there. Full model:
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/VERSION_PIN.md">VERSION_PIN.md</a>.</p>
+<h2 id="builds-that-apply-agp-via-a-convention-plugin">
+  
+  
+    <a href="#builds-that-apply-agp-via-a-convention-plugin" class="anchor-heading" aria-labelledby="builds-that-apply-agp-via-a-convention-plugin"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Builds that apply AGP via a convention plugin
+  
+  
+</h2>
+    
+
+<p>If your build supplies the Android Gradle Plugin through an <strong>included build’s
+convention plugin</strong> — the <code class="language-plaintext highlighter-rouge">build-logic</code> / <code class="language-plaintext highlighter-rouge">gradle/conventions</code> pattern used by
+<a href="https://github.com/android/nowinandroid">Now in Android</a>, AndroidX, and
+similar repos — auto-inject <strong>cannot</strong> apply the preview plugin, and discovery
+will report <code class="language-plaintext highlighter-rouge">0 modules</code> with failures like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>NoClassDefFoundError: com/android/build/api/variant/AndroidComponentsExtension
+</code></pre></div></div>
+
+<p>This is a classloader limitation, not a bug. With the convention-plugin layout
+AGP is applied by the included build, so AGP’s classes live on the <em>convention
+plugin’s</em> classloader. Auto-inject can only add the preview plugin to each
+project’s <strong>own</strong> buildscript classpath — a sibling classloader that can’t see
+AGP — so the plugin throws the moment it touches <code class="language-plaintext highlighter-rouge">AndroidComponentsExtension</code>.
+There is no Gradle init-script API to contribute a dependency to an included
+build’s classpath, so auto-inject genuinely can’t reach AGP here.</p>
+
+<p><strong>Apply the plugin from your convention plugin instead.</strong> That puts it on the
+same classloader as AGP, where it renders correctly. The CLI then detects the
+included-build apply and skips auto-inject automatically (no
+<code class="language-plaintext highlighter-rouge">--no-auto-inject</code> needed).</p>
+
+<ol>
+  <li>
+    <p>Add the preview plugin’s <strong>marker artifact</strong> to your <code class="language-plaintext highlighter-rouge">build-logic</code> build’s
+dependencies. This is the key step: it puts the plugin on the convention
+build’s <em>runtime</em> classpath, so the compiled convention plugin can apply it
+by id. (Declaring it in <code class="language-plaintext highlighter-rouge">build-logic</code>’s <code class="language-plaintext highlighter-rouge">plugins {}</code> block with <code class="language-plaintext highlighter-rouge">apply
+false</code> only resolves it for that build script — not for the convention
+plugin applied to your app modules, which fails with <code class="language-plaintext highlighter-rouge">Plugin with id … not
+found</code>.) The marker coordinate is <code class="language-plaintext highlighter-rouge">&lt;id&gt;:&lt;id&gt;.gradle.plugin:&lt;version&gt;</code>:</p>
+
+    <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// build-logic/.../build.gradle.kts (the convention build)</span>
+<span class="nf">plugins</span> <span class="p">{</span>
+    <span class="n">`kotlin-dsl`</span>
+<span class="p">}</span>
+<span class="nf">dependencies</span> <span class="p">{</span>
+    <span class="nf">implementation</span><span class="p">(</span>
+        <span class="s">"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:&lt;latest&gt;"</span>
+    <span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>    </div>
+
+    <p>Make sure <code class="language-plaintext highlighter-rouge">build-logic</code>’s repositories include where the plugin is
+published (<code class="language-plaintext highlighter-rouge">mavenCentral()</code> / <code class="language-plaintext highlighter-rouge">gradlePluginPortal()</code>).</p>
+  </li>
+  <li>
+    <p>Apply it from your convention plugin alongside AGP:</p>
+
+    <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// build-logic/.../YourAndroidConventionPlugin.kt</span>
+<span class="k">override</span> <span class="k">fun</span> <span class="nf">apply</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="nc">Project</span><span class="p">)</span> <span class="p">=</span> <span class="nf">with</span><span class="p">(</span><span class="n">target</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">pluginManager</span><span class="p">.</span><span class="nf">apply</span><span class="p">(</span><span class="s">"com.android.library"</span><span class="p">)</span> <span class="c1">// or the AGP plugin you use</span>
+    <span class="n">pluginManager</span><span class="p">.</span><span class="nf">apply</span><span class="p">(</span><span class="s">"ee.schimke.composeai.preview"</span><span class="p">)</span>
+    <span class="c1">// …rest of your convention…</span>
+<span class="p">}</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Run the CLI as usual — it sees the included build provides the plugin and
+leaves your build alone:</p>
+
+    <div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview render
+</code></pre></div>    </div>
+  </li>
+</ol>
+
+<p>This is the explicit “apply manually via your convention plugin” integration
+mode: auto-inject is the zero-config convenience for the common
+<code class="language-plaintext highlighter-rouge">plugins { id("com.android.application") }</code> layout; the convention-plugin
+layout opts out of it by design.</p>
+<h2 id="gradle-plugin-version-pinned">
+  
+  
+    <a href="#gradle-plugin-version-pinned" class="anchor-heading" aria-labelledby="gradle-plugin-version-pinned"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Gradle plugin (version-pinned)
+  
+  
+</h2>
+    
+
+<p>If you’d rather wire it into your build explicitly, the plugin is published
+to <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin">Maven Central</a>
+— no auth, no PAT.</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// &lt;module&gt;/build.gradle.kts</span>
+<span class="nf">plugins</span> <span class="p">{</span>
+    <span class="nf">id</span><span class="p">(</span><span class="s">"ee.schimke.composeai.preview"</span><span class="p">)</span> <span class="n">version</span> <span class="s">"&lt;latest&gt;"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Pin the version shown on Maven Central. (The in-repo <code class="language-plaintext highlighter-rouge">samples/</code> apply it
+<em>without</em> a version because they resolve it from this repository’s own
+included build — that’s not drop-in for an external project.)</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./gradlew :app:composePreviewDiscover    <span class="c"># scan @Preview annotations</span>
+./gradlew :app:composePreviewRenderAll   <span class="c"># render every @Preview to PNG</span>
+</code></pre></div></div>
+<h3 id="rendering-a-subset">
+  
+  
+    <a href="#rendering-a-subset" class="anchor-heading" aria-labelledby="rendering-a-subset"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Rendering a subset
+  
+  
+</h3>
+    
+
+<p>Iterating on one screen? Narrow the render to a single preview (or a glob) so
+an unrelated broken preview can’t poison the run:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./gradlew :desktopApp:composePreviewRender <span class="nt">--preview</span> <span class="s1">'*ExportHelpDialogPreview'</span>
+<span class="c"># or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">--preview</code> selects whole <code class="language-plaintext highlighter-rouge">@Preview</code> <strong>functions</strong>. To skip one member of a
+function’s fan-out — a multipreview member, or one of several <code class="language-plaintext highlighter-rouge">@Preview</code>
+annotations, which share a function name but have distinct ids — exclude it by id
+instead:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./gradlew :desktopApp:composePreviewRender <span class="nt">--exclude-preview-id</span> <span class="s1">'*_Dark'</span>
+<span class="c"># or, as a Gradle property: -PcomposePreview.idExclude='*_Dark'</span>
+</code></pre></div></div>
+
+<p>Ids take the same pattern syntax as <code class="language-plaintext highlighter-rouge">--preview</code> (a <code class="language-plaintext highlighter-rouge">*</code>/<code class="language-plaintext highlighter-rouge">?</code> glob, or a plain
+substring). <code class="language-plaintext highlighter-rouge">--preview-id</code> is the positive form (“render only these”); prefer
+<code class="language-plaintext highlighter-rouge">--exclude-preview-id</code> when you’re deferring part of a fan-out, since a stale
+pattern then renders too much rather than dropping a preview you wanted. Either
+way a filtered run is never stored in the build cache, since its render directory
+is only part of the module’s output.</p>
+
+<p>One fan-out has no ids to name: a <code class="language-plaintext highlighter-rouge">@PreviewParameter</code> provider’s rows exist only
+once the renderer enumerates the provider, so discovery lists the parameterized
+function as a single preview. Those are skipped by <strong>label</strong> — the token in
+<code class="language-plaintext highlighter-rouge">&lt;stem&gt;_&lt;label&gt;.png</code>, matched case-insensitively:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./gradlew :desktopApp:composePreviewRender <span class="nt">--exclude-preview-row</span> <span class="s1">'Dark,ExtraDark'</span>
+<span class="c"># or, as a Gradle property: -PcomposePreview.rowExclude='Dark,ExtraDark'</span>
+</code></pre></div></div>
+
+<p>A row exclusion never empties a preview’s rows: if every row matches, they all
+render, so nothing can silently produce a preview with no pixels.</p>
+
+<p>All four filters work on both backends. An Android module renders through a
+Robolectric test task rather than the desktop one, and it reads the same options
+and the same <code class="language-plaintext highlighter-rouge">composePreview.*</code> properties.</p>
+<h3 id="using-the-init-script-directly">
+  
+  
+    <a href="#using-the-init-script-directly" class="anchor-heading" aria-labelledby="using-the-init-script-directly"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Using the init script directly
+  
+  
+</h3>
+    
+
+<p>For direct <code class="language-plaintext highlighter-rouge">./gradlew</code> use with the auto-inject script (e.g. a CI step that
+needs extra Gradle flags), materialise the init script once and thread its
+path through each invocation:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">INIT_SCRIPT</span><span class="o">=</span><span class="s2">"</span><span class="si">$(</span>compose-preview init-script <span class="nt">--path</span><span class="si">)</span><span class="s2">"</span>
+./gradlew <span class="nt">--init-script</span> <span class="s2">"</span><span class="nv">$INIT_SCRIPT</span><span class="s2">"</span> :app:composePreviewRenderAll
+</code></pre></div></div>
+<h2 id="vs-code-extension">
+  
+  
+    <a href="#vs-code-extension" class="anchor-heading" aria-labelledby="vs-code-extension"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> VS Code extension
+  
+  
+</h2>
+    
+
+<p>Published to the
+<a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview">VS Code Marketplace</a>
+and <a href="https://open-vsx.org/extension/yuri-schimke/compose-preview">Open VSX</a>
+(VSCodium / Cursor / Windsurf). Open the Extensions view (⇧⌘X /
+Ctrl+Shift+X), search <strong>Compose Preview</strong>, click <em>Install</em>. It auto-injects
+on every Gradle invocation it makes — no project changes needed.</p>
+<h2 id="agents">
+  
+  
+    <a href="#agents" class="anchor-heading" aria-labelledby="agents"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Agents
+  
+  
+</h2>
+    
+
+<p>One install per host. Each gives the agent the <code class="language-plaintext highlighter-rouge">compose-preview</code> and
+<code class="language-plaintext highlighter-rouge">compose-ui-builder</code> skills, the local MCP server and the hosted catalog server.</p>
+
+<p>Claude Code:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/plugin marketplace add yschimke/compose-agent-plugins
+/plugin install compose-preview@compose-agent-plugins
+</code></pre></div></div>
+
+<p>Codex:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>codex plugin marketplace add yschimke/compose-agent-plugins
+</code></pre></div></div>
+
+<p>then enable <code class="language-plaintext highlighter-rouge">compose-preview</code> from <code class="language-plaintext highlighter-rouge">/plugins</code>.</p>
+
+<p>Antigravity:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl <span class="nt">-fsSL</span> https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 -
+</code></pre></div></div>
+
+<p>Any other agent (Gemini CLI, OpenCode, Cursor, Copilot, …), or no plugin system:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl <span class="nt">-fsSL</span> https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
+</code></pre></div></div>
+
+<p>Then ask your agent to render one of your previews. An agent that can only
+fetch URLs can read the
+<a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md"><code class="language-plaintext highlighter-rouge">compose-preview</code> skill</a>,
+which checks for the CLI and bootstraps it if missing. Other hosts and MCP
+registration are in the
+<a href="https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md">host setup notes</a>;
+what <code class="language-plaintext highlighter-rouge">compose-preview mcp install</code> writes is on <a href="../mcp/#register-the-local-server">Agents &amp; MCP</a>.</p>
+<h2 id="ci--github-actions">
+  
+  
+    <a href="#ci--github-actions" class="anchor-heading" aria-labelledby="ci--github-actions"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> CI / GitHub Actions
+  
+  
+</h2>
+    
+
+<p>Composite actions for pipelines:</p>
+
+<ul>
+  <li><a href="https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install"><code class="language-plaintext highlighter-rouge">install</code></a> — pin the CLI on <code class="language-plaintext highlighter-rouge">$PATH</code>. <code class="language-plaintext highlighter-rouge">version: pin</code> reads the project’s own <a href="#pinning-one-version-for-every-entrypoint">version pin</a>; <code class="language-plaintext highlighter-rouge">version: catalog</code> tracks a specific catalog key (Renovate recipe included).</li>
+  <li><a href="https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply"><code class="language-plaintext highlighter-rouge">apply</code></a> — unified pipeline: baselines on push, before/after PR comments, a11y + notification surfaces.</li>
+</ul>
+
+<p>There’s also a reusable, preview-gated AI PR-review workflow (Codex / Claude
+/ Gemini): see
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/PR_REVIEW_WORKFLOW.md">PR review workflow</a>.</p>
+<h3 id="speeding-up-preview-ci">
+  
+  
+    <a href="#speeding-up-preview-ci" class="anchor-heading" aria-labelledby="speeding-up-preview-ci"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Speeding up preview CI
+  
+  
+</h3>
+    
+
+<p>Rendering is the long pole. Two levers, both about parallelism:</p>
+
+<ul>
+  <li><strong>Sharding (on by default).</strong> <code class="language-plaintext highlighter-rouge">composePreview { shards }</code> fans a module’s
+previews across parallel JVM forks. The default is <code class="language-plaintext highlighter-rouge">0</code> (auto): the plugin
+sizes the fork count from the discovered preview cost and the runner’s cores
+    <ul>
+      <li>memory, and only shards when the predicted saving is worth the extra JVM
+cold-starts — so small modules stay single-fork and heavy ones (many
+previews, GIF/animated captures) fan out automatically. Set <code class="language-plaintext highlighter-rouge">shards = 1</code> to
+force it off, or a fixed <code class="language-plaintext highlighter-rouge">≥ 2</code> to pin it. No workflow changes needed; auto
+sizing engages on the first CI run because the pipeline discovers previews in
+a separate Gradle pass before rendering.</li>
+    </ul>
+  </li>
+  <li><strong>Bigger runners.</strong> Auto sharding is capped at <code class="language-plaintext highlighter-rouge">cores − 1</code> forks (leaving one
+core for the Gradle daemon), so it can only go as wide as the runner is. The
+default <code class="language-plaintext highlighter-rouge">runs-on: ubuntu-latest</code> is 2 vCPU on private repos (no sharding) and
+4 vCPU on public ones (up to 3 forks). For a large preview suite, point the
+preview job at a 4- or 8-vCPU runner — that’s where the two levers compound
+into real wall-clock savings. RAM scales with cores on GitHub-hosted runners,
+which keeps the per-fork memory bound out of the way.</li>
+</ul>
+<h2 id="render-classpath-conflicts">
+  
+  
+    <a href="#render-classpath-conflicts" class="anchor-heading" aria-labelledby="render-classpath-conflicts"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Render classpath conflicts
+  
+  
+</h2>
+    
+
+<p>The render JVM classpath is built from a <strong>single</strong> resolved dependency graph:
+the plugin’s renderer configuration <code class="language-plaintext highlighter-rouge">extendsFrom</code> your module’s unit-test
+runtime classpath (and its <code class="language-plaintext highlighter-rouge">screenshotTest</code> runtime classpath, when Google’s
+screenshot plugin is applied), so Gradle picks one version per module across
+the renderer’s dependencies and your own. Only entries that exist nowhere else
+— the unit-test merged <code class="language-plaintext highlighter-rouge">R.jar</code>, generated class dirs — are appended from AGP’s
+test task on top.</p>
+
+<p>Before this, those graphs were resolved separately and concatenated, which put
+two versions of the same module in front of one classloader. Java loads the
+first match per class, so a class from the winning jar could link against a
+sibling only the other version defined, and you’d get a <code class="language-plaintext highlighter-rouge">NoSuchFieldError</code> or
+<code class="language-plaintext highlighter-rouge">NoSuchMethodError</code> in an unrelated <code class="language-plaintext highlighter-rouge">&lt;clinit&gt;</code> — e.g. two <code class="language-plaintext highlighter-rouge">bcprov-jdk18on</code>
+jars failing every accessibility preview inside BouncyCastle’s post-quantum
+<code class="language-plaintext highlighter-rouge">KeyFactorySpi</code>.</p>
+
+<p>A guard runs before each render and reports any module still present at more
+than one version, naming each version and the jar that wins:</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Default</th>
+      <th>Effect</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">composePreview.classpathDuplicates</code></td>
+      <td><code class="language-plaintext highlighter-rouge">warn</code></td>
+      <td><code class="language-plaintext highlighter-rouge">fail</code> turns a duplicate into a build error (good for CI); <code class="language-plaintext highlighter-rouge">off</code> silences the check.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">composePreview.legacyClasspathUnion</code></td>
+      <td><code class="language-plaintext highlighter-rouge">false</code></td>
+      <td><code class="language-plaintext highlighter-rouge">true</code> restores the old concatenated classpath. Escape hatch only — set it if a render suddenly can’t find a class that lives solely on your unit-test classpath, and please file an issue.</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>If the guard reports a duplicate module, align it in your own build with a
+version force, or exclude it from whichever graph shouldn’t carry it.</p>
+<h3 id="split-families">
+  
+  
+    <a href="#split-families" class="anchor-heading" aria-labelledby="split-families"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Split families
+  
+  
+</h3>
+    
+
+<p>A second check covers libraries published as <strong>several coordinates with no BOM</strong>
+— <code class="language-plaintext highlighter-rouge">org.bouncycastle:bcprov</code>/<code class="language-plaintext highlighter-rouge">bcutil</code>/<code class="language-plaintext highlighter-rouge">bcpkix</code> is the usual offender. Gradle
+aligns a module against itself and nothing further, so the graph can settle on
+<code class="language-plaintext highlighter-rouge">bcprov-jdk18on:1.85</code> while leaving <code class="language-plaintext highlighter-rouge">bcutil-jdk18on:1.84</code>: one version per
+coordinate, no conflict to resolve, and classes that still don’t agree at
+runtime. That’s what failed every accessibility preview in
+<a href="https://github.com/yschimke/homeassistant-remotecompose/issues/495">homeassistant-remotecompose#495</a>.</p>
+
+<p>The fix is a virtual platform, which states that the coordinates move together
+and lets normal conflict resolution pick the highest version any member asks
+for:</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">abstract</span> <span class="kd">class</span> <span class="nc">BouncyCastleAlignmentRule</span> <span class="p">:</span> <span class="nc">ComponentMetadataRule</span> <span class="p">{</span>
+  <span class="k">override</span> <span class="k">fun</span> <span class="nf">execute</span><span class="p">(</span><span class="n">context</span><span class="p">:</span> <span class="nc">ComponentMetadataContext</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">val</span> <span class="py">id</span> <span class="p">=</span> <span class="n">context</span><span class="p">.</span><span class="n">details</span><span class="p">.</span><span class="n">id</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">id</span><span class="p">.</span><span class="n">group</span> <span class="p">==</span> <span class="s">"org.bouncycastle"</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">context</span><span class="p">.</span><span class="n">details</span><span class="p">.</span><span class="nf">belongsTo</span><span class="p">(</span><span class="s">"org.bouncycastle:bouncycastle-virtual-platform:${id.version}"</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="nf">dependencies</span> <span class="p">{</span> <span class="n">components</span><span class="p">.</span><span class="nf">all</span><span class="p">(</span><span class="nc">BouncyCastleAlignmentRule</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p>Prefer that over <code class="language-plaintext highlighter-rouge">useVersion("1.84")</code>: a force goes stale, and silently becomes
+a <em>downgrade</em> the moment one member’s floor moves (Robolectric’s did).</p>
+
+<p>The plugin reports this rather than applying it. <code class="language-plaintext highlighter-rouge">ComponentMetadataRule</code>s
+register on <code class="language-plaintext highlighter-rouge">DependencyHandler</code>, so they apply to <strong>every</strong> configuration in the
+module — including your <code class="language-plaintext highlighter-rouge">releaseRuntimeClasspath</code>. Aligning a family upward is
+usually right for a render classpath and isn’t a preview tool’s call to make for
+a shipped app, so the decision stays yours.</p>
+<h3 id="keeping-a-module-off-the-render-graph">
+  
+  
+    <a href="#keeping-a-module-off-the-render-graph" class="anchor-heading" aria-labelledby="keeping-a-module-off-the-render-graph"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Keeping a module off the render graph
+  
+  
+</h3>
+    
+
+<p>Sharing one graph with your unit-test classpath is what keeps a single coherent
+version of each module in front of the render classloader — but it also means
+the render configuration inherits <strong>your</strong> constraints. If your build applies a
+platform whose constraints are <code class="language-plaintext highlighter-rouge">strictly(v)</code> + <code class="language-plaintext highlighter-rouge">reject("(v,")</code>, every renderer
+dependency above one of those pins becomes a conflict Gradle cannot solve, and
+the render configuration fails to resolve before a single preview renders.</p>
+
+<p><code class="language-plaintext highlighter-rouge">renderGraph</code> removes a module from the configurations the plugin owns, leaving
+your own build exactly as it was:</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">composePreview</span> <span class="p">{</span>
+  <span class="nf">renderGraph</span> <span class="p">{</span>
+    <span class="nf">exclude</span><span class="p">(</span><span class="n">group</span> <span class="p">=</span> <span class="s">"com.example"</span><span class="p">,</span> <span class="n">module</span> <span class="p">=</span> <span class="s">"version-constraints"</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>In a Groovy build script, the usual map form:</p>
+
+<div class="language-groovy highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">composePreview</span> <span class="o">{</span>
+  <span class="n">renderGraph</span> <span class="o">{</span>
+    <span class="n">exclude</span> <span class="nl">group:</span> <span class="s1">'com.example'</span><span class="o">,</span> <span class="nl">module:</span> <span class="s1">'version-constraints'</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Either half may be omitted, exactly as in Gradle’s own
+<code class="language-plaintext highlighter-rouge">Configuration.exclude(group:, module:)</code>: <code class="language-plaintext highlighter-rouge">group</code> alone drops the whole group,
+<code class="language-plaintext highlighter-rouge">module</code> alone drops that name wherever it comes from.</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Default</th>
+      <th>Effect</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">composePreview.renderGraphExcludes</code></td>
+      <td><em>(none)</em></td>
+      <td>Comma-separated <code class="language-plaintext highlighter-rouge">group:module</code> coordinates, for a build script you can’t edit — a CLI-driven render where the plugin is auto-injected, or one CI job. Additive with the DSL.</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./gradlew composePreviewRender -PcomposePreview.renderGraphExcludes=com.example:version-constraints
+</code></pre></div></div>
+
+<p>The exclusions land on the configurations the plugin creates — the Android
+render config, its daemon superset, and the two desktop equivalents — and never
+on the configurations your build declares, so a normal build and everything your
+platform guarantees it are untouched. The Kotlin-build-tools configurations are
+deliberately not covered: they are standalone compiler classpaths that never
+inherit your graph.</p>
+
+<p>This is a scalpel, not a switch. Excluding something the renderer genuinely
+needs trades an unresolvable configuration for a <code class="language-plaintext highlighter-rouge">ClassNotFoundException</code> on the
+render JVM; <code class="language-plaintext highlighter-rouge">--info</code> prints one line per configuration naming what was excluded.</p>
+<h2 id="requirements">
+  
+  
+    <a href="#requirements" class="anchor-heading" aria-labelledby="requirements"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Requirements
+  
+  
+</h2>
+    
+
+<p>Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+, Compose
+Multiplatform 1.10.3+ (Desktop). The bottom edge of this envelope is
+exercised on every push by the
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/.github/workflows/integration.yml"><code class="language-plaintext highlighter-rouge">agp8-min</code> job</a>.</p>
+
+<p>Running an agent in a cloud sandbox (Claude Code on the web, etc.)? See the
+<a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md">cloud sandbox setup</a>
+for the network allowlist and <code class="language-plaintext highlighter-rouge">install.sh --android-sdk</code> Setup recipe.
+&lt;/content&gt;</p>
+
+          
+
+          
+            
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+

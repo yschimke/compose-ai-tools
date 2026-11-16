@@ -1,0 +1,620 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    
+    .site-nav > ul.nav-list:first-child > li:not(:nth-child(4)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(4) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(4) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(4) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Agents &amp; MCP | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Agents &amp; MCP" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/mcp/" />
+<meta property="og:url" content="https://preview.coo.ee/start/mcp/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Agents &amp; MCP" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Agents \u0026amp; MCP","url":"https://preview.coo.ee/start/mcp/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="agents--mcp">
+  
+  
+    <a href="#agents--mcp" class="anchor-heading" aria-labelledby="agents--mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Agents &amp; MCP
+  
+  
+</h1>
+    
+
+<p>You don’t need any of this to use compose-ai-tools — rendering <code class="language-plaintext highlighter-rouge">@Preview</code>s to
+PNG already lets an agent see its work. This page is for when you want a
+tighter, push-based loop than “run a command, read a file.”</p>
+
+<p>Configuring an MCP client? The hosted server’s one URL is
+<code class="language-plaintext highlighter-rouge">https://preview.coo.ee/mcp</code>; the local server is <code class="language-plaintext highlighter-rouge">compose-preview mcp serve</code>.
+See <a href="#two-mcp-servers-local-and-hosted">Two MCP servers</a> before adding either.</p>
+<h2 id="the-agent-loop">
+  
+  
+    <a href="#the-agent-loop" class="anchor-heading" aria-labelledby="the-agent-loop"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> The agent loop
+  
+  
+</h2>
+    
+
+<p>A token-frugal feedback loop over Compose UI — the way
+<a href="https://playwright.dev">Playwright</a> gave web agents one over the DOM: act by
+a stable reference, observe structure rather than pixels, and turn
+exploration into durable tests. These are exposed by the preview daemon’s MCP
+server (and the <code class="language-plaintext highlighter-rouge">compose-preview</code> CLI where noted).</p>
+
+<ul>
+  <li><strong>Target by semantic ref, not pixels.</strong> <code class="language-plaintext highlighter-rouge">interactive/input</code> and
+<code class="language-plaintext highlighter-rouge">record_preview</code> accept a <code class="language-plaintext highlighter-rouge">target</code> (<code class="language-plaintext highlighter-rouge">testTag</code> / <code class="language-plaintext highlighter-rouge">role</code>+<code class="language-plaintext highlighter-rouge">text</code> / a stable
+node <code class="language-plaintext highlighter-rouge">ref</code>) that the daemon resolves to the node’s centre, so a click
+survives layout changes instead of breaking on a coordinate. Android
+(Robolectric) and Desktop (Skiko).</li>
+  <li><strong>Token-frugal observation.</strong> <code class="language-plaintext highlighter-rouge">render_preview observe=semantics|hash</code>
+returns the <code class="language-plaintext highlighter-rouge">compose/semantics</code> tree + a hash + dimensions instead of a
+base64 PNG — typically a few hundred tokens versus ~1.5k. Fetch pixels only
+when you actually need to look.</li>
+  <li><strong>Semantics diff.</strong> <code class="language-plaintext highlighter-rouge">diff_semantics</code> (MCP) and <code class="language-plaintext highlighter-rouge">compose-preview
+diff-semantics</code> (CLI) diff two semantics trees and report what changed
+<em>semantically</em> (text, label, role, testTag, overflow…), matched by stable
+ref — a deterministic, pixel-free regression signal, the Compose analogue
+of Playwright’s aria-snapshot diff.</li>
+  <li><strong>Matrix render.</strong> <code class="language-plaintext highlighter-rouge">render_matrix</code> (and <code class="language-plaintext highlighter-rouge">compose-preview render-matrix</code>)
+renders one preview across a cross-product of
+<code class="language-plaintext highlighter-rouge">device × locale × uiMode × fontScale</code> in a single call, returning a
+per-cell hash and which cells changed — “does this survive small screen +
+RTL + large font?” without N screenshots. Opt into a stitched contact-sheet
+image when you want to eyeball every cell at once.</li>
+  <li><strong>Recording → test.</strong> <code class="language-plaintext highlighter-rouge">record_preview emitTest=true</code> turns a scripted
+interaction into a runnable Compose UI test (semantic targets become
+<code class="language-plaintext highlighter-rouge">onNodeWithTag(...).performClick()</code> steps; each <code class="language-plaintext highlighter-rouge">recording.probe</code> is diffed
+against the previous probe’s captured semantics into <code class="language-plaintext highlighter-rouge">assertExists()</code> /
+<code class="language-plaintext highlighter-rouge">assertDoesNotExist()</code> assertions).</li>
+  <li><strong>Structured failures.</strong> A failed render reports a typed <code class="language-plaintext highlighter-rouge">kind</code> plus a
+one-line fix hint for recognized signatures (classpath skew, Robolectric
+SDK mismatch, missing <code class="language-plaintext highlighter-rouge">@Composable</code>, …) instead of an opaque message.</li>
+</ul>
+
+<p>Cost budget for these in
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md"><code class="language-plaintext highlighter-rouge">docs/TOKEN_USAGE.md</code></a>.</p>
+<h2 id="two-mcp-servers-local-and-hosted">
+  
+  
+    <a href="#two-mcp-servers-local-and-hosted" class="anchor-heading" aria-labelledby="two-mcp-servers-local-and-hosted"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Two MCP servers: local and hosted
+  
+  
+</h2>
+    
+
+<p>There are two different MCP servers. Configure each at most once.</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th>Local daemon MCP</th>
+      <th>Hosted catalog MCP</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>What it renders</td>
+      <td><strong>Your</strong> project’s <code class="language-plaintext highlighter-rouge">@Preview</code>s, on your machine</td>
+      <td>Published design-system catalogs (Material 3, Wear M3, …) and the UI Builder</td>
+    </tr>
+    <tr>
+      <td>How it runs</td>
+      <td>stdio: <code class="language-plaintext highlighter-rouge">compose-preview mcp serve</code></td>
+      <td>Streamable HTTP at <strong><code class="language-plaintext highlighter-rouge">https://preview.coo.ee/mcp</code></strong></td>
+    </tr>
+    <tr>
+      <td>Server name in configs</td>
+      <td><code class="language-plaintext highlighter-rouge">compose-preview-mcp</code></td>
+      <td><code class="language-plaintext highlighter-rouge">compose-preview-catalog</code></td>
+    </tr>
+    <tr>
+      <td>Needs</td>
+      <td>The CLI on <code class="language-plaintext highlighter-rouge">PATH</code>, Java 17+, a Gradle project</td>
+      <td>Nothing local</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p><strong><code class="language-plaintext highlighter-rouge">https://ui.coo.ee/mcp</code> is an alias of the same hosted server</strong>, not a second
+one: same process, same tools. Never configure both. Two entries give the agent
+every tool twice, and because the CLI keys access grants by origin they also
+mean two separate grants to approve and refresh. If a config already has a
+<code class="language-plaintext highlighter-rouge">ui.coo.ee</code> entry, replace its URL with <code class="language-plaintext highlighter-rouge">https://preview.coo.ee/mcp</code> rather than
+adding a second server. (<code class="language-plaintext highlighter-rouge">https://ui.coo.ee/start</code> is the UI Builder start page
+for people; it is not an MCP endpoint.)</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">compose-preview</code> plugin from
+<a href="https://github.com/yschimke/compose-agent-plugins"><code class="language-plaintext highlighter-rouge">yschimke/compose-agent-plugins</code></a>
+wires both servers for you (install commands on the <a href="../#get-started">home page</a>);
+how each other host is configured is in its
+<a href="https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md">host setup notes</a>.
+The rest of this page is about the local server.</p>
+<h2 id="the-local-mcp-server">
+  
+  
+    <a href="#the-local-mcp-server" class="anchor-heading" aria-labelledby="the-local-mcp-server"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> The local MCP server
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">compose-preview mcp serve</code> launches the local server (published from
+<a href="https://github.com/yschimke/compose-preview-mcp"><code class="language-plaintext highlighter-rouge">compose-preview-mcp</code></a> and
+fetched on first use). It exposes the preview daemon’s JSON-RPC over stdio, so
+MCP-aware agents can render previews on demand and be <em>notified</em> when bytes
+change — instead of running Gradle (10s+ cold) or polling PNGs off disk with
+no way to request a re-render.</p>
+
+<p>Each <code class="language-plaintext highlighter-rouge">@Preview</code> becomes one MCP <code class="language-plaintext highlighter-rouge">Resource</code> under a stable
+<code class="language-plaintext highlighter-rouge">compose-preview://&lt;workspaceId&gt;/&lt;module&gt;/&lt;previewFqn&gt;</code> URI. The server
+supports <code class="language-plaintext highlighter-rouge">subscribe</code> (per-resource update notifications) and <code class="language-plaintext highlighter-rouge">listChanged</code>
+(the set of resources mutated), plus <code class="language-plaintext highlighter-rouge">notifications/progress</code> for
+long-running calls. Data products are read via <code class="language-plaintext highlighter-rouge">list_data_products</code>,
+<code class="language-plaintext highlighter-rouge">subscribe_preview_data</code>, and <code class="language-plaintext highlighter-rouge">get_preview_data</code>.</p>
+
+<p>For the full tool surface, URI scheme, and wire protocol see
+<a href="https://github.com/yschimke/compose-preview-daemon/blob/main/docs/daemon/MCP.md"><code class="language-plaintext highlighter-rouge">docs/daemon/MCP.md</code></a>.</p>
+<h3 id="register-the-local-server">
+  
+  
+    <a href="#register-the-local-server" class="anchor-heading" aria-labelledby="register-the-local-server"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Register the local server
+  
+  
+</h3>
+    
+
+<p>Run <code class="language-plaintext highlighter-rouge">compose-preview mcp install</code> once from each Compose project’s root. It
+writes daemon descriptors and runs discovery for every module with the plugin
+applied, then registers <code class="language-plaintext highlighter-rouge">compose-preview-mcp</code> with each agent host it detects
+(Claude Code, Codex, OpenCode, Antigravity; <code class="language-plaintext highlighter-rouge">--&lt;host&gt;</code> / <code class="language-plaintext highlighter-rouge">--no-&lt;host&gt;</code> force or
+skip one). <code class="language-plaintext highlighter-rouge">compose-preview mcp register</code> does only the host registration,
+without touching Gradle; <code class="language-plaintext highlighter-rouge">compose-preview mcp doctor</code> reports what is set up.</p>
+
+<ul>
+  <li><strong>One global entry per host.</strong> Each entry is <code class="language-plaintext highlighter-rouge">&lt;stable launcher&gt; mcp serve</code>
+(for example <code class="language-plaintext highlighter-rouge">~/.local/bin/compose-preview</code>), never a versioned
+<code class="language-plaintext highlighter-rouge">compose-preview-&lt;version&gt;/bin/</code> path that the next upgrade deletes, and has no
+<code class="language-plaintext highlighter-rouge">--project</code>: the server finds the project from the client’s roots or working
+directory. Only OpenCode’s <code class="language-plaintext highlighter-rouge">--scope project</code> writes a project-local
+<code class="language-plaintext highlighter-rouge">opencode.json</code> with <code class="language-plaintext highlighter-rouge">--project=&lt;dir&gt;</code>.</li>
+  <li><strong>Healthy entries are left alone.</strong> <code class="language-plaintext highlighter-rouge">mcp install</code> only adds a missing entry or
+repairs a broken one, preserving sibling keys and servers.
+<code class="language-plaintext highlighter-rouge">compose-preview mcp repair</code> (run by <code class="language-plaintext highlighter-rouge">compose-preview update</code>) points existing
+entries at the stable launcher and drops a global <code class="language-plaintext highlighter-rouge">--project</code>, for example
+after an upgrade removed an old versioned directory.</li>
+  <li><strong>Plugins win.</strong> With the Antigravity <code class="language-plaintext highlighter-rouge">compose-preview</code> plugin installed
+(<code class="language-plaintext highlighter-rouge">~/.gemini/config/plugins/compose-preview</code>), <code class="language-plaintext highlighter-rouge">mcp install</code> and <code class="language-plaintext highlighter-rouge">mcp register</code>
+write no global Antigravity entry, since the plugin already provides the
+server; <code class="language-plaintext highlighter-rouge">mcp doctor</code> names any older global <code class="language-plaintext highlighter-rouge">compose-preview-mcp</code> entry (in
+<code class="language-plaintext highlighter-rouge">~/.gemini/antigravity/mcp_config.json</code> or <code class="language-plaintext highlighter-rouge">~/.gemini/config/mcp_config.json</code>)
+to remove. <code class="language-plaintext highlighter-rouge">--antigravity</code> writes the global entry anyway. When Antigravity,
+Claude Code or Codex is detected, <code class="language-plaintext highlighter-rouge">mcp install</code> prints the matching
+wiring-plugin commands; <code class="language-plaintext highlighter-rouge">--no-plugin-hint</code> suppresses them.</li>
+  <li><strong>Comments are never rewritten.</strong> An <code class="language-plaintext highlighter-rouge">opencode.jsonc</code>, or any config with
+comments, gets the snippet and the file to merge it into printed instead.
+OpenCode entries use the v2 <code class="language-plaintext highlighter-rouge">mcp.servers</code> shape; the older
+<code class="language-plaintext highlighter-rouge">mcp.compose-preview-mcp</code> shape with <code class="language-plaintext highlighter-rouge">enabled: true</code> is not v2 configuration.</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">--codex-config</code>, <code class="language-plaintext highlighter-rouge">--opencode-config</code> and <code class="language-plaintext highlighter-rouge">--antigravity-config</code> name an
+explicit config file. Full flag list: <code class="language-plaintext highlighter-rouge">compose-preview mcp --help</code>. Per-host
+paths and verification steps (<code class="language-plaintext highlighter-rouge">opencode mcp list</code>, …):
+<a href="https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md#registering-the-local-mcp-server">host setup notes</a>
+and the <a href="https://github.com/yschimke/compose-agent-plugins/blob/main/docs/opencode.md">OpenCode guide</a>.</p>
+<h3 id="connect-a-remote-ui-builder-session">
+  
+  
+    <a href="#connect-a-remote-ui-builder-session" class="anchor-heading" aria-labelledby="connect-a-remote-ui-builder-session"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Connect a remote UI-builder session
+  
+  
+</h3>
+    
+
+<p>The native MCP profile can expose eight additional tools backed by the same
+persisted preview-server UI-builder session a browser is editing. Supply the
+server URL as an argument and the temporary agent grant as an environment
+variable, keeping the secret out of process arguments:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">COMPOSE_PREVIEW_UI_BUILDER_TOKEN</span><span class="o">=</span><span class="s1">'&lt;grant&gt;'</span> <span class="se">\</span>
+  compose-preview mcp serve <span class="nt">--ui-builder-url</span> https://preview.example/
+</code></pre></div></div>
+
+<p>Grants keep <code class="language-plaintext highlighter-rouge">ui-builder-read</code>, <code class="language-plaintext highlighter-rouge">ui-builder-write</code>, and <code class="language-plaintext highlighter-rouge">ui-builder-export</code>
+independent. The adapter is a remote protocol client only: it does not copy the
+server’s reducer, catalog, renderer, or persistence into this repository.</p>
+<h2 id="shared-settings">
+  
+  
+    <a href="#shared-settings" class="anchor-heading" aria-labelledby="shared-settings"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Shared settings
+  
+  
+</h2>
+    
+
+<p>The MCP server’s <code class="language-plaintext highlighter-rouge">settings_read</code> / <code class="language-plaintext highlighter-rouge">settings_update</code> tools (the native
+settings page in ChatGPT and Codex) persist their defaults to one file,
+<code class="language-plaintext highlighter-rouge">~/.compose-preview/settings.json</code> — or wherever <code class="language-plaintext highlighter-rouge">COMPOSE_PREVIEW_SETTINGS_FILE</code>
+points:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w"> </span><span class="nl">"schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"compose-preview-settings/v1"</span><span class="p">,</span><span class="w"> </span><span class="nl">"values"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nl">"darkTheme"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nl">"locale"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fr"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">compose-preview</code> CLI reads the same file (it never writes it) with the
+server’s precedence: <strong>an explicit flag beats a setting, which beats the
+built-in default.</strong></p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Where the CLI applies it</th>
+      <th>The flag that wins over it</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">device</code> (<code class="language-plaintext highlighter-rouge">id:&lt;device&gt;</code>, or <code class="language-plaintext highlighter-rouge">preview</code> for none)</td>
+      <td><code class="language-plaintext highlighter-rouge">render-matrix</code> device axis, <code class="language-plaintext highlighter-rouge">record</code> overrides</td>
+      <td><code class="language-plaintext highlighter-rouge">--device</code>, <code class="language-plaintext highlighter-rouge">--overrides device=…</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">darkTheme</code></td>
+      <td><code class="language-plaintext highlighter-rouge">render-matrix</code> ui-mode axis, <code class="language-plaintext highlighter-rouge">record</code> overrides</td>
+      <td><code class="language-plaintext highlighter-rouge">--ui-mode</code>, —</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">fontScale</code> (<code class="language-plaintext highlighter-rouge">0</code> for none)</td>
+      <td><code class="language-plaintext highlighter-rouge">render-matrix</code> font-scale axis, <code class="language-plaintext highlighter-rouge">record</code> overrides</td>
+      <td><code class="language-plaintext highlighter-rouge">--font-scale</code>, <code class="language-plaintext highlighter-rouge">--overrides fontScale=…</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">locale</code> (BCP-47, empty for none)</td>
+      <td><code class="language-plaintext highlighter-rouge">render-matrix</code> locale axis, <code class="language-plaintext highlighter-rouge">record</code> overrides</td>
+      <td><code class="language-plaintext highlighter-rouge">--locale</code>, <code class="language-plaintext highlighter-rouge">--overrides localeTag=…</code></td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>A setting fills only what the command line leaves unset: <code class="language-plaintext highlighter-rouge">render-matrix
+--locale en,ar</code> with <code class="language-plaintext highlighter-rouge">darkTheme</code> on renders both locales dark. <code class="language-plaintext highlighter-rouge">show</code> and
+<code class="language-plaintext highlighter-rouge">render</code> drive the Gradle render, which draws each preview exactly as its
+<code class="language-plaintext highlighter-rouge">@Preview</code> declares, so they cannot apply these four; when any is set they
+say so on stderr rather than ignore it quietly. The server-only keys
+(<code class="language-plaintext highlighter-rouge">renderResult</code>, <code class="language-plaintext highlighter-rouge">imageToModel</code>, <code class="language-plaintext highlighter-rouge">replicasPerDaemon</code>, <code class="language-plaintext highlighter-rouge">uiBuilderMcpAppLayout</code>)
+and any key the CLI does not know are ignored. A bad value falls back to its
+default with a warning and keeps the other keys; a file that is not valid JSON
+warns once and every default applies.</p>
+<h2 id="deep-links-into-the-chatgpt--codex-sidebar">
+  
+  
+    <a href="#deep-links-into-the-chatgpt--codex-sidebar" class="anchor-heading" aria-labelledby="deep-links-into-the-chatgpt--codex-sidebar"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Deep links into the ChatGPT / Codex sidebar
+  
+  
+</h2>
+    
+
+<p>The local server’s <code class="language-plaintext highlighter-rouge">previews_library</code> tool is a sidebar app, and
+<code class="language-plaintext highlighter-rouge">compose-preview show --link</code> prints a link per preview that opens it there,
+rendered on open:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview show --id com.example.HomeKt.HomePreview --link \
+  --openai-plugin-id &lt;plugin id&gt; --openai-marketplace &lt;marketplace&gt;
+</code></pre></div></div>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Flag</th>
+      <th>Opens in</th>
+      <th>Link</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">--link</code> (or <code class="language-plaintext highlighter-rouge">--link=desktop</code>)</td>
+      <td>ChatGPT / Codex desktop</td>
+      <td><code class="language-plaintext highlighter-rouge">codex://plugins/&lt;id&gt;@&lt;marketplace&gt;/app/previews_library?path=…</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">--link=mobile</code></td>
+      <td>ChatGPT mobile</td>
+      <td><code class="language-plaintext highlighter-rouge">chatgpt://plugins/&lt;id&gt;@&lt;marketplace&gt;/app/previews_library?path=…</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">--link=web</code></td>
+      <td>chatgpt.com</td>
+      <td><code class="language-plaintext highlighter-rouge">https://chatgpt.com/plugins/&lt;id&gt;/app/previews_library?path=…</code></td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">path</code> is the library route <code class="language-plaintext highlighter-rouge">/preview/&lt;compose-preview URI&gt;</code>,
+percent-encoded (RFC 3986: a space is <code class="language-plaintext highlighter-rouge">%20</code>, and <code class="language-plaintext highlighter-rouge">/ ? &amp; = : @</code> inside a value
+are escaped). The plugin id and marketplace depend on how the plugin was
+published, so they are never guessed: pass the flags, or set
+<code class="language-plaintext highlighter-rouge">COMPOSE_PREVIEW_OPENAI_PLUGIN_ID</code> (and <code class="language-plaintext highlighter-rouge">COMPOSE_PREVIEW_OPENAI_MARKETPLACE</code>
+for a plugin installed from a custom marketplace; a flag beats the variable).
+Without a plugin id, <code class="language-plaintext highlighter-rouge">show --link</code> prints that guidance instead of a link and
+still shows the previews. Text output adds a <code class="language-plaintext highlighter-rouge">link:</code> line under each preview;
+<code class="language-plaintext highlighter-rouge">--json</code> adds a <code class="language-plaintext highlighter-rouge">link</code> field to each one.</p>
+
+<p>The link’s workspace segment is derived the way the server derives it for a
+project registered by path, from the project directory’s name and canonical
+path — a project registered under a custom <code class="language-plaintext highlighter-rouge">rootProjectName</code> has a different
+id, and its links will not resolve.</p>
+<h2 id="what-we-tell-agents">
+  
+  
+    <a href="#what-we-tell-agents" class="anchor-heading" aria-labelledby="what-we-tell-agents"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What we tell agents
+  
+  
+</h2>
+    
+
+<p>Point the agent at the
+<a href="https://github.com/yschimke/skills/tree/main/skills/compose-preview"><code class="language-plaintext highlighter-rouge">compose-preview</code> skill</a>.
+It’s the install-and-iterate playbook: it checks for the CLI, bootstraps it if
+missing (<a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md">setup</a>),
+and walks the agent through rendering and verifying.</p>
+
+          
+
+          
+            
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+

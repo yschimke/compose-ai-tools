@@ -1,0 +1,656 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    .site-nav > ul.nav-list:first-child > li > a,
+    
+    .site-nav > ul.nav-list:first-child > li > ul > li:not(:nth-child(18)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(18) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(3) > button svg,
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(18) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list,
+    .site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list > li.nav-list-item:nth-child(18) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Motion captures | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Motion captures" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/reference/motion/" />
+<meta property="og:url" content="https://preview.coo.ee/start/reference/motion/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Motion captures" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Motion captures","url":"https://preview.coo.ee/start/reference/motion/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      <nav aria-label="Breadcrumb" class="breadcrumb-nav">
+  <ol class="breadcrumb-nav-list">
+    <li class="breadcrumb-nav-list-item"><a href="/start/reference/">Reference</a></li>
+    <li class="breadcrumb-nav-list-item"><span>Motion captures</span></li>
+  </ol>
+</nav>
+
+
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="motion-captures">
+  
+  
+    <a href="#motion-captures" class="anchor-heading" aria-labelledby="motion-captures"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Motion captures
+  
+  
+</h1>
+    
+
+<p>A short, deterministic recording of a component in motion, published
+beside its ordinary still. Two annotations produce one: <code class="language-plaintext highlighter-rouge">@AnimatedPreview</code>
+records motion the component runs <em>by itself</em>, and <code class="language-plaintext highlighter-rouge">@InteractionPreview</code>
+records motion a <em>user</em> provokes by scripting a real pointer gesture
+against the live composition.</p>
+<h2 id="at-a-glance">
+  
+  
+    <a href="#at-a-glance" class="anchor-heading" aria-labelledby="at-a-glance"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> At a glance
+  
+  
+</h2>
+    
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Kinds</td>
+      <td><code class="language-plaintext highlighter-rouge">render/motion/apng</code>, <code class="language-plaintext highlighter-rouge">render/motion/gif</code></td>
+    </tr>
+    <tr>
+      <td>Schema version</td>
+      <td>n/a (image-only)</td>
+    </tr>
+    <tr>
+      <td>Modules</td>
+      <td><code class="language-plaintext highlighter-rouge">:data-motion-core</code> (pure JVM — APNG encoder, interaction-script expansion, frame-delay rationals)</td>
+    </tr>
+    <tr>
+      <td>Render mode</td>
+      <td>default</td>
+    </tr>
+    <tr>
+      <td>Cost</td>
+      <td>high (one full-size frame per interval across the window)</td>
+    </tr>
+    <tr>
+      <td>Token usage</td>
+      <td>Image-only — the payload is a <code class="language-plaintext highlighter-rouge">path</code>. See <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md">token usage</a>.</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td>path (APNG / GIF)</td>
+    </tr>
+    <tr>
+      <td>Platforms</td>
+      <td>Android · Desktop · shared</td>
+    </tr>
+  </tbody>
+</table></div>
+<h2 id="what-it-answers">
+  
+  
+    <a href="#what-it-answers" class="anchor-heading" aria-labelledby="what-it-answers"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it answers
+  
+  
+</h2>
+    
+
+<ul>
+  <li>What does the component look like <em>between</em> its states — the spring
+the indicator rides, the shape a container morphs into under a
+finger, the fade of a state layer?</li>
+  <li>Does the component actually respond to a real press, through its own
+<code class="language-plaintext highlighter-rouge">Modifier.clickable</code> / <code class="language-plaintext highlighter-rouge">toggleable</code> wiring?</li>
+  <li>Does the motion survive a theme swap, a density change, an RTL
+locale?</li>
+</ul>
+
+<p>A PNG of a navigation bar shows where the indicator ended up; it says
+nothing about the spring that carried it there, which is exactly what
+Material 3 Expressive changed. A lot of what a modern design system
+<em>is</em> lives in the motion, so the interaction is the documentation.</p>
+<h2 id="what-it-does-not-answer">
+  
+  
+    <a href="#what-it-does-not-answer" class="anchor-heading" aria-labelledby="what-it-does-not-answer"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it does NOT answer
+  
+  
+</h2>
+    
+
+<ul>
+  <li>Motion capture is <strong>renderer-side only</strong> — it produces image
+artifacts, not a JSON payload, so it has no <code class="language-plaintext highlighter-rouge">kind</code> on the daemon’s
+<code class="language-plaintext highlighter-rouge">initialize.capabilities.dataProducts</code> list and never round-trips
+through <code class="language-plaintext highlighter-rouge">data/fetch</code> or <code class="language-plaintext highlighter-rouge">data/subscribe</code>.</li>
+  <li>It does not measure motion <em>performance</em>. Every frame is sampled on a
+paused clock, so the file says what the animation looks like, not what
+it costs — for that, instrument
+<a href="../recomposition"><code class="language-plaintext highlighter-rouge">compose/recomposition</code></a> over the same window.</li>
+  <li>It is not a video recorder. The window is bounded (10 s for an
+interaction, 5 s for an animation) because every frame is a full-size
+image in the output.</li>
+</ul>
+<h2 id="both-backends-produce-these">
+  
+  
+    <a href="#both-backends-produce-these" class="anchor-heading" aria-labelledby="both-backends-produce-these"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Both backends produce these
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">@InteractionPreview</code> used to be implemented in the desktop renderer
+only; the Robolectric lane produced no capture, failed confusingly, and
+took the component’s ordinary still down with it
+(<a href="https://github.com/yschimke/compose-ai-tools/issues/4215">#4215</a>).
+Both backends honour it now, and they share the parts that must agree:</p>
+
+<ul>
+  <li><strong>The script expansion.</strong> The recording window is <em>derived</em> — lead-in,
+plus one press and one settle window per target — by
+<code class="language-plaintext highlighter-rouge">InteractionScript</code> in <code class="language-plaintext highlighter-rouge">:data-motion-core</code>. Two backends deriving it
+separately would disagree silently, and a recording cut short
+mid-gesture is a plausible-looking file rather than an error.</li>
+  <li><strong>The container.</strong> One <code class="language-plaintext highlighter-rouge">ApngEncoder</code>, so a component’s capture cannot
+differ in container bytes from its sibling’s depending on which
+backend built it.</li>
+</ul>
+
+<p>What is genuinely per-backend is how the pointer is injected and how
+platform animations are advanced. On Robolectric the capture advances
+the <strong>main looper</strong> alongside Compose’s <code class="language-plaintext highlighter-rouge">mainClock</code> on every frame,
+because Material’s ripple is a platform <code class="language-plaintext highlighter-rouge">RippleDrawable</code> and would
+otherwise stay frozen at frame 0 for the whole recording.</p>
+<h2 id="targeting-indices-into-the-previews-clickable-nodes">
+  
+  
+    <a href="#targeting-indices-into-the-previews-clickable-nodes" class="anchor-heading" aria-labelledby="targeting-indices-into-the-previews-clickable-nodes"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Targeting: indices into the preview’s clickable nodes
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">@InteractionPreview(targets = [...])</code> addresses the composable’s
+clickable nodes in <strong>layout order</strong> — index 2 of a five-destination
+navigation bar is its third destination. Both renderers resolve the
+indices against the live semantics tree, <strong>once</strong>, against the
+composition at rest, then dispatch to each node’s centre.</p>
+
+<ul>
+  <li>Resolving once is deliberate: a component that reflows as it responds
+would move the node the <em>next</em> index refers to, so a script written
+against the resting layout would silently start hitting different
+things partway through the recording.</li>
+  <li>Indices rather than pixel coordinates (which every density and
+breakpoint would invalidate) and rather than label text (which every
+one of this repo’s locales would invalidate).</li>
+  <li>A target index that resolves to nothing <strong>fails the capture loudly</strong>.
+A recording of nothing happening is indistinguishable from a component
+that doesn’t respond, and answering that question is the artifact’s
+whole job.</li>
+</ul>
+
+<p>There is no <code class="language-plaintext highlighter-rouge">Toggle</code> gesture: <code class="language-plaintext highlighter-rouge">targets = [0, 0]</code> taps one switch twice,
+which is what a toggle already says.</p>
+<h2 id="framing">
+  
+  
+    <a href="#framing" class="anchor-heading" aria-labelledby="framing"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Framing
+  
+  
+</h2>
+    
+
+<p>A capture is framed like the still it sits beside — cropped to the
+composable’s measured box on a wrapped axis, so a catalog can show one
+in place of the other without the card resizing under the reader. The
+measurement is the <strong>maximum</strong> across the recording, not the resting
+one: a component that expands mid-gesture grows the canvas rather than
+being clipped at the frame edge. Nothing is ever resampled.</p>
+<h2 id="why-apng-by-default">
+  
+  
+    <a href="#why-apng-by-default" class="anchor-heading" aria-labelledby="why-apng-by-default"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Why APNG by default
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">@InteractionPreview</code> defaults to APNG; <code class="language-plaintext highlighter-rouge">@AnimatedPreview</code> keeps GIF for
+backwards compatibility. Two properties decide it, and both are things
+GIF <em>cannot</em> do rather than things it does worse:</p>
+
+<ul>
+  <li><strong>Exact frame timing.</strong> A GIF frame delay is an integer count of
+1/100 s, so 60 fps (16.67 ms) is not representable. An APNG delay is a
+rational <code class="language-plaintext highlighter-rouge">num/den</code>, so <code class="language-plaintext highlighter-rouge">1/60</code> is exact.</li>
+  <li><strong>Full colour.</strong> GIF’s 256-entry palette bands precisely what these
+captures exist to show — state-layer fades, ripple gradients, and the
+anti-aliased edge of a shape mid-morph.</li>
+</ul>
+
+<p>Ask for <code class="language-plaintext highlighter-rouge">format = MotionFormat.Gif</code> when reach in old tooling matters
+more.</p>
+
+<p>The output’s extension always follows the format the capture is
+written in: <code class="language-plaintext highlighter-rouge">@AnimatedPreview(format = MotionFormat.Apng)</code> writes
+<code class="language-plaintext highlighter-rouge">&lt;id&gt;.apng</code> on the desktop (Compose Multiplatform) backend. The Android
+backend does not encode <code class="language-plaintext highlighter-rouge">@AnimatedPreview</code> as APNG yet, so there an
+APNG request is written as GIF to <code class="language-plaintext highlighter-rouge">&lt;id&gt;.gif</code> and discovery warns that
+it was downgraded; <code class="language-plaintext highlighter-rouge">@InteractionPreview</code> honours <code class="language-plaintext highlighter-rouge">format</code> on both.</p>
+<h2 id="payload-shape">
+  
+  
+    <a href="#payload-shape" class="anchor-heading" aria-labelledby="payload-shape"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Payload shape
+  
+  
+</h2>
+    
+
+<p>Image-only artifacts. Output paths under
+<code class="language-plaintext highlighter-rouge">build/compose-previews/renders/&lt;id&gt;.apng</code> (or <code class="language-plaintext highlighter-rouge">.gif</code>). A motion
+capture never shares a slot with a still: a failure writes
+<code class="language-plaintext highlighter-rouge">&lt;output&gt;.error.json</code> beside the motion output, and the preview’s own
+PNG is left intact.</p>
+<h2 id="enabling">
+  
+  
+    <a href="#enabling" class="anchor-heading" aria-labelledby="enabling"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Enabling
+  
+  
+</h2>
+    
+
+<p>Annotate the preview:</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@CatalogComponent</span><span class="p">(</span><span class="n">id</span> <span class="p">=</span> <span class="s">"Switch/On"</span><span class="p">,</span> <span class="n">caption</span> <span class="p">=</span> <span class="s">"…"</span><span class="p">)</span>
+<span class="nd">@InteractionPreview</span><span class="p">(</span>
+  <span class="n">targets</span> <span class="p">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+  <span class="n">caption</span> <span class="p">=</span> <span class="s">"Toggle off and back on — the thumb rides the theme's spatial spec."</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nd">@Composable</span>
+<span class="k">fun</span> <span class="nf">SwitchOn</span><span class="p">()</span> <span class="p">=</span> <span class="nc">Sticker</span><span class="p">(</span><span class="s">"switch-on"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>See
+<a href="https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/capture-modes.md"><code class="language-plaintext highlighter-rouge">skills/compose-preview/references/capture-modes.md</code></a>
+for the full set of capture-mode annotations.</p>
+<h3 id="publishing-it-in-a-design-catalog">
+  
+  
+    <a href="#publishing-it-in-a-design-catalog" class="anchor-heading" aria-labelledby="publishing-it-in-a-design-catalog"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Publishing it in a design catalog
+  
+  
+</h3>
+    
+
+<p>A design catalog collects motion <strong>per component</strong>, off the component’s own
+<code class="language-plaintext highlighter-rouge">@Preview</code> — so the pairing above needs no extra wiring. Two things push the
+recording onto a function of its own, and there it needs claiming or it
+publishes nowhere:</p>
+
+<ul>
+  <li>the component carries <code class="language-plaintext highlighter-rouge">@OverrideVariant</code> cells. The motion annotation rides
+every cell and the animated path ignores their knobs, so one recording
+publishes N byte-identical times, once per variant name;</li>
+  <li>the recording needs a pinned canvas (<code class="language-plaintext highlighter-rouge">widthDp</code> + <code class="language-plaintext highlighter-rouge">heightDp</code> — every frame of a
+GIF must share one size) while the component’s sticker wraps and is cropped.</li>
+</ul>
+
+<p>Name the separate function from the component:</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Preview</span><span class="p">(</span><span class="n">widthDp</span> <span class="p">=</span> <span class="mi">200</span><span class="p">,</span> <span class="n">heightDp</span> <span class="p">=</span> <span class="mi">120</span><span class="p">)</span> <span class="k">annotation</span> <span class="kd">class</span> <span class="nc">MotionCanvas</span>
+
+<span class="nd">@MotionCanvas</span> <span class="nd">@AnimatedPreview</span> <span class="nd">@Composable</span> <span class="k">fun</span> <span class="nf">SwitchTransitionMotion</span><span class="p">()</span> <span class="p">=</span> <span class="nc">Sticker</span> <span class="p">{</span> <span class="err">…</span> <span class="p">}</span>
+
+<span class="nd">@CatalogComponent</span><span class="p">(</span><span class="n">id</span> <span class="p">=</span> <span class="s">"Toggles/Switch"</span><span class="p">,</span> <span class="n">motionPreview</span> <span class="p">=</span> <span class="s">"SwitchTransitionMotion"</span><span class="p">)</span>
+<span class="nd">@Composable</span>
+<span class="k">fun</span> <span class="nf">SwitchButtonSticker</span><span class="p">()</span> <span class="p">=</span> <span class="nc">Sticker</span> <span class="p">{</span> <span class="err">…</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p>A <code class="language-plaintext highlighter-rouge">catalog.spec.json</code> component’s <code class="language-plaintext highlighter-rouge">motionPreview</code> does the same and wins over the
+annotation. The named function needs no <code class="language-plaintext highlighter-rouge">@CatalogComponent</code> of its own — it adds
+no card and no design-kit node, it only supplies the bytes. An authored recording
+that <strong>no</strong> component claims renders and is then dropped at the join; the export
+warns when it finds one.</p>
+<h2 id="recording-a-timeline-the-preview-drives-itself">
+  
+  
+    <a href="#recording-a-timeline-the-preview-drives-itself" class="anchor-heading" aria-labelledby="recording-a-timeline-the-preview-drives-itself"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Recording a timeline the preview drives itself
+  
+  
+</h2>
+    
+
+<p><code class="language-plaintext highlighter-rouge">@AnimatedPreview</code> and <code class="language-plaintext highlighter-rouge">@InteractionPreview</code> stop at 5 s and 10 s. Some recordings tell a longer
+story made of several changes, each driven by the host: a door opening, then dusk falling for
+three simulated hours, then the door closing. Put that story in the preview and record it with
+<code class="language-plaintext highlighter-rouge">compose-preview record</code>. You don’t need to step frames by hand.</p>
+
+<ol>
+  <li>
+    <p><strong>The preview owns the timeline.</strong> Drive state from a <code class="language-plaintext highlighter-rouge">LaunchedEffect</code> with <code class="language-plaintext highlighter-rouge">delay()</code>. A
+recording runs on the virtual frame clock, so every <code class="language-plaintext highlighter-rouge">delay</code> lands exactly where you put it,
+on every run:</p>
+
+    <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Preview</span><span class="p">(</span><span class="n">widthDp</span> <span class="p">=</span> <span class="mi">360</span><span class="p">,</span> <span class="n">heightDp</span> <span class="p">=</span> <span class="mi">300</span><span class="p">)</span> <span class="c1">// pin both: every frame shares one canvas</span>
+<span class="nd">@Composable</span>
+<span class="k">fun</span> <span class="nf">GarageAtDusk</span><span class="p">()</span> <span class="p">{</span>
+  <span class="kd">var</span> <span class="py">open</span> <span class="k">by</span> <span class="nf">remember</span> <span class="p">{</span> <span class="nf">mutableStateOf</span><span class="p">(</span><span class="k">false</span><span class="p">)</span> <span class="p">}</span>
+  <span class="kd">var</span> <span class="py">elevation</span> <span class="k">by</span> <span class="nf">remember</span> <span class="p">{</span> <span class="nf">mutableStateOf</span><span class="p">(</span><span class="mf">14f</span><span class="p">)</span> <span class="p">}</span>
+  <span class="nc">LaunchedEffect</span><span class="p">(</span><span class="nc">Unit</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nf">delay</span><span class="p">(</span><span class="mi">1_000</span><span class="p">);</span> <span class="k">open</span> <span class="p">=</span> <span class="k">true</span>
+    <span class="nf">delay</span><span class="p">(</span><span class="mi">2_500</span><span class="p">)</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">step</span> <span class="k">in</span> <span class="n">sunset</span><span class="p">)</span> <span class="p">{</span> <span class="n">elevation</span> <span class="p">=</span> <span class="n">step</span><span class="p">;</span> <span class="nf">delay</span><span class="p">(</span><span class="mi">45</span><span class="p">)</span> <span class="p">}</span> <span class="c1">// three hours in four seconds</span>
+    <span class="nf">delay</span><span class="p">(</span><span class="mi">800</span><span class="p">);</span> <span class="k">open</span> <span class="p">=</span> <span class="k">false</span>
+  <span class="p">}</span>
+  <span class="nc">CardHost</span><span class="p">(</span><span class="n">snapshot</span> <span class="p">=</span> <span class="nf">states</span><span class="p">(</span><span class="k">open</span><span class="p">,</span> <span class="n">elevation</span><span class="p">))</span>
+<span class="p">}</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Drive the host’s inputs, not its outputs.</strong> When the composable under test is a host,
+change what the host reads, and let it derive the rest. For example, a Remote Compose player
+fed named values computed from a data snapshot: change the snapshot. If you hand-build the
+values the host would push, you record your copy of the host rather than the host itself.</p>
+  </li>
+  <li>
+    <p><strong>The script only sets the length.</strong> With no input to inject, two probes are enough:</p>
+
+    <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+  </span><span class="p">{</span><span class="w"> </span><span class="nl">"tMs"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nl">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"recording.probe"</span><span class="p">,</span><span class="w"> </span><span class="nl">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"start"</span><span class="w"> </span><span class="p">},</span><span class="w">
+  </span><span class="p">{</span><span class="w"> </span><span class="nl">"tMs"</span><span class="p">:</span><span class="w"> </span><span class="mi">11000</span><span class="p">,</span><span class="w"> </span><span class="nl">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"recording.probe"</span><span class="p">,</span><span class="w"> </span><span class="nl">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"end"</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview record <span class="nt">--preview</span> GarageAtDusk <span class="nt">--script</span> length.json <span class="nt">--out</span> garage.apng
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Choose the size, and the format for where it goes.</strong> The cost is the number of frames times
+their size. An 11 s recording at the default 30 fps and full scale is 331 frames; for a 360 dp
+card that comes to a 40 MB APNG. <code class="language-plaintext highlighter-rouge">--fps 12 --scale 0.6</code> makes the same story 133 frames and
+9 MB.</p>
+
+    <p>APNG is the default here, lossless and in full colour. For a chat app or an issue comment,
+ask for MP4 with <code class="language-plaintext highlighter-rouge">--out garage.mp4</code>, which needs <code class="language-plaintext highlighter-rouge">ffmpeg</code> on <code class="language-plaintext highlighter-rouge">PATH</code>. It plays inline in
+Slack, and is about 200 KB for the same recording.</p>
+
+    <p>Encoding waits a minute plus two seconds for every million pixels across the frames, up to
+half an hour. A long recording at full scale therefore still finishes, just not quickly.</p>
+  </li>
+</ol>
+<h2 id="companion-products">
+  
+  
+    <a href="#companion-products" class="anchor-heading" aria-labelledby="companion-products"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Companion products
+  
+  
+</h2>
+    
+
+<ul>
+  <li><a href="../scroll">Scroll captures</a> — <code class="language-plaintext highlighter-rouge">render/scroll/gif</code> for motion driven by scrolling rather than by a pointer or the component itself.</li>
+  <li><a href="../focus">Focus</a> — <code class="language-plaintext highlighter-rouge">@FocusedPreview(gif = true)</code> for a keyboard-traversal walk.</li>
+  <li><a href="../history">History diff</a> — <code class="language-plaintext highlighter-rouge">history/diff/regions</code> against a baseline to catch motion regressions frame-region by frame-region.</li>
+</ul>
+
+          
+
+          
+            
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+

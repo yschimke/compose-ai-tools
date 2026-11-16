@@ -1,0 +1,47 @@
+# compose-ai-tools
+
+> compose-ai-tools renders Jetpack Compose and Compose Multiplatform `@Preview` composables to PNG outside Android Studio, and produces structured UI data so developers and coding agents can inspect and verify changes.
+
+Core path: install one thing for your agent, then ask it to render one of your previews.
+
+- Claude Code: `/plugin marketplace add yschimke/compose-agent-plugins` then `/plugin install compose-preview@compose-agent-plugins`.
+- Codex: `codex plugin marketplace add yschimke/compose-agent-plugins`, then enable `compose-preview` from `/plugins`.
+- Antigravity: `curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 -`
+- Any other agent, or no plugin system: `curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash` (installs the `compose-preview` CLI and the two default skills).
+
+The `compose-preview` plugin carries the `compose-preview` and `compose-ui-builder` skills, the local MCP server and the hosted catalog server. Install only that one plugin in a coding agent.
+
+Start pages: https://preview.coo.ee/start/ for the CLI and project previews; https://ui.coo.ee/start for designing a new screen in the UI Builder. Without an agent there is also a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension and CI actions. Java 17 or newer and Gradle 8.13 or newer are required for local rendering.
+
+MCP: there are two servers. The local one is `compose-preview mcp serve` (stdio, renders the user's own project). The hosted catalog server has one URL, `https://preview.coo.ee/mcp`; `https://ui.coo.ee/mcp` is an alias of the same server, so never configure both.
+
+## Getting started
+
+- [Overview](https://preview.coo.ee/start/): The one install per agent host, then the alternatives for people (VS Code, CLI, Gradle plugin) and what to reach for next.
+- [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews; an agent that can only fetch URLs can bootstrap the CLI from it.
+- [Installation and requirements](https://preview.coo.ee/start/install/): Gradle plugin, CLI build integration, CI actions, compatibility requirements and configuration examples.
+- [Other hosts and install options](https://github.com/yschimke/compose-agent-plugins/blob/main/docs/host-setup.md): Per-host plugin and MCP wiring beyond the core path.
+- [CLI and skills setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/setup.md): `install.sh` flags, `npx skills`, and updating the CLI and skills.
+
+## When you need more
+
+- [PR review and preview CI](https://github.com/yschimke/skills/tree/main/skills/compose-preview-review): Optional review and CI skills (`compose-preview-review`, `compose-preview-ci`; Claude Code: `/plugin install compose-review@compose-agent-plugins`) and the `apply` GitHub Action that posts before/after renders on PRs.
+- [UI Builder](https://ui.coo.ee/start): Design a new screen with an agent, then export Compose code.
+- [Android simulator](https://preview.coo.ee/start/simulator/): Run an APK without an emulator with `compose-preview android-simulator` (formerly `launch`); permissions, notifications, launcher widgets.
+- [Android simulator: Wear OS](https://preview.coo.ee/start/simulator/wear/): Tiles, Wear Widgets, complications, Declarative Watch Faces and Data Layer pairing in the simulator.
+
+## Core documentation
+
+- [Data product reference](https://preview.coo.ee/start/reference/): Index of structured outputs including accessibility, layout, theme, resources, recomposition, localization, and render traces.
+- [Agents and MCP](https://preview.coo.ee/start/mcp/): Local vs hosted MCP server, agent workflows, and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
+- [Render daemon](https://preview.coo.ee/start/daemon/): Optional long-lived renderer for low-latency preview iteration.
+- [How rendering works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md): Preview discovery, rendering backends, caching, and project structure.
+- [Benchmarks](https://github.com/yschimke/compose-ai-tools/blob/main/docs/BENCHMARKS.md): End-to-end latency, memory, visual fidelity, and structural inspection compared against `android preview` and `android studio render-compose-preview`.
+
+## Optional
+
+- [Source repository](https://github.com/yschimke/compose-ai-tools): Source code, samples, issues, and contribution history.
+- [Contributor documentation](https://github.com/yschimke/compose-ai-tools/blob/main/docs/README.md): Architecture, development, compatibility, release, and protocol documentation for contributors.
+- [Releases](https://github.com/yschimke/compose-ai-tools/releases): Published versions and release notes.
+- [Changelog](https://github.com/yschimke/compose-ai-tools/blob/main/CHANGELOG.md): Detailed project change history.
+- [License](https://github.com/yschimke/compose-ai-tools/blob/main/LICENSE): Apache License 2.0 terms.

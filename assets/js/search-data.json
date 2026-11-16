@@ -1,0 +1,1388 @@
+{"0": {
+    "doc": "Accessibility",
+    "title": "Accessibility",
+    "content": "Run the Accessibility Test Framework (ATF) over each rendered preview and surface the findings, the semantic hierarchy, the annotated overlay PNG, and a 48 dp touch-target audit as four related kinds. ",
+    "url": "/start/reference/a11y/",
+    
+    "relUrl": "/reference/a11y/"
+  },"1": {
+    "doc": "Accessibility",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | a11y/atf, a11y/hierarchy, a11y/overlay, a11y/touchTargets | . | Schema version | 1 | . | Modules | :data-a11y-core (published) · :data-a11y-connector · :data-a11y-hierarchy-android | . | Render mode | a11y (daemon-only — opt in via the VS Code chip toggle or compose-preview a11y; standalone composePreviewRender Gradle task does not produce a11y data) | . | Cost | low | . | Token usage | ~100 tok inline (e.g. a11y/atf ~370 chars); +~1.5 k per a11y/overlay PNG read. See token usage. | . | Transport | inline (JSON) · path (overlay PNG) | . | Platforms | Android | . ",
+    "url": "/start/reference/a11y/#at-a-glance",
+    
+    "relUrl": "/reference/a11y/#at-a-glance"
+  },"2": {
+    "doc": "Accessibility",
+    "title": "What it answers",
+    "content": ". | a11y/atf — does this preview violate WCAG / Android a11y best practices? Each AccessibilityFinding carries a check id, severity, source, and the node it implicates. The renderer keeps LocalInspectionMode = false so Compose populates real semantics; infinite animations tick through rather than parking on the paused frame clock (true regardless of the a11y opt-in). | a11y/hierarchy — what does an assistive technology see? Per-node label, role, states, merged, boundsInScreen. Read it the same way TalkBack would. | a11y/overlay — the rendered PNG with finding bounding boxes baked in. Pure-image; transport=path. | a11y/touchTargets — every interactive node with its measured bounds vs. the 48 dp Material minimum, with overlap detection between adjacent targets. | . ",
+    "url": "/start/reference/a11y/#what-it-answers",
+    
+    "relUrl": "/reference/a11y/#what-it-answers"
+  },"3": {
+    "doc": "Accessibility",
+    "title": "What it does NOT answer",
+    "content": ". | It is not a substitute for testing with real assistive technology — TalkBack on a real device may surface gestures or focus order issues that a single static frame can’t. | It does not opine on copy quality (placeholder text, jargon). Use text/strings for that. | Findings are advisory, not pass/fail; severity is the agent’s signal. | . ",
+    "url": "/start/reference/a11y/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/a11y/#what-it-does-not-answer"
+  },"4": {
+    "doc": "Accessibility",
+    "title": "Use cases",
+    "content": ". | PR review: gate UI PRs on no new ERROR-severity findings; reviewers can paste the overlay PNG inline. | Refactor confidence: diff a11y/hierarchy before/after a state-hoisting change to confirm semantics didn’t regress. | Density audit: sweep all previews for a11y/touchTargets violations on a Wear watch face where small targets matter most. | . ",
+    "url": "/start/reference/a11y/#use-cases",
+    
+    "relUrl": "/reference/a11y/#use-cases"
+  },"5": {
+    "doc": "Accessibility",
+    "title": "Payload shape",
+    "content": "AccessibilityFindingsPayload, AccessibilityHierarchyPayload, AccessibilityTouchTargetsPayload, AccessibilityOverlayArtifact (path-only) — defined in :data-a11y-core. // a11y/atf { \"findings\": [ { \"checkId\": \"TouchTargetSize\", \"severity\": \"ERROR\", \"label\": \"Submit\", \"boundsInScreen\": \"48,200,144,232\" } ] } // a11y/hierarchy { \"nodes\": [ { \"label\": \"Submit\", \"role\": \"Button\", \"states\": [\"Enabled\"], \"merged\": true, \"boundsInScreen\": \"48,200,144,232\" } ] } . ",
+    "url": "/start/reference/a11y/#payload-shape",
+    
+    "relUrl": "/reference/a11y/#payload-shape"
+  },"6": {
+    "doc": "Accessibility",
+    "title": "Enabling",
+    "content": "A11y data products are produced exclusively by the preview daemon. There is no Gradle DSL or property knob — opt in per invocation through one of: . | VS Code chip toggle — clicking an a11y/* chip on a preview card routes a per-preview data/subscribe through the daemon. The next render attaches the post-capture walk and stamps a11y-atf.json, a11y-hierarchy.json, a11y-overlay.png, and a11y-touchTargets.json under build/compose-previews/data/&lt;id&gt;/. | compose-preview a11y — the CLI command spins up a temporary daemon, renders with the a11y subscription on, drains the findings, and shuts down. | MCP / agent flows — the daemon’s data/subscribe request enables any subset of a11y/* kinds for a given preview. | compose-preview serve viewer — ticking Overlays → Inspect → Accessibility fetches /render/&lt;id&gt;.a11y, which merges a11y/hierarchy, a11y/atf and a11y/touchTargets for the frame currently on screen (the same overrides, so the bounds line up with the pixels). The viewer draws each screen-reader stop as a box on the render with a legend beside it — label, role, states, touch-target size, and any ATF finding — rather than compositing an overlay into the PNG. | . The standalone :composePreviewRenderAll Gradle task does NOT produce a11y sidecars — it’s a normal-render-only path. ",
+    "url": "/start/reference/a11y/#enabling",
+    
+    "relUrl": "/reference/a11y/#enabling"
+  },"7": {
+    "doc": "Accessibility",
+    "title": "Companion products",
+    "content": ". | Layout inspector — compose/semantics for testTag / role / mergeMode without the ATF audit. | Strings — text/strings for drawn-text quality next to assistive labels. | . See also the agent-facing review guidance in skills/compose-preview/references/a11y.md. ",
+    "url": "/start/reference/a11y/#companion-products",
+    
+    "relUrl": "/reference/a11y/#companion-products"
+  },"8": {
+    "doc": "Ambient (Wear)",
+    "title": "Ambient",
+    "content": "Drive Wear OS AmbientMode overrides through the preview pipeline so a single @Preview can be rendered in Interactive and Ambient modes without touching the on-device Wear Services SDK. ",
+    "url": "/start/reference/ambient/#ambient",
+    
+    "relUrl": "/reference/ambient/#ambient"
+  },"9": {
+    "doc": "Ambient (Wear)",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | compose/ambient | . | Schema version | 1 | . | Modules | :data-ambient-core (published) · :data-ambient-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked. See token usage. | . | Transport | inline | . | Platforms | Wear OS (Android) | . ",
+    "url": "/start/reference/ambient/#at-a-glance",
+    
+    "relUrl": "/reference/ambient/#at-a-glance"
+  },"10": {
+    "doc": "Ambient (Wear)",
+    "title": "What it answers",
+    "content": ". | What does this composable look like in Ambient mode (low-power, monochrome) vs. Interactive? | Does the consumer’s LocalAmbientModeManager.current?.currentAmbientMode read site behave correctly under each state? | Did wake-on-input transitions (touch, RSB rotary scroll) flip the state back to Interactive as expected? | . The connector primes an AmbientStateController and installs a LocalAmbientModeManager composition local backed by it, so consumer code that wraps its UI in horologist’s AmbientAware { ... } — or reads the manager directly — sees the requested state without any real Wear Services dependency. The legacy androidx.wear.ambient.AmbientLifecycleObserver callback fan-out is preserved through ShadowAmbientLifecycleObserver under Robolectric. ",
+    "url": "/start/reference/ambient/#what-it-answers",
+    
+    "relUrl": "/reference/ambient/#what-it-answers"
+  },"11": {
+    "doc": "Ambient (Wear)",
+    "title": "What it does NOT answer",
+    "content": ". | It does not measure battery impact or screen-burn-in risk of a given Ambient design — those need on-device measurement. | It does not enforce always-on display constraints (≤15% pixels lit, no animation); use a linter or design-review checklist for that. | . ",
+    "url": "/start/reference/ambient/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/ambient/#what-it-does-not-answer"
+  },"12": {
+    "doc": "Ambient (Wear)",
+    "title": "Use cases",
+    "content": ". | Render an Ambient mode baseline of every Wear watch-face preview alongside the Interactive baseline. | Verify a watch-face redesign keeps the time legible after the state flip. | Test wake-on-input handling for a custom complication tap target. | . ",
+    "url": "/start/reference/ambient/#use-cases",
+    
+    "relUrl": "/reference/ambient/#use-cases"
+  },"13": {
+    "doc": "Ambient (Wear)",
+    "title": "Payload shape",
+    "content": "AmbientPayload and the matching AmbientOverride / AmbientStateOverride types in :data-ambient-core. // renderNow.overrides.ambient { \"state\": { \"value\": \"Ambient\" }, // or \"Interactive\" \"lowBitAmbient\": false, \"burnInProtection\": false } . ",
+    "url": "/start/reference/ambient/#payload-shape",
+    
+    "relUrl": "/reference/ambient/#payload-shape"
+  },"14": {
+    "doc": "Ambient (Wear)",
+    "title": "Enabling",
+    "content": "The producer’s onRender runs whenever its owning extension is publicly enabled. From the daemon side, that is the extensions/enable handshake; from Gradle, the extension is wired when the Wear sample (or a consumer with the Wear toolkit on the classpath) applies the plugin. ",
+    "url": "/start/reference/ambient/#enabling",
+    
+    "relUrl": "/reference/ambient/#enabling"
+  },"15": {
+    "doc": "Ambient (Wear)",
+    "title": "Companion products",
+    "content": ". | Wallpaper — compose/wallpaper for Material You seed colours that drive the Ambient palette. | Theme — compose/theme for the resolved Material 3 tokens at the active Ambient state. | . See also skills/compose-preview/references/wear-ui.md. ",
+    "url": "/start/reference/ambient/#companion-products",
+    
+    "relUrl": "/reference/ambient/#companion-products"
+  },"16": {
+    "doc": "Ambient (Wear)",
+    "title": "Ambient (Wear)",
+    "content": " ",
+    "url": "/start/reference/ambient/",
+    
+    "relUrl": "/reference/ambient/"
+  },"17": {
+    "doc": "Daemon",
+    "title": "Daemon",
+    "content": "The daemon is an optional speed-up. The Gradle composePreviewRender task is the canonical render path (and what CI uses); the daemon just makes interactive re-renders fast. ",
+    "url": "/start/daemon/",
+    
+    "relUrl": "/daemon/"
+  },"18": {
+    "doc": "Daemon",
+    "title": "What it is",
+    "content": "A persistent preview server that replaces the per-save Gradle invocation with a long-lived JVM holding a hot Robolectric (Android) or Compose-Desktop renderer. A cold Gradle render is 10s+; a warm daemon render is a fraction of that. It’s what the VS Code extension and the MCP server drive behind the scenes. It’s configured with composePreview.daemon { ... } and defaults on for editor use. You don’t start or manage it by hand — the extension and MCP server bring it up as needed. ",
+    "url": "/start/daemon/#what-it-is",
+    
+    "relUrl": "/daemon/#what-it-is"
+  },"19": {
+    "doc": "Daemon",
+    "title": "Where it ships from",
+    "content": "The daemon modules (daemon-core, the Robolectric Android backend and the Compose-Desktop backend) live in compose-preview-daemon, and the local MCP server that multiplexes per-(workspace, module) daemons behind one MCP surface lives in compose-preview-mcp (see Agents &amp; MCP). This repository consumes them at a pinned version. ",
+    "url": "/start/daemon/#where-it-ships-from",
+    
+    "relUrl": "/daemon/#where-it-ships-from"
+  },"20": {
+    "doc": "Daemon",
+    "title": "Going deeper",
+    "content": "The full design docs live in docs/daemon/: . | DESIGN.md — architecture, lifecycle, leak defense, decisions log. | PROTOCOL.md — the v1 client ↔ daemon wire format. | CONFIG.md — the composePreview.daemon { … } DSL. | MCP.md — daemon ↔ MCP mapping and tool surface. | BENCHMARKS.md — measured cold/warm render, Stage-2 BTA edit-to-pixel, and semantics latency vs android preview and android studio render-compose-preview. | . &lt;/content&gt; . ",
+    "url": "/start/daemon/#going-deeper",
+    
+    "relUrl": "/daemon/#going-deeper"
+  },"21": {
+    "doc": "Display filters",
+    "title": "Display filters",
+    "content": "Apply post-process colour-matrix transforms to each captured PNG — grayscale (Android’s “bedtime mode”), classic colour inversion, and colour-blindness simulations (deuteranopia, protanopia, tritanopia). Each enabled filter produces an additional PNG sibling alongside the base capture, so an agent can verify a UI still communicates without hue, holds up under inversion, or remains readable for colour-vision deficiencies. ",
+    "url": "/start/reference/displayfilter/",
+    
+    "relUrl": "/reference/displayfilter/"
+  },"22": {
+    "doc": "Display filters",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | displayfilter/variants | . | Schema version | 1 | . | Modules | :data-displayfilter-core (published) · :data-displayfilter-connector | . | Render mode | default — purely post-capture, no Compose changes | . | Cost | very low — one matrix multiply per pixel per enabled filter on the captured BufferedImage | . | Token usage | ~10 tok inline (manifest is tiny — {filter, path} per variant); +~1.5 k per filtered PNG read. | . | Transport | inline (JSON manifest) · variant PNGs ride as extras | . | Platforms | Android, Desktop | . | Status | Wired across both render paths — the daemon (VS Code, MCP, CLI daemon mode) and the Gradle-plugin direct path (:samples:cmp:composePreviewRenderAll) both emit variants and the manifest after each capture. | . ",
+    "url": "/start/reference/displayfilter/#at-a-glance",
+    
+    "relUrl": "/reference/displayfilter/#at-a-glance"
+  },"23": {
+    "doc": "Display filters",
+    "title": "What it answers",
+    "content": ". | Hue-only signalling — does this UI still distinguish error/success/warning when the display is grayscale? Run with grayscale and look at the variant PNG: if a red error pill collapses to the same grey as a green success pill, hue is carrying signal that contrast/iconography should. | Inversion robustness — does the UI hold up when the user has Android’s “Color inversion” accessibility setting on? invert reveals hard-coded white/black assumptions and assets that don’t react to dark theme. | Colour-vision deficiency — what does this design look like to a viewer with the most common forms of colour blindness? deuteranopia (~6% of males), protanopia, and tritanopia simulate cone-loss using the Machado / Oliveira / Fernandes 2009 LMS-cone-loss matrices at severity 1.0. | . ",
+    "url": "/start/reference/displayfilter/#what-it-answers",
+    
+    "relUrl": "/reference/displayfilter/#what-it-answers"
+  },"24": {
+    "doc": "Display filters",
+    "title": "What it does NOT answer",
+    "content": ". | It is simulation, not correction. Android’s accessibility “Color correction” setting applies an error-shifted matrix that compensates for the deficiency; that’s a separate transform that belongs in the a11y bag. | It does not perform contrast checks — for WCAG-style audits use a11y/atf. | It does not understand image content (e.g. embedded photos), so smart-invert-style preservation of media is not modelled. | . ",
+    "url": "/start/reference/displayfilter/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/displayfilter/#what-it-does-not-answer"
+  },"25": {
+    "doc": "Display filters",
+    "title": "Use cases",
+    "content": ". | PR review: render any UI PR with grayscale enabled and skim the variant column — hue-only state is the most common reviewer-blind regression. | Accessibility audit: sweep the design system once with deuteranopia to find palette pairs that collapse for the most common colour-vision deficiency. | Bedtime / digital-wellbeing parity: confirm the app still looks deliberate when Android’s bedtime grayscale schedule kicks in, not just “all icons gone grey”. | . ",
+    "url": "/start/reference/displayfilter/#use-cases",
+    
+    "relUrl": "/reference/displayfilter/#use-cases"
+  },"26": {
+    "doc": "Display filters",
+    "title": "Payload shape",
+    "content": "DisplayFilterArtifact, DisplayFilterArtifacts — defined in :data-displayfilter-core. The manifest written to disk: . // build/compose-previews/data/&lt;previewId&gt;/displayfilter-variants.json { \"variants\": [ { \"filter\": \"grayscale\", \"path\": \"&lt;absolute&gt;/build/compose-previews/data/&lt;previewId&gt;/render_displayfilter_grayscale.png\", \"mediaType\": \"image/png\" }, { \"filter\": \"invert\", \"path\": \"&lt;absolute&gt;/.../render_displayfilter_invert.png\", \"mediaType\": \"image/png\" } ] } . data/fetch against displayfilter/variants returns the same JSON inline plus one DataProductExtra per variant pointing at the variant PNG, so a panel that subscribed to the manifest gets every PNG path without a follow-up fetch. ",
+    "url": "/start/reference/displayfilter/#payload-shape",
+    
+    "relUrl": "/reference/displayfilter/#payload-shape"
+  },"27": {
+    "doc": "Display filters",
+    "title": "Filter catalogue",
+    "content": "| id | Matrix source | What it simulates | . | grayscale | setSaturation(0) with Rec.709 luma weights (R · 0.2126 + G · 0.7152 + B · 0.0722) — same weights android.graphics.ColorMatrix uses | Android Digital Wellbeing’s bedtime-mode grayscale | . | invert | RGB channel negation, alpha preserved | Android “Color inversion” accessibility setting (classic, not Smart Invert) | . | deuteranopia | Machado / Oliveira / Fernandes 2009, severity 1.0 — M-cone (green) loss | Most common colour-vision deficiency (~6% of males) | . | protanopia | Machado 2009, severity 1.0 — L-cone (red) loss | Red-blind | . | tritanopia | Machado 2009, severity 1.0 — S-cone (blue) loss | Rare blue/yellow deficiency | . ",
+    "url": "/start/reference/displayfilter/#filter-catalogue",
+    
+    "relUrl": "/reference/displayfilter/#filter-catalogue"
+  },"28": {
+    "doc": "Display filters",
+    "title": "Enabling",
+    "content": "A comma-separated list of filter ids enables the feature. Empty / unset disables it entirely (no manifest, no variant PNGs, no extension registration). Gradle plugin / direct render path. Pass the Gradle property (matches the rest of the composePreview.* flag namespace): ./gradlew :samples:cmp:composePreviewRenderAll \\ -PcomposePreview.displayFilter.filters=grayscale,deuteranopia . The plugin forwards the value to the spawned renderer JVMs as -Dcomposeai.displayfilter.filters=..., where RobolectricRenderTest (Android) and DesktopRendererMain (CMP Desktop) read it after each PNG capture and run DisplayFilterDataProducer.writeArtifacts(...). Daemon path. Same sysprop, set on the daemon JVM directly: -Dcomposeai.displayfilter.filters=.... Unknown filter ids are dropped with a warning so a typo doesn’t strand the rest. Duplicates collapse — grayscale,invert,grayscale runs each filter once. ",
+    "url": "/start/reference/displayfilter/#enabling",
+    
+    "relUrl": "/reference/displayfilter/#enabling"
+  },"29": {
+    "doc": "Display filters",
+    "title": "Companion products",
+    "content": ". | Accessibility — a11y/atf for ATF audit, a11y/overlay for annotated PNG. Pair grayscale with a11y/atf contrast findings to triage the same palette from two angles. | Theme — compose/theme to see which tokens drove the render before applying a filter to the result. | . ",
+    "url": "/start/reference/displayfilter/#companion-products",
+    
+    "relUrl": "/reference/displayfilter/#companion-products"
+  },"30": {
+    "doc": "Focus",
+    "title": "Focus",
+    "content": "Snapshot the Compose focus state of a preview and drive directional focus traversal (Up, Down, Left, Right, Next, Previous) so agents can verify keyboard / D-pad navigation without an emulator. ",
+    "url": "/start/reference/focus/",
+    
+    "relUrl": "/reference/focus/"
+  },"31": {
+    "doc": "Focus",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | compose/focus | . | Schema version | 1 | . | Modules | :data-focus-core (published) · :data-focus-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked. See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · Wear · shared | . ",
+    "url": "/start/reference/focus/#at-a-glance",
+    
+    "relUrl": "/reference/focus/#at-a-glance"
+  },"32": {
+    "doc": "Focus",
+    "title": "What it answers",
+    "content": ". | Which node holds focus right now? What testTag, role, label? | After a directional moveFocus(FocusDirection.Down), where does focus land? | Is there a focus trap, dead end, or unexpected wrap? | Does the focus ring overlay match the focusable bounds the developer expects? | . The connector ships a FocusController that drives Compose’s FocusManager and a FocusOverlay that renders the focused-node bounding box on top of the captured PNG. ",
+    "url": "/start/reference/focus/#what-it-answers",
+    
+    "relUrl": "/reference/focus/#what-it-answers"
+  },"33": {
+    "doc": "Focus",
+    "title": "What it does NOT answer",
+    "content": ". | It does not test physical input devices (rotary, gamepad, IME hardware) — it operates on the abstract FocusDirection enum. | It does not score focus order against a designer-defined intent — it reports what the framework chose; reading whether that’s right is on the reviewer. | . ",
+    "url": "/start/reference/focus/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/focus/#what-it-does-not-answer"
+  },"34": {
+    "doc": "Focus",
+    "title": "Use cases",
+    "content": ". | TV / Wear traversal: render every Up/Down/Left/Right step from a known starting node and confirm the path lands on the intended target. | Dialog focus restoration: verify focus comes back to the trigger button after a dialog dismisses. | Form regression: catch a refactor that accidentally makes a TextField non-focusable. | . ",
+    "url": "/start/reference/focus/#use-cases",
+    
+    "relUrl": "/reference/focus/#use-cases"
+  },"35": {
+    "doc": "Focus",
+    "title": "Override shape",
+    "content": "Material3FocusProduct.KIND / FocusOverride and FocusDirection in :data-focus-core and daemon:core. compose/focus is an override capability, not a focused-node snapshot payload. A renderNow request carries the focus instruction under overrides.focus: . { \"overrides\": { \"focus\": { \"tabIndex\": 1, \"direction\": \"Down\", \"step\": 1, \"overlay\": true, \"pressed\": false } } } . Use compose/semantics to identify the resulting focused node and its boundsInRoot. ",
+    "url": "/start/reference/focus/#override-shape",
+    
+    "relUrl": "/reference/focus/#override-shape"
+  },"36": {
+    "doc": "Focus",
+    "title": "Enabling",
+    "content": "Pass an override on renderNow.overrides.focus (MCP) to drive traversal, or enable the extension and read focused-node snapshots on every render. ",
+    "url": "/start/reference/focus/#enabling",
+    
+    "relUrl": "/reference/focus/#enabling"
+  },"37": {
+    "doc": "Focus",
+    "title": "Companion products",
+    "content": ". | UIAutomator hierarchy — uia/hierarchy for the broader set of selector-shaped nodes a click / scroll / type could target. | Layout inspector — compose/semantics for testTag / role / mergeMode of the focused node. | . ",
+    "url": "/start/reference/focus/#companion-products",
+    
+    "relUrl": "/reference/focus/#companion-products"
+  },"38": {
+    "doc": "Fonts",
+    "title": "Fonts",
+    "content": "Report every font family used during render, with weight, style, and the resolved fallback chain Compose actually picked. ",
+    "url": "/start/reference/fonts/",
+    
+    "relUrl": "/reference/fonts/"
+  },"39": {
+    "doc": "Fonts",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | fonts/used | . | Schema version | 1 | . | Modules | :data-fonts-core (published) · :data-fonts-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked. See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/fonts/#at-a-glance",
+    
+    "relUrl": "/reference/fonts/#at-a-glance"
+  },"40": {
+    "doc": "Fonts",
+    "title": "What it answers",
+    "content": ". | Which font families ended up on screen? | For each Text(...) call site, what weight / style was requested vs. what the resolver returned? | Did Compose fall back to a system font because a custom font failed to load? | Are any glyphs being served by a font you didn’t expect to ship in the APK / app bundle? | . ",
+    "url": "/start/reference/fonts/#what-it-answers",
+    
+    "relUrl": "/reference/fonts/#what-it-answers"
+  },"41": {
+    "doc": "Fonts",
+    "title": "What it does NOT answer",
+    "content": ". | It does not measure font file size, CFF subsetting, or runtime download cost — that is a build-tools / Play asset delivery question. | It does not validate whether a glyph is visually correct (Han ideograph variants, complex script shaping) — that requires designer review against the rendered PNG. | . ",
+    "url": "/start/reference/fonts/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/fonts/#what-it-does-not-answer"
+  },"42": {
+    "doc": "Fonts",
+    "title": "Hosted Linux fallback coverage",
+    "content": "The GitHub preview actions, reusable design-catalog workflow, and official preview-server images install Noto’s core, CJK, and color-emoji families as system fallbacks. Skiko therefore fills glyphs that an app’s selected family does not contain—Arabic, Indic, Thai, CJK, and emoji—without requiring the app to rewrite its MaterialTheme for previews. The installer preserves the host’s existing generic sans, serif, and monospace choices, and an app’s explicitly bundled family still wins. Direct local CLI renders continue to use the operating system’s installed fallback fonts, just as the application does at runtime. Install equivalent Noto packages on a minimal Linux workstation if it does not already provide those scripts. ",
+    "url": "/start/reference/fonts/#hosted-linux-fallback-coverage",
+    
+    "relUrl": "/reference/fonts/#hosted-linux-fallback-coverage"
+  },"43": {
+    "doc": "Fonts",
+    "title": "Use cases",
+    "content": ". | Catch accidental fallback to sans-serif after a FontFamily.Resolver refactor. | Verify a paid brand font is the one actually drawing your headings, not a system stand-in. | Audit a Wear app’s text for legibility-critical weights (Medium / SemiBold) the design system requires. | . ",
+    "url": "/start/reference/fonts/#use-cases",
+    
+    "relUrl": "/reference/fonts/#use-cases"
+  },"44": {
+    "doc": "Fonts",
+    "title": "Payload shape",
+    "content": "FontsUsedPayload, FontUsedEntry in :data-fonts-core. // fonts/used { \"fonts\": [ { \"family\": \"Roboto\", \"weight\": 500, \"style\": \"Normal\", \"source\": \"system\", \"fallbackFrom\": null }, { \"family\": \"Inter\", \"weight\": 700, \"style\": \"Italic\", \"source\": \"asset\", \"fallbackFrom\": \"InterVariable\" } ] } . ",
+    "url": "/start/reference/fonts/#payload-shape",
+    
+    "relUrl": "/reference/fonts/#payload-shape"
+  },"45": {
+    "doc": "Fonts",
+    "title": "Enabling",
+    "content": "Producer runs by default once the Fonts extension is publicly enabled (extensions/enable). On the CLI / Gradle path the JSON lands at build/compose-previews/data/&lt;id&gt;/fonts-used.json. ",
+    "url": "/start/reference/fonts/#enabling",
+    
+    "relUrl": "/reference/fonts/#enabling"
+  },"46": {
+    "doc": "Fonts",
+    "title": "Companion products",
+    "content": ". | Strings — text/strings for the actual drawn text the fonts rendered. | Theme — compose/theme for the resolved typography tokens that picked these fonts. | . ",
+    "url": "/start/reference/fonts/#companion-products",
+    
+    "relUrl": "/reference/fonts/#companion-products"
+  },"47": {
+    "doc": "History diff",
+    "title": "History diff",
+    "content": "Per-pixel bounding boxes of regions that changed between two history entries (e.g. base render vs. PR head, or before / after a code edit). ",
+    "url": "/start/reference/history/",
+    
+    "relUrl": "/reference/history/"
+  },"48": {
+    "doc": "History diff",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | history/diff/regions | . | Schema version | 1 | . | Modules | :data-history-core (published) · :data-history-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked. See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/history/#at-a-glance",
+    
+    "relUrl": "/reference/history/#at-a-glance"
+  },"49": {
+    "doc": "History diff",
+    "title": "What it answers",
+    "content": ". | Where in the frame did the pixels change between two renders of the same previewId? | How many distinct change regions are there, and how big is each (in pixels and percentage)? | Is a “tiny visual change” PR actually tiny, or did the author break a screen further down the layout? | . ",
+    "url": "/start/reference/history/#what-it-answers",
+    
+    "relUrl": "/reference/history/#what-it-answers"
+  },"50": {
+    "doc": "History diff",
+    "title": "What it does NOT answer",
+    "content": ". | It does not tell you why a region changed (theme tweak vs. layout regression vs. anti-aliasing) — pair it with compose/theme or layout/inspector for that. | It does not produce a perceptual / SSIM diff — it operates on raw pixel inequality, so font hinting differences and platform GPU drift can show up as regions. | . ",
+    "url": "/start/reference/history/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/history/#what-it-does-not-answer"
+  },"51": {
+    "doc": "History diff",
+    "title": "Use cases",
+    "content": ". | PR comments: post a single image with the changed regions outlined, plus a one-line “12 regions, ~3.4% of pixels”. | Refactor verification: prove a state-hoisting refactor produced an empty diff against compose-preview/main. | Bisect: walk backwards through baselines to find the commit that changed pixels in a particular bounding box. | . ",
+    "url": "/start/reference/history/#use-cases",
+    
+    "relUrl": "/reference/history/#use-cases"
+  },"52": {
+    "doc": "History diff",
+    "title": "Payload shape",
+    "content": "HistoryDiffPayload, HistoryDiffRegion in :data-history-core. // history/diff/regions { \"baselineHistoryId\": \"compose-preview/main@7a1c…\", \"totalPixelsChanged\": 9184, \"changedFraction\": 0.0085, \"regions\": [ { \"bounds\": \"48,200,144,232\", \"pixelCount\": 412, \"avgDelta\": { \"r\": 18.2, \"g\": 4.1, \"b\": 2.0, \"a\": 0.0 } } ] } . ",
+    "url": "/start/reference/history/#payload-shape",
+    
+    "relUrl": "/reference/history/#payload-shape"
+  },"53": {
+    "doc": "History diff",
+    "title": "Enabling",
+    "content": "The producer attaches when the History extension is publicly enabled and data/fetch?kind=history/diff/regions is called with a left and right entry id. The companion CI workflow is preview-comment, which posts before / after PR comments using the same machinery. ",
+    "url": "/start/reference/history/#enabling",
+    
+    "relUrl": "/reference/history/#enabling"
+  },"54": {
+    "doc": "History diff",
+    "title": "Companion products",
+    "content": ". | Layout inspector — layout/inspector to attribute a changed region to a specific composable. | Theme — compose/theme to confirm a colour-shift region is from a token change rather than a regression. | . ",
+    "url": "/start/reference/history/#companion-products",
+    
+    "relUrl": "/reference/history/#companion-products"
+  },"55": {
+    "doc": "Reference",
+    "title": "Reference",
+    "content": "The renderer can produce structured data alongside each PNG — accessibility findings, semantic hierarchies, layout trees, theme tokens, recomposition heat maps, and more. Each is a data product identified by a namespaced kind string with its own JSON schema. This section has one page per product. Each page follows the same shape: at-a-glance metadata, what the product answers (and what it deliberately does not), use cases, payload shape, and how to enable it. ",
+    "url": "/start/reference/",
+    
+    "relUrl": "/reference/"
+  },"56": {
+    "doc": "Reference",
+    "title": "How to read these pages",
+    "content": "A data product is (kind, schemaVersion, payload): . | kind — namespaced string (a11y/atf, compose/recomposition, …). Reserved namespaces: a11y/*, layout/*, compose/*, resources/*, text/*, render/*, fonts/*, test/*, i18n/*, history/*, uia/*, displayfilter/*. | schemaVersion — positive integer, owned by the kind. Bumped only on incompatible payload changes; additive fields don’t bump. | payload — JSON. Inline for small payloads (~64 KB), or a path to a sibling file the renderer wrote (lifecycle matches the PNG). | . Each kind has exactly one @Serializable definition in a :data-&lt;product&gt;-core module published to Maven Central. MCP clients in any language can generate parsers from those without depending on the Compose runtime, daemon, or AndroidX. The matching :data-&lt;product&gt;-connector module is daemon glue and is internal. ",
+    "url": "/start/reference/#how-to-read-these-pages",
+    
+    "relUrl": "/reference/#how-to-read-these-pages"
+  },"57": {
+    "doc": "Reference",
+    "title": "Catalogue",
+    "content": "| Product | Kind(s) | Mode | Notes | . | Accessibility | a11y/atf, a11y/hierarchy, a11y/overlay, a11y/touchTargets | a11y | ATF findings, semantic tree, annotated overlay, 48 dp targets. | . | Ambient (Wear) | compose/ambient | default | Drive AmbientMode overrides for Wear ambient previews. | . | Display filters | displayfilter/variants | default | Post-process colour-matrix variants — bedtime grayscale, invert, daltonizer simulations. | . | Focus | compose/focus | default | Focused-node snapshot + directional traversal overrides. | . | Fonts | fonts/used | default | Font families with weight/style fallback chain. | . | History diff | history/diff/regions | default | Per-pixel bounding boxes of changed regions vs. another history entry. | . | Layout inspector | layout/inspector, compose/semantics | default | Compose layout/component hierarchy with bounds, modifiers, source refs. | . | Motion captures | render/motion/apng, render/motion/gif | default | Paused-clock recordings of a component in motion — @AnimatedPreview (self-driven) and @InteractionPreview (scripted pointer gesture). | . | Pseudolocale | localeTag = en-XA/ar-XB | default | Runtime accent / bidi pseudolocalisation. Android: text + layout direction. CMP Desktop: layout direction. | . | Recomposition | compose/recomposition | instrumented | Per-node recomposition counts; heat-map source. | . | Render trace | render/composeAiTrace, render/trace, render/deviceBackground, render/deviceClip | default | Pipeline timing, device clip / background derivation. | . | Resources | resources/used | default | R.* references resolved during render. | . | Scroll captures | render/scroll/gif, render/scroll/long | default | Long-form scrolling captures and animated GIFs (renderer-side, image-only). | . | Strings &amp; i18n | text/strings, i18n/translations | default | Drawn text + locale coverage. | . | Theme | compose/theme | default | Resolved Material 3 tokens + which nodes consumed them. | . | UIAutomator hierarchy | uia/hierarchy | default | Selector-shaped Compose nodes for UIAutomator-style targeting. | . | Wallpaper | compose/wallpaper | default | Material You seed colour → derived scheme. | . | Test failure | test/failure | failed render | Postmortem bundle after a renderFailed. | . ",
+    "url": "/start/reference/#catalogue",
+    
+    "relUrl": "/reference/#catalogue"
+  },"58": {
+    "doc": "Reference",
+    "title": "Surfaces",
+    "content": "Two ways to consume a product: . | MCP — list_data_products, subscribe_preview_data, get_preview_data on the compose-preview-mcp server. The right path for any agent that’s already driving previews through MCP. | CLI / Gradle — when a kind is enabled in the consumer’s composePreview { ... } config, the renderer writes the same payload to build/compose-previews/data/&lt;previewId&gt;/&lt;kind-with-slashes-as-dashes&gt;.json on every render. CLI / CI consumers read those files directly. | . For the full wire-protocol contract — error codes, transports, re-render semantics, extension activation — see docs/daemon/DATA-PRODUCTS.md. ",
+    "url": "/start/reference/#surfaces",
+    
+    "relUrl": "/reference/#surfaces"
+  },"59": {
+    "doc": "Android simulator",
+    "title": "Android simulator",
+    "content": "compose-preview android-simulator runs a whole Android app — a debug APK, as you’d install it on a device — in Robolectric’s simulator. You get a desktop window you drive with the mouse and keyboard, or a JSON-lines control channel an agent drives. No emulator, no device, no adb, no GPU. It boots in seconds, runs headless in CI and cloud sandboxes, and its system UI answers questions an emulator would make you click through by hand. compose-preview android-simulator app-debug.apk # a window compose-preview android-simulator app-debug.apk --control stdio # an agent drives it compose-preview android-simulator app-debug.apk --launcher # over a home screen compose-preview android-simulator phone.apk --pair watch.apk # a phone and its watch compose-preview android-simulator --adb # a device adb and Studio see . compose-preview launch is the command’s original name. It’s still there as an alias that takes the same flags, so existing scripts and MCP hosts keep working. The simulator is a prototype that grows quickly. This page says what you can test with it today and where the gaps are. The flag-by-flag and command-by-command reference is docs/SIMULATOR.md. ",
+    "url": "/start/simulator/#android-simulator",
+    
+    "relUrl": "/simulator/#android-simulator"
+  },"60": {
+    "doc": "Android simulator",
+    "title": "Requirements",
+    "content": ". | Java 21+ for the simulator JVM (--java &lt;jdk&gt; or COMPOSE_PREVIEW_SIMULATOR_JAVA). The CLI itself still runs on Java 17. | An Android SDK platform for its android.jar: ANDROID_HOME, or sdk.dir in local.properties. | A debug APK. The first run converts the APK’s dex to JVM classes once and caches it by content, so later runs start in seconds. --prepare converts and caches without starting the app. | . Robolectric and its native graphics come from the same Android daemon sidecar that Android previews render with, at the same pinned version. ",
+    "url": "/start/simulator/#requirements",
+    
+    "relUrl": "/simulator/#requirements"
+  },"61": {
+    "doc": "Android simulator",
+    "title": "Driving it",
+    "content": "By hand. Clicks are taps, drags are swipes, and right-click is Back. The window can be resized and zoomed (⌘/Ctrl = / - / 0). From an agent. --control stdio reads one JSON command per line on stdin and writes one JSON object per line on stdout: tap (by text, resource id or coordinates), swipe, type, key, screenshot, hierarchy, find, starting activities and services, sending broadcasts, querying providers, and much more. The window stays up while the agent works: every tap is drawn as a ring and every swipe as a trail, on an overlay that never shows up in the agent’s own screenshots. Pass --headless to drop the window. It’s also the default when there’s no display. → {\"id\":1,\"cmd\":\"tap\",\"text\":\"Open Now Playing\"} ← {\"event\":\"activity\",\"state\":\"resumed\",\"activity\":\"com.example.NowPlayingActivity\",…} ← {\"id\":1,\"ok\":true,\"result\":{\"x\":183.5,\"y\":348,\"node\":{…}}} → {\"id\":2,\"cmd\":\"screenshot\",\"path\":\"/tmp/now-playing.png\"} ← {\"id\":2,\"ok\":true,\"result\":{\"width\":540,\"height\":960,\"path\":\"/tmp/now-playing.png\"}} . From an MCP host. The local MCP server (compose-preview mcp serve, see Agents &amp; MCP) wraps the control channel as its own set of tools, each titled “Android simulator: …” so they read apart from the preview tools: . | Tool | Does | . | android_simulator_launch | starts an APK (or a Gradle project, a watch face, a pair) and returns a simulator id | . | android_simulator_command | sends one control-channel command and returns its result and events | . | android_simulator_screenshot | the display as an image | . | android_simulator_watchface_snapshot | a watch face’s status and a frame | . | android_simulator_logs | the tail of the app’s logcat and Robolectric’s log | . | android_simulator_restart / _update / _reload | a fresh JVM, a rebuilt APK, or a hot-swapped edit | . | android_simulator_adb | adb against a simulator launched with adb | . | android_simulator_stop | ends one | . Earlier MCP releases called these simulator_*. Those names still work but are no longer listed. As a device. --adb makes the simulator a device that adb and Android Studio see, the way they see an emulator (emulator-5554): adb install, shell, push / pull, the emulator console, and the gRPC endpoint that Studio’s Running Devices window streams over. From a script. --scenario &lt;file&gt; replays a JSON or YAML list of control commands headlessly. Each step can save a snapshot and assert on the result. The run writes report.json and exits 2 if any step fails, so you can run it as a CI check. ",
+    "url": "/start/simulator/#driving-it",
+    
+    "relUrl": "/simulator/#driving-it"
+  },"62": {
+    "doc": "Android simulator",
+    "title": "What you can test",
+    "content": "Runtime permissions . Every way an app asks — ActivityResultContracts.RequestPermission / RequestMultiplePermissions, requestPermissions, ActivityCompat, Accompanist — is answered in place of the system dialog. The result reaches the app the same way the dialog’s does. The permission controller’s own rules apply as they do on a device: . | not in the manifest → denied; | denied twice → “don’t ask again” until grant or reset; | group grants (contacts, calendar, nearby devices, …); | POST_NOTIFICATIONS below Android 13 → ignored; | fine location without coarse → ignored; | background location before foreground → ignored. | . shouldShowRequestPermissionRationale follows the deny count. With the ask policy, the request waits for your answer, so you can test each branch of the app’s permission flow: grant, deny, dismiss, approximate (coarse location only) and selected (Android 14’s partial photo access). → {\"cmd\":\"permissions\",\"policy\":\"ask\"} ← {\"event\":\"permissions\",\"state\":\"waiting\",\"ask\":[\"…ACCESS_FINE_LOCATION\",\"…ACCESS_COARSE_LOCATION\"],…} → {\"cmd\":\"permissions\",\"answer\":\"approximate\"} ← {\"event\":\"permissions\",\"state\":\"answered\",\"granted\":[\"…ACCESS_COARSE_LOCATION\"],\"denied\":[\"…ACCESS_FINE_LOCATION\"],…} . Biometric and device-credential prompts, Credential Manager, voice input, the document and photo pickers, and the share sheet are answered the same way: each one raises an event and waits for a policy or an answer. Notifications . With --launcher, a phone gets a status bar, a notification shade and heads-up cards. Each is a system window above the app, so screenshots show it and it takes touches. Notifications are inflated from their own RemoteViews, so MessagingStyle, BigPictureStyle, progress, actions and custom views draw as they do on a device. In the shade you can: . | tap a notification to send its content intent (auto-cancel is honored); | press its actions; | type an inline reply that fills the RemoteInput; | expand or collapse it; | swipe to dismiss it, or Clear all. | . A MediaStyle notification shows as the Android 13+ media player, and its buttons send the player’s actions. The notification stream is also on the control channel for every app, with or without --launcher: . | notification events report each post, update and removal; | notifications lists them, and each entry says whether a device would hide it (blocked channel, POST_NOTIFICATIONS denied); | notification acts on one by key: tap, action, reply, dismiss or snooze. | . → {\"cmd\":\"permissions\",\"grant\":[\"android.permission.POST_NOTIFICATIONS\"]} → {\"cmd\":\"broadcast\",\"intent\":{\"action\":\"com.example.POST_NOTIFICATIONS\",\"component\":\".NotificationDemoReceiver\"}} ← {\"event\":\"headsUp\",\"key\":\"1\"} → {\"cmd\":\"notification\",\"key\":\"1\",\"op\":\"reply\",\"text\":\"Sounds good\"} . Launcher widgets and shortcuts . --launcher also puts a home screen under the app. HOME and Back from the app’s root go there, its icons bring the app’s task back, and a long press shows the app’s static and dynamic shortcuts. --widget &lt;provider&gt; (repeatable) starts with one of the app’s app widgets already placed. The home screen hosts widgets the way a launcher and AppWidgetService do between them: . | Bind — APPWIDGET_ENABLED and APPWIDGET_UPDATE reach the app’s receiver. GlanceAppWidgetReceiver takes the same path. | Configure — runs the configure activity. RESULT_OK places the widget; anything else removes it. | Size — sends APPWIDGET_OPTIONS_CHANGED with OPTION_APPWIDGET_SIZES, so responsive RemoteViews pick their layout. | Draw — the framework’s own AppWidgetHostView draws the widget. | Resize — resizing stays within minResize* / maxResize*. | Pin — requestPinAppWidget and requestPinShortcut show a confirm sheet (pin accept / reject). | . Taps on a widget send its setOnClickPendingIntent, checked-change response or collection fill-in intent as the system does. That includes Glance’s actionRunCallback, which recomposes in its WorkManager session and arrives as an updated event. Collection widgets bind their RemoteViewsService, and the picker shows each provider’s generated preview, preview layout or preview image, the same fallback Launcher3 uses. → {\"cmd\":\"widget\",\"action\":\"add\",\"provider\":\"TaskListWidgetReceiver\"} ← {\"event\":\"widget\",\"state\":\"configuring\",\"widgetId\":1,…} → {\"cmd\":\"tap\",\"textContains\":\"Work task 2\"} ← {\"event\":\"widget\",\"state\":\"updated\",\"widgetId\":1,\"partial\":true,\"reason\":\"click\",…} → {\"cmd\":\"widget\",\"action\":\"resize\",\"widgetId\":1,\"spanX\":4,\"spanY\":4} . And more . The reference covers each of these in detail: . | Display and device state. Device presets (phone, foldable, tablet, desktop), fold postures, rotation, dark mode, font scale and locale. Secondary displays (--display) for Presentation and launch-display activities. | Network. Wi-Fi, cellular, offline, captive portal and airplane mode, each as the app’s ConnectivityManager reports it. Bluetooth LE peripherals the agent puts in range. Google Play services availability states. | Background work. Alarms, jobs, WorkManager and downloads, all on the simulated clock. | System UI. The navigation bar, the lock screen, picture-in-picture, the on-screen keyboard and predictive back. | Several apps on one device. --install other.apk adds apps that share broadcasts, providers, App Functions and App Actions. | Live reload. --project &lt;dir&gt; builds the app. reload hot-swaps a composable edit into the running app, and --live reloads on every save. restart and update replace the app in a fresh JVM and keep its data. | Other form factors. Wear OS (see Wear OS), Jetpack Compose Glimmer glasses, and Android XR in Home Space. | . ",
+    "url": "/start/simulator/#what-you-can-test",
+    
+    "relUrl": "/simulator/#what-you-can-test"
+  },"63": {
+    "doc": "Android simulator",
+    "title": "Gaps",
+    "content": "What runs: Compose and View apps over the framework Robolectric shadows, with their real Application.onCreate(): Hilt, Koin, Metro, WorkManager, Room, androidx.startup and Firebase start-up. Now in Android, Confetti, Home Assistant, Cadence and MeshCore run from their debug APKs. What doesn’t, or not yet: . | Area | Gap | . | Native code | Android .so files don’t load. The exceptions are libraries with a host build in host-natives: graphics-path, sqlite-bundled, Ink, zstd-jni, JNA, libsignal and Filament. | . | GPU | No TextureView, video, camera or GL. SurfaceView works, for software and hardware canvases. | . | Play services | Reported as installed, but only the Wearable Data Layer is simulated. Maps, billing, fused location and the rest report API_UNAVAILABLE. | . | Processes and tasks | One process and one task. No recents or task switching, and am kill / force-stop / pm clear are only partial. | . | Permissions | No dialog on screen: the agent answers in its place. Groups are approximated, and the activity isn’t paused while a request waits. | . | Notifications | No notification history, per-channel settings, conversation or bubble sections, Do Not Disturb, sounds or vibration. Quick settings are four fixed tiles, not the app’s own TileServices. | . | Home screen | Only the app’s own widgets and shortcuts: one package. No wallpaper picker, keyguard or search widgets, or dragging a widget between cells. Network-backed widgets show their placeholder where the sandbox blocks the host. | . | Lock screen | No pattern or password lock, no fingerprint unlock, and no lock screen widgets or shortcuts. | . | Background work | No Doze, App Standby buckets or battery optimisation. Downloads have no notification. | . | Packaging | Split APKs and App Bundles must be merged into one APK first. Protected APKs are out, and hot reload and the Data Layer need a debug (non-R8) build. | . | Fidelity | Robolectric’s native graphics, not a device GPU: close, but not pixel-identical. Stack traces say Unknown Source for app frames. | . | SDK levels | One of Robolectric’s supported levels (--sdk, default 35), fetched on first use. | . The full list, with the reasons, is under Constraints in the reference. Open gaps are tracked as issues. ",
+    "url": "/start/simulator/#gaps",
+    
+    "relUrl": "/simulator/#gaps"
+  },"64": {
+    "doc": "Android simulator",
+    "title": "Android simulator",
+    "content": " ",
+    "url": "/start/simulator/",
+    
+    "relUrl": "/simulator/"
+  },"65": {
+    "doc": "Home",
+    "title": "compose-ai-tools",
+    "content": "Let your coding agent see the Compose UI it just changed. compose-ai-tools renders your @Preview composables to PNG outside Android Studio, so your agent can look at its work, and so can you. Jetpack Compose (Android) and Compose Multiplatform Desktop. Get started Reference GitHub . ",
+    "url": "/start/#compose-ai-tools",
+    
+    "relUrl": "/#compose-ai-tools"
+  },"66": {
+    "doc": "Home",
+    "title": "Get started",
+    "content": "Pick your agent and run its one install. Claude Code . /plugin marketplace add yschimke/compose-agent-plugins /plugin install compose-preview@compose-agent-plugins . Codex . codex plugin marketplace add yschimke/compose-agent-plugins . then enable compose-preview from /plugins. Antigravity . curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 - . Any other agent (Gemini CLI, OpenCode, Cursor, Copilot, …), or no plugin system: . curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash . Then: ask your agent to render one of your previews. That’s the whole onboarding. Designing a new screen instead? Start at https://ui.coo.ee/start. Other hosts and install options . Without an agent . VS Code (or Cursor / Windsurf / VSCodium): search the Extensions view for Compose Preview and click Install. It renders previews inline and needs no project changes. (Marketplace · Open VSX) . Command line. The install.sh one-liner above also installs the compose-preview CLI. Point it at any Compose project, no build edits required: . compose-preview render # render every @Preview to PNG compose-preview browse # Storybook-like local component catalog . Gradle plugin. Prefer a version-pinned plugin in your build? It’s on Maven Central — no auth, no token. Replace &lt;published-version&gt; with the version shown there. // &lt;module&gt;/build.gradle.kts plugins { id(\"ee.schimke.composeai.preview\") version \"&lt;published-version&gt;\" } ./gradlew :app:composePreviewRenderAll # render every @Preview to PNG . Render filters, CI recipes and requirements are on the Install page. ",
+    "url": "/start/#get-started",
+    
+    "relUrl": "/#get-started"
+  },"67": {
+    "doc": "Home",
+    "title": "When you need more",
+    "content": "None of this is required to get value from the tool. Your agent will offer the relevant one when it comes up. | PR review and preview CI. Before/after renders posted on every pull request by the apply action, and the compose-preview-review and compose-preview-ci skills that review a UI PR and set that CI up. Claude Code: /plugin install compose-review@compose-agent-plugins; elsewhere, install.sh --skills compose-preview-review,compose-preview-ci. | UI Builder — design a new screen with an agent in the browser, then export it as Compose code. | Android simulator — compose-preview android-simulator app.apk runs a whole APK without an emulator: permissions, notifications, home-screen widgets, and Wear OS tiles, complications, watch faces and a paired phone. | Data products — structured data alongside each PNG: accessibility findings, layout trees, theme tokens, recomposition heat maps, drawn text, and more. | Agents &amp; MCP — the local and hosted MCP servers, and a token-frugal agent loop over Compose UI (semantic refs, semantics diffs, recording to tests). | Daemon — a long-lived renderer that keeps Robolectric / Compose-Desktop warm so re-renders are fast. | . ",
+    "url": "/start/#when-you-need-more",
+    
+    "relUrl": "/#when-you-need-more"
+  },"68": {
+    "doc": "Home",
+    "title": "More",
+    "content": ". | How it works — discovery, renderer pipeline, caching. | Benchmarks — measured latency, memory, and fidelity against android preview and android studio render-compose-preview. | Samples — rendered baselines for samples:android, samples:wear, samples:cmp, samples:remotecompose, regenerated on every push to main. | Releases · Changelog · License (Apache 2.0). | . ",
+    "url": "/start/#more",
+    
+    "relUrl": "/#more"
+  },"69": {
+    "doc": "Home",
+    "title": "Home",
+    "content": " ",
+    "url": "/start/",
+    
+    "relUrl": "/"
+  },"70": {
+    "doc": "Install",
+    "title": "Install",
+    "content": "New here? Start at the home page. This page is the reference for the parts this repository owns: the CLI’s build integration, the Gradle plugin, CI, and requirements. | You want | Go to | . | Your coding agent rendering previews (Claude Code, Codex, Antigravity) | The compose-preview plugin from compose-agent-plugins; the commands are under Agents | . | Any other agent, or just the CLI | install.sh, under CLI; flags, npx skills and updating are in compose-preview setup | . | Other hosts, and per-host MCP wiring | host setup | . | The local vs hosted MCP server, and the one hosted URL | Agents &amp; MCP | . ",
+    "url": "/start/install/",
+    
+    "relUrl": "/install/"
+  },"71": {
+    "doc": "Install",
+    "title": "CLI",
+    "content": "The compose-preview binary works against any Compose project with no build edits — it injects the preview plugin at runtime via a bundled Gradle init script. Install it (and the two default agent skills) with: . curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash . Then: . compose-preview doctor # check Java + project compatibility compose-preview list # scan @Preview annotations compose-preview render # render every @Preview to PNG compose-preview browse # Storybook-like local component browser compose-preview render-matrix --id com.example.MyPreview \\ --ui-mode light,dark --font-scale 1.0,2.0 # one preview across a grid compose-preview render-cases remote-document-cases.json --id com.example.MyRemotePreview \\ --contact-sheet # Remote Compose documents with their data . render-cases draws Remote Compose documents someone else produced, each with its own named values, size and light or dark mode, on the Android lane, so each plays on the platform’s own player under Robolectric. The file is compose-preview-contracts’ RemoteDocumentCasesV1 (compose-preview/remote-document-cases/v1): each case’s id, document, widthDp, heightDp, dark, profile and namedValues, in the daemon’s own vocabulary. Each case replays in place of a host Remote Compose preview, so --id names one in a module with the Remote Compose connector on its render classpath. Livery’s renderLiveryPreviews writes one for every template in a catalog (remote-document-cases.json); --player picks androidx-embedded (the default), androidx-view or cmp-android. browse scans every valid preview module and starts a loopback-only server. When a conventional executable CMP Wasm browser project owns the previews or depends on their module (including the common :shared:ui → :webApp split), its distribution is built and attached automatically. Java/Android-only composables remain available as rendered snapshots with their sample source. --module :shared:ui is an optional narrowing control, not required setup. Because the CLI auto-injects, projects that already apply com.android.application / com.android.library / org.jetbrains.compose work without touching build.gradle.kts. Projects that already declare the plugin are detected and left alone, so mixed setups don’t conflict. ",
+    "url": "/start/install/#cli",
+    
+    "relUrl": "/install/#cli"
+  },"72": {
+    "doc": "Install",
+    "title": "Pinning one version for every entrypoint",
+    "content": "compose-preview reaches a project through several doors — the CLI, the VS Code extension, the CI actions, an explicitly applied Gradle plugin — and by default each one uses whatever version it was installed at. On a project with more than one door in use that drifts, and a CLI newer than the plugin it’s driving fails in a way that reads like a project misconfiguration (“no modules have the compose-preview plugin applied”) rather than the version skew it is. Pin the project once: . compose-preview pin --cli # pin to the CLI you just installed compose-preview pin 1.1.0 # …or to a specific release compose-preview pin # show the pin, and whether your CLI matches . That writes a single line to your gradle.properties: . composePreview.version=1.1.0 . From then on the CLI auto-injects that plugin version, the VS Code extension applies it too, and CI installs it with version: pin on the install action (the apply action’s default cli-version: auto picks it up with no workflow change). If a project already pins composePreviewCli in gradle/libs.versions.toml, that’s read as a pin too — nothing to add. compose-preview doctor reports the pin, its source, and whether the CLI on your $PATH matches it. Unpinned projects keep working exactly as before; the pin is opt-in. The pin governs the auto-injected plugin — the zero-config path above. A module that declares id(\"ee.schimke.composeai.preview\") version \"…\" itself keeps its own version, and compose-preview pin never edits build scripts or version catalogs: auto-inject already leaves such a module alone, so its declaration is the single source of truth there. Full model: VERSION_PIN.md. ",
+    "url": "/start/install/#pinning-one-version-for-every-entrypoint",
+    
+    "relUrl": "/install/#pinning-one-version-for-every-entrypoint"
+  },"73": {
+    "doc": "Install",
+    "title": "Builds that apply AGP via a convention plugin",
+    "content": "If your build supplies the Android Gradle Plugin through an included build’s convention plugin — the build-logic / gradle/conventions pattern used by Now in Android, AndroidX, and similar repos — auto-inject cannot apply the preview plugin, and discovery will report 0 modules with failures like: . NoClassDefFoundError: com/android/build/api/variant/AndroidComponentsExtension . This is a classloader limitation, not a bug. With the convention-plugin layout AGP is applied by the included build, so AGP’s classes live on the convention plugin’s classloader. Auto-inject can only add the preview plugin to each project’s own buildscript classpath — a sibling classloader that can’t see AGP — so the plugin throws the moment it touches AndroidComponentsExtension. There is no Gradle init-script API to contribute a dependency to an included build’s classpath, so auto-inject genuinely can’t reach AGP here. Apply the plugin from your convention plugin instead. That puts it on the same classloader as AGP, where it renders correctly. The CLI then detects the included-build apply and skips auto-inject automatically (no --no-auto-inject needed). | Add the preview plugin’s marker artifact to your build-logic build’s dependencies. This is the key step: it puts the plugin on the convention build’s runtime classpath, so the compiled convention plugin can apply it by id. (Declaring it in build-logic’s plugins {} block with apply false only resolves it for that build script — not for the convention plugin applied to your app modules, which fails with Plugin with id … not found.) The marker coordinate is &lt;id&gt;:&lt;id&gt;.gradle.plugin:&lt;version&gt;: . // build-logic/.../build.gradle.kts (the convention build) plugins { `kotlin-dsl` } dependencies { implementation( \"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:&lt;latest&gt;\" ) } . Make sure build-logic’s repositories include where the plugin is published (mavenCentral() / gradlePluginPortal()). | Apply it from your convention plugin alongside AGP: . // build-logic/.../YourAndroidConventionPlugin.kt override fun apply(target: Project) = with(target) { pluginManager.apply(\"com.android.library\") // or the AGP plugin you use pluginManager.apply(\"ee.schimke.composeai.preview\") // …rest of your convention… } . | Run the CLI as usual — it sees the included build provides the plugin and leaves your build alone: . compose-preview render . | . This is the explicit “apply manually via your convention plugin” integration mode: auto-inject is the zero-config convenience for the common plugins { id(\"com.android.application\") } layout; the convention-plugin layout opts out of it by design. ",
+    "url": "/start/install/#builds-that-apply-agp-via-a-convention-plugin",
+    
+    "relUrl": "/install/#builds-that-apply-agp-via-a-convention-plugin"
+  },"74": {
+    "doc": "Install",
+    "title": "Gradle plugin (version-pinned)",
+    "content": "If you’d rather wire it into your build explicitly, the plugin is published to Maven Central — no auth, no PAT. // &lt;module&gt;/build.gradle.kts plugins { id(\"ee.schimke.composeai.preview\") version \"&lt;latest&gt;\" } . Pin the version shown on Maven Central. (The in-repo samples/ apply it without a version because they resolve it from this repository’s own included build — that’s not drop-in for an external project.) ./gradlew :app:composePreviewDiscover # scan @Preview annotations ./gradlew :app:composePreviewRenderAll # render every @Preview to PNG . Rendering a subset . Iterating on one screen? Narrow the render to a single preview (or a glob) so an unrelated broken preview can’t poison the run: ./gradlew :desktopApp:composePreviewRender --preview '*ExportHelpDialogPreview' # or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview' . --preview selects whole @Preview functions. To skip one member of a function’s fan-out — a multipreview member, or one of several @Preview annotations, which share a function name but have distinct ids — exclude it by id instead: ./gradlew :desktopApp:composePreviewRender --exclude-preview-id '*_Dark' # or, as a Gradle property: -PcomposePreview.idExclude='*_Dark' . Ids take the same pattern syntax as --preview (a */? glob, or a plain substring). --preview-id is the positive form (“render only these”); prefer --exclude-preview-id when you’re deferring part of a fan-out, since a stale pattern then renders too much rather than dropping a preview you wanted. Either way a filtered run is never stored in the build cache, since its render directory is only part of the module’s output. One fan-out has no ids to name: a @PreviewParameter provider’s rows exist only once the renderer enumerates the provider, so discovery lists the parameterized function as a single preview. Those are skipped by label — the token in &lt;stem&gt;_&lt;label&gt;.png, matched case-insensitively: ./gradlew :desktopApp:composePreviewRender --exclude-preview-row 'Dark,ExtraDark' # or, as a Gradle property: -PcomposePreview.rowExclude='Dark,ExtraDark' . A row exclusion never empties a preview’s rows: if every row matches, they all render, so nothing can silently produce a preview with no pixels. All four filters work on both backends. An Android module renders through a Robolectric test task rather than the desktop one, and it reads the same options and the same composePreview.* properties. Using the init script directly . For direct ./gradlew use with the auto-inject script (e.g. a CI step that needs extra Gradle flags), materialise the init script once and thread its path through each invocation: . INIT_SCRIPT=\"$(compose-preview init-script --path)\" ./gradlew --init-script \"$INIT_SCRIPT\" :app:composePreviewRenderAll . ",
+    "url": "/start/install/#gradle-plugin-version-pinned",
+    
+    "relUrl": "/install/#gradle-plugin-version-pinned"
+  },"75": {
+    "doc": "Install",
+    "title": "VS Code extension",
+    "content": "Published to the VS Code Marketplace and Open VSX (VSCodium / Cursor / Windsurf). Open the Extensions view (⇧⌘X / Ctrl+Shift+X), search Compose Preview, click Install. It auto-injects on every Gradle invocation it makes — no project changes needed. ",
+    "url": "/start/install/#vs-code-extension",
+    
+    "relUrl": "/install/#vs-code-extension"
+  },"76": {
+    "doc": "Install",
+    "title": "Agents",
+    "content": "One install per host. Each gives the agent the compose-preview and compose-ui-builder skills, the local MCP server and the hosted catalog server. Claude Code: . /plugin marketplace add yschimke/compose-agent-plugins /plugin install compose-preview@compose-agent-plugins . Codex: . codex plugin marketplace add yschimke/compose-agent-plugins . then enable compose-preview from /plugins. Antigravity: . curl -fsSL https://raw.githubusercontent.com/yschimke/compose-agent-plugins/main/scripts/antigravity-install.py | python3 - . Any other agent (Gemini CLI, OpenCode, Cursor, Copilot, …), or no plugin system: . curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash . Then ask your agent to render one of your previews. An agent that can only fetch URLs can read the compose-preview skill, which checks for the CLI and bootstraps it if missing. Other hosts and MCP registration are in the host setup notes; what compose-preview mcp install writes is on Agents &amp; MCP. ",
+    "url": "/start/install/#agents",
+    
+    "relUrl": "/install/#agents"
+  },"77": {
+    "doc": "Install",
+    "title": "CI / GitHub Actions",
+    "content": "Composite actions for pipelines: . | install — pin the CLI on $PATH. version: pin reads the project’s own version pin; version: catalog tracks a specific catalog key (Renovate recipe included). | apply — unified pipeline: baselines on push, before/after PR comments, a11y + notification surfaces. | . There’s also a reusable, preview-gated AI PR-review workflow (Codex / Claude / Gemini): see PR review workflow. Speeding up preview CI . Rendering is the long pole. Two levers, both about parallelism: . | Sharding (on by default). composePreview { shards } fans a module’s previews across parallel JVM forks. The default is 0 (auto): the plugin sizes the fork count from the discovered preview cost and the runner’s cores . | memory, and only shards when the predicted saving is worth the extra JVM cold-starts — so small modules stay single-fork and heavy ones (many previews, GIF/animated captures) fan out automatically. Set shards = 1 to force it off, or a fixed ≥ 2 to pin it. No workflow changes needed; auto sizing engages on the first CI run because the pipeline discovers previews in a separate Gradle pass before rendering. | . | Bigger runners. Auto sharding is capped at cores − 1 forks (leaving one core for the Gradle daemon), so it can only go as wide as the runner is. The default runs-on: ubuntu-latest is 2 vCPU on private repos (no sharding) and 4 vCPU on public ones (up to 3 forks). For a large preview suite, point the preview job at a 4- or 8-vCPU runner — that’s where the two levers compound into real wall-clock savings. RAM scales with cores on GitHub-hosted runners, which keeps the per-fork memory bound out of the way. | . ",
+    "url": "/start/install/#ci--github-actions",
+    
+    "relUrl": "/install/#ci--github-actions"
+  },"78": {
+    "doc": "Install",
+    "title": "Render classpath conflicts",
+    "content": "The render JVM classpath is built from a single resolved dependency graph: the plugin’s renderer configuration extendsFrom your module’s unit-test runtime classpath (and its screenshotTest runtime classpath, when Google’s screenshot plugin is applied), so Gradle picks one version per module across the renderer’s dependencies and your own. Only entries that exist nowhere else — the unit-test merged R.jar, generated class dirs — are appended from AGP’s test task on top. Before this, those graphs were resolved separately and concatenated, which put two versions of the same module in front of one classloader. Java loads the first match per class, so a class from the winning jar could link against a sibling only the other version defined, and you’d get a NoSuchFieldError or NoSuchMethodError in an unrelated &lt;clinit&gt; — e.g. two bcprov-jdk18on jars failing every accessibility preview inside BouncyCastle’s post-quantum KeyFactorySpi. A guard runs before each render and reports any module still present at more than one version, naming each version and the jar that wins: . | Property | Default | Effect | . | composePreview.classpathDuplicates | warn | fail turns a duplicate into a build error (good for CI); off silences the check. | . | composePreview.legacyClasspathUnion | false | true restores the old concatenated classpath. Escape hatch only — set it if a render suddenly can’t find a class that lives solely on your unit-test classpath, and please file an issue. | . If the guard reports a duplicate module, align it in your own build with a version force, or exclude it from whichever graph shouldn’t carry it. Split families . A second check covers libraries published as several coordinates with no BOM — org.bouncycastle:bcprov/bcutil/bcpkix is the usual offender. Gradle aligns a module against itself and nothing further, so the graph can settle on bcprov-jdk18on:1.85 while leaving bcutil-jdk18on:1.84: one version per coordinate, no conflict to resolve, and classes that still don’t agree at runtime. That’s what failed every accessibility preview in homeassistant-remotecompose#495. The fix is a virtual platform, which states that the coordinates move together and lets normal conflict resolution pick the highest version any member asks for: . abstract class BouncyCastleAlignmentRule : ComponentMetadataRule { override fun execute(context: ComponentMetadataContext) { val id = context.details.id if (id.group == \"org.bouncycastle\") { context.details.belongsTo(\"org.bouncycastle:bouncycastle-virtual-platform:${id.version}\") } } } dependencies { components.all(BouncyCastleAlignmentRule::class.java) } . Prefer that over useVersion(\"1.84\"): a force goes stale, and silently becomes a downgrade the moment one member’s floor moves (Robolectric’s did). The plugin reports this rather than applying it. ComponentMetadataRules register on DependencyHandler, so they apply to every configuration in the module — including your releaseRuntimeClasspath. Aligning a family upward is usually right for a render classpath and isn’t a preview tool’s call to make for a shipped app, so the decision stays yours. Keeping a module off the render graph . Sharing one graph with your unit-test classpath is what keeps a single coherent version of each module in front of the render classloader — but it also means the render configuration inherits your constraints. If your build applies a platform whose constraints are strictly(v) + reject(\"(v,\"), every renderer dependency above one of those pins becomes a conflict Gradle cannot solve, and the render configuration fails to resolve before a single preview renders. renderGraph removes a module from the configurations the plugin owns, leaving your own build exactly as it was: . composePreview { renderGraph { exclude(group = \"com.example\", module = \"version-constraints\") } } . In a Groovy build script, the usual map form: . composePreview { renderGraph { exclude group: 'com.example', module: 'version-constraints' } } . Either half may be omitted, exactly as in Gradle’s own Configuration.exclude(group:, module:): group alone drops the whole group, module alone drops that name wherever it comes from. | Property | Default | Effect | . | composePreview.renderGraphExcludes | (none) | Comma-separated group:module coordinates, for a build script you can’t edit — a CLI-driven render where the plugin is auto-injected, or one CI job. Additive with the DSL. | ./gradlew composePreviewRender -PcomposePreview.renderGraphExcludes=com.example:version-constraints . The exclusions land on the configurations the plugin creates — the Android render config, its daemon superset, and the two desktop equivalents — and never on the configurations your build declares, so a normal build and everything your platform guarantees it are untouched. The Kotlin-build-tools configurations are deliberately not covered: they are standalone compiler classpaths that never inherit your graph. This is a scalpel, not a switch. Excluding something the renderer genuinely needs trades an unresolvable configuration for a ClassNotFoundException on the render JVM; --info prints one line per configuration naming what was excluded. ",
+    "url": "/start/install/#render-classpath-conflicts",
+    
+    "relUrl": "/install/#render-classpath-conflicts"
+  },"79": {
+    "doc": "Install",
+    "title": "Requirements",
+    "content": "Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+, Compose Multiplatform 1.10.3+ (Desktop). The bottom edge of this envelope is exercised on every push by the agp8-min job. Running an agent in a cloud sandbox (Claude Code on the web, etc.)? See the cloud sandbox setup for the network allowlist and install.sh --android-sdk Setup recipe. &lt;/content&gt; . ",
+    "url": "/start/install/#requirements",
+    
+    "relUrl": "/install/#requirements"
+  },"80": {
+    "doc": "Layout inspector",
+    "title": "Layout inspector",
+    "content": "The Compose layout / component hierarchy with bounds, constraints, modifiers, and source refs — plus a sibling compose/semantics projection for testTag / role / mergeMode questions. ",
+    "url": "/start/reference/layout-inspector/",
+    
+    "relUrl": "/reference/layout-inspector/"
+  },"81": {
+    "doc": "Layout inspector",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | layout/inspector, compose/semantics | . | Schema version | 1 | . | Modules | :data-layoutinspector-core (published) · :data-layoutinspector-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked (scales with hierarchy depth). See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/layout-inspector/#at-a-glance",
+    
+    "relUrl": "/reference/layout-inspector/#at-a-glance"
+  },"82": {
+    "doc": "Layout inspector",
+    "title": "What it answers",
+    "content": ". | layout/inspector — what’s the parent / child shape of this composable? Measured size? Constraints? Z-order? Which inspectable modifiers are attached, with what values? Which source file / line declared the node? | compose/semantics — for each SemanticsNode, what is its testTag, role, mergeMode, bounds? | . It is intentionally separate from a11y/hierarchy — the question there is “what does an assistive technology see”; the question here is layout structure or stable test selectors. ",
+    "url": "/start/reference/layout-inspector/#what-it-answers",
+    
+    "relUrl": "/reference/layout-inspector/#what-it-answers"
+  },"83": {
+    "doc": "Layout inspector",
+    "title": "What it does NOT answer",
+    "content": ". | It does not run accessibility checks — that is a11y/atf. | It does not measure recomposition — that is compose/recomposition. | The Desktop / shared backend reaches the layout tree through RootForTest; non-Compose Android views (interop) are not modelled. | . ",
+    "url": "/start/reference/layout-inspector/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/layout-inspector/#what-it-does-not-answer"
+  },"84": {
+    "doc": "Layout inspector",
+    "title": "Use cases",
+    "content": ". | Pinpoint which composable owns a misaligned region from history/diff/regions. | Confirm a refactor preserved testTags so existing UI tests keep finding their targets. | Inspect resolved Modifier.padding(...) values when a screenshot says one thing and the source says another. | Drive the VS Code extension’s tree view of a preview. | . ",
+    "url": "/start/reference/layout-inspector/#use-cases",
+    
+    "relUrl": "/reference/layout-inspector/#use-cases"
+  },"85": {
+    "doc": "Layout inspector",
+    "title": "Payload shape",
+    "content": "LayoutInspectorPayload, LayoutInspectorNode, ComposeSemanticsPayload, ComposeSemanticsNode in :data-layoutinspector-core. // layout/inspector { \"nodes\": [ { \"nodeId\": \"1\", \"component\": \"Column\", \"bounds\": { \"left\": 0, \"top\": 0, \"right\": 1080, \"bottom\": 1920 }, \"measuredSize\": \"1080x1920\", \"constraints\": \"minW=0, maxW=1080, minH=0, maxH=1920\", \"modifiers\": [{ \"name\": \"padding\", \"args\": \"16dp\" }], \"sourceRef\": \"HomeScreen.kt:42\" } ] } // compose/semantics { \"nodes\": [ { \"nodeId\": \"2\", \"testTag\": \"submit-button\", \"role\": \"Button\", \"mergeMode\": \"mergeDescendants\", \"boundsInRoot\": \"48,200,144,232\" } ] } . ",
+    "url": "/start/reference/layout-inspector/#payload-shape",
+    
+    "relUrl": "/reference/layout-inspector/#payload-shape"
+  },"86": {
+    "doc": "Layout inspector",
+    "title": "Enabling",
+    "content": "Producer runs whenever its owning extension is publicly enabled. Backed on Android by the daemon’s RootForTest carried on PreviewContext.inspection. CLI / Gradle output: build/compose-previews/data/&lt;id&gt;/layout-inspector.json and compose-semantics.json. The compose-preview serve viewer projects the same tree into three inspection layers over the rendered frame — Overlays → Inspect → Typography (per text node: resolved size / line height / face / weight, from ComposeSemanticsNode.typography), Theme attributes (per container: resolved fill or gradient, border, corner radius, shape, shadow elevation, effective alpha and clip, from ComposeSemanticsNode.tokens, anchored to the node’s captured paintBox when it has one) and Layout boxes (per slot: the box’s own size and origin, its per-edge padding, the arrangement gap and any defaultMinSize floor). The compact legend row carries what fits on one line; the row’s tooltip carries the whole resolved token map. All three are served by /render/&lt;id&gt;.annotations as DesignAnnotations, the same shape the design-comparison page draws its producer-authored spec layers from — so the Layout layer is the code-side counterpart of the reference-side layout redline, and quotes the same tokens as the published layout wireframe. ",
+    "url": "/start/reference/layout-inspector/#enabling",
+    
+    "relUrl": "/reference/layout-inspector/#enabling"
+  },"87": {
+    "doc": "Layout inspector",
+    "title": "Companion products",
+    "content": ". | Accessibility — a11y/hierarchy for the assistive-technology view of the same nodes. | Recomposition — compose/recomposition for per-node recomposition counts keyed off the same node ids. | Theme — compose/theme for the tokens consumed at each node. | . ",
+    "url": "/start/reference/layout-inspector/#companion-products",
+    
+    "relUrl": "/reference/layout-inspector/#companion-products"
+  },"88": {
+    "doc": "Agents & MCP",
+    "title": "Agents &amp; MCP",
+    "content": "You don’t need any of this to use compose-ai-tools — rendering @Previews to PNG already lets an agent see its work. This page is for when you want a tighter, push-based loop than “run a command, read a file.” . Configuring an MCP client? The hosted server’s one URL is https://preview.coo.ee/mcp; the local server is compose-preview mcp serve. See Two MCP servers before adding either. ",
+    "url": "/start/mcp/#agents--mcp",
+    
+    "relUrl": "/mcp/#agents--mcp"
+  },"89": {
+    "doc": "Agents & MCP",
+    "title": "The agent loop",
+    "content": "A token-frugal feedback loop over Compose UI — the way Playwright gave web agents one over the DOM: act by a stable reference, observe structure rather than pixels, and turn exploration into durable tests. These are exposed by the preview daemon’s MCP server (and the compose-preview CLI where noted). | Target by semantic ref, not pixels. interactive/input and record_preview accept a target (testTag / role+text / a stable node ref) that the daemon resolves to the node’s centre, so a click survives layout changes instead of breaking on a coordinate. Android (Robolectric) and Desktop (Skiko). | Token-frugal observation. render_preview observe=semantics|hash returns the compose/semantics tree + a hash + dimensions instead of a base64 PNG — typically a few hundred tokens versus ~1.5k. Fetch pixels only when you actually need to look. | Semantics diff. diff_semantics (MCP) and compose-preview diff-semantics (CLI) diff two semantics trees and report what changed semantically (text, label, role, testTag, overflow…), matched by stable ref — a deterministic, pixel-free regression signal, the Compose analogue of Playwright’s aria-snapshot diff. | Matrix render. render_matrix (and compose-preview render-matrix) renders one preview across a cross-product of device × locale × uiMode × fontScale in a single call, returning a per-cell hash and which cells changed — “does this survive small screen + RTL + large font?” without N screenshots. Opt into a stitched contact-sheet image when you want to eyeball every cell at once. | Recording → test. record_preview emitTest=true turns a scripted interaction into a runnable Compose UI test (semantic targets become onNodeWithTag(...).performClick() steps; each recording.probe is diffed against the previous probe’s captured semantics into assertExists() / assertDoesNotExist() assertions). | Structured failures. A failed render reports a typed kind plus a one-line fix hint for recognized signatures (classpath skew, Robolectric SDK mismatch, missing @Composable, …) instead of an opaque message. | . Cost budget for these in docs/TOKEN_USAGE.md. ",
+    "url": "/start/mcp/#the-agent-loop",
+    
+    "relUrl": "/mcp/#the-agent-loop"
+  },"90": {
+    "doc": "Agents & MCP",
+    "title": "Two MCP servers: local and hosted",
+    "content": "There are two different MCP servers. Configure each at most once. |   | Local daemon MCP | Hosted catalog MCP | . | What it renders | Your project’s @Previews, on your machine | Published design-system catalogs (Material 3, Wear M3, …) and the UI Builder | . | How it runs | stdio: compose-preview mcp serve | Streamable HTTP at https://preview.coo.ee/mcp | . | Server name in configs | compose-preview-mcp | compose-preview-catalog | . | Needs | The CLI on PATH, Java 17+, a Gradle project | Nothing local | . https://ui.coo.ee/mcp is an alias of the same hosted server, not a second one: same process, same tools. Never configure both. Two entries give the agent every tool twice, and because the CLI keys access grants by origin they also mean two separate grants to approve and refresh. If a config already has a ui.coo.ee entry, replace its URL with https://preview.coo.ee/mcp rather than adding a second server. (https://ui.coo.ee/start is the UI Builder start page for people; it is not an MCP endpoint.) . The compose-preview plugin from yschimke/compose-agent-plugins wires both servers for you (install commands on the home page); how each other host is configured is in its host setup notes. The rest of this page is about the local server. ",
+    "url": "/start/mcp/#two-mcp-servers-local-and-hosted",
+    
+    "relUrl": "/mcp/#two-mcp-servers-local-and-hosted"
+  },"91": {
+    "doc": "Agents & MCP",
+    "title": "The local MCP server",
+    "content": "compose-preview mcp serve launches the local server (published from compose-preview-mcp and fetched on first use). It exposes the preview daemon’s JSON-RPC over stdio, so MCP-aware agents can render previews on demand and be notified when bytes change — instead of running Gradle (10s+ cold) or polling PNGs off disk with no way to request a re-render. Each @Preview becomes one MCP Resource under a stable compose-preview://&lt;workspaceId&gt;/&lt;module&gt;/&lt;previewFqn&gt; URI. The server supports subscribe (per-resource update notifications) and listChanged (the set of resources mutated), plus notifications/progress for long-running calls. Data products are read via list_data_products, subscribe_preview_data, and get_preview_data. For the full tool surface, URI scheme, and wire protocol see docs/daemon/MCP.md. Register the local server . Run compose-preview mcp install once from each Compose project’s root. It writes daemon descriptors and runs discovery for every module with the plugin applied, then registers compose-preview-mcp with each agent host it detects (Claude Code, Codex, OpenCode, Antigravity; --&lt;host&gt; / --no-&lt;host&gt; force or skip one). compose-preview mcp register does only the host registration, without touching Gradle; compose-preview mcp doctor reports what is set up. | One global entry per host. Each entry is &lt;stable launcher&gt; mcp serve (for example ~/.local/bin/compose-preview), never a versioned compose-preview-&lt;version&gt;/bin/ path that the next upgrade deletes, and has no --project: the server finds the project from the client’s roots or working directory. Only OpenCode’s --scope project writes a project-local opencode.json with --project=&lt;dir&gt;. | Healthy entries are left alone. mcp install only adds a missing entry or repairs a broken one, preserving sibling keys and servers. compose-preview mcp repair (run by compose-preview update) points existing entries at the stable launcher and drops a global --project, for example after an upgrade removed an old versioned directory. | Plugins win. With the Antigravity compose-preview plugin installed (~/.gemini/config/plugins/compose-preview), mcp install and mcp register write no global Antigravity entry, since the plugin already provides the server; mcp doctor names any older global compose-preview-mcp entry (in ~/.gemini/antigravity/mcp_config.json or ~/.gemini/config/mcp_config.json) to remove. --antigravity writes the global entry anyway. When Antigravity, Claude Code or Codex is detected, mcp install prints the matching wiring-plugin commands; --no-plugin-hint suppresses them. | Comments are never rewritten. An opencode.jsonc, or any config with comments, gets the snippet and the file to merge it into printed instead. OpenCode entries use the v2 mcp.servers shape; the older mcp.compose-preview-mcp shape with enabled: true is not v2 configuration. | . --codex-config, --opencode-config and --antigravity-config name an explicit config file. Full flag list: compose-preview mcp --help. Per-host paths and verification steps (opencode mcp list, …): host setup notes and the OpenCode guide. Connect a remote UI-builder session . The native MCP profile can expose eight additional tools backed by the same persisted preview-server UI-builder session a browser is editing. Supply the server URL as an argument and the temporary agent grant as an environment variable, keeping the secret out of process arguments: . COMPOSE_PREVIEW_UI_BUILDER_TOKEN='&lt;grant&gt;' \\ compose-preview mcp serve --ui-builder-url https://preview.example/ . Grants keep ui-builder-read, ui-builder-write, and ui-builder-export independent. The adapter is a remote protocol client only: it does not copy the server’s reducer, catalog, renderer, or persistence into this repository. ",
+    "url": "/start/mcp/#the-local-mcp-server",
+    
+    "relUrl": "/mcp/#the-local-mcp-server"
+  },"92": {
+    "doc": "Agents & MCP",
+    "title": "Shared settings",
+    "content": "The MCP server’s settings_read / settings_update tools (the native settings page in ChatGPT and Codex) persist their defaults to one file, ~/.compose-preview/settings.json — or wherever COMPOSE_PREVIEW_SETTINGS_FILE points: . { \"schema\": \"compose-preview-settings/v1\", \"values\": { \"darkTheme\": true, \"locale\": \"fr\" } } . The compose-preview CLI reads the same file (it never writes it) with the server’s precedence: an explicit flag beats a setting, which beats the built-in default. | Setting | Where the CLI applies it | The flag that wins over it | . | device (id:&lt;device&gt;, or preview for none) | render-matrix device axis, record overrides | --device, --overrides device=… | . | darkTheme | render-matrix ui-mode axis, record overrides | --ui-mode, — | . | fontScale (0 for none) | render-matrix font-scale axis, record overrides | --font-scale, --overrides fontScale=… | . | locale (BCP-47, empty for none) | render-matrix locale axis, record overrides | --locale, --overrides localeTag=… | . A setting fills only what the command line leaves unset: render-matrix --locale en,ar with darkTheme on renders both locales dark. show and render drive the Gradle render, which draws each preview exactly as its @Preview declares, so they cannot apply these four; when any is set they say so on stderr rather than ignore it quietly. The server-only keys (renderResult, imageToModel, replicasPerDaemon, uiBuilderMcpAppLayout) and any key the CLI does not know are ignored. A bad value falls back to its default with a warning and keeps the other keys; a file that is not valid JSON warns once and every default applies. ",
+    "url": "/start/mcp/#shared-settings",
+    
+    "relUrl": "/mcp/#shared-settings"
+  },"93": {
+    "doc": "Agents & MCP",
+    "title": "Deep links into the ChatGPT / Codex sidebar",
+    "content": "The local server’s previews_library tool is a sidebar app, and compose-preview show --link prints a link per preview that opens it there, rendered on open: . compose-preview show --id com.example.HomeKt.HomePreview --link \\ --openai-plugin-id &lt;plugin id&gt; --openai-marketplace &lt;marketplace&gt; . | Flag | Opens in | Link | . | --link (or --link=desktop) | ChatGPT / Codex desktop | codex://plugins/&lt;id&gt;@&lt;marketplace&gt;/app/previews_library?path=… | . | --link=mobile | ChatGPT mobile | chatgpt://plugins/&lt;id&gt;@&lt;marketplace&gt;/app/previews_library?path=… | . | --link=web | chatgpt.com | https://chatgpt.com/plugins/&lt;id&gt;/app/previews_library?path=… | . The path is the library route /preview/&lt;compose-preview URI&gt;, percent-encoded (RFC 3986: a space is %20, and / ? &amp; = : @ inside a value are escaped). The plugin id and marketplace depend on how the plugin was published, so they are never guessed: pass the flags, or set COMPOSE_PREVIEW_OPENAI_PLUGIN_ID (and COMPOSE_PREVIEW_OPENAI_MARKETPLACE for a plugin installed from a custom marketplace; a flag beats the variable). Without a plugin id, show --link prints that guidance instead of a link and still shows the previews. Text output adds a link: line under each preview; --json adds a link field to each one. The link’s workspace segment is derived the way the server derives it for a project registered by path, from the project directory’s name and canonical path — a project registered under a custom rootProjectName has a different id, and its links will not resolve. ",
+    "url": "/start/mcp/#deep-links-into-the-chatgpt--codex-sidebar",
+    
+    "relUrl": "/mcp/#deep-links-into-the-chatgpt--codex-sidebar"
+  },"94": {
+    "doc": "Agents & MCP",
+    "title": "What we tell agents",
+    "content": "Point the agent at the compose-preview skill. It’s the install-and-iterate playbook: it checks for the CLI, bootstraps it if missing (setup), and walks the agent through rendering and verifying. ",
+    "url": "/start/mcp/#what-we-tell-agents",
+    
+    "relUrl": "/mcp/#what-we-tell-agents"
+  },"95": {
+    "doc": "Agents & MCP",
+    "title": "Agents & MCP",
+    "content": " ",
+    "url": "/start/mcp/",
+    
+    "relUrl": "/mcp/"
+  },"96": {
+    "doc": "Motion captures",
+    "title": "Motion captures",
+    "content": "A short, deterministic recording of a component in motion, published beside its ordinary still. Two annotations produce one: @AnimatedPreview records motion the component runs by itself, and @InteractionPreview records motion a user provokes by scripting a real pointer gesture against the live composition. ",
+    "url": "/start/reference/motion/",
+    
+    "relUrl": "/reference/motion/"
+  },"97": {
+    "doc": "Motion captures",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | render/motion/apng, render/motion/gif | . | Schema version | n/a (image-only) | . | Modules | :data-motion-core (pure JVM — APNG encoder, interaction-script expansion, frame-delay rationals) | . | Render mode | default | . | Cost | high (one full-size frame per interval across the window) | . | Token usage | Image-only — the payload is a path. See token usage. | . | Transport | path (APNG / GIF) | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/motion/#at-a-glance",
+    
+    "relUrl": "/reference/motion/#at-a-glance"
+  },"98": {
+    "doc": "Motion captures",
+    "title": "What it answers",
+    "content": ". | What does the component look like between its states — the spring the indicator rides, the shape a container morphs into under a finger, the fade of a state layer? | Does the component actually respond to a real press, through its own Modifier.clickable / toggleable wiring? | Does the motion survive a theme swap, a density change, an RTL locale? | . A PNG of a navigation bar shows where the indicator ended up; it says nothing about the spring that carried it there, which is exactly what Material 3 Expressive changed. A lot of what a modern design system is lives in the motion, so the interaction is the documentation. ",
+    "url": "/start/reference/motion/#what-it-answers",
+    
+    "relUrl": "/reference/motion/#what-it-answers"
+  },"99": {
+    "doc": "Motion captures",
+    "title": "What it does NOT answer",
+    "content": ". | Motion capture is renderer-side only — it produces image artifacts, not a JSON payload, so it has no kind on the daemon’s initialize.capabilities.dataProducts list and never round-trips through data/fetch or data/subscribe. | It does not measure motion performance. Every frame is sampled on a paused clock, so the file says what the animation looks like, not what it costs — for that, instrument compose/recomposition over the same window. | It is not a video recorder. The window is bounded (10 s for an interaction, 5 s for an animation) because every frame is a full-size image in the output. | . ",
+    "url": "/start/reference/motion/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/motion/#what-it-does-not-answer"
+  },"100": {
+    "doc": "Motion captures",
+    "title": "Both backends produce these",
+    "content": "@InteractionPreview used to be implemented in the desktop renderer only; the Robolectric lane produced no capture, failed confusingly, and took the component’s ordinary still down with it (#4215). Both backends honour it now, and they share the parts that must agree: . | The script expansion. The recording window is derived — lead-in, plus one press and one settle window per target — by InteractionScript in :data-motion-core. Two backends deriving it separately would disagree silently, and a recording cut short mid-gesture is a plausible-looking file rather than an error. | The container. One ApngEncoder, so a component’s capture cannot differ in container bytes from its sibling’s depending on which backend built it. | . What is genuinely per-backend is how the pointer is injected and how platform animations are advanced. On Robolectric the capture advances the main looper alongside Compose’s mainClock on every frame, because Material’s ripple is a platform RippleDrawable and would otherwise stay frozen at frame 0 for the whole recording. ",
+    "url": "/start/reference/motion/#both-backends-produce-these",
+    
+    "relUrl": "/reference/motion/#both-backends-produce-these"
+  },"101": {
+    "doc": "Motion captures",
+    "title": "Targeting: indices into the preview’s clickable nodes",
+    "content": "@InteractionPreview(targets = [...]) addresses the composable’s clickable nodes in layout order — index 2 of a five-destination navigation bar is its third destination. Both renderers resolve the indices against the live semantics tree, once, against the composition at rest, then dispatch to each node’s centre. | Resolving once is deliberate: a component that reflows as it responds would move the node the next index refers to, so a script written against the resting layout would silently start hitting different things partway through the recording. | Indices rather than pixel coordinates (which every density and breakpoint would invalidate) and rather than label text (which every one of this repo’s locales would invalidate). | A target index that resolves to nothing fails the capture loudly. A recording of nothing happening is indistinguishable from a component that doesn’t respond, and answering that question is the artifact’s whole job. | . There is no Toggle gesture: targets = [0, 0] taps one switch twice, which is what a toggle already says. ",
+    "url": "/start/reference/motion/#targeting-indices-into-the-previews-clickable-nodes",
+    
+    "relUrl": "/reference/motion/#targeting-indices-into-the-previews-clickable-nodes"
+  },"102": {
+    "doc": "Motion captures",
+    "title": "Framing",
+    "content": "A capture is framed like the still it sits beside — cropped to the composable’s measured box on a wrapped axis, so a catalog can show one in place of the other without the card resizing under the reader. The measurement is the maximum across the recording, not the resting one: a component that expands mid-gesture grows the canvas rather than being clipped at the frame edge. Nothing is ever resampled. ",
+    "url": "/start/reference/motion/#framing",
+    
+    "relUrl": "/reference/motion/#framing"
+  },"103": {
+    "doc": "Motion captures",
+    "title": "Why APNG by default",
+    "content": "@InteractionPreview defaults to APNG; @AnimatedPreview keeps GIF for backwards compatibility. Two properties decide it, and both are things GIF cannot do rather than things it does worse: . | Exact frame timing. A GIF frame delay is an integer count of 1/100 s, so 60 fps (16.67 ms) is not representable. An APNG delay is a rational num/den, so 1/60 is exact. | Full colour. GIF’s 256-entry palette bands precisely what these captures exist to show — state-layer fades, ripple gradients, and the anti-aliased edge of a shape mid-morph. | . Ask for format = MotionFormat.Gif when reach in old tooling matters more. The output’s extension always follows the format the capture is written in: @AnimatedPreview(format = MotionFormat.Apng) writes &lt;id&gt;.apng on the desktop (Compose Multiplatform) backend. The Android backend does not encode @AnimatedPreview as APNG yet, so there an APNG request is written as GIF to &lt;id&gt;.gif and discovery warns that it was downgraded; @InteractionPreview honours format on both. ",
+    "url": "/start/reference/motion/#why-apng-by-default",
+    
+    "relUrl": "/reference/motion/#why-apng-by-default"
+  },"104": {
+    "doc": "Motion captures",
+    "title": "Payload shape",
+    "content": "Image-only artifacts. Output paths under build/compose-previews/renders/&lt;id&gt;.apng (or .gif). A motion capture never shares a slot with a still: a failure writes &lt;output&gt;.error.json beside the motion output, and the preview’s own PNG is left intact. ",
+    "url": "/start/reference/motion/#payload-shape",
+    
+    "relUrl": "/reference/motion/#payload-shape"
+  },"105": {
+    "doc": "Motion captures",
+    "title": "Enabling",
+    "content": "Annotate the preview: . @CatalogComponent(id = \"Switch/On\", caption = \"…\") @InteractionPreview( targets = [0, 0], caption = \"Toggle off and back on — the thumb rides the theme's spatial spec.\", ) @Composable fun SwitchOn() = Sticker(\"switch-on\") . See skills/compose-preview/references/capture-modes.md for the full set of capture-mode annotations. Publishing it in a design catalog . A design catalog collects motion per component, off the component’s own @Preview — so the pairing above needs no extra wiring. Two things push the recording onto a function of its own, and there it needs claiming or it publishes nowhere: . | the component carries @OverrideVariant cells. The motion annotation rides every cell and the animated path ignores their knobs, so one recording publishes N byte-identical times, once per variant name; | the recording needs a pinned canvas (widthDp + heightDp — every frame of a GIF must share one size) while the component’s sticker wraps and is cropped. | . Name the separate function from the component: . @Preview(widthDp = 200, heightDp = 120) annotation class MotionCanvas @MotionCanvas @AnimatedPreview @Composable fun SwitchTransitionMotion() = Sticker { … } @CatalogComponent(id = \"Toggles/Switch\", motionPreview = \"SwitchTransitionMotion\") @Composable fun SwitchButtonSticker() = Sticker { … } . A catalog.spec.json component’s motionPreview does the same and wins over the annotation. The named function needs no @CatalogComponent of its own — it adds no card and no design-kit node, it only supplies the bytes. An authored recording that no component claims renders and is then dropped at the join; the export warns when it finds one. ",
+    "url": "/start/reference/motion/#enabling",
+    
+    "relUrl": "/reference/motion/#enabling"
+  },"106": {
+    "doc": "Motion captures",
+    "title": "Recording a timeline the preview drives itself",
+    "content": "@AnimatedPreview and @InteractionPreview stop at 5 s and 10 s. Some recordings tell a longer story made of several changes, each driven by the host: a door opening, then dusk falling for three simulated hours, then the door closing. Put that story in the preview and record it with compose-preview record. You don’t need to step frames by hand. | The preview owns the timeline. Drive state from a LaunchedEffect with delay(). A recording runs on the virtual frame clock, so every delay lands exactly where you put it, on every run: . @Preview(widthDp = 360, heightDp = 300) // pin both: every frame shares one canvas @Composable fun GarageAtDusk() { var open by remember { mutableStateOf(false) } var elevation by remember { mutableStateOf(14f) } LaunchedEffect(Unit) { delay(1_000); open = true delay(2_500) for (step in sunset) { elevation = step; delay(45) } // three hours in four seconds delay(800); open = false } CardHost(snapshot = states(open, elevation)) } . | Drive the host’s inputs, not its outputs. When the composable under test is a host, change what the host reads, and let it derive the rest. For example, a Remote Compose player fed named values computed from a data snapshot: change the snapshot. If you hand-build the values the host would push, you record your copy of the host rather than the host itself. | The script only sets the length. With no input to inject, two probes are enough: . [ { \"tMs\": 0, \"kind\": \"recording.probe\", \"label\": \"start\" }, { \"tMs\": 11000, \"kind\": \"recording.probe\", \"label\": \"end\" } ] . compose-preview record --preview GarageAtDusk --script length.json --out garage.apng . | Choose the size, and the format for where it goes. The cost is the number of frames times their size. An 11 s recording at the default 30 fps and full scale is 331 frames; for a 360 dp card that comes to a 40 MB APNG. --fps 12 --scale 0.6 makes the same story 133 frames and 9 MB. APNG is the default here, lossless and in full colour. For a chat app or an issue comment, ask for MP4 with --out garage.mp4, which needs ffmpeg on PATH. It plays inline in Slack, and is about 200 KB for the same recording. Encoding waits a minute plus two seconds for every million pixels across the frames, up to half an hour. A long recording at full scale therefore still finishes, just not quickly. | . ",
+    "url": "/start/reference/motion/#recording-a-timeline-the-preview-drives-itself",
+    
+    "relUrl": "/reference/motion/#recording-a-timeline-the-preview-drives-itself"
+  },"107": {
+    "doc": "Motion captures",
+    "title": "Companion products",
+    "content": ". | Scroll captures — render/scroll/gif for motion driven by scrolling rather than by a pointer or the component itself. | Focus — @FocusedPreview(gif = true) for a keyboard-traversal walk. | History diff — history/diff/regions against a baseline to catch motion regressions frame-region by frame-region. | . ",
+    "url": "/start/reference/motion/#companion-products",
+    
+    "relUrl": "/reference/motion/#companion-products"
+  },"108": {
+    "doc": "Pseudolocale",
+    "title": "Pseudolocale",
+    "content": "Render any preview through the en-XA (accent / expansion) or ar-XB (bidi / RTL) pseudolocale at runtime, without pseudoLocalesEnabled or resConfigs build-time configuration on the consumer. Drop locale = \"en-XA\" (or \"ar-XB\") onto a @Preview, or set localeTag in renderNow.overrides, and the renderer pseudolocalises every stringResource(...) lookup on the fly. ",
+    "url": "/start/reference/pseudolocale/",
+    
+    "relUrl": "/reference/pseudolocale/"
+  },"109": {
+    "doc": "Pseudolocale",
+    "title": "At a glance",
+    "content": "|   |   | . | Trigger | localeTag in {en-XA, ar-XB} (BCP-47) — same field as any other locale override. | . | Modules | :data-pseudolocale-core (published) · :data-pseudolocale-connector | . | Render mode | default | . | Cost | low | . | Token usage | n/a — visual-only effect, no JSON payload. | . | Transport | n/a | . | Platforms | Android (full) · CMP Desktop (full) | . ",
+    "url": "/start/reference/pseudolocale/#at-a-glance",
+    
+    "relUrl": "/reference/pseudolocale/#at-a-glance"
+  },"110": {
+    "doc": "Pseudolocale",
+    "title": "What it answers",
+    "content": ". | Layout expansion (en-XA) — does the UI still hold together when every translation is ~30 % longer? Buttons that fit Save but break on [Šàʌê ··] show up immediately. | RTL correctness (ar-XB) — does the layout flip cleanly to right-to-left, do start/end paddings switch sides, do icons mirror? No real Arabic translations needed; the framework’s LocalLayoutDirection = Rtl plus per-word RLO/PDF marks is enough to surface ordering bugs. | Hard-coded strings — text that doesn’t appear pseudolocalised in the render is text that didn’t go through Resources.getString* (or the Compose stringResource wrapper) and won’t be translated either. | . ",
+    "url": "/start/reference/pseudolocale/#what-it-answers",
+    
+    "relUrl": "/reference/pseudolocale/#what-it-answers"
+  },"111": {
+    "doc": "Pseudolocale",
+    "title": "What it does NOT answer",
+    "content": ". | It does not pseudolocalise hard-coded Kotlin string literals (Text(\"Hi\")) — same limitation Android Studio’s pseudolocale dropdown has. Use the gap as a checklist of strings that need extracting to strings.xml. | It does not score copy expansion against a per-language budget. Pair with the text/strings data product’s didOverflowWidth / truncated fields if you want a CI gate. | . ",
+    "url": "/start/reference/pseudolocale/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/pseudolocale/#what-it-does-not-answer"
+  },"112": {
+    "doc": "Pseudolocale",
+    "title": "Use cases",
+    "content": ". | Catch text overflow before it ships: render every @Preview at locale = \"en-XA\" in CI and diff the resulting PNGs against a baseline. | Verify RTL layouts on a screen-by-screen basis without translating to a real RTL language first. | Sanity-check that a new feature’s strings actually go through stringResource — anything left unchanged in the en-XA render is suspect. | . ",
+    "url": "/start/reference/pseudolocale/#use-cases",
+    
+    "relUrl": "/reference/pseudolocale/#use-cases"
+  },"113": {
+    "doc": "Pseudolocale",
+    "title": "How to use",
+    "content": "Static @Preview . @Preview(name = \"accent\", locale = \"en-XA\", widthDp = 320, heightDp = 180) @Composable fun MyScreenAccent() { MyScreen() } @Preview(name = \"bidi\", locale = \"ar-XB\", widthDp = 320, heightDp = 180) @Composable fun MyScreenBidi() { MyScreen() } ./gradlew :app:composePreviewRenderAll produces MyScreenAccent_accent.png and MyScreenBidi_bidi.png alongside the default render. No app-level config required: no pseudoLocalesEnabled = true, no resConfigs, no AAPT2 flag. Daemon / renderNow.overrides . { \"method\": \"renderNow\", \"params\": { \"previewId\": \"com.example.MyScreenKt#MyScreen\", \"overrides\": { \"localeTag\": \"en-XA\" } } } . The same planner runs in the daemon path. Drop the override, render again, and you’re back to the default locale. The daemon doesn’t need to be restarted between locales. Samples . | Android — samples/android/.../PseudolocalePreviews.kt ships three previews — default, accent, bidi — driven from the same body. Run ./gradlew :samples:android:composePreviewRenderAll and compare the three PNGs in samples/android/build/compose-previews/renders/. | CMP Desktop — samples/cmp/.../PseudolocalePreviews.kt ships default and bidi previews. Run ./gradlew :samples:cmp:composePreviewRenderAll and compare — the bidi PNG flips the row layout. Text resolved through org.jetbrains.compose.resources.stringResource(Res.string.foo) is also pseudolocalised: the connector wraps LocalResourceReader, so byte-level reads of the binary Compose Resources records get accent / RLO-PDF wrapped before they reach the composable. | . ",
+    "url": "/start/reference/pseudolocale/#how-to-use",
+    
+    "relUrl": "/reference/pseudolocale/#how-to-use"
+  },"114": {
+    "doc": "Pseudolocale",
+    "title": "How it works",
+    "content": "The override mechanism reuses localeTag rather than a new field, so it slots into Studio’s locale dropdown convention. Two pieces on Android, one piece on Desktop: . | Qualifier / locale-list rewrite. Pseudolocale tags aren’t real BCP-47 locales — values-en-rXA/ doesn’t exist, and LocaleList(\"en-XA\") either throws or silently degrades depending on the JVM’s ICU build. Both renderers detect the pseudo tag, substitute the base locale (en / ar), and pass that along: . | Android — emits values-en/ resources via the Robolectric resource qualifier, plus ldrtl for ar-XB so Configuration reports an RTL layout direction. Lives in RenderEngine.applyPreviewQualifiers (daemon) and RobolectricRenderTest.applyPreviewQualifiers (plugin path). | Desktop — emits the rewritten tag through the LocaleList CompositionLocal. Lives in RenderEngine.localeProviders (daemon) and DesktopRendererMain (plugin path). | . RTL is not pseudolocale-only. A real RTL locale (ar, he, fa, ur, …) flips layout direction on every path too — ldrtl on Android, LocalLayoutDirection = Rtl on Desktop — decided by LocaleDirection.isRtl from the tag’s language subtag. ar-XB is the translation-free way to test RTL, not the only way to get it. Without this a @Preview(locale = \"ar\") renders shaped Arabic inside an unmirrored container, which looks like passing RTL and isn’t. | Around-composable wrap. Each platform has a PreviewOverrideExtension planner that maps localeTag to an around-composable: . | Android (:data-pseudolocale-connector) — wraps LocalContext with a ContextWrapper whose getResources() returns a Resources subclass that pseudolocalises return values from getText(int) / getQuantityText(int, int). androidx.compose.ui.res.stringResource walks LocalContext.current.resources.getString(id), which routes through getText(int) — every stringResource(R.string.foo) callsite picks up the wrapped path automatically. Also provides LocalLayoutDirection = Rtl for ar-XB. | Desktop (:data-pseudolocale-connector-desktop) — wraps LocalResourceReader (the @ExperimentalResourceApi interceptor from org.jetbrains.compose.resources) with a decorator that pseudolocalises every string-shaped record coming out of readPart(...). Strings, string-arrays and plurals are decoded from the &lt;type&gt;|...|&lt;base64&gt; binary record format, run through Pseudolocalizer.transform(...) and re-encoded. Other resource types (drawables, fonts) pass through unchanged. The intended ComposeEnvironment swap path isn’t reachable at CMP 1.10.x — both the interface and its LocalComposeEnvironment are internal to org.jetbrains.compose.resources. Also provides LocalLayoutDirection = Rtl for ar-XB. | . | . Pure transform code (Pseudolocalizer.accent, Pseudolocalizer.bidi) lives in :data-pseudolocale-core with no Android or Compose dependency, so it can be unit-tested directly and reused by other tooling. The transform follows AAPT2’s Pseudolocalizer.cpp: ASCII-letter accent map, ~30 % bracket-padded expansion, placeholder preservation (%1$s, {name}, &lt;b&gt;…&lt;/b&gt;). Platform support matrix . |   | Android | CMP Desktop | . | localeTag rewrite to base locale | ✅ | ✅ | . | LayoutDirection.Rtl for ar-XB | ✅ | ✅ | . | [Ĥêļļö ···] accent transform of stringResource(...) | ✅ | ✅ | . | RLO / PDF bidi wrap of stringResource(...) | ✅ | ✅ | . | Hard-coded literal strings (Text(\"Hi\")) | n/a — never pseudolocalised | n/a | . ",
+    "url": "/start/reference/pseudolocale/#how-it-works",
+    
+    "relUrl": "/reference/pseudolocale/#how-it-works"
+  },"115": {
+    "doc": "Pseudolocale",
+    "title": "Comparison to AGP pseudoLocalesEnabled",
+    "content": "AGP can build pseudolocalised values-en-rXA/strings.xml resources into the consumer’s APK at compile time, then load them at runtime via the standard locale qualifier path. This data product takes the opposite tack: leave strings.xml alone, intercept the lookup. The trade-offs: . |   | This product | AGP pseudoLocalesEnabled | . | Consumer config | none | buildTypes.&lt;type&gt;.pseudoLocalesEnabled = true | . | APK size | unchanged (renderer-only) | grows with pseudo resources | . | Runtime cost | Resources.getText wrap, ~free | none (resources resolved by framework) | . | Off-by-default | yes — only triggers when localeTag in {en-XA, ar-XB} | yes — opt-in per build type | . | Works in production app | no — preview / render only | yes | . For preview rendering specifically — which is what this tool is for — the runtime path is strictly cheaper and simpler. Production apps that ship pseudolocalised resources for QA still want AGP. ",
+    "url": "/start/reference/pseudolocale/#comparison-to-agp-pseudolocalesenabled",
+    
+    "relUrl": "/reference/pseudolocale/#comparison-to-agp-pseudolocalesenabled"
+  },"116": {
+    "doc": "Recomposition",
+    "title": "Recomposition",
+    "content": "Per-node recomposition counts — the agent-facing performance signal for unnecessary recomposition. Source for heat maps and “this node recomposed N times for one click” reviews. ",
+    "url": "/start/reference/recomposition/",
+    
+    "relUrl": "/reference/recomposition/"
+  },"117": {
+    "doc": "Recomposition",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | compose/recomposition | . | Schema version | 2 | . | Modules | :data-recomposition-core (published) · :data-recomposition-connector | . | Render mode | instrumented | . | Cost | medium | . | Token usage | ~1 000–1 500 tok per query (compose/recomposition ~3–5 KB). See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/recomposition/#at-a-glance",
+    
+    "relUrl": "/reference/recomposition/#at-a-glance"
+  },"118": {
+    "doc": "Recomposition",
+    "title": "What it answers",
+    "content": ". | How many times did each composable recompose during this render? | Which subtree is the hot spot — a leaf re-running, or a parent re-running and dragging its children with it? | After a click / scroll / value change, what is the delta in recomposition counts compared to the steady-state snapshot? | . Two modes: . | Snapshot — a single instrumented render reports cumulative counts. | Click delta — drive the input, then diff before / after counts to attribute work to the interaction. | . ",
+    "url": "/start/reference/recomposition/#what-it-answers",
+    
+    "relUrl": "/reference/recomposition/#what-it-answers"
+  },"119": {
+    "doc": "Recomposition",
+    "title": "What it does NOT answer",
+    "content": ". | It does not measure wall-clock time spent in composition — pair with render/trace. | It does not detect the cause (unstable lambda, missing remember, key churn) — it points at the location; reading the source is on the reviewer. | It runs the renderer in instrumented mode, so absolute counts are not directly comparable to a non-instrumented production build. | . ",
+    "url": "/start/reference/recomposition/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/recomposition/#what-it-does-not-answer"
+  },"120": {
+    "doc": "Recomposition",
+    "title": "Use cases",
+    "content": ". | Catch a Modifier factory that captures a new lambda each composition and forces the whole row to recompose. | Verify a derivedStateOf / remember change actually trimmed the recomposition count it was supposed to. | Build a heat-map overlay for a “performance review” PR. | . ",
+    "url": "/start/reference/recomposition/#use-cases",
+    
+    "relUrl": "/reference/recomposition/#use-cases"
+  },"121": {
+    "doc": "Recomposition",
+    "title": "Payload shape",
+    "content": "RecompositionPayload, RecompositionNode in :data-recomposition-core. // compose/recomposition (schemaVersion 2) { \"mode\": \"delta\", // or \"snapshot\" \"sinceFrameStreamId\": \"f-7a1c\", // populated in delta mode \"inputSeq\": 2, // monotonic per flushed delta \"nodes\": [ // reason: PARAMETER_CHANGE | STATE_READ | BOTH | UNKNOWN { \"nodeId\": \"1a2b3c4d\", \"count\": 1, \"reason\": \"STATE_READ\" }, { \"nodeId\": \"5e6f7a8b\", \"count\": 1, \"reason\": \"PARAMETER_CHANGE\" } ] } . Each node’s reason is attributed from the Compose runtime’s onScopeInvalidated(scope, value) signal compared against the recompose count: a scope invalidated by a snapshot write it subscribed to reads STATE_READ, one that re-ran only because its caller did reads PARAMETER_CHANGE, and a mix reads BOTH. This is the “why did this recompose?” signal — a parent reading state and forwarding it as parameters shows up as one STATE_READ dragging a fan of PARAMETER_CHANGE children. Nodes also carry nullable bounds ({x, y, width, height}) and source-marker fields (sourceFile / sourceLine / sourceColumn / functionName) for the heat-map and source-overlay surfaces. These are present on the v2 wire but not yet populated — the post-layout bounds join and slot-table reflection that fill them are deferred increments (see issue #1605). ",
+    "url": "/start/reference/recomposition/#payload-shape",
+    
+    "relUrl": "/reference/recomposition/#payload-shape"
+  },"122": {
+    "doc": "Recomposition",
+    "title": "Enabling",
+    "content": "Producer requires instrumented render mode and runs when its extension is publicly enabled. From an MCP client: . { \"method\": \"tools/call\", \"params\": { \"name\": \"subscribe_preview_data\", \"arguments\": { \"uri\": \"compose-preview://&lt;id&gt;/_module/com.example.Foo\", \"kind\": \"compose/recomposition\" } } } . For PR-review style “did this PR add unnecessary recomposition?” guidance, see compose-preview-review/references/agent-audits.md. ",
+    "url": "/start/reference/recomposition/#enabling",
+    
+    "relUrl": "/reference/recomposition/#enabling"
+  },"123": {
+    "doc": "Recomposition",
+    "title": "Companion products",
+    "content": ". | Layout inspector — layout/inspector to map nodeId to source. | Render trace — render/trace, render/composeAiTrace for the wall-clock side of the same render. | . ",
+    "url": "/start/reference/recomposition/#companion-products",
+    
+    "relUrl": "/reference/recomposition/#companion-products"
+  },"124": {
+    "doc": "Render trace",
+    "title": "Render trace",
+    "content": "Pipeline-level kinds emitted by the renderer itself: a Perfetto-importable Chrome trace, a phase breakdown, the device clip mask, and the device background. ",
+    "url": "/start/reference/render/",
+    
+    "relUrl": "/reference/render/"
+  },"125": {
+    "doc": "Render trace",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | render/composeAiTrace, render/trace, render/deviceClip, render/deviceBackground | . | Schema version | 1 | . | Modules | :data-render-core (published) · :data-render-connector · :data-render-compose | . | Render mode | default · live | . | Cost | low | . | Token usage | ~50 tok inline per kind; +~1.5 k per render/deviceClip / render/deviceBackground PNG read. See token usage. | . | Transport | inline (JSON) · path (PNG for clip / background) | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/render/#at-a-glance",
+    
+    "relUrl": "/reference/render/#at-a-glance"
+  },"126": {
+    "doc": "Render trace",
+    "title": "What it answers",
+    "content": ". | render/composeAiTrace — a full Perfetto / Chrome-trace JSON of the render pipeline (discovery → setup → compose → capture → encode). Drop it into ui.perfetto.dev to see exactly where time went. | render/trace — a flatter, summary-shaped phase breakdown (totalMs, ordered phases, free-form metrics map). Cheap to read in a CI log. | render/deviceClip — the device-shape clip mask used for round Wear watches and other non-rectangular previews. Pure-image. | render/deviceBackground — the device chrome / wallpaper layer composited under the preview. Pure-image. | . ",
+    "url": "/start/reference/render/#what-it-answers",
+    
+    "relUrl": "/reference/render/#what-it-answers"
+  },"127": {
+    "doc": "Render trace",
+    "title": "What it does NOT answer",
+    "content": ". | render/trace is a renderer pipeline trace, not a Compose composition trace — for that, use compose/recomposition. | It does not contain on-device frame timing (Choreographer, jank stats) — the renderer runs under Robolectric / ImageComposeScene, not on a real Choreographer. | The Perfetto trace is sampled at function boundaries, not at the JVM-method granularity of an async-profiler dump. | . ",
+    "url": "/start/reference/render/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/render/#what-it-does-not-answer"
+  },"128": {
+    "doc": "Render trace",
+    "title": "Use cases",
+    "content": ". | Diagnose a slow render that nudges past daemon.dataFetchRerenderBudgetMs — open the Perfetto trace and find the phase that ran long. | Build a CI dashboard of totalMs per preview to catch gradual regression. | Verify a Wear round-device clip mask matches the watch face’s intended bezel. | Composite a custom device background under a preview for marketing screenshots. | . ",
+    "url": "/start/reference/render/#use-cases",
+    
+    "relUrl": "/reference/render/#use-cases"
+  },"129": {
+    "doc": "Render trace",
+    "title": "Payload shape",
+    "content": "PerfettoTraceDataProducer, RenderTraceDataProduct in :data-render-core. // render/trace { \"totalMs\": 412, \"phases\": [ { \"name\": \"render\", \"startMs\": 0, \"durationMs\": 412 } ], \"metrics\": { \"tookMs\": 412, \"previewWidthPx\": 1080, \"previewHeightPx\": 1920 } } // render/composeAiTrace — Chrome trace JSON, importable into ui.perfetto.dev { \"traceEvents\": [ { \"ph\": \"X\", \"name\": \"compose\", \"ts\": 1234, \"dur\": 89, … } ] } . ",
+    "url": "/start/reference/render/#payload-shape",
+    
+    "relUrl": "/reference/render/#payload-shape"
+  },"130": {
+    "doc": "Render trace",
+    "title": "Enabling",
+    "content": "render/composeAiTrace is gated by the JVM property composeai.daemon.perfettoTrace=true. The other three kinds run whenever their extension is publicly enabled. CLI / Gradle output: . | build/compose-previews/data/&lt;id&gt;/render-perfetto-trace.json | build/compose-previews/data/&lt;id&gt;/render-trace.json | build/compose-previews/data/&lt;id&gt;/render-deviceClip.png | build/compose-previews/data/&lt;id&gt;/render-deviceBackground.png | . ",
+    "url": "/start/reference/render/#enabling",
+    
+    "relUrl": "/reference/render/#enabling"
+  },"131": {
+    "doc": "Render trace",
+    "title": "Companion products",
+    "content": ". | Test failure — test/failure for postmortems when a render fails before producing a trace. | Recomposition — compose/recomposition for the per-node side of the wall-clock story. | . ",
+    "url": "/start/reference/render/#companion-products",
+    
+    "relUrl": "/reference/render/#companion-products"
+  },"132": {
+    "doc": "Resources",
+    "title": "Resources",
+    "content": "Every R.* reference resolved during render — drawables, strings, colours, dimens, plurals, attrs, and theme attributes — with the resolved value and the source qualifier (default vs. night, w600dp, locale-specific, …). ",
+    "url": "/start/reference/resources/",
+    
+    "relUrl": "/reference/resources/"
+  },"133": {
+    "doc": "Resources",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | resources/used | . | Schema version | 1 | . | Modules | :data-resources-core (published) · :data-resources-connector | . | Render mode | default | . | Cost | low | . | Token usage | ~175 tok per query (resources/used ~610 chars). See token usage. | . | Transport | inline | . | Platforms | Android | . ",
+    "url": "/start/reference/resources/#at-a-glance",
+    
+    "relUrl": "/reference/resources/#at-a-glance"
+  },"134": {
+    "doc": "Resources",
+    "title": "What it answers",
+    "content": ". | Which R.drawable.* / R.string.* / R.color.* references actually got read while rendering this preview? | Which qualifier folder did each value come from (e.g. values-night/colors.xml vs. values/colors.xml)? | Are any references dead — declared but never read on this preview? | Did a refactor accidentally introduce a reference to a removed resource id? | . ",
+    "url": "/start/reference/resources/#what-it-answers",
+    
+    "relUrl": "/reference/resources/#what-it-answers"
+  },"135": {
+    "doc": "Resources",
+    "title": "What it does NOT answer",
+    "content": ". | It does not enumerate resources the preview could reference under a different configuration (different locale, dark mode) — only what was read on this render. | It does not validate XML schema correctness — that is aapt2’s job. | Compose Multiplatform resources flow through a different path; this kind is Android-only. | . ",
+    "url": "/start/reference/resources/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/resources/#what-it-does-not-answer"
+  },"136": {
+    "doc": "Resources",
+    "title": "Use cases",
+    "content": ". | Jump-to-source from VS Code: click a colour in the rendered PNG, get the R.color.foo it came from and the values*/colors.xml it was defined in. | Dead-code audits: render every preview and diff resources/used against the union of declared R.* ids. | Verify a string id rename was thorough — every preview that previously cited R.string.old_name now cites R.string.new_name. | . ",
+    "url": "/start/reference/resources/#use-cases",
+    
+    "relUrl": "/reference/resources/#use-cases"
+  },"137": {
+    "doc": "Resources",
+    "title": "Payload shape",
+    "content": "ResourcesUsedPayload, ResourceUsedReference in :data-resources-core. // resources/used { \"references\": [ { \"type\": \"string\", \"name\": \"submit\", \"id\": \"0x7f110042\", \"value\": \"Submit\", \"sourceFile\": \"values/strings.xml\" }, { \"type\": \"color\", \"name\": \"primary\", \"id\": \"0x7f060010\", \"value\": \"#FF6750A4\", \"sourceFile\": \"values-night/colors.xml\" } ] } . ",
+    "url": "/start/reference/resources/#payload-shape",
+    
+    "relUrl": "/reference/resources/#payload-shape"
+  },"138": {
+    "doc": "Resources",
+    "title": "Enabling",
+    "content": "Producer runs once the Resources extension is publicly enabled. CLI / Gradle output: build/compose-previews/data/&lt;id&gt;/resources-used.json. The plugin also separately renders Android XML resources directly (vector drawables, adaptive icons, animated-vector drawables) — that is a different feature; see skills/compose-preview/references/resource-previews.md. An &lt;animated-vector&gt; is captured there in motion (a GIF, plus a keyframe filmstrip PNG), including one with repeatCount=\"infinite\" — but as a bare drawable at its intrinsic size. For a windowSplashScreenAnimatedIcon, that is the icon on its own, not the splash window it launches inside. The window composition is a separate surface: SplashScreenSurface renders it as a still and AnimatedSplashScreenSurface (paired with @AnimatedPreview) renders it in motion, both from :splash-preview-runtime. ",
+    "url": "/start/reference/resources/#enabling",
+    
+    "relUrl": "/reference/resources/#enabling"
+  },"139": {
+    "doc": "Resources",
+    "title": "Companion products",
+    "content": ". | Strings — text/strings for the actual drawn copy resolved from R.string.* references. | Theme — compose/theme for the Material 3 tokens that consumed R.color.* values. | Fonts — fonts/used for the typeface side of the same render. | . ",
+    "url": "/start/reference/resources/#companion-products",
+    
+    "relUrl": "/reference/resources/#companion-products"
+  },"140": {
+    "doc": "Scroll captures",
+    "title": "Scroll captures",
+    "content": "Long-form scrolling captures (one tall PNG that stitches the whole scrollable region) and animated GIFs of the scroll itself, driven through the renderer extension pipeline. ",
+    "url": "/start/reference/scroll/",
+    
+    "relUrl": "/reference/scroll/"
+  },"141": {
+    "doc": "Scroll captures",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | render/scroll/long, render/scroll/gif | . | Schema version | n/a (image-only) | . | Modules | :data-scroll-core (pure JVM — planners, stitcher, GIF encoder, axis), :data-scroll-android (the Android AndroidComposeTestRule-bound scroll drivers used by :renderer-android) | . | Render mode | default | . | Cost | medium (extra renders per scroll step) | . | Token usage | Image-only — ~1.5 k tok per render/scroll/* PNG read; payload itself is a path. See token usage. | . | Transport | path (PNG / GIF) | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/scroll/#at-a-glance",
+    
+    "relUrl": "/reference/scroll/#at-a-glance"
+  },"142": {
+    "doc": "Scroll captures",
+    "title": "What it answers",
+    "content": ". | What does the entire scrollable region look like, end to end, not just the viewport at rest? | What does the scroll motion look like over time (entry animations, sticky headers settling, LazyColumn item placement)? | Does a nestedScroll collapse / expand land in the right state at the end of a fling? | . data/scroll/core ships the pure-JVM scroll primitives (ScrollAxis, ScrollLongFramePlan / ScrollGifFramePlan planners, ScrollSliceStitcher, ScrollGifEncoder, ScrollPreviewExtension). data/scroll/android ships the AndroidComposeTestRule-bound ScrollDriver (driveScrollByViewport, driveScrollBy, driveScrollToStart, driveScrollToEnd, remainingScrollPx) — the Android renderer composes both. The Compose Desktop renderer pulls just data-scroll-core and drives the scrollable through runComposeUiTest directly, sharing the pure-JVM planners and stitcher with the Android path. ",
+    "url": "/start/reference/scroll/#what-it-answers",
+    
+    "relUrl": "/reference/scroll/#what-it-answers"
+  },"143": {
+    "doc": "Scroll captures",
+    "title": "What it does NOT answer",
+    "content": ". | Scroll is renderer-side only — it produces image artifacts, not a JSON payload, so it has no kind on the daemon’s initialize.capabilities.dataProducts list. There is no data-scroll-connector. It never round-trips through data/fetch or data/subscribe; instead the renderer drives it directly via PreviewPipelineStep / scenario-driver hooks. | It does not measure scroll performance — for that, instrument compose/recomposition over the same scrolled frames. | . ",
+    "url": "/start/reference/scroll/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/scroll/#what-it-does-not-answer"
+  },"144": {
+    "doc": "Scroll captures",
+    "title": "Use cases",
+    "content": ". | Render a tall settings screen as one PNG for design review. | GIF a LazyColumn to verify item-key stability across data changes. | Capture the full scroll of a Wear ScalingLazyColumn to confirm the curvature target. | . ",
+    "url": "/start/reference/scroll/#use-cases",
+    
+    "relUrl": "/reference/scroll/#use-cases"
+  },"145": {
+    "doc": "Scroll captures",
+    "title": "Payload shape",
+    "content": "Image-only artifacts. Produced via :data-scroll-core extensions. Output paths under build/compose-previews/renders/&lt;id&gt;-long.png and build/compose-previews/renders/&lt;id&gt;.gif. ",
+    "url": "/start/reference/scroll/#payload-shape",
+    
+    "relUrl": "/reference/scroll/#payload-shape"
+  },"146": {
+    "doc": "Scroll captures",
+    "title": "Enabling",
+    "content": "Annotate the preview with the matching multi-preview annotation (e.g. @ScrollingPreview) — see skills/compose-preview/references/capture-modes.md for the multi-preview / scenario annotations the scroll extension recognises. ",
+    "url": "/start/reference/scroll/#enabling",
+    
+    "relUrl": "/reference/scroll/#enabling"
+  },"147": {
+    "doc": "Scroll captures",
+    "title": "How a LONG capture is verified",
+    "content": "Every stride of the walk and every seam of the stitch is checked against the pixels, and what could not be checked is written next to the PNG. The driver measures each stride. ScrollBy on a lazy list animates, and a lazy list’s ScrollAxisRange.value is not a pixel position (LazyColumn and Wear’s ScalingLazyColumn publish index × 500 + offset), so neither “has the spring landed” nor “how far did the content move” can be read off the semantics range. driveScrollByViewport instead snapshots the on-screen positions of the scrollable’s descendant semantics nodes before each stride, advances the paused clock frame by frame until they stop moving, measures the median displacement of the nodes seen on both sides, and dispatches a corrective ScrollBy (up to three) when the landing misses the planned stride by more than a pixel while the scroller still has room. The measured travel is the offset the stitcher receives, flagged as measured so the search window around it is a few pixels rather than a third-to-triple of the hint. The stitcher only aligns on signal. Rows are weighted by their horizontal luminance stddev, so black background and the body of a button between its text lines contribute nothing and a row through text or an icon decides the match. A candidate shift is only eligible when its overlap is at least a tenth of the viewport and its informative rows sum to enough signal to be a feature rather than a stray edge; candidates within a small margin of the best score are a tie and the one nearest the hint wins (identical chip bodies one pitch apart). This is what a pinned Wear TimeText used to defeat: with the time drawn over the head of every slice, a 12-row all-black overlap at the far end of the window out-scored the true shift and the next slice was painted from its top row, 10:10 and all. Chrome that appears at the foot of a slice is set aside. The last stride of a Wear walk lands at the content end, and landing there reveals the ScreenScaffold’s EdgeButton: the last slice’s bottom fifth is a bright button where the previous slice had background. At the true shift every row above it agrees exactly and every row of it disagrees violently, which misalignment never looks like (it spreads disagreement across the overlap). A candidate’s score therefore walks up from the bottom of the overlap past a contiguous run of disagreeing rows, caps it at a third of the overlap, and scores only the rows above; the run is reported as revealedRows on the seam. RevealedBottomChromeSeamTest pins this on the real slice pair. What is reported. Each seam gets a verdict — verified, low_signal (too little varied content in the overlap to decide on) or mismatch (no shift made the two slices agree) — and each stride a landed/not-landed outcome. The stitch is always written, but anything unverified rides in &lt;png&gt;.warnings.json: . { \"unlandedScrollSteps\": [{ \"role\": \"…\", \"step\": 2, \"requestedPx\": 307.2, \"measuredPx\": 225.0, \"corrections\": 0, \"settled\": true, \"message\": \"…\" }], \"unverifiedScrollSeams\": [{ \"role\": \"…\", \"seam\": 1, \"verdict\": \"low_signal\", \"hintPx\": 307, \"shiftPx\": 372, \"overlapRows\": 12, \"informativeRows\": 0, \"residualPerPixel\": 0.3, \"message\": \"…\" }] } . A clean capture writes neither array. A consumer that wants to refuse an untrustworthy tall PNG fails on either being non-empty; the renderer’s WearPinnedTimeTextLongScrollTest and LongScrollPreviewPixelTest do exactly that. To iterate on the matcher without a Robolectric round-trip, render with COMPOSEAI_KEEP_SCROLL_SLICES=1 (the per-slice PNGs, the settled final frame and the reported offsets stay in &lt;id&gt;_slices/ next to the output), then point COMPOSEAI_STITCH_HARNESS_DIR at that directory and run :data-scroll-core:test — ScrollSliceStitcherHarnessTest re-stitches every slice set it finds and prints each seam’s verdict. ",
+    "url": "/start/reference/scroll/#how-a-long-capture-is-verified",
+    
+    "relUrl": "/reference/scroll/#how-a-long-capture-is-verified"
+  },"148": {
+    "doc": "Scroll captures",
+    "title": "Companion products",
+    "content": ". | Recomposition — compose/recomposition to attribute scroll cost to specific composables. | History diff — history/diff/regions against a long-PNG baseline to catch list-item layout regressions. | . ",
+    "url": "/start/reference/scroll/#companion-products",
+    
+    "relUrl": "/reference/scroll/#companion-products"
+  },"149": {
+    "doc": "Strings & i18n",
+    "title": "Strings &amp; i18n",
+    "content": "Drawn text on the rendered frame (text/strings) and per-string locale coverage from values*/strings.xml (i18n/translations). ",
+    "url": "/start/reference/strings/#strings--i18n",
+    
+    "relUrl": "/reference/strings/#strings--i18n"
+  },"150": {
+    "doc": "Strings & i18n",
+    "title": "At a glance",
+    "content": "|   |   | . | Kinds | text/strings, i18n/translations | . | Schema versions | text/strings: 3 · i18n/translations: 2 | . | Modules | :data-strings-core (published) · :data-strings-connector | . | Render mode | default | . | Cost | low | . | Token usage | ~135 tok inline (text/strings ~470 chars); +~1.5 k per rendered PNG read. See token usage. | . | Transport | inline | . | Platforms | Android (i18n is Android-only) · Desktop · shared (text/strings) | . ",
+    "url": "/start/reference/strings/#at-a-glance",
+    
+    "relUrl": "/reference/strings/#at-a-glance"
+  },"151": {
+    "doc": "Strings & i18n",
+    "title": "What it answers",
+    "content": ". | text/strings — every text run that ended up on screen, with locale, fontScale, fontSize, color, bounds, and per-entry truncated / overflow / lineCount / maxLines / didOverflowWidth / didOverflowHeight taken straight from Compose’s TextLayoutResult. | i18n/translations — for each visible string id, which locales have a translation and which fall through to the default. Highlights missing translations that actually matter on this screen — not the entire strings.xml. | . ",
+    "url": "/start/reference/strings/#what-it-answers",
+    
+    "relUrl": "/reference/strings/#what-it-answers"
+  },"152": {
+    "doc": "Strings & i18n",
+    "title": "What it does NOT answer",
+    "content": ". | It does not score copy quality (clarity, brand voice, jargon) — that is a manual review. | It does not measure RTL correctness — pair with a render at locale=ar and compare bounds, or use the pseudolocale ar-XB runtime override to surface RTL bugs without translating to a real RTL language. | i18n/translations does not include Compose Multiplatform string resources (different resolution path, Android-specific for now). | . ",
+    "url": "/start/reference/strings/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/strings/#what-it-does-not-answer"
+  },"153": {
+    "doc": "Strings & i18n",
+    "title": "Use cases",
+    "content": ". | Catch text overflow before it ships: filter text/strings for didOverflowWidth=true across every preview. | Audit a feature’s locale coverage by listing visible strings whose missing-locale set is non-empty. | Verify a fontScale=2.0 accessibility test does not push critical CTAs off-screen. | Drive jump-to-source on a drawn label in the VS Code extension. | . ",
+    "url": "/start/reference/strings/#use-cases",
+    
+    "relUrl": "/reference/strings/#use-cases"
+  },"154": {
+    "doc": "Strings & i18n",
+    "title": "Payload shape",
+    "content": "TextStringsPayload, TextStringEntry, I18nTranslationsPayload, I18nVisibleString in :data-strings-core. // text/strings { \"texts\": [ { \"text\": \"Submit\", \"nodeId\": \"2\", \"localeTag\": \"en-US\", \"fontScale\": 1.0, \"fontSize\": \"14sp\", \"foregroundColor\": \"#FFFFFFFF\", \"boundsInRoot\": \"48,200,144,232\", \"boundsInScreen\": \"48,200,144,232\", \"truncated\": false, \"didOverflowWidth\": false, \"didOverflowHeight\": false, \"lineCount\": 1, \"maxLines\": 1 } ] } // i18n/translations { \"supportedLocales\": [\"en-US\", \"fr\", \"de\", \"es\"], \"renderedLocale\": \"en-US\", \"defaultLocale\": \"en-US\", \"strings\": [ { \"nodeId\": \"2\", \"boundsInRoot\": \"48,200,144,232\", \"boundsInScreen\": \"48,200,144,232\", \"rendered\": \"Submit\", \"resourceName\": \"R.string.submit\", \"translations\": { \"en-US\": \"Submit\", \"fr\": \"Envoyer\" }, \"untranslatedLocales\": [\"de\", \"es\"] } ] } . Both products retain boundsInScreen as a deprecated compatibility alias; those values were always root-relative. New consumers should read boundsInRoot. ",
+    "url": "/start/reference/strings/#payload-shape",
+    
+    "relUrl": "/reference/strings/#payload-shape"
+  },"155": {
+    "doc": "Strings & i18n",
+    "title": "Enabling",
+    "content": "Producer runs once the Strings extension is publicly enabled. CLI / Gradle output: build/compose-previews/data/&lt;id&gt;/text-strings.json and i18n-translations.json. ",
+    "url": "/start/reference/strings/#enabling",
+    
+    "relUrl": "/reference/strings/#enabling"
+  },"156": {
+    "doc": "Strings & i18n",
+    "title": "Companion products",
+    "content": ". | Fonts — fonts/used for the typeface side of the same drawn text. | Resources — resources/used for which R.string.* references resolved here. | Accessibility — a11y/hierarchy for assistive-technology labels alongside drawn copy. | . ",
+    "url": "/start/reference/strings/#companion-products",
+    
+    "relUrl": "/reference/strings/#companion-products"
+  },"157": {
+    "doc": "Strings & i18n",
+    "title": "Strings & i18n",
+    "content": " ",
+    "url": "/start/reference/strings/",
+    
+    "relUrl": "/reference/strings/"
+  },"158": {
+    "doc": "Test failure",
+    "title": "Test failure",
+    "content": "Postmortem bundle delivered after a renderFailed notification: phase, error type / message / top stack frame, a bounded stack trace, and explicit fallback fields for partial screenshot, pending effects, animation state, and a redacted snapshot summary. ",
+    "url": "/start/reference/test-failure/",
+    
+    "relUrl": "/reference/test-failure/"
+  },"159": {
+    "doc": "Test failure",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | test/failure | . | Schema version | 1 | . | Modules | :data-render-core (published) · :data-render-connector | . | Render mode | failed render | . | Cost | low | . | Token usage | ~195 tok per query (test/failure ~680 chars). See token usage. | . | Transport | inline | . | Availability | fetch-only after renderFailed | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/test-failure/#at-a-glance",
+    
+    "relUrl": "/reference/test-failure/#at-a-glance"
+  },"160": {
+    "doc": "Test failure",
+    "title": "What it answers",
+    "content": ". | Why did the most recent render of this preview fail? | What phase failed (compose, capture, encode, setup)? | What error type / message / top stack frame, and a bounded stack trace? | What was the renderer’s last visible state — pending effects, running animations, frame-clock state — at the moment of failure? | . ",
+    "url": "/start/reference/test-failure/#what-it-answers",
+    
+    "relUrl": "/reference/test-failure/#what-it-answers"
+  },"161": {
+    "doc": "Test failure",
+    "title": "What it does NOT answer",
+    "content": ". | It does not include a partial screenshot in schema v1 (partialScreenshotAvailable: false); the fallback fields are placeholders for a future schema bump. | It does not capture state object values — lastSnapshotSummary.redaction is “state values are not captured in schema v1”. | It is not a live debugger — read the stack and the phase, then iterate; you will not get a step-debugger session out of this. | . ",
+    "url": "/start/reference/test-failure/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/test-failure/#what-it-does-not-answer"
+  },"162": {
+    "doc": "Test failure",
+    "title": "Use cases",
+    "content": ". | Triage a CI failure: fetch test/failure for every red preview to cluster failures by error type / phase. | Distinguish a renderer bug from a consumer bug — a NPE in the consumer’s LaunchedEffect is theirs; a Robolectric sandbox boot failure is the renderer’s. | Drive a “show me the failure” panel in the VS Code extension when a preview can’t render. | . ",
+    "url": "/start/reference/test-failure/#use-cases",
+    
+    "relUrl": "/reference/test-failure/#use-cases"
+  },"163": {
+    "doc": "Test failure",
+    "title": "Payload shape",
+    "content": "TestFailureDataProduct in :data-render-core. // test/failure { \"status\": \"failed\", \"phase\": \"compose\", \"error\": { \"type\": \"NullPointerException\", \"message\": \"Cannot invoke \\\"...\\\" because \\\"...\\\" is null\", \"topFrame\": \"HomeScreen.kt:42\", \"stackTrace\": [ \"com.example.HomeScreenKt.HomeScreen(HomeScreen.kt:42)\", \"...\" ] }, \"partialScreenshot\": null, \"partialScreenshotAvailable\": false, \"pendingEffects\": [], \"runningAnimations\": [], \"frameClockState\": { \"status\": \"unknown\" }, \"lastSnapshotSummary\": { \"stateObjects\": null, \"valuesCaptured\": false, \"redaction\": \"state values are not captured in schema v1\" } } . ",
+    "url": "/start/reference/test-failure/#payload-shape",
+    
+    "relUrl": "/reference/test-failure/#payload-shape"
+  },"164": {
+    "doc": "Test failure",
+    "title": "Enabling",
+    "content": "Always available for the Render-pipeline extension. After a renderFailed notification, call: . { \"method\": \"tools/call\", \"params\": { \"name\": \"get_preview_data\", \"arguments\": { \"uri\": \"compose-preview://&lt;id&gt;/_module/com.example.Foo\", \"kind\": \"test/failure\" } } } . The kind is fetch-only — it does not ride attachments. ",
+    "url": "/start/reference/test-failure/#enabling",
+    
+    "relUrl": "/reference/test-failure/#enabling"
+  },"165": {
+    "doc": "Test failure",
+    "title": "Companion products",
+    "content": ". | Render trace — render/trace, render/composeAiTrace for successful-render timing context. | Layout inspector — layout/inspector from a previous successful render to compare against the failure point. | . ",
+    "url": "/start/reference/test-failure/#companion-products",
+    
+    "relUrl": "/reference/test-failure/#companion-products"
+  },"166": {
+    "doc": "Theme",
+    "title": "Theme",
+    "content": "Resolved Material 3 design tokens (colour scheme, typography, shapes) plus a back-pointer to which nodes consumed each token. ",
+    "url": "/start/reference/theme/",
+    
+    "relUrl": "/reference/theme/"
+  },"167": {
+    "doc": "Theme",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | compose/theme | . | Schema version | 2 | . | Modules | :data-theme-core (published) · :data-theme-connector | . | Render mode | default | . | Cost | medium | . | Token usage | Inline JSON, not yet benchmarked (scales with consuming nodes). See token usage. | . | Transport | inline | . | Platforms | Android · Desktop · shared | . ",
+    "url": "/start/reference/theme/#at-a-glance",
+    
+    "relUrl": "/reference/theme/#at-a-glance"
+  },"168": {
+    "doc": "Theme",
+    "title": "What it answers",
+    "content": ". | What Material 3 colour scheme was active during this render? Light or dark? Seed colour? Contrast level? | What typography scale resolved for headlineLarge, bodyMedium, etc.? | Which composables actually consumed MaterialTheme.colorScheme.primary — i.e. read the token, not just inherited a LocalContentColor? | Did a theme refactor accidentally break a node’s intended token (e.g. a Surface that now reads surfaceVariant instead of surface)? | . ",
+    "url": "/start/reference/theme/#what-it-answers",
+    
+    "relUrl": "/reference/theme/#what-it-answers"
+  },"169": {
+    "doc": "Theme",
+    "title": "What it does NOT answer",
+    "content": ". | It does not opine on Material 3 best practice (don’t use tertiary on a primary-action button) — it tells you what was used; the design intent is on the reviewer. | It does not enumerate tokens declared but unused in the theme — only what was read. | . ",
+    "url": "/start/reference/theme/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/theme/#what-it-does-not-answer"
+  },"170": {
+    "doc": "Theme",
+    "title": "Use cases",
+    "content": ". | Verify a Material You seed-colour change propagated correctly: render under two seeds and diff the resolved schemes. | Catch a stray hard-coded hex that a refactor was supposed to replace with a token reference. | Drive a theme-token inspector panel in the VS Code extension. | . ",
+    "url": "/start/reference/theme/#use-cases",
+    
+    "relUrl": "/reference/theme/#use-cases"
+  },"171": {
+    "doc": "Theme",
+    "title": "Payload shape",
+    "content": "ThemePayload, ResolvedThemeTokens, TypographyToken in :data-theme-core. // compose/theme { \"isDark\": false, \"seedColor\": \"#FF6750A4\", \"contrastLevel\": 0.0, \"colorScheme\": { \"primary\": \"#FF6750A4\", \"onPrimary\": \"#FFFFFFFF\", \"surface\": \"#FFFFFBFE\" // … }, \"typography\": [ { \"name\": \"headlineLarge\", \"fontFamily\": \"Roboto\", \"fontWeight\": 400, \"fontSize\": 32, \"lineHeight\": 40 } ], \"consumers\": [ { \"nodeId\": \"12\", \"tokens\": [\"onSurface\", \"bodyLarge\"] } ] } . ",
+    "url": "/start/reference/theme/#payload-shape",
+    
+    "relUrl": "/reference/theme/#payload-shape"
+  },"172": {
+    "doc": "Theme",
+    "title": "Enabling",
+    "content": "Producer runs once the Theme extension is publicly enabled. May require a small re-render to attribute consumers to nodes — the default daemon.dataFetchRerenderBudgetMs = 30000 covers it. CLI / Gradle output: build/compose-previews/data/&lt;id&gt;/compose-theme.json. ",
+    "url": "/start/reference/theme/#enabling",
+    
+    "relUrl": "/reference/theme/#enabling"
+  },"173": {
+    "doc": "Theme",
+    "title": "Companion products",
+    "content": ". | Wallpaper — compose/wallpaper for the Material You seed → derived scheme upstream of compose/theme. | Layout inspector — layout/inspector to map a nodeId consumer back to source. | Resources — resources/used for R.color.* references that fed the scheme. | . ",
+    "url": "/start/reference/theme/#companion-products",
+    
+    "relUrl": "/reference/theme/#companion-products"
+  },"174": {
+    "doc": "UIAutomator hierarchy",
+    "title": "UIAutomator hierarchy",
+    "content": "A selector-shaped projection of Compose semantics: just enough metadata per node to formulate a UIAutomator-style By.text(...) / By.contentDescription(...) selector that uniquely targets it. ",
+    "url": "/start/reference/uiautomator/",
+    
+    "relUrl": "/reference/uiautomator/"
+  },"175": {
+    "doc": "UIAutomator hierarchy",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | uia/hierarchy | . | Schema version | 2 | . | Modules | :data-uiautomator-core (published) · :data-uiautomator-hierarchy-android (published) · :data-uiautomator-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked (scales with selector node count). See token usage. | . | Transport | inline | . | Platforms | Android | . ",
+    "url": "/start/reference/uiautomator/#at-a-glance",
+    
+    "relUrl": "/reference/uiautomator/#at-a-glance"
+  },"176": {
+    "doc": "UIAutomator hierarchy",
+    "title": "What it answers",
+    "content": ". | For each actionable node, what selector inputs are available — text, contentDescription, testTag, role? | Which uia.* actions does it support — uia.click, uia.scrollForward, uia.inputText, …? | What are the node’s root-relative bounds in source-bitmap pixels (boundsInRoot)? | Does the node have testTag ancestors that a hasParent({testTag: …}) / hasAncestor selector chain could resolve? | . The default filter keeps only nodes that expose at least one of the supported actions, dropping ~80% of layout-wrapper / pure-text nodes while still emitting everything an agent’s click / scroll / type could plausibly target. Snapshots can be taken against the merged semantics tree (the on-device UIAutomator default — Button { Text(\"Submit\") } collapses into one node) or the unmerged tree. ",
+    "url": "/start/reference/uiautomator/#what-it-answers",
+    
+    "relUrl": "/reference/uiautomator/#what-it-answers"
+  },"177": {
+    "doc": "UIAutomator hierarchy",
+    "title": "What it does NOT answer",
+    "content": ". | It is not a full SemanticsNode dump — for that, use compose/semantics. | It does not execute a selector — it gives you what is targetable; running a uia.click is the daemon’s renderNow path, not a data product fetch. | It does not include modifier or constraint detail; pair with layout/inspector when you need positioning context. | . ",
+    "url": "/start/reference/uiautomator/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/uiautomator/#what-it-does-not-answer"
+  },"178": {
+    "doc": "UIAutomator hierarchy",
+    "title": "Use cases",
+    "content": ". | Generate a UIAutomator-like end-to-end test plan for a screen without touching an emulator. | Confirm every actionable node has at least one stable selector input — fail review if a button has neither text, contentDescription, nor testTag. | Train an agent’s “which selector should I use” heuristic on the same shape it will see at runtime. | . ",
+    "url": "/start/reference/uiautomator/#use-cases",
+    
+    "relUrl": "/reference/uiautomator/#use-cases"
+  },"179": {
+    "doc": "UIAutomator hierarchy",
+    "title": "Payload shape",
+    "content": "UiAutomatorHierarchyNode, Selector in :data-uiautomator-core. // uia/hierarchy { \"nodes\": [ { \"text\": \"Submit\", \"contentDescription\": null, \"testTag\": \"submit-button\", \"testTagAncestors\": [\"checkout-screen\"], \"role\": \"Button\", \"actions\": [\"click\"], \"boundsInRoot\": \"48,200,144,232\", \"boundsInScreen\": \"48,200,144,232\", \"merged\": true } ] } . boundsInScreen is a deprecated schema-v1 compatibility alias. Its value was always root-relative despite the name; schema v2 adds the accurately named boundsInRoot field. ",
+    "url": "/start/reference/uiautomator/#payload-shape",
+    
+    "relUrl": "/reference/uiautomator/#payload-shape"
+  },"180": {
+    "doc": "UIAutomator hierarchy",
+    "title": "Enabling",
+    "content": "Producer runs once the UIAutomator extension is publicly enabled. Hierarchy snapshot is emitted by UiAutomatorHierarchyExtractor in :data-uiautomator-hierarchy-android (Android-only). ",
+    "url": "/start/reference/uiautomator/#enabling",
+    
+    "relUrl": "/reference/uiautomator/#enabling"
+  },"181": {
+    "doc": "UIAutomator hierarchy",
+    "title": "Companion products",
+    "content": ". | Layout inspector — compose/semantics for the full SemanticsNode shape and layout/inspector for positioning. | Focus — compose/focus for the focused-node subset that a directional traversal would target. | Accessibility — a11y/hierarchy for the assistive-technology view of the same tree. | . ",
+    "url": "/start/reference/uiautomator/#companion-products",
+    
+    "relUrl": "/reference/uiautomator/#companion-products"
+  },"182": {
+    "doc": "Wallpaper",
+    "title": "Wallpaper",
+    "content": "Material You seed colour → derived ColorScheme, computed by the same algorithm Android uses for system wallpaper-driven theming (material-kolor / dynamic-color-utilities). ",
+    "url": "/start/reference/wallpaper/",
+    
+    "relUrl": "/reference/wallpaper/"
+  },"183": {
+    "doc": "Wallpaper",
+    "title": "At a glance",
+    "content": "|   |   | . | Kind | compose/wallpaper | . | Schema version | 1 | . | Modules | :data-wallpaper-core (published) · :data-wallpaper-connector | . | Render mode | default | . | Cost | low | . | Token usage | Inline JSON, not yet benchmarked. See token usage. | . | Transport | inline | . | Platforms | Android · Wear | . ",
+    "url": "/start/reference/wallpaper/#at-a-glance",
+    
+    "relUrl": "/reference/wallpaper/#at-a-glance"
+  },"184": {
+    "doc": "Wallpaper",
+    "title": "What it answers",
+    "content": ". | Given a seed colour and palette style, what Material 3 ColorScheme does the system derive? | How does the scheme change across TonalSpot, Vibrant, Expressive, Monochrome, etc.? | What does the same composable look like for three different wallpaper seeds without booting an emulator? | . The connector primes a WallpaperOverride so consumer code that reads the dynamic colour scheme sees the requested seed and palette style. ",
+    "url": "/start/reference/wallpaper/#what-it-answers",
+    
+    "relUrl": "/reference/wallpaper/#what-it-answers"
+  },"185": {
+    "doc": "Wallpaper",
+    "title": "What it does NOT answer",
+    "content": ". | It does not extract a seed from a real wallpaper bitmap — you supply the seed; that is upstream of this product. | It does not opine on contrast accessibility — pair with a11y/atf under the chosen scheme. | The schema of derivedColorScheme matches compose/theme’s colorScheme; for which composables consumed which token, fetch compose/theme instead. | . ",
+    "url": "/start/reference/wallpaper/#what-it-does-not-answer",
+    
+    "relUrl": "/reference/wallpaper/#what-it-does-not-answer"
+  },"186": {
+    "doc": "Wallpaper",
+    "title": "Use cases",
+    "content": ". | Render Material You previews of a “what does this app look like for users with different wallpapers” PR review. | Catch seeds that produce inaccessible contrast pairings on a critical CTA before they ship. | Build a marketing screenshot set across the standard Material You palette styles. | . ",
+    "url": "/start/reference/wallpaper/#use-cases",
+    
+    "relUrl": "/reference/wallpaper/#use-cases"
+  },"187": {
+    "doc": "Wallpaper",
+    "title": "Payload shape",
+    "content": "Material3WallpaperProduct.KIND / WallpaperPayload in :data-wallpaper-core. // compose/wallpaper { \"seedColor\": \"#FF6750A4\", \"isDark\": false, \"paletteStyle\": \"TONAL_SPOT\", \"contrastLevel\": 0.0, \"derivedColorScheme\": { \"primary\": \"#FF6750A4\", \"onPrimary\": \"#FFFFFFFF\", \"surface\": \"#FFFFFBFE\" // … } } . ",
+    "url": "/start/reference/wallpaper/#payload-shape",
+    
+    "relUrl": "/reference/wallpaper/#payload-shape"
+  },"188": {
+    "doc": "Wallpaper",
+    "title": "Enabling",
+    "content": "Pass a WallpaperOverride on renderNow.overrides.wallpaper (MCP) to drive the seed / style / contrast / dark mode. ",
+    "url": "/start/reference/wallpaper/#enabling",
+    
+    "relUrl": "/reference/wallpaper/#enabling"
+  },"189": {
+    "doc": "Wallpaper",
+    "title": "Companion products",
+    "content": ". | Theme — compose/theme for the full Material 3 token set after the wallpaper-derived scheme is plugged in. | Ambient — compose/ambient for the Wear ambient-state side of the same render. | . ",
+    "url": "/start/reference/wallpaper/#companion-products",
+    
+    "relUrl": "/reference/wallpaper/#companion-products"
+  },"190": {
+    "doc": "Wear OS",
+    "title": "Wear OS in the simulator",
+    "content": "A Wear OS APK is detected from its manifest (a required android.hardware.type.watch feature) and runs on a round 454×454 watch display. Configuration.isScreenRound() and the watch UI mode read as they do on a watch, rotary sends the crown’s scroll events, and screenshots are cropped to the circle. --launcher adds a Wear system UI around the app: a watch face, the app launcher, the notification stream, the tiles and widgets carousel, and quick settings. compose-preview android-simulator wear.apk --launcher # the app, over a watch face compose-preview android-simulator wear.apk --tile .MyTileService # a tile in the carousel compose-preview android-simulator --watchface face.apk # a WFF watch face, nothing else compose-preview android-simulator --watchface face.apk --install comp.apk # face + complication app compose-preview android-simulator phone.apk --pair wear.apk # a phone and its watch compose-preview android-simulator wear.apk --data-layer agent --control stdio # the agent as the phone . | On a watch | Goes to | Command | . | Back from the app’s root, or Home | the watch face | home | . | The side button | the launcher | key STEM_PRIMARY, launcher | . | Swipe up on the face | the notification stream | notifications {\"op\":\"open\"} | . | Swipe left or right on the face | the tiles and widgets carousel | tiles {\"op\":\"next\"} | . | Swipe down on the face | quick settings | quickSettings | . ",
+    "url": "/start/simulator/wear/#wear-os-in-the-simulator",
+    
+    "relUrl": "/simulator/wear/#wear-os-in-the-simulator"
+  },"191": {
+    "doc": "Wear OS",
+    "title": "Tiles and Wear Widgets",
+    "content": "The carousel holds what you add, with --tile &lt;service&gt; (repeatable), tiles {\"op\":\"add\"}, or its own add page. | Tiles are bound by BIND_TILE_PROVIDER and called over their real AIDL: tile and resource requests, and the add / enter / leave / remove callbacks. They’re drawn by the protolayout tile renderer, which the CLI provides (apps don’t ship it). A LoadAction requests the tile again with the clicked state, and a LaunchAction starts its activity. | Wear Widgets (Glance Wear) are bound by BIND_WIDGET_PROVIDER, asked for a Remote Compose document at their container’s size, and played with the Remote Compose player. They’re shown the way a watch shows them: just the provider’s preferred container — small (2×1) or large (2×2), a stadium on a round watch and a squircle on a square one — with no card or label. | . Both read the watch’s simulated system data. health sets heart rate, steps, distance, calories and floors, which tiles read through PlatformHealthSources and widgets through Glance Wear’s HealthData. → {\"cmd\":\"tiles\",\"op\":\"add\",\"component\":\".GoalsTileService\"} → {\"cmd\":\"health\",\"heartRate\":72,\"steps\":5400,\"stepGoal\":8000} → {\"cmd\":\"screenshot\",\"path\":\"tile.png\"} . ",
+    "url": "/start/simulator/wear/#tiles-and-wear-widgets",
+    
+    "relUrl": "/simulator/wear/#tiles-and-wear-widgets"
+  },"192": {
+    "doc": "Wear OS",
+    "title": "Watch faces",
+    "content": "--watchface &lt;apk | package | component&gt; (or watchface {\"op\":\"set\"}) replaces the demo face with one of two kinds: . | AndroidX watch faces (WatchFaceService, ListenableWatchFaceService) are bound through the library’s WatchFaceControlService and drawn headless, interactive or ambient. This is the same path Wear’s face editor and Android Studio’s previews use. | Declarative Watch Faces in the Watch Face Format (WFF, watch_face_info.xml) run one of two ways: . | Google’s runtime. When DeclarativeWatchFaceRuntime.apk is cached, the simulator hosts the WFF package in Google’s own runtime. The APK is never redistributed: compose-preview android-simulator dwf-runtime pull --from-adb copies it from your own Wear emulator, and dwf-runtime install &lt;apk&gt; registers a local copy. | The built-in compiler. Without the runtime (or with --dwf-runtime none), the face’s XML is compiled to Remote Compose and played in-process. | . Either way, [STEP_PERCENT], [BATTERY_PERCENT], [HEART_RATE], [WEATHER.*], [ACCELEROMETER_ANGLE_*], [CONFIGURATION.*] and [COMPLICATION.*] follow the simulated watch state. | . The clock, health, battery, weather and accel commands set that state, and ambient, tilt and palm move the screen between interactive, ambient and off. watchface {\"op\":\"config\"} sets user styles and ColorConfiguration options. Flavors switch too. Watch Face Push. An app calling WatchFacePushManager’s addWatchFace, updateWatchFace, listWatchFaces, removeWatchFace or setWatchFaceAsActive gets a simulated Watch Face Push service. The agent can push faces too, with watchface {\"op\":\"push\"}. Pushed WFF APKs are installed and activated live. Dynamic theme colors. By default (--theme-from-watchface), the active face’s accent palette becomes the system’s Material 3 dynamic colors, so Wear apps, tiles and Glance widgets that use dynamicColorScheme(context) follow the face. . ",
+    "url": "/start/simulator/wear/#watch-faces",
+    
+    "relUrl": "/simulator/wear/#watch-faces"
+  },"193": {
+    "doc": "Wear OS",
+    "title": "Complications",
+    "content": "watchface {\"op\":\"complication\"} fills a slot from a ComplicationDataSourceService in one of these places: . | in the same APK as the face; | in another APK installed beside it with --install &lt;comp.apk&gt;. The ComplicationData crosses between the two simulator JVMs as real parcels. | . Without a component, the command fills the slot with an inline fake complication (type, text, title, value, min, max), so you can test a face’s slots without writing a data source. Timelines resolve against the simulated clock, and watchface {\"op\":\"tap\"} fires a complication’s tapAction. → {\"cmd\":\"watchface\",\"op\":\"complication\",\"slot\":0,\"component\":\"com.example.comp/.StepsDataSource\"} → {\"cmd\":\"watchface\",\"op\":\"complication\",\"slot\":1,\"type\":\"RANGED_VALUE\",\"value\":62,\"min\":0,\"max\":100,\"text\":\"62%\"} → {\"cmd\":\"watchface\",\"op\":\"tap\",\"slot\":0} . For repeatable watch face checks, --scenario replays clock, health, battery, weather, ambient and tap steps headlessly. It asserts on the frame (changedFrom, litPixelRatio, regionColor) and on the watch face’s status, then writes report.json and exits 2 on failure. ",
+    "url": "/start/simulator/wear/#complications",
+    
+    "relUrl": "/simulator/wear/#complications"
+  },"194": {
+    "doc": "Wear OS",
+    "title": "Notifications, ongoing activities and ambient",
+    "content": ". | The notification stream. Notifications are drawn the way Wear draws them from their extras: title, text, MessagingStyle, big picture, and WearableExtender actions and reply choices. A high-importance post peeks over the face. | Ongoing activities (androidx.wear.ongoing) appear as the face’s chip and as the launcher’s first rows, with their timers on the simulated clock. | Ambient mode. AmbientLifecycleObserver, the legacy AmbientModeSupport, Horologist’s AmbientAware and Wear Compose’s rememberAmbientModeManager() all get onEnterAmbient, onUpdateAmbient and onExitAmbient. An app that doesn’t support ambient is stopped and restarted as it would be on a watch. | . ",
+    "url": "/start/simulator/wear/#notifications-ongoing-activities-and-ambient",
+    
+    "relUrl": "/simulator/wear/#notifications-ongoing-activities-and-ambient"
+  },"195": {
+    "doc": "Wear OS",
+    "title": "Data Layer pairing",
+    "content": "--pair &lt;watch.apk&gt; runs the watch app in a second simulator and connects the two apps with a simulated Wearable Data Layer. DataClient, MessageClient, NodeClient, CapabilityClient and ChannelClient answer from the simulator instead of Play services. Messages, requests, data items, assets, capabilities and channel streams cross between the apps and reach their live listeners and manifest WearableListenerServices. Each side is also a CompanionDeviceManager association. These work across the pair too: . | RemoteActivityHelper, including its availability status; | Horologist’s DataLayerAppHelper; | on the watch: RemoteAuthClient, BridgingManager and PhoneTypeHelper. | . With --control stdio, \"device\":\"watch\" sends a command to the watch, every line says which device it came from, and each crossing is a datalayer event. The agent as the peer. --data-layer agent needs no second app: the control channel plays the other device. Everything the app sends arrives as a datalayer send event, decoded as text or a DataMap when it can be. The agent answers with dataLayer actions: connect, disconnect, capabilities, put / delete, message / request, reply, and the channel operations. You can test a watch app’s sync, error and disconnected-phone paths without building the phone app. → {\"cmd\":\"dataLayer\",\"action\":\"connect\",\"capabilities\":[\"verify_remote_app\"]} ← {\"event\":\"datalayer\",\"kind\":\"send\",\"type\":\"message\",\"path\":\"/start\",\"requestId\":4,\"text\":\"…\"} → {\"cmd\":\"dataLayer\",\"action\":\"reply\",\"requestId\":4,\"text\":\"ok\"} → {\"cmd\":\"dataLayer\",\"action\":\"put\",\"path\":\"/settings\",\"dataMap\":{\"units\":\"metric\"}} . ",
+    "url": "/start/simulator/wear/#data-layer-pairing",
+    
+    "relUrl": "/simulator/wear/#data-layer-pairing"
+  },"196": {
+    "doc": "Wear OS",
+    "title": "Wear gaps",
+    "content": "| Area | Gap | . | Watch faces | AndroidX GlesRenderer faces don’t run (Robolectric has no EGL); CanvasRenderer faces do. The on-watch face editor UI isn’t drawn: watchface {\"op\":\"config\"} sets options directly. | . | Declarative faces | Running Google’s own runtime needs your copy of DeclarativeWatchFaceRuntime.apk, pulled from a Wear emulator. The built-in compiler approximates the runtime, so it isn’t pixel-identical. scripts/dwf-diff.py renders a face both ways side by side when that matters. | . | Tiles | A tile’s TileUpdateRequester isn’t wired to the carousel: tiles {\"op\":\"refresh\"} requests it again. | . | Ambient | Ambient reaches the app, but nothing enforces it. The system doesn’t dim, shift for burn-in or cap the frame rate. Ambient offload and auto-resume are accepted and ignored, and AmbientTransitionListener isn’t called. | . | Paired phone | The phone’s bridged notifications and launcher entries aren’t shown on the watch. Both apps are always running, so delivery that starts a stopped app isn’t exercised. | . | Data Layer fidelity | getCapability leaves out the local node, FILTER_REACHABLE is ignored, and onPeerConnected isn’t delivered. ChannelClient has no flow control. Listeners always run on the main thread. | . | Data Layer APIs | The deprecated GoogleApiClient APIs (Wearable.DataApi, MessageApi, …) aren’t simulated. R8-minified builds rename the clients the simulator matches by name, so use a debug build. | . | Wear SDK | Only RemoteInteractionsManager and Watch Face Push are simulated: Sdk.getWearManager returns null for any other service. | . | Without pairing | With neither --pair nor --data-layer agent, the Wearable clients report API_UNAVAILABLE. | . The full design notes are in SIMULATOR_WEAR_LAUNCHER.md, SIMULATOR_WEAR_WATCHFACE_SCENARIOS.md and SIMULATOR_DATALAYER.md. ",
+    "url": "/start/simulator/wear/#wear-gaps",
+    
+    "relUrl": "/simulator/wear/#wear-gaps"
+  },"197": {
+    "doc": "Wear OS",
+    "title": "Wear OS",
+    "content": " ",
+    "url": "/start/simulator/wear/",
+    
+    "relUrl": "/simulator/wear/"
+  }
+}
