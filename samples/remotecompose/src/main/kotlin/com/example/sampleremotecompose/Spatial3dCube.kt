@@ -21,8 +21,6 @@ import androidx.compose.remote.creation.compose.state.remotePath
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PaintingStyle
-import androidx.compose.ui.graphics.StrokeJoin
 
 // A rotatable, lit 3D cube defined wholly inside one Remote Compose document: the geometry, the
 // rotation, the perspective projection, back-face culling, shading and drag-to-rotate input are
@@ -149,9 +147,9 @@ private fun RemoteDrawScope.drawCube(
   }
 
   val edgePaint = RemotePaint {
-    style = PaintingStyle.Stroke
+    style = StrokePaintingStyle
     strokeWidth = 2f.rf
-    strokeJoin = StrokeJoin.Round
+    strokeJoin = RoundStrokeJoin
     color = RemoteColor(Color(0xCC10141C))
   }
 
