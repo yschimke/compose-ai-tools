@@ -1848,7 +1848,12 @@ internal class DwfExpressionCompiler(
       val effectiveProvider = flavorPolicy?.defaultSystemProvider ?: slot?.defaultSystemProvider
       val effectiveProviderType =
         flavorPolicy?.defaultSystemProviderType ?: slot?.defaultSystemProviderType
-      if (effectiveProviderType?.equals("EMPTY", ignoreCase = true) == true) {
+      if (
+        effectiveProviderType?.equals("EMPTY", ignoreCase = true) == true ||
+          (options.defaultUnboundComplicationsToEmpty &&
+            effectiveProvider.isNullOrBlank() &&
+            effectiveProviderType.isNullOrBlank())
+      ) {
         return DwfComplicationSeed(type = "EMPTY", text = "", title = "")
       }
       val imageOnlyTypes = setOf("PHOTO_IMAGE", "SMALL_IMAGE", "MONOCHROMATIC_IMAGE", "EMPTY")

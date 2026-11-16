@@ -339,4 +339,45 @@ class DwfParserAndCaptureTest {
       "Expected ENCODING_URL bitmap ops to use 1x1 wire placeholder dimensions, got $urlBitmapOps",
     )
   }
+
+  @Test
+  fun complicationSlotWithoutDefaultProviderPolicyDefaultsToEmpty() {
+    val xml =
+      """
+      <WatchFace width="450" height="450">
+        <Scene backgroundColor="#FF000000">
+          <ComplicationSlot x="100" y="100" width="120" height="120" slotId="1"
+              supportedTypes="SHORT_TEXT EMPTY">
+            <Complication type="SHORT_TEXT">
+              <PartText x="0" y="0" width="120" height="120">
+                <Text><Font family="SYNC_TO_DEVICE" size="24" color="#FFFFFFFF">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]"/></Template>
+                </Font></Text>
+              </PartText>
+            </Complication>
+          </ComplicationSlot>
+        </Scene>
+      </WatchFace>
+      """
+        .trimIndent()
+    val doc = DwfParser.parse(xml)
+    val rcDoc =
+      kotlinx.coroutines.runBlocking {
+        captureDwfRemoteDocument(
+          document = doc,
+          options = DwfRenderOptions(defaultUnboundComplicationsToEmpty = true),
+        )
+      }
+    val namedVars =
+      rcDoc.operations.filterIsInstance<
+        ee.schimke.composeai.rcplayer.protocol.RcNamedVariable,
+      >()
+    val typeVar = namedVars.firstOrNull { it.name.endsWith(DwfVariables.complicationTypeKey(1)) }
+    assertNotNull(typeVar)
+    val intConst =
+      rcDoc.operations
+        .filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant>()
+        .firstOrNull { it.id == typeVar.id }
+    assertEquals(DwfVariables.COMPLICATION_TYPE_EMPTY, intConst?.value)
+  }
 }

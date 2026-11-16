@@ -529,7 +529,8 @@ public fun compileApkWatchFaces(
     if (!DwfParser.isDwfXml(xml)) continue
     val doc = DwfParser.parse(xml, resolver)
     val activeFakes = explicitFakes ?: findSidecarFakes(xmlFile)
-    val options = activeFakes?.toRenderOptions() ?: DwfRenderOptions()
+    val baseOptions = DwfRenderOptions(defaultUnboundComplicationsToEmpty = true)
+    val options = activeFakes?.toRenderOptions(baseOptions) ?: baseOptions
     val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
     val safeId = item.id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     val rcFileName = "$safeId.rc"

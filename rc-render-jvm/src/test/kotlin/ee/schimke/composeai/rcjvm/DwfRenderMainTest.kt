@@ -337,8 +337,9 @@ class DwfRenderMainTest {
         <WatchFace width="450" height="450" clipShape="CIRCLE">
           <Scene backgroundColor="#FF000000">
             <ComplicationSlot x="175" y="175" width="100" height="100" slotId="1"
-                supportedTypes="SHORT_TEXT" defaultSystemProvider="STEP_COUNT"
-                defaultSystemProviderType="SHORT_TEXT">
+                supportedTypes="SHORT_TEXT">
+              <DefaultProviderPolicy defaultSystemProvider="STEP_COUNT"
+                  defaultSystemProviderType="SHORT_TEXT" />
               <BoundingOval x="0" y="0" width="100" height="100" />
               <Complication type="SHORT_TEXT">
                 <PartDraw x="0" y="0" width="100" height="100">

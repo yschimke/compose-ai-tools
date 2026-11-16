@@ -57,6 +57,28 @@ public class WatchStateTest {
   }
 
   @Test
+  public void clockCommandSupportsFrozenLiveAndTickingFromStartTime() throws Exception {
+    long startMillis = 1781518110000L;
+    state.clockCommand(new JSONObject().put("timeMillis", startMillis).put("frozen", true));
+    assertTrue(state.isClockFrozen());
+    assertTrue(state.isClockPinnedOrScaled());
+    assertEquals(startMillis, state.nowMillis());
+
+    // Ticking from start time: frozen=false starts ticking forward from startMillis.
+    state.clockCommand(new JSONObject().put("timeMillis", startMillis).put("frozen", false));
+    assertFalse(state.isClockFrozen());
+    assertTrue(state.isClockPinnedOrScaled());
+    assertEquals(1.0, state.clockRate(), 0.001);
+    assertTrue(state.nowMillis() >= startMillis);
+
+    // Live clock: reset=true clears pin and returns to system wall clock.
+    JSONObject liveReply = state.clockCommand(new JSONObject().put("reset", true));
+    assertFalse(state.isClockFrozen());
+    assertFalse(state.isClockPinnedOrScaled());
+    assertFalse(liveReply.getBoolean("frozen"));
+  }
+
+  @Test
   public void weatherCommandParsesConditionNamesCodesAndForecastArrays() throws Exception {
     JSONObject reply =
         state.weatherCommand(
