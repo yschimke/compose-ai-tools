@@ -5,7 +5,6 @@ package com.example.sampleremotecompose
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteCanvas
@@ -24,6 +23,7 @@ import androidx.compose.remote.creation.compose.modifier.padding
 import androidx.compose.remote.creation.compose.modifier.semantics
 import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
+import androidx.compose.remote.creation.compose.state.MutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.RemoteFloat
 import androidx.compose.remote.creation.compose.state.RemoteImageBitmap
@@ -33,7 +33,6 @@ import androidx.compose.remote.creation.compose.state.atan2
 import androidx.compose.remote.creation.compose.state.cos
 import androidx.compose.remote.creation.compose.state.max
 import androidx.compose.remote.creation.compose.state.rdp
-import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.remotePath
 import androidx.compose.remote.creation.compose.state.remoteTween
 import androidx.compose.remote.creation.compose.state.rf
@@ -47,7 +46,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 
 // A textured cube you interact with, defined wholly in one Remote Compose document. Tapping the
 // cube eases it through a quarter turn; tapping the swatch swaps its texture. Both are document
-// state changed by document actions (`valueChange`), so any player runs them with no host code.
+// state changed by document actions (`valueChangeAction`), so any player runs them with no host
+// code.
 //
 // Two things differ from [RemoteCube3d] on purpose:
 // - The rotation is plain `sin`/`cos` float expressions rather than `MatrixExpression` +
@@ -103,8 +103,8 @@ fun RemoteTexturedCube(
 ) {
   val bricks = remember { RemoteImageBitmap(brickTexture().asImageBitmap()) }
   val tiles = remember { RemoteImageBitmap(tileTexture().asImageBitmap()) }
-  val turns = rememberMutableRemoteFloat { 0f.rf }
-  val textureIndex = rememberMutableRemoteFloat { 0f.rf }
+  val turns = remember { MutableRemoteFloat(0f) }
+  val textureIndex = remember { MutableRemoteFloat(0f) }
   val yaw =
     animateRemoteFloatAsState(
       turns * 90f + initialYaw,
@@ -113,7 +113,7 @@ fun RemoteTexturedCube(
   RemoteBox(modifier = modifier, contentAlignment = RemoteAlignment.BottomEnd) {
     RemoteCanvas(
       RemoteModifier.fillMaxSize()
-        .clickable(valueChange(turns, (turns + 1f).createReference()))
+        .clickable(valueChangeAction(turns, (turns + 1f).createReference()))
         .semantics { contentDescription = "Turn the cube".rs },
     ) {
       drawTexturedCube(yaw, pitch) { face ->
@@ -127,7 +127,7 @@ fun RemoteTexturedCube(
           .size(36.rdp)
           .clip(RemoteRoundedCornerShape(10.rdp))
           .background(RemoteColor(Color(0xFF2B3A55)))
-          .clickable(valueChange(textureIndex, ((textureIndex + 1f) % 2f).createReference()))
+          .clickable(valueChangeAction(textureIndex, ((textureIndex + 1f) % 2f).createReference()))
           .semantics { contentDescription = "Swap the texture".rs },
     ) {}
   }
@@ -165,7 +165,7 @@ private fun RemoteDrawScope.drawTexturedCube(
 
   val texturePaint = RemotePaint { color = RemoteColor(Color.White) }
   val edge = RemotePaint {
-    style = androidx.compose.ui.graphics.PaintingStyle.Stroke
+    style = StrokePaintingStyle
     strokeWidth = 2f.rf
     color = RemoteColor(Color(0xCC10141C))
   }

@@ -19,7 +19,6 @@ import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.state.rsp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.glance.wear.GlanceWearWidget
 import androidx.glance.wear.WearWidgetBrush
@@ -51,7 +50,7 @@ fun ActivitySummaryWidgetContent() {
           modifier = RemoteModifier.fillMaxWidth(),
           color = Color(0xFF9BE7F0).rc,
           fontSize = 12.rsp,
-          textAlign = TextAlign.Center,
+          textAlign = CenterTextAlign,
           maxLines = 1,
         )
         RemoteRow(
@@ -71,7 +70,7 @@ fun ActivitySummaryWidgetContent() {
           modifier = RemoteModifier.fillMaxWidth(),
           color = Color(0xFFB8C8CB).rc,
           fontSize = 11.rsp,
-          textAlign = TextAlign.Center,
+          textAlign = CenterTextAlign,
           maxLines = 1,
         )
       }

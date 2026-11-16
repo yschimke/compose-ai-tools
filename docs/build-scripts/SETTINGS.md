@@ -62,6 +62,15 @@ Other properties of the snapshot lane worth knowing:
   resolving from `google()` even in snapshot mode.
 * Build ids age out of androidx.dev after a few weeks. If the artifacts 404, pick
   a fresh one from <https://androidx.dev/snapshots/builds>.
+* Where a source must differ per lane (an API the pinned release spells
+  differently from androidx-main), the module reads `composeai.remoteCompose`
+  itself and adds `src/remoteRelease/kotlin` or `src/remoteSnapshot/kotlin` to
+  `main`, as `:samples:remotecompose` and `:samples:wear-widget` do with their
+  `RemoteCreationLane.kt`. Everything in `src/main` stays in a form both lanes
+  accept, and the two files go away once the released pins catch up. Published
+  modules avoid this: their binaries are built on the release lane and run
+  against whatever Remote Compose the consumer brings, so they bind only to
+  members both lines declare.
 
 ### Why the lane exists at all
 

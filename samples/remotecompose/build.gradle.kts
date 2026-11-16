@@ -17,6 +17,11 @@ composePreview {
   renderBeforeUnitTests.set(true)
 }
 
+// The Remote Compose lane `settings.gradle.kts` resolved, with the same default and spelling.
+// docs/build-scripts/SETTINGS.md#remote-compose-lane
+val remoteComposeLine =
+  providers.gradleProperty("composeai.remoteCompose").orElse("release").get().trim().lowercase()
+
 android {
   namespace = "com.example.sampleremotecompose"
   // compose-remote alpha08+ / wear-compose-remote alpha02+ raise the AAR
@@ -34,6 +39,17 @@ android {
   }
 
   buildFeatures { compose = true }
+
+  // The few names the pinned Remote Compose release spells differently from androidx-main, one
+  // file per lane: `src/remoteRelease` by default, `src/remoteSnapshot` with
+  // `-Pcomposeai.remoteCompose=snapshot`. See `RemoteCreationLane.kt`; everything in `src/main` is
+  // written in a form both lanes accept.
+  sourceSets.getByName("main") {
+    kotlin.directories.add(
+      if (remoteComposeLine == "snapshot") "src/remoteSnapshot/kotlin"
+      else "src/remoteRelease/kotlin",
+    )
+  }
 
   // Remote Compose APIs are `@RestrictTo(LIBRARY_GROUP)` — source-level
   // `@file:Suppress("RestrictedApiAndroidX")` quiets the IDE inspection

@@ -28,6 +28,11 @@ composePreview {
   renderBeforeUnitTests.set(true)
 }
 
+// The Remote Compose lane `settings.gradle.kts` resolved, with the same default and spelling.
+// docs/build-scripts/SETTINGS.md#remote-compose-lane
+val remoteComposeLine =
+  providers.gradleProperty("composeai.remoteCompose").orElse("release").get().trim().lowercase()
+
 android {
   namespace = "com.example.wearwidget"
   // glance-wear alpha13 / wear-compose-remote alpha raise the AAR minCompileSdk to 37.
@@ -39,6 +44,16 @@ android {
   }
 
   buildFeatures { compose = true }
+
+  // What the pinned Remote Compose release spells differently from androidx-main, one file per
+  // lane: `src/remoteRelease` by default, `src/remoteSnapshot` with
+  // `-Pcomposeai.remoteCompose=snapshot`. See `RemoteCreationLane.kt`.
+  sourceSets.getByName("main") {
+    kotlin.directories.add(
+      if (remoteComposeLine == "snapshot") "src/remoteSnapshot/kotlin"
+      else "src/remoteRelease/kotlin",
+    )
+  }
 
   // Remote Compose / Glance Wear APIs are `@RestrictTo(LIBRARY_GROUP)`; the source-level
   // `@file:Suppress("RestrictedApiAndroidX")` quiets the IDE, but AGP lint runs `RestrictedApi`

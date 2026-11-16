@@ -3,11 +3,11 @@
 package com.example.sampleremotecompose
 
 import androidx.compose.remote.creation.compose.action.hostAction
-import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
+import androidx.compose.remote.creation.compose.modifier.RemoteRole
 import androidx.compose.remote.creation.compose.modifier.background
 import androidx.compose.remote.creation.compose.modifier.clickable
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
@@ -15,18 +15,18 @@ import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.shaders.RemoteBrush
 import androidx.compose.remote.creation.compose.shaders.linearGradient
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
+import androidx.compose.remote.creation.compose.state.MutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.animateRemoteFloat
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
-import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
-import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.toArgb
 import androidx.wear.compose.remote.material3.RemoteBorderStroke
 import androidx.wear.compose.remote.material3.RemoteButton
 import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
@@ -109,25 +109,29 @@ fun RemoteIndeterminateCircularProgressIndicator() {
 @Composable
 @RemoteComposable
 fun RemoteAnimatedCircularProgressIndicator() {
-  val progress = rememberMutableRemoteFloat { 0.25f.rf }
+  val progress = remember { MutableRemoteFloat(0.25f) }
   val animatedProgress = animateRemoteFloat(progress, 0.25f)
-  val advanceProgress = valueChange(progress, ((progress + 0.25f) % 1f).createReference())
+  val advanceProgress = valueChangeAction(progress, ((progress + 0.25f) % 1f).createReference())
 
   RemoteCircularProgressIndicator(
     progress = animatedProgress,
-    modifier = RemoteModifier.size(72.rdp).clickable(action = advanceProgress, role = Role.Button),
+    modifier = RemoteModifier.size(72.rdp).clickable(advanceProgress, role = RemoteRole.Button),
   )
 }
 
 /**
  * A full-size box painted with a [RemoteBrush] gradient shader, serialised into the document and
- * rasterised by the player. The middle stop is a [rememberNamedRemoteColor] named `shaderColor`, so
+ * rasterised by the player. The middle stop is a named [RemoteColor], `shaderColor`, so
  * `namedValues = {"shaderColor": ColorValue(...)}` recolours it live; defaults to cyan.
  */
 @Composable
 @RemoteComposable
 fun RemoteShaderGradient() {
-  val shaderColor = rememberNamedRemoteColor("shaderColor", Color(0xFF7DE2FF))
+  // `createNamedRemoteColor` rather than `rememberNamedRemoteColor`: its signature is the same on
+  // the pinned release and androidx-main, where the latter takes a `RemoteColor` default instead.
+  val shaderColor = remember {
+    RemoteColor.createNamedRemoteColor("shaderColor", Color(0xFF7DE2FF).toArgb())
+  }
   val brush =
     RemoteBrush.linearGradient(
       listOf(RemoteColor(Color(0xFF101820)), shaderColor, RemoteColor(Color(0xFFFFB86C))),
