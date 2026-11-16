@@ -1520,14 +1520,104 @@ private class DwfCanvasRenderer(
       }
     val anchorY = boxH / 2f.rf
     val panY = 0f.rf
+    val outlinePaint =
+      if (fontSpec.outlineColor != null && fontSpec.outlineWidth > 0f) {
+        val outBase = compiler.compileColor(fontSpec.outlineColor)
+        val outColor = applyAlpha(outBase, alphaFactor)
+        buildTextOutlinePaint(fontSpec, sizePx, outColor, fontSpec.outlineWidth.rf)
+      } else {
+        null
+      }
+    if (
+      tryDrawCustomFontTextWithMetrics(
+        text = text,
+        fontSpec = fontSpec,
+        sizePx = sizePx,
+        align = align,
+        boxW = boxW,
+        boxH = boxH,
+        paint = paint,
+        outlinePaint = outlinePaint,
+      )
+    ) {
+      return
+    }
     val flags = if (text.constantValueOrNull == null) RcDrawTextAnchored.MEASURE_EVERY_TIME else 0
-    if (fontSpec.outlineColor != null && fontSpec.outlineWidth > 0f) {
-      val outBase = compiler.compileColor(fontSpec.outlineColor)
-      val outColor = applyAlpha(outBase, alphaFactor)
-      val outPaint = buildTextOutlinePaint(fontSpec, sizePx, outColor, fontSpec.outlineWidth.rf)
-      remoteCanvas.drawAnchoredText(text, anchorX, anchorY, panX, panY, flags, outPaint)
+    if (outlinePaint != null) {
+      remoteCanvas.drawAnchoredText(text, anchorX, anchorY, panX, panY, flags, outlinePaint)
     }
     remoteCanvas.drawAnchoredText(text, anchorX, anchorY, panX, panY, flags, paint)
+  }
+
+  private val skiaFontTypefaces = HashMap<String, org.jetbrains.skia.Typeface?>()
+
+  private fun resolveSkiaFontTypeface(family: String): org.jetbrains.skia.Typeface? =
+    skiaFontTypefaces.getOrPut(family) {
+      val bytes = resources.resolveFontBytes(family) ?: return@getOrPut null
+      runCatching {
+        org.jetbrains.skia.FontMgr.default.makeFromData(
+          org.jetbrains.skia.Data.makeFromBytes(bytes),
+        )
+      }
+        .getOrNull()
+    }
+
+  private fun RemoteDrawScope.tryDrawCustomFontTextWithMetrics(
+    text: RemoteString,
+    fontSpec: DwfFontSpec,
+    sizePx: RemoteFloat,
+    align: DwfHorizontalAlign,
+    boxW: RemoteFloat,
+    boxH: RemoteFloat,
+    paint: RemotePaint,
+    outlinePaint: RemotePaint?,
+  ): Boolean {
+    val constSize = sizePx.constantValueOrNull ?: return false
+    val typeface = resolveSkiaFontTypeface(fontSpec.family) ?: return false
+    val skiaFont = org.jetbrains.skia.Font(typeface, constSize)
+    val constText = text.constantValueOrNull
+    val advanceW =
+      when {
+        constText != null -> skiaFont.measureTextWidth(constText)
+        isFixedTwoDigitTimeTemplate(fontSpec.elements) && isTabularDigits(skiaFont) ->
+          skiaFont.measureTextWidth("88")
+        else -> return false
+      }
+    val metrics = skiaFont.metrics
+    val baselineY = boxH / 2f.rf - ((metrics.ascent + metrics.descent) / 2f).rf
+    val x =
+      when (align) {
+        DwfHorizontalAlign.START -> 0f.rf
+        DwfHorizontalAlign.CENTER -> (boxW - advanceW.rf) / 2f.rf
+        DwfHorizontalAlign.END -> boxW - advanceW.rf
+      }
+    if (outlinePaint != null) {
+      remoteCanvas.drawText(text, x, baselineY, outlinePaint)
+    }
+    remoteCanvas.drawText(text, x, baselineY, paint)
+    return true
+  }
+
+  private fun isTabularDigits(font: org.jetbrains.skia.Font): Boolean {
+    val w8 = font.measureTextWidth("8")
+    if (w8 <= 0f) return false
+    return kotlin.math.abs(font.measureTextWidth("1") - w8) < 0.05f &&
+      kotlin.math.abs(font.measureTextWidth("0") - w8) < 0.05f
+  }
+
+  private fun isFixedTwoDigitTimeTemplate(elements: List<DwfTextElement>): Boolean {
+    val tpl = elements.singleOrNull() as? DwfTextElement.Template ?: return false
+    if (tpl.format.trim() != "%s" || tpl.parameters.size != 1) return false
+    val expr = tpl.parameters[0]
+    val refs = Regex("""\[([A-Z0-9_]+)]""").findAll(expr).map { it.groupValues[1] }.toList()
+    if (refs.isEmpty()) return false
+    val twoDigitTags =
+      setOf("HOUR_0_23_Z", "HOUR_1_12_Z", "HOUR_0_11_Z", "HOUR_1_24_Z", "MINUTE_Z", "SECOND_Z")
+    val hasTwoDigit = refs.any { it in twoDigitTags }
+    return hasTwoDigit &&
+      refs.all { it in twoDigitTags || it == "IS_24_HOUR_MODE" } &&
+      !expr.contains("?") ||
+      (hasTwoDigit && refs.all { it in twoDigitTags || it == "IS_24_HOUR_MODE" })
   }
 
   private fun buildMaskClipPath(node: DwfSceneNode): RemotePath? {

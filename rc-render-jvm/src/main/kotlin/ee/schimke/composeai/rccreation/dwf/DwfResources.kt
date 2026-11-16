@@ -143,6 +143,9 @@ public interface DwfResourceResolver {
   /** Resolves a `@font/...` or custom font family reference to a Remote Compose typeface name. */
   public fun resolveFontFamily(name: String): String? = null
 
+  /** Resolves raw font file bytes (`.ttf` / `.otf`) for [name], or `null` for system fonts. */
+  public fun resolveFontBytes(name: String): ByteArray? = null
+
   public companion object {
     public val Empty: DwfResourceResolver = object : DwfResourceResolver {}
   }
