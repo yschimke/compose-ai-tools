@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.94.1](https://github.com/yschimke/compose-ai-tools/compare/v2.94.0...v2.94.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.github.luben:zstd-jni to v1.5.7-26 ([#6564](https://github.com/yschimke/compose-ai-tools/issues/6564)) ([502ab22](https://github.com/yschimke/compose-ai-tools/commit/502ab2243146fab1fa21364ee49968715435ff55))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.28.0 ([#6558](https://github.com/yschimke/compose-ai-tools/issues/6558)) ([4da7d29](https://github.com/yschimke/compose-ai-tools/commit/4da7d291557143acd2cb51ee3e0eefa2e98999ad))
+* **deps:** update rc-players ([#6565](https://github.com/yschimke/compose-ai-tools/issues/6565)) ([dd35c65](https://github.com/yschimke/compose-ai-tools/commit/dd35c65c207ccd3bfc492e9b106f74bee4e73985))
+* **dwf:** clip ComplicationSlot to its bounding shape ([#6567](https://github.com/yschimke/compose-ai-tools/issues/6567)) ([0ff45c6](https://github.com/yschimke/compose-ai-tools/commit/0ff45c648429583047348ae1addd9e38f567ae28))
+* fix DWF ColorConfiguration tinting and NamedVariable registration ([#6563](https://github.com/yschimke/compose-ai-tools/issues/6563)) ([370c920](https://github.com/yschimke/compose-ai-tools/commit/370c920be6f6c6170801d3e84881364ac9791ed7))
+* **gradle-plugin:** floor kotlinx-coroutines to 1.11.0 on Android render graph ([#6566](https://github.com/yschimke/compose-ai-tools/issues/6566)) ([82cb599](https://github.com/yschimke/compose-ai-tools/commit/82cb59956d0a77e5f2b70b3b43fb2ddc76b1a9d4))
+* **watchface:** clear stale slots before flavor config and refresh flavor complications ([#6559](https://github.com/yschimke/compose-ai-tools/issues/6559)) ([97e3cde](https://github.com/yschimke/compose-ai-tools/commit/97e3cde2a410bff1bf48d2598c64f070ee7951d7))
+
 ## [2.94.0](https://github.com/yschimke/compose-ai-tools/compare/v2.93.0...v2.94.0) (2026-11-15)
 
 
