@@ -128,7 +128,7 @@ final class WatchState {
   private boolean weatherCelsius = true;
   private int weatherPrecipitation = 10;
   private int weatherUvIndex = 3;
-  private String weatherLastUpdated = "Updated just now";
+  private String weatherLastUpdated = "";
   private final Map<Integer, HourlyWeather> hourlyWeather = new LinkedHashMap<>();
   private final Map<Integer, DailyWeather> dailyWeather = new LinkedHashMap<>();
 
