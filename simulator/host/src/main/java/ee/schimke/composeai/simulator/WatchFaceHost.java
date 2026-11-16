@@ -6,6 +6,9 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.os.Parcelable;
 import android.util.DisplayMetrics;
 import java.nio.file.Path;
@@ -83,6 +86,8 @@ final class WatchFaceHost {
   private WatchFaceClient face;
   private DwfWatchFaceClient dwfFace;
   private boolean ambient;
+  private boolean editorMode;
+  private Integer highlightedSlot;
   private boolean rendering;
   private boolean pendingRender;
   private boolean themeFromWatchface =
@@ -420,13 +425,15 @@ final class WatchFaceHost {
         }
       case "imageLoader":
         return configureImageLoader(c);
+      case "editor":
+        return configureEditor(c);
       case "status":
         return describe();
       default:
         throw new IllegalArgumentException(
             "watchface op "
                 + op
-                + ": use set, render, unset, config, complication, uncomplication, tap, theme, imageLoader, push, pushed, removePush or status");
+                + ": use set, render, unset, config, complication, uncomplication, tap, theme, editor, imageLoader, push, pushed, removePush or status");
     }
   }
 
@@ -455,6 +462,47 @@ final class WatchFaceHost {
       updateDynamicColors(dwfFace.extractPalette());
     }
     return describe();
+  }
+
+  private JSONObject configureEditor(JSONObject c) throws JSONException {
+    if (c.has("enabled") && !c.isNull("enabled")) {
+      editorMode = c.getBoolean("enabled");
+    } else if (c.has("editor") && !c.isNull("editor")) {
+      editorMode = c.getBoolean("editor");
+    } else if (!c.has("highlightSlot") && !c.has("slot")) {
+      editorMode = true;
+    }
+    if (c.has("highlightSlot")) {
+      highlightedSlot = c.isNull("highlightSlot") ? null : Integer.valueOf(c.getInt("highlightSlot"));
+    } else if (c.has("slot")) {
+      highlightedSlot = c.isNull("slot") ? null : Integer.valueOf(c.getInt("slot"));
+    }
+    requestRender();
+    return describe();
+  }
+
+  static Bitmap drawEditorComplicationHighlights(
+      Bitmap source, List<WatchFaceClient.Slot> slots, Integer highlightedSlot) {
+    if (source == null || slots == null || slots.isEmpty()) return source;
+    Bitmap mutable = source.copy(Bitmap.Config.ARGB_8888, true);
+    Canvas canvas = new Canvas(mutable);
+    Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    fillPaint.setStyle(Paint.Style.FILL);
+    Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    strokePaint.setStyle(Paint.Style.STROKE);
+    for (WatchFaceClient.Slot slot : slots) {
+      if (!slot.enabled || !slot.hasBounds) continue;
+      RectF rect = new RectF(slot.left, slot.top, slot.right, slot.bottom);
+      if (rect.width() <= 0f || rect.height() <= 0f) continue;
+      boolean selected = highlightedSlot != null && highlightedSlot.intValue() == slot.id;
+      fillPaint.setColor(selected ? 0x44A8C7FA : 0x2280CBC4);
+      strokePaint.setColor(selected ? 0xFFFFFFFF : 0xCC80CBC4);
+      strokePaint.setStrokeWidth(selected ? 4f : 2.5f);
+      float radius = Math.min(rect.width(), rect.height()) * 0.25f;
+      canvas.drawRoundRect(rect, radius, radius, fillPaint);
+      canvas.drawRoundRect(rect, radius, radius, strokePaint);
+    }
+    return mutable;
   }
 
   private static void registerImageSource(
@@ -1009,7 +1057,7 @@ final class WatchFaceHost {
       rendering = true;
       face.render(ambient);
     } else if (dwfFace != null && dwfFace.error() == null) {
-      if (clockFrozen && dwfFace.frames() > 0) return;
+      if ((dwfFace.fixedTimeMillis() != null || clockFrozen) && dwfFace.frames() > 0) return;
       rendering = true;
       dwfFace.render(ambient);
     }
@@ -1051,7 +1099,11 @@ final class WatchFaceHost {
     }
     boolean first = frameCount == 1;
     error = null;
-    display.frame(frame);
+    Bitmap outputFrame =
+        editorMode && frame != null
+            ? drawEditorComplicationHighlights(frame, activeSlots(), highlightedSlot)
+            : frame;
+    display.frame(outputFrame);
     WatchFaceDynamicColors.Palette palette =
         dwfFace != null
             ? dwfFace.extractPalette()
@@ -1182,6 +1234,8 @@ final class WatchFaceHost {
             .put("watchFace", activeName)
             .put("kind", kind)
             .put("ambient", ambient)
+            .put("editor", editorMode)
+            .put("highlightSlot", highlightedSlot != null ? highlightedSlot : JSONObject.NULL)
             .put("themeFromWatchface", themeFromWatchface)
             .put("colors", lastPalette != null ? lastPalette.toJson() : JSONObject.NULL)
             .put("pushed", WatchFacePushStore.get().describeSlots())

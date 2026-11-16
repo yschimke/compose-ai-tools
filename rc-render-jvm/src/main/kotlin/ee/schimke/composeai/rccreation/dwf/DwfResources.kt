@@ -299,6 +299,11 @@ public data class DwfRenderOptions(
   public val configurationDefaults: Map<String, String> = emptyMap(),
   /** Initial complication slot values keyed by `slotId`. */
   public val complicationDefaults: Map<Int, DwfComplicationSeed> = emptyMap(),
+  /**
+   * When `true`, complication slots without a `<DefaultProviderPolicy>` (or flavor complication
+   * policy) default to `EMPTY` instead of synthesizing placeholder data.
+   */
+  public val defaultUnboundComplicationsToEmpty: Boolean = false,
   /** Initial weather data and hourly/daily forecast values. */
   public val weatherDefault: DwfWeatherSeed = DwfWeatherSeed(),
   /**

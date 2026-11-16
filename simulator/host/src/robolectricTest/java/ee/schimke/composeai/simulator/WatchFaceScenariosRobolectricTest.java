@@ -769,6 +769,23 @@ public class WatchFaceScenariosRobolectricTest {
             .toString());
   }
 
+  @Test
+  @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+  public void drawEditorComplicationHighlightsRendersSlotOverlay() {
+    Bitmap source = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+    source.eraseColor(0xFF000000);
+    List<WatchFaceClient.Slot> slots =
+        java.util.Arrays.asList(
+            new WatchFaceClient.Slot(1, new int[] {3}, true, 20, 20, 80, 80),
+            new WatchFaceClient.Slot(2, new int[] {3}, true, 120, 20, 180, 80));
+
+    Bitmap highlighted = WatchFaceHost.drawEditorComplicationHighlights(source, slots, 1);
+    assertNotEquals(0xFF000000, highlighted.getPixel(50, 50));
+    assertNotEquals(0xFF000000, highlighted.getPixel(150, 50));
+    // Source bitmap remains unmodified.
+    assertEquals(0xFF000000, source.getPixel(50, 50));
+  }
+
   private static int openField(Parcel parcel, int id) {
     int start = parcel.dataPosition();
     parcel.writeInt(0);
