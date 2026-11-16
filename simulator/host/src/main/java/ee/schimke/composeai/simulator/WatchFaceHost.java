@@ -603,6 +603,7 @@ final class WatchFaceHost {
     DwfWatchFaceClient.Entry fallbackDwf = findDwfEntry(component.getPackageName());
     if (fallbackDwf != null) {
       face.setFallbackFlavors(fallbackDwf.defaultFlavorId, fallbackDwf.flavors);
+      face.setFallbackDefaultProviders(fallbackDwf.defaultProviders);
     }
     face.setFixedTimeMillis(perFaceTime);
     WatchFacePushStore.get().setActivePackageName(component.getPackageName());

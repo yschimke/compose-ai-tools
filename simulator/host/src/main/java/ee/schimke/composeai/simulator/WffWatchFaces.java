@@ -72,10 +72,20 @@ final class WffWatchFaces {
   static final class FlavorsCatalog {
     final String defaultFlavorId;
     final List<DwfWatchFaceClient.FlavorSpec> flavors;
+    final Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies;
 
     FlavorsCatalog(String defaultFlavorId, List<DwfWatchFaceClient.FlavorSpec> flavors) {
+      this(defaultFlavorId, flavors, Collections.emptyMap());
+    }
+
+    FlavorsCatalog(
+        String defaultFlavorId,
+        List<DwfWatchFaceClient.FlavorSpec> flavors,
+        Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies) {
       this.defaultFlavorId = defaultFlavorId;
       this.flavors = flavors != null ? flavors : Collections.emptyList();
+      this.defaultSlotPolicies =
+          defaultSlotPolicies != null ? defaultSlotPolicies : Collections.emptyMap();
     }
   }
 
@@ -208,7 +218,7 @@ final class WffWatchFaces {
       Path mainPath = Path.of(mainApk);
       indexApkProperties(mainPath);
       FlavorsCatalog mainFlavors = parseApkFlavors(mainPath);
-      if (!mainFlavors.flavors.isEmpty()) {
+      if (!mainFlavors.flavors.isEmpty() || !mainFlavors.defaultSlotPolicies.isEmpty()) {
         flavorsByPackage.put(app.getPackageName(), mainFlavors);
       }
     }
@@ -273,7 +283,7 @@ final class WffWatchFaces {
     if (pkgName != null && !pkgName.isEmpty()) {
       installedPackages.add(pkgName);
       FlavorsCatalog parsedFlavors = parseApkFlavors(apk);
-      if (!parsedFlavors.flavors.isEmpty()) {
+      if (!parsedFlavors.flavors.isEmpty() || !parsedFlavors.defaultSlotPolicies.isEmpty()) {
         flavorsByPackage.put(pkgName, parsedFlavors);
       } else {
         flavorsByPackage.remove(pkgName);
@@ -665,7 +675,7 @@ final class WffWatchFaces {
           bytes = in.readAllBytes();
         }
         FlavorsCatalog parsed = parseWatchFaceXmlFlavors(bytes);
-        if (!parsed.flavors.isEmpty()) {
+        if (!parsed.flavors.isEmpty() || !parsed.defaultSlotPolicies.isEmpty()) {
           return parsed;
         }
       }
@@ -699,6 +709,39 @@ final class WffWatchFaces {
       }
       String defaultFlavorId = null;
       List<DwfWatchFaceClient.FlavorSpec> flavors = new ArrayList<>();
+      Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies =
+          new LinkedHashMap<>();
+      org.w3c.dom.NodeList sceneNodes = root.getElementsByTagName("Scene");
+      for (int s = 0; s < sceneNodes.getLength(); s++) {
+        if (!(sceneNodes.item(s) instanceof org.w3c.dom.Element)) continue;
+        org.w3c.dom.Element sceneEl = (org.w3c.dom.Element) sceneNodes.item(s);
+        org.w3c.dom.NodeList slotNodes = sceneEl.getElementsByTagName("ComplicationSlot");
+        for (int j = 0; j < slotNodes.getLength(); j++) {
+          if (!(slotNodes.item(j) instanceof org.w3c.dom.Element)) continue;
+          org.w3c.dom.Element slotEl = (org.w3c.dom.Element) slotNodes.item(j);
+          String slotRaw = slotEl.getAttribute("slotId").trim();
+          try {
+            int slotId = Integer.parseInt(slotRaw);
+            String sysProv = slotEl.getAttribute("defaultSystemProvider").trim();
+            String sysType = slotEl.getAttribute("defaultSystemProviderType").trim();
+            org.w3c.dom.NodeList polList = slotEl.getElementsByTagName("DefaultProviderPolicy");
+            if (polList.getLength() > 0 && polList.item(0) instanceof org.w3c.dom.Element) {
+              org.w3c.dom.Element polEl = (org.w3c.dom.Element) polList.item(0);
+              String pProv = polEl.getAttribute("defaultSystemProvider").trim();
+              String pType = polEl.getAttribute("defaultSystemProviderType").trim();
+              if (!pProv.isEmpty()) sysProv = pProv;
+              if (!pType.isEmpty()) sysType = pType;
+            }
+            if (!sysProv.isEmpty() || !sysType.isEmpty()) {
+              defaultSlotPolicies.put(
+                  Integer.valueOf(slotId),
+                  new DwfWatchFaceClient.FlavorComplicationPolicy(
+                      sysProv.isEmpty() ? null : sysProv, sysType.isEmpty() ? null : sysType));
+            }
+          } catch (NumberFormatException ignored) {
+          }
+        }
+      }
       org.w3c.dom.NodeList flavorContainers = root.getElementsByTagName("Flavors");
       for (int c = 0; c < flavorContainers.getLength(); c++) {
         org.w3c.dom.Node containerNode = flavorContainers.item(c);
@@ -754,7 +797,7 @@ final class WffWatchFaces {
           flavors.add(new DwfWatchFaceClient.FlavorSpec(flvId, displayName, cfgs, comps));
         }
       }
-      return new FlavorsCatalog(defaultFlavorId, flavors);
+      return new FlavorsCatalog(defaultFlavorId, flavors, defaultSlotPolicies);
     } catch (Exception ignored) {
       return new FlavorsCatalog(null, Collections.emptyList());
     }
@@ -766,6 +809,8 @@ final class WffWatchFaces {
     List<String> strings = Collections.emptyList();
     String defaultFlavorId = null;
     List<DwfWatchFaceClient.FlavorSpec> flavors = new ArrayList<>();
+    Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies =
+        new LinkedHashMap<>();
     String currentFlavorId = null;
     String currentDisplayName = null;
     Map<String, String> currentConfigs = null;
@@ -821,7 +866,7 @@ final class WffWatchFaces {
           String cfgId = attrs.getOrDefault("id", "").trim();
           String optId = attrs.getOrDefault("optionId", "").trim();
           if (!cfgId.isEmpty() && !optId.isEmpty()) currentConfigs.put(cfgId, optId);
-        } else if ("ComplicationSlot".equals(element) && currentComps != null) {
+        } else if ("ComplicationSlot".equals(element)) {
           try {
             currentSlotId = Integer.valueOf(Integer.parseInt(attrs.getOrDefault("slotId", "").trim()));
             currentSlotProv = attrs.getOrDefault("defaultSystemProvider", "").trim();
@@ -838,12 +883,16 @@ final class WffWatchFaces {
       } else if (type == RES_XML_END_ELEMENT_TYPE) {
         int ext = offset + headerSize;
         String element = stringAt(strings, buffer.getInt(ext + 4));
-        if ("ComplicationSlot".equals(element) && currentComps != null && currentSlotId != null) {
-          currentComps.put(
-              currentSlotId,
+        if ("ComplicationSlot".equals(element) && currentSlotId != null) {
+          DwfWatchFaceClient.FlavorComplicationPolicy pol =
               new DwfWatchFaceClient.FlavorComplicationPolicy(
                   currentSlotProv == null || currentSlotProv.isEmpty() ? null : currentSlotProv,
-                  currentSlotType == null || currentSlotType.isEmpty() ? null : currentSlotType));
+                  currentSlotType == null || currentSlotType.isEmpty() ? null : currentSlotType);
+          if (currentComps != null) {
+            currentComps.put(currentSlotId, pol);
+          } else if (pol.defaultSystemProvider != null || pol.defaultSystemProviderType != null) {
+            defaultSlotPolicies.put(currentSlotId, pol);
+          }
           currentSlotId = null;
           currentSlotProv = null;
           currentSlotType = null;
@@ -859,7 +908,7 @@ final class WffWatchFaces {
       }
       offset += size;
     }
-    return new FlavorsCatalog(defaultFlavorId, flavors);
+    return new FlavorsCatalog(defaultFlavorId, flavors, defaultSlotPolicies);
   }
 
   private WffWatchFaces() {}
