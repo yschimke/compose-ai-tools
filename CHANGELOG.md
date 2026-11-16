@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.95.0](https://github.com/yschimke/compose-ai-tools/compare/v2.94.1...v2.95.0) (2026-11-16)
+
+
+### Features
+
+* **cli:** split the simulator out into an android-simulator command ([#6574](https://github.com/yschimke/compose-ai-tools/issues/6574)) ([e186aa1](https://github.com/yschimke/compose-ai-tools/commit/e186aa156ad6fd5ef04488fdd7fb08180cbf8cc7))
+* **dwf:** support real-world complication defaults, editor highlights, and clock modes ([#6573](https://github.com/yschimke/compose-ai-tools/issues/6573)) ([fe2f761](https://github.com/yschimke/compose-ai-tools/commit/fe2f761e633e8f49821d3e8b5fcf135c0a1358d6))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.6.1 ([#6572](https://github.com/yschimke/compose-ai-tools/issues/6572)) ([72bc008](https://github.com/yschimke/compose-ai-tools/commit/72bc008266a47f87c91b060211c01e380067846e))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.7.0 ([#6575](https://github.com/yschimke/compose-ai-tools/issues/6575)) ([f1810d4](https://github.com/yschimke/compose-ai-tools/commit/f1810d400e63b032e5c15bbc0a73aa2bd2222713))
+* **dwf:** honor watch_face_shapes.xml when ordering APK watch faces ([#6569](https://github.com/yschimke/compose-ai-tools/issues/6569)) ([89e7def](https://github.com/yschimke/compose-ai-tools/commit/89e7defba5cc2f2ce34da056c8f47bfaca00bc1d))
+
 ## [2.94.1](https://github.com/yschimke/compose-ai-tools/compare/v2.94.0...v2.94.1) (2026-11-16)
 
 
