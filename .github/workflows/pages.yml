@@ -57,13 +57,46 @@ jobs:
           PYCONFIG
       - name: Build with Jekyll
         # Built for preview.coo.ee/start/ (the baseurl in _config.yml), not for the Pages path: the
-        # preview host's edge proxies /start/ to this deployment, and the github.io copy redirects there.
+        # preview host serves /start/ from the `site` branch (publish-branch below), and the github.io
+        # copy redirects there.
         run: bundle exec jekyll build --config _config.yml,_analytics.yml
         env:
           JEKYLL_ENV: production
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site/_site
+
+  # preview.coo.ee serves /start/ from this branch: the box's `static-sites` service
+  # (yschimke/preview-coo-ee, deploy/image/site-pull.sh) pulls it every few minutes and Caddy serves
+  # the tree, so the docs no longer depend on proxying GitHub Pages. One orphan commit, replaced on
+  # every build: the branch is the published artifact, not history.
+  publish-branch:
+    name: Publish the site branch
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the built site to the `site` branch
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: github-pages
+          path: artifact
+      - name: Push the built site to the site branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir site-tree
+          tar -xf artifact/artifact.tar -C site-tree
+          test -f site-tree/index.html
+          cd site-tree
+          git init -q -b site
+          git add -A
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "site: ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
 
   deploy:
     name: Deploy to GitHub Pages
