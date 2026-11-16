@@ -507,7 +507,22 @@ private class DwfCanvasRenderer(
           val b = node.boundingShape
           when {
             b != null && b.width > 0f && b.height > 0f && b.kind == "BoundingOval" ->
-              remoteCanvas.clipPath(buildOvalPath(b.x, b.y, b.width, b.height))
+              remoteCanvas.clipPath(buildOvalPath(b.x, b.y, b.x + b.width, b.y + b.height))
+            b != null &&
+              b.width > 0f &&
+              b.height > 0f &&
+              b.kind == "BoundingRoundBox" &&
+              b.cornerRadius > 0f ->
+              remoteCanvas.clipPath(
+                buildRoundRectPath(
+                  b.x,
+                  b.y,
+                  b.x + b.width,
+                  b.y + b.height,
+                  b.cornerRadius,
+                  b.cornerRadius,
+                ),
+              )
             b != null && b.width > 0f && b.height > 0f ->
               remoteCanvas.clipRect(b.x.rf, b.y.rf, (b.x + b.width).rf, (b.y + b.height).rf)
             else -> remoteCanvas.clipRect(0f.rf, 0f.rf, slotW, slotH)

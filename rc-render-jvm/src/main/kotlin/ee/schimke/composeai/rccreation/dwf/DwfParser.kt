@@ -665,6 +665,7 @@ public object DwfParser {
             width = b.attr("width")?.toFloatOrNull() ?: 0f,
             height = b.attr("height")?.toFloatOrNull() ?: 0f,
             outlinePadding = b.attr("outlinePadding")?.toFloatOrNull() ?: 0f,
+            cornerRadius = b.attr("cornerRadius")?.toFloatOrNull() ?: 0f,
           )
         }
     val variants =

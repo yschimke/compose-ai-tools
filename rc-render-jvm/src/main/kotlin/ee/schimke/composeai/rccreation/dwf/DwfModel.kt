@@ -320,6 +320,7 @@ public data class DwfBoundingShape(
   public val width: Float = 0f,
   public val height: Float = 0f,
   public val outlinePadding: Float = 0f,
+  public val cornerRadius: Float = 0f,
 )
 
 /** Clock hand inside `<AnalogClock>`. */

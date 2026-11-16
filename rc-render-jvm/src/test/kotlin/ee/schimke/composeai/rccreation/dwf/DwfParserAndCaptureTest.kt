@@ -404,4 +404,23 @@ class DwfParserAndCaptureTest {
     assertEquals(DwfHorizontalAlign.CENTER, clock.timeTexts[0].align)
     assertEquals(DwfHorizontalAlign.START, clock.timeTexts[1].align)
   }
+
+  @Test
+  fun parsesBoundingRoundBoxCornerRadius() {
+    val xml =
+      """
+      <WatchFace width="450" height="450">
+        <Scene backgroundColor="#FF000000">
+          <ComplicationSlot x="90" y="315" width="270" height="68" slotId="4" supportedTypes="LONG_TEXT EMPTY">
+            <BoundingRoundBox x="0" y="0" width="270" height="68" outlinePadding="2.0" cornerRadius="10"/>
+          </ComplicationSlot>
+        </Scene>
+      </WatchFace>
+      """
+        .trimIndent()
+    val doc = DwfParser.parse(xml)
+    val slot = doc.scene.children.single() as DwfSceneNode.ComplicationSlot
+    assertEquals("BoundingRoundBox", slot.boundingShape?.kind)
+    assertEquals(10f, slot.boundingShape?.cornerRadius)
+  }
 }
