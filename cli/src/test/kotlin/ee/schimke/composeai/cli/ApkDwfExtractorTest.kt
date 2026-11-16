@@ -422,4 +422,31 @@ class ApkDwfExtractorTest {
     }
     return buf.array()
   }
+
+  @Test
+  fun preferredWatchFaceStemPicksCircle450EntryFromWatchFaceShapes() {
+    val tmpApk = Files.createTempFile("watch_face_shapes", ".apk").toFile()
+    try {
+      ZipOutputStream(tmpApk.outputStream()).use { zout ->
+        zout.putNextEntry(ZipEntry("res/xml/watch_face_shapes.xml"))
+        zout.write(
+          """
+          <WatchFaces>
+            <WatchFace shape="CIRCLE" width="466" height="466" file="@raw/watchface" />
+            <WatchFace shape="CIRCLE" width="450" height="450" file="@raw/watchface_pixel" />
+            <WatchFace shape="RECTANGLE" width="450" height="450" file="@raw/watchface_rect" />
+          </WatchFaces>
+          """
+            .trimIndent()
+            .toByteArray(),
+        )
+        zout.closeEntry()
+      }
+      java.util.zip.ZipFile(tmpApk).use { zip ->
+        assertEquals("watchface_pixel", ApkDwfExtractor.preferredWatchFaceStem(zip, null))
+      }
+    } finally {
+      tmpApk.delete()
+    }
+  }
 }
