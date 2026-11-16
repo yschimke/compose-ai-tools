@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.95.1](https://github.com/yschimke/compose-ai-tools/compare/v2.95.0...v2.95.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **dwf-apk:** include android daemon jars in ApkClassConverter and align multi-module split paths ([#6581](https://github.com/yschimke/compose-ai-tools/issues/6581)) ([f95821d](https://github.com/yschimke/compose-ai-tools/commit/f95821db71e46d07e81a1156d36e2558cf463e95))
+* **dwf:** apply ambient dim scrim matching Wear OS DWF runtime ([#6586](https://github.com/yschimke/compose-ai-tools/issues/6586)) ([c2ca4a0](https://github.com/yschimke/compose-ai-tools/commit/c2ca4a0f659f2526826936e9d455ac5e68ff7ac0))
+* **dwf:** center custom-font and tabular-digit text by advance width and font metrics ([#6580](https://github.com/yschimke/compose-ai-tools/issues/6580)) ([4998722](https://github.com/yschimke/compose-ai-tools/commit/499872261c8b908f037c8b9be846f6a0b717b607))
+* **dwf:** clip ComplicationSlot BoundingRoundBox with cornerRadius ([#6584](https://github.com/yschimke/compose-ai-tools/issues/6584)) ([61d72d7](https://github.com/yschimke/compose-ai-tools/commit/61d72d733a2c371d757a634e8fd30cd3a5ef396f))
+* **dwf:** default TimeText align to CENTER ([#6583](https://github.com/yschimke/compose-ai-tools/issues/6583)) ([99822bd](https://github.com/yschimke/compose-ai-tools/commit/99822bd4afd56766af1ac7a138fba26ab68370e5))
+
 ## [2.95.0](https://github.com/yschimke/compose-ai-tools/compare/v2.94.1...v2.95.0) (2026-11-16)
 
 
