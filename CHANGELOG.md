@@ -14,6 +14,7 @@
 * **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.6.1 ([#6572](https://github.com/yschimke/compose-ai-tools/issues/6572)) ([72bc008](https://github.com/yschimke/compose-ai-tools/commit/72bc008266a47f87c91b060211c01e380067846e))
 * **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.7.0 ([#6575](https://github.com/yschimke/compose-ai-tools/issues/6575)) ([f1810d4](https://github.com/yschimke/compose-ai-tools/commit/f1810d400e63b032e5c15bbc0a73aa2bd2222713))
 * **dwf:** honor watch_face_shapes.xml when ordering APK watch faces ([#6569](https://github.com/yschimke/compose-ai-tools/issues/6569)) ([89e7def](https://github.com/yschimke/compose-ai-tools/commit/89e7defba5cc2f2ce34da056c8f47bfaca00bc1d))
+* **simulator:** wire scene DefaultProviderPolicy defaults into WatchFaceClient ([#6576](https://github.com/yschimke/compose-ai-tools/issues/6576)) ([6fa6ed5](https://github.com/yschimke/compose-ai-tools/commit/6fa6ed51aa493a51a4a3ddafac1aa88ff89ca6b6))
 
 ## [2.94.1](https://github.com/yschimke/compose-ai-tools/compare/v2.94.0...v2.94.1) (2026-11-16)
 
