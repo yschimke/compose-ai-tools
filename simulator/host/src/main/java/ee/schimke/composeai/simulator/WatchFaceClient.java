@@ -249,6 +249,8 @@ final class WatchFaceClient {
   private volatile List<StyleSetting> schema = Collections.emptyList();
   private volatile String defaultFlavorId;
   private volatile List<DwfWatchFaceClient.FlavorSpec> flavors = Collections.emptyList();
+  private final Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies =
+      new LinkedHashMap<>();
   private volatile String activeFlavorId;
   private volatile DwfWatchFaceClient.FlavorSpec activeFlavorSpec;
   private volatile Set<Integer> lastExternallyBoundSlots = Collections.emptySet();
@@ -266,14 +268,27 @@ final class WatchFaceClient {
     this.component = component;
     this.listener = listener;
     WffWatchFaces.FlavorsCatalog cat = WffWatchFaces.flavorsForPackage(component.getPackageName());
-    if (cat != null && !cat.flavors.isEmpty()) {
-      this.defaultFlavorId = cat.defaultFlavorId;
-      this.flavors = cat.flavors;
-      this.activeFlavorId = cat.defaultFlavorId;
-      this.activeFlavorSpec =
-          cat.defaultFlavorId != null
-              ? DwfWatchFaceClient.findFlavorSpec(cat.flavors, cat.defaultFlavorId)
-              : null;
+    if (cat != null) {
+      this.defaultSlotPolicies.putAll(cat.defaultSlotPolicies);
+      if (!cat.flavors.isEmpty()) {
+        this.defaultFlavorId = cat.defaultFlavorId;
+        this.flavors = cat.flavors;
+        this.activeFlavorId = cat.defaultFlavorId;
+        this.activeFlavorSpec =
+            cat.defaultFlavorId != null
+                ? DwfWatchFaceClient.findFlavorSpec(cat.flavors, cat.defaultFlavorId)
+                : null;
+      }
+    }
+  }
+
+  void setFallbackDefaultProviders(Map<Integer, String> providers) {
+    if (providers == null || providers.isEmpty()) return;
+    for (Map.Entry<Integer, String> e : providers.entrySet()) {
+      String prov = e.getValue() != null ? e.getValue().trim() : "";
+      if (prov.isEmpty() || defaultSlotPolicies.containsKey(e.getKey())) continue;
+      defaultSlotPolicies.put(
+          e.getKey(), new DwfWatchFaceClient.FlavorComplicationPolicy(prov, null));
     }
   }
 
@@ -410,7 +425,9 @@ final class WatchFaceClient {
     DwfWatchFaceClient.FlavorSpec spec = activeFlavorSpec;
     synchronized (complications) {
       for (Integer slotId : new ArrayList<>(flavorManagedSlots)) {
-        boolean keepInSpec = spec != null && spec.complications.containsKey(slotId);
+        boolean keepInSpec =
+            defaultSlotPolicies.containsKey(slotId)
+                || (spec != null && spec.complications.containsKey(slotId));
         boolean overridden =
             explicitComplicationSlots.contains(slotId)
                 || (boundSlots != null && boundSlots.contains(slotId));
@@ -421,9 +438,14 @@ final class WatchFaceClient {
           flavorManagedSlots.remove(slotId);
         }
       }
-      if (spec == null) return;
+      if (spec == null && defaultSlotPolicies.isEmpty()) return;
+      Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> effectivePolicies =
+          new LinkedHashMap<>(defaultSlotPolicies);
+      if (spec != null) {
+        effectivePolicies.putAll(spec.complications);
+      }
       for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
-          spec.complications.entrySet()) {
+          effectivePolicies.entrySet()) {
         Integer slotId = e.getKey();
         if (explicitComplicationSlots.contains(slotId)
             || (boundSlots != null && boundSlots.contains(slotId))) {
@@ -440,6 +462,7 @@ final class WatchFaceClient {
             break;
           }
         }
+        if (!slots.isEmpty() && targetSlot == null) continue;
         if (fake == null) {
           complications.remove(slotId);
           flavorManagedSlots.remove(slotId);

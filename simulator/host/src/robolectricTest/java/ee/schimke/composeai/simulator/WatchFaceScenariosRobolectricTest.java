@@ -786,6 +786,25 @@ public class WatchFaceScenariosRobolectricTest {
     assertEquals(0xFF000000, source.getPixel(50, 50));
   }
 
+  @Test
+  public void wffWatchFacesParsesSceneComplicationDefaultProviderPolicies() {
+    String xml =
+        "<WatchFace width=\"450\" height=\"450\">\n"
+            + "  <Scene>\n"
+            + "    <ComplicationSlot slotId=\"1\" supportedTypes=\"SHORT_TEXT EMPTY\">\n"
+            + "      <DefaultProviderPolicy defaultSystemProvider=\"STEP_COUNT\" defaultSystemProviderType=\"SHORT_TEXT\"/>\n"
+            + "    </ComplicationSlot>\n"
+            + "  </Scene>\n"
+            + "</WatchFace>\n";
+    WffWatchFaces.FlavorsCatalog cat =
+        WffWatchFaces.parseWatchFaceXmlFlavors(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    assertTrue(cat.flavors.isEmpty());
+    assertEquals(1, cat.defaultSlotPolicies.size());
+    DwfWatchFaceClient.FlavorComplicationPolicy pol = cat.defaultSlotPolicies.get(1);
+    assertEquals("STEP_COUNT", pol.defaultSystemProvider);
+    assertEquals("SHORT_TEXT", pol.defaultSystemProviderType);
+  }
+
   private static int openField(Parcel parcel, int id) {
     int start = parcel.dataPosition();
     parcel.writeInt(0);
