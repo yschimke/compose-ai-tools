@@ -5165,8 +5165,14 @@ jobs:
             > "$GITHUB_WORKSPACE/split-primary-bundles.txt"
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
             while IFS= read -r additional_bundle; do
-              module_key="$(basename "$additional_bundle" .png)"
-              module_previews="$GITHUB_WORKSPACE/out/bundle/modules/$module_key/previews"
+              bundle_file="$(basename "$additional_bundle")"
+              module_path="$(jq -r --arg f "$bundle_file" '(.liveBundles // [])[] | select(.file == $f) | .path' "$GITHUB_WORKSPACE/out/catalog.json" | head -n1)"
+              if [ -n "$module_path" ]; then
+                module_previews="$GITHUB_WORKSPACE/out/${module_path}previews"
+              else
+                module_key="$(basename "$additional_bundle" .png)"
+                module_previews="$GITHUB_WORKSPACE/out/bundle/modules/$module_key/previews"
+              fi
               if [ "$INPUT_SPLIT_MODE" = "view-only" ]; then
                 compose-preview bundle split "$additional_bundle" --view-only \
                   -o "$module_previews"

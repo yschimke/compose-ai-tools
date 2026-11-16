@@ -470,14 +470,14 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private fun ensureRuntimeClasses(env: Environment): File {
     val sha = sha256(env.runtimeApk)
     val cacheDir = composeAiCacheDir("dwf-apk-daemon").apply { mkdirs() }
-    val outJar = File(cacheDir, "runtime-$sha.jar")
+    val outJar = File(cacheDir, "runtime-v2-$sha.jar")
     if (outJar.isFile && outJar.length() > 0L) return outJar
 
     val simulatorHostJar =
       env.simulatorJars.firstOrNull { it.name.startsWith("simulator-host") }
         ?: error("lib-simulator has no simulator-host jar")
     val cp =
-      (listOf(simulatorHostJar) + env.dex2jarJars + env.simulatorJars)
+      (listOf(simulatorHostJar) + env.dex2jarJars + env.simulatorJars + env.androidDaemonJars)
         .distinctBy { it.absolutePath }
         .joinToString(File.pathSeparator) { it.absolutePath }
     val tmpJar = File(cacheDir, "runtime-$sha.jar.tmp")
@@ -758,7 +758,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         platforms
           .listFiles()
           ?.filter { it.isDirectory }
-          ?.sortedByDescending { it.name }
+          ?.sortedByDescending { it.name.removePrefix("android-").toIntOrNull() ?: 0 }
           ?.map { File(it, "android.jar") }
           ?.filter { it.isFile }
           .orEmpty()
