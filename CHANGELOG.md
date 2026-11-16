@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.95.2](https://github.com/yschimke/compose-ai-tools/compare/v2.95.1...v2.95.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.8.0 ([#6590](https://github.com/yschimke/compose-ai-tools/issues/6590)) ([1e4f689](https://github.com/yschimke/compose-ai-tools/commit/1e4f689aa3095a3d46011594aeab139398216e25))
+* **dwf:** render default monochromatic bullseye icon for system provider complications ([#6592](https://github.com/yschimke/compose-ai-tools/issues/6592)) ([1d3b098](https://github.com/yschimke/compose-ai-tools/commit/1d3b098e414ddc0a030691f65512ab14a60099af))
+* **simulator:** default weatherLastUpdated to empty so icuText formats clock time ([#6587](https://github.com/yschimke/compose-ai-tools/issues/6587)) ([181d048](https://github.com/yschimke/compose-ai-tools/commit/181d048e3922fdb1dbb2bff07df384ff672f1ded))
+* **simulator:** map WFF DefaultProviderPolicy slot order to runtime wire slot IDs ([#6591](https://github.com/yschimke/compose-ai-tools/issues/6591)) ([4ad967e](https://github.com/yschimke/compose-ai-tools/commit/4ad967e44947bf68e4f92b1f5248f7f6026cf4c2))
+
 ## [2.95.1](https://github.com/yschimke/compose-ai-tools/compare/v2.95.0...v2.95.1) (2026-11-16)
 
 
