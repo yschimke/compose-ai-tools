@@ -380,4 +380,28 @@ class DwfParserAndCaptureTest {
         .firstOrNull { it.id == typeVar.id }
     assertEquals(DwfVariables.COMPLICATION_TYPE_EMPTY, intConst?.value)
   }
+
+  @Test
+  fun timeTextDefaultsAlignToCenter() {
+    val xml =
+      """
+      <WatchFace width="450" height="450">
+        <Scene backgroundColor="#FF000000">
+          <DigitalClock x="90" y="45" width="270" height="140">
+            <TimeText format="hh" x="0" y="0" width="180" height="140">
+              <Font family="SYNC_TO_DEVICE" size="140"/>
+            </TimeText>
+            <TimeText format="mm" align="START" x="185" y="7" width="85" height="75">
+              <Font family="SYNC_TO_DEVICE" size="75"/>
+            </TimeText>
+          </DigitalClock>
+        </Scene>
+      </WatchFace>
+      """
+        .trimIndent()
+    val doc = DwfParser.parse(xml)
+    val clock = doc.scene.children.single() as DwfSceneNode.DigitalClock
+    assertEquals(DwfHorizontalAlign.CENTER, clock.timeTexts[0].align)
+    assertEquals(DwfHorizontalAlign.START, clock.timeTexts[1].align)
+  }
 }
