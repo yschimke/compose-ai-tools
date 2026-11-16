@@ -368,6 +368,20 @@ class DwfRenderMainTest {
     assertThat(bmp.getColor(171, 225) and 0xFF).isLessThan(20)
   }
 
+  @Test
+  fun resolvesCustomFontBytesAndSkipsSystemFamilies() {
+    val resDir = temp.newFolder("res-font")
+    val fontDir = File(resDir, "font").apply { mkdirs() }
+    val bytes = byteArrayOf(0x00, 0x01, 0x00, 0x00)
+    File(fontDir, "digital7.ttf").writeBytes(bytes)
+
+    val resolver = DwfResourceDirectoryResolver(listOf(resDir))
+    assertThat(resolver.resolveFontFamily("digital7")).isEqualTo("digital7")
+    assertThat(resolver.resolveFontBytes("digital7")).isEqualTo(bytes)
+    assertThat(resolver.resolveFontBytes("@font/digital7")).isEqualTo(bytes)
+    assertThat(resolver.resolveFontBytes("SYNC_TO_DEVICE")).isNull()
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {
