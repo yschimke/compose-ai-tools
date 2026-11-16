@@ -176,6 +176,10 @@ internal object ApkDwfExtractor {
         }
       }
       if (candidateWatchFaces.isEmpty()) return null
+      val preferredStem = preferredWatchFaceStem(zip, arsc)
+      if (preferredStem != null) {
+        candidateWatchFaces.sortBy { (stem, _) -> if (stem == preferredStem) 0 else 1 }
+      }
 
       workDir.deleteRecursively()
       val watchfacesDir = File(workDir, "watchfaces").apply { mkdirs() }
@@ -520,6 +524,45 @@ internal object ApkDwfExtractor {
     }
   }
 
+  internal fun preferredWatchFaceStem(zip: ZipFile, arsc: ArscTable?): String? {
+    val shapesEntry =
+      zip.entries().asSequence().firstOrNull {
+        !it.isDirectory &&
+          it.name.startsWith("res/xml") &&
+          it.name.endsWith("/watch_face_shapes.xml")
+      } ?: return null
+    val shapesXml =
+      decodeXmlOrNull(zip.getInputStream(shapesEntry).readBytes(), arsc) ?: return null
+    data class ShapeCandidate(val isCircle: Boolean, val distance: Int, val stem: String)
+    val candidates =
+      Regex("""<WatchFace\b([^>]*)>""")
+        .findAll(shapesXml)
+        .mapNotNull { match ->
+          val attrs = match.groupValues[1]
+          val fileAttr = extractXmlAttr(attrs, "file") ?: return@mapNotNull null
+          val stem =
+            fileAttr
+              .removePrefix("@raw/")
+              .substringAfterLast('/')
+              .substringBeforeLast('.')
+              .replace(Regex("[^A-Za-z0-9._-]"), "_")
+              .takeIf { it.isNotEmpty() && it != "." && it != ".." } ?: return@mapNotNull null
+          val shape = extractXmlAttr(attrs, "shape")?.uppercase()
+          val w = extractXmlAttr(attrs, "width")?.toIntOrNull() ?: 450
+          val h = extractXmlAttr(attrs, "height")?.toIntOrNull() ?: 450
+          val dist = kotlin.math.abs(w - 450) + kotlin.math.abs(h - 450)
+          ShapeCandidate(isCircle = shape == "CIRCLE", distance = dist, stem = stem)
+        }
+        .toList()
+    return candidates
+      .sortedWith(compareByDescending<ShapeCandidate> { it.isCircle }.thenBy { it.distance })
+      .firstOrNull()
+      ?.stem
+  }
+
+  private fun extractXmlAttr(attrs: String, name: String): String? =
+    Regex("""\b${Regex.escape(name)}\s*=\s*"([^"]*)"""").find(attrs)?.groupValues?.getOrNull(1)
+
   private fun isRawXmlEntry(name: String): Boolean =
     name.startsWith("res/raw") && name.endsWith(".xml", ignoreCase = true)
 
@@ -528,7 +571,7 @@ internal object ApkDwfExtractor {
 
   private fun cacheKey(apk: File, rcJvmJars: List<File>, skikoNative: File?): String {
     val digest = MessageDigest.getInstance("SHA-256")
-    digest.update("dwf-v3\n".toByteArray())
+    digest.update("dwf-v4\n".toByteArray())
     digest.update("${apk.absolutePath}:${apk.length()}:${apk.lastModified()}\n".toByteArray())
     skikoNative?.let {
       digest.update("skiko:${it.name}:${it.length()}:${it.lastModified()}\n".toByteArray())
