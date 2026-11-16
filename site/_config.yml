@@ -3,10 +3,10 @@ description: >-
   Render @Preview composables to PNG outside Android Studio, plus per-render
   structured data products (a11y, layout, theme, recomposition…) so AI coding
   agents can see and reason about the UI they're changing.
-# The site's address is preview.coo.ee/start/: GitHub Pages still hosts it, and the preview host's
-# caddy edge proxies /start/ to it (compose-preview-server deploy/image README, "Start pages served
-# in place"). Links are built for that address, so the github.io copy redirects there
-# (_includes/head_custom.html).
+# The site's address is preview.coo.ee/start/. The Pages workflow also pushes the build to the
+# `site` branch, which preview.coo.ee pulls and serves at /start/ (yschimke/preview-coo-ee,
+# deploy/image/docs.caddy); GitHub Pages keeps a copy. Links are built for that address, so the
+# github.io copy redirects there (_includes/head_custom.html).
 url: https://preview.coo.ee
 baseurl: /start
 
