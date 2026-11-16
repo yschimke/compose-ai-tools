@@ -1893,6 +1893,7 @@ internal class DwfExpressionCompiler(
             value = options.stepCountDefault.toFloat(),
             min = 0f,
             max = options.stepGoalDefault,
+            monochromaticImage = DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL,
           )
         "BATTERY" in provider ->
           DwfComplicationSeed(
@@ -1902,6 +1903,7 @@ internal class DwfExpressionCompiler(
             value = options.batteryPercentDefault,
             min = 0f,
             max = 100f,
+            monochromaticImage = DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL,
           )
         "HEART" in provider ->
           DwfComplicationSeed(
@@ -1911,6 +1913,7 @@ internal class DwfExpressionCompiler(
             value = safeHr,
             min = 0f,
             max = 200f,
+            monochromaticImage = DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL,
           )
         "DATE" in provider || "DAY" in provider ->
           DwfComplicationSeed(
@@ -1929,6 +1932,7 @@ internal class DwfExpressionCompiler(
             value = 6.7f,
             min = 0f,
             max = 24f,
+            monochromaticImage = DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL,
           )
         "NOTIFICATION" in provider ->
           DwfComplicationSeed(
