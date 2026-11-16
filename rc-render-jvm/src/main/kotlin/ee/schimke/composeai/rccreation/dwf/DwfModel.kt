@@ -343,7 +343,7 @@ public data class DwfClockHand(
 public data class DwfTimeText(
   public val format: String = "HH:mm",
   public val hourFormat: DwfHourFormat = DwfHourFormat.SYNC_TO_DEVICE,
-  public val align: DwfHorizontalAlign = DwfHorizontalAlign.START,
+  public val align: DwfHorizontalAlign = DwfHorizontalAlign.CENTER,
   public val geometry: DwfNodeGeometry = DwfNodeGeometry(),
   public val font: DwfFontSpec = DwfFontSpec(),
   public val bitmapFont: DwfBitmapFontUsage? = null,

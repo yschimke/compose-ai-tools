@@ -408,7 +408,7 @@ public object DwfParser {
         "TWENTY_FOUR" -> DwfHourFormat.TWENTY_FOUR
         else -> DwfHourFormat.SYNC_TO_DEVICE
       }
-    val align = parseHorizontalAlign(el.attr("align"), default = DwfHorizontalAlign.START)
+    val align = parseHorizontalAlign(el.attr("align"), default = DwfHorizontalAlign.CENTER)
     val childFont = el.firstChild("Font")
     val childBitmapFont = el.firstChild("BitmapFont")
     val fontSpec =
