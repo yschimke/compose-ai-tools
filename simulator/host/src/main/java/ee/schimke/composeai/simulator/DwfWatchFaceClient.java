@@ -1953,7 +1953,7 @@ final class DwfWatchFaceClient {
       max = stepGoal;
     } else if (p.contains("BATTERY")) {
       text = battery + "%";
-      title = "BAT";
+      title = "BATT";
       value = (float) battery;
       max = 100f;
     } else if (p.contains("HEART")) {
@@ -1961,6 +1961,16 @@ final class DwfWatchFaceClient {
       title = "BPM";
       value = hr;
       max = 200f;
+    } else if (p.contains("SUNRISE") || p.contains("SUNSET")) {
+      text = "06:42";
+      title = "SUNRISE";
+      value = 6.7f;
+      max = 24f;
+    } else if (p.contains("DATE") || p.contains("DAY")) {
+      text = "18";
+      title = "WED";
+      value = 18f;
+      max = 31f;
     } else if (p.contains("NOTIFICATION")) {
       text = Integer.toString(notifs);
       title = "ALERTS";

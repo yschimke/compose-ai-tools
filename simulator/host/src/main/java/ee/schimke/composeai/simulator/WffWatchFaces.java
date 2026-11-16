@@ -73,19 +73,29 @@ final class WffWatchFaces {
     final String defaultFlavorId;
     final List<DwfWatchFaceClient.FlavorSpec> flavors;
     final Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies;
+    final List<Integer> sceneSlotOrder;
 
     FlavorsCatalog(String defaultFlavorId, List<DwfWatchFaceClient.FlavorSpec> flavors) {
-      this(defaultFlavorId, flavors, Collections.emptyMap());
+      this(defaultFlavorId, flavors, Collections.emptyMap(), Collections.emptyList());
     }
 
     FlavorsCatalog(
         String defaultFlavorId,
         List<DwfWatchFaceClient.FlavorSpec> flavors,
         Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies) {
+      this(defaultFlavorId, flavors, defaultSlotPolicies, Collections.emptyList());
+    }
+
+    FlavorsCatalog(
+        String defaultFlavorId,
+        List<DwfWatchFaceClient.FlavorSpec> flavors,
+        Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies,
+        List<Integer> sceneSlotOrder) {
       this.defaultFlavorId = defaultFlavorId;
       this.flavors = flavors != null ? flavors : Collections.emptyList();
       this.defaultSlotPolicies =
           defaultSlotPolicies != null ? defaultSlotPolicies : Collections.emptyMap();
+      this.sceneSlotOrder = sceneSlotOrder != null ? sceneSlotOrder : Collections.emptyList();
     }
   }
 
@@ -711,6 +721,7 @@ final class WffWatchFaces {
       List<DwfWatchFaceClient.FlavorSpec> flavors = new ArrayList<>();
       Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies =
           new LinkedHashMap<>();
+      List<Integer> sceneSlotOrder = new ArrayList<>();
       org.w3c.dom.NodeList sceneNodes = root.getElementsByTagName("Scene");
       for (int s = 0; s < sceneNodes.getLength(); s++) {
         if (!(sceneNodes.item(s) instanceof org.w3c.dom.Element)) continue;
@@ -722,6 +733,7 @@ final class WffWatchFaces {
           String slotRaw = slotEl.getAttribute("slotId").trim();
           try {
             int slotId = Integer.parseInt(slotRaw);
+            sceneSlotOrder.add(Integer.valueOf(slotId));
             String sysProv = slotEl.getAttribute("defaultSystemProvider").trim();
             String sysType = slotEl.getAttribute("defaultSystemProviderType").trim();
             org.w3c.dom.NodeList polList = slotEl.getElementsByTagName("DefaultProviderPolicy");
@@ -797,7 +809,7 @@ final class WffWatchFaces {
           flavors.add(new DwfWatchFaceClient.FlavorSpec(flvId, displayName, cfgs, comps));
         }
       }
-      return new FlavorsCatalog(defaultFlavorId, flavors, defaultSlotPolicies);
+      return new FlavorsCatalog(defaultFlavorId, flavors, defaultSlotPolicies, sceneSlotOrder);
     } catch (Exception ignored) {
       return new FlavorsCatalog(null, Collections.emptyList());
     }

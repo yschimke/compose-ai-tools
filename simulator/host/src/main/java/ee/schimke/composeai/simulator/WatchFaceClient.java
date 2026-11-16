@@ -251,6 +251,7 @@ final class WatchFaceClient {
   private volatile List<DwfWatchFaceClient.FlavorSpec> flavors = Collections.emptyList();
   private final Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> defaultSlotPolicies =
       new LinkedHashMap<>();
+  private final List<Integer> sceneSlotOrder = new ArrayList<>();
   private volatile String activeFlavorId;
   private volatile DwfWatchFaceClient.FlavorSpec activeFlavorSpec;
   private volatile Set<Integer> lastExternallyBoundSlots = Collections.emptySet();
@@ -270,6 +271,7 @@ final class WatchFaceClient {
     WffWatchFaces.FlavorsCatalog cat = WffWatchFaces.flavorsForPackage(component.getPackageName());
     if (cat != null) {
       this.defaultSlotPolicies.putAll(cat.defaultSlotPolicies);
+      this.sceneSlotOrder.addAll(cat.sceneSlotOrder);
       if (!cat.flavors.isEmpty()) {
         this.defaultFlavorId = cat.defaultFlavorId;
         this.flavors = cat.flavors;
@@ -424,10 +426,38 @@ final class WatchFaceClient {
         externallyBoundSlots != null ? externallyBoundSlots : lastExternallyBoundSlots;
     DwfWatchFaceClient.FlavorSpec spec = activeFlavorSpec;
     synchronized (complications) {
+      Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> effectivePolicies =
+          new LinkedHashMap<>(defaultSlotPolicies);
+      if (spec != null) {
+        effectivePolicies.putAll(spec.complications);
+      }
+      Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> resolvedPolicies =
+          new LinkedHashMap<>();
+      Map<Integer, Slot> resolvedSlots = new LinkedHashMap<>();
+      for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
+          effectivePolicies.entrySet()) {
+        Integer xmlSlotId = e.getKey();
+        Slot targetSlot = null;
+        for (Slot s : slots) {
+          if (s.id == xmlSlotId.intValue()) {
+            targetSlot = s;
+            break;
+          }
+        }
+        Integer wireSlotId = xmlSlotId;
+        if (targetSlot == null && !slots.isEmpty()) {
+          int idx = sceneSlotOrder.indexOf(xmlSlotId);
+          if (idx >= 0 && idx < slots.size()) {
+            targetSlot = slots.get(idx);
+            wireSlotId = Integer.valueOf(targetSlot.id);
+          }
+        }
+        if (!slots.isEmpty() && targetSlot == null) continue;
+        resolvedPolicies.put(wireSlotId, e.getValue());
+        if (targetSlot != null) resolvedSlots.put(wireSlotId, targetSlot);
+      }
       for (Integer slotId : new ArrayList<>(flavorManagedSlots)) {
-        boolean keepInSpec =
-            defaultSlotPolicies.containsKey(slotId)
-                || (spec != null && spec.complications.containsKey(slotId));
+        boolean keepInSpec = resolvedPolicies.containsKey(slotId);
         boolean overridden =
             explicitComplicationSlots.contains(slotId)
                 || (boundSlots != null && boundSlots.contains(slotId));
@@ -438,40 +468,28 @@ final class WatchFaceClient {
           flavorManagedSlots.remove(slotId);
         }
       }
-      if (spec == null && defaultSlotPolicies.isEmpty()) return;
-      Map<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> effectivePolicies =
-          new LinkedHashMap<>(defaultSlotPolicies);
-      if (spec != null) {
-        effectivePolicies.putAll(spec.complications);
-      }
+      if (resolvedPolicies.isEmpty()) return;
       for (Map.Entry<Integer, DwfWatchFaceClient.FlavorComplicationPolicy> e :
-          effectivePolicies.entrySet()) {
-        Integer slotId = e.getKey();
-        if (explicitComplicationSlots.contains(slotId)
-            || (boundSlots != null && boundSlots.contains(slotId))) {
+          resolvedPolicies.entrySet()) {
+        Integer wireSlotId = e.getKey();
+        if (explicitComplicationSlots.contains(wireSlotId)
+            || (boundSlots != null && boundSlots.contains(wireSlotId))) {
           continue;
         }
         DwfWatchFaceClient.FlavorComplicationPolicy pol = e.getValue();
         DwfWatchFaceClient.FakeComplication fake =
             DwfWatchFaceClient.syntheticSystemProviderComplication(
-                slotId.intValue(), pol.defaultSystemProvider, pol.defaultSystemProviderType, ws);
-        Slot targetSlot = null;
-        for (Slot s : slots) {
-          if (s.id == slotId.intValue()) {
-            targetSlot = s;
-            break;
-          }
-        }
-        if (!slots.isEmpty() && targetSlot == null) continue;
+                wireSlotId.intValue(), pol.defaultSystemProvider, pol.defaultSystemProviderType, ws);
+        Slot targetSlot = resolvedSlots.get(wireSlotId);
         if (fake == null) {
-          complications.remove(slotId);
-          flavorManagedSlots.remove(slotId);
+          complications.remove(wireSlotId);
+          flavorManagedSlots.remove(wireSlotId);
         } else {
           Parcelable built =
               ComplicationParcels.buildFakeParcelable(app.getClassLoader(), fake, targetSlot);
           if (built != null) {
-            complications.put(slotId, built);
-            flavorManagedSlots.add(slotId);
+            complications.put(wireSlotId, built);
+            flavorManagedSlots.add(wireSlotId);
           }
         }
       }
