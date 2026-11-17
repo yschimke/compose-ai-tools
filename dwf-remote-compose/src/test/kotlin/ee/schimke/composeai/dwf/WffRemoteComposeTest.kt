@@ -269,6 +269,29 @@ class WffRemoteComposeTest {
   }
 
   @Test
+  fun `a missing color inside a vector drawable is reported`() {
+    val face =
+      """<WatchFace width="450" height="450"><Scene><PartImage x="0" y="0" width="100" height="100">""" +
+        """<Image resource="ic_vec"/></PartImage></Scene></WatchFace>"""
+    val vector =
+      """<vector xmlns:android="http://schemas.android.com/apk/res/android" """ +
+        """android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">""" +
+        """<path android:fillColor="@color/gone" android:pathData="M0,0h24v24h-24z"/></vector>"""
+    val result =
+      WffRemoteCompose.compile(
+        face,
+        WffResourceSource.of(mapOf("drawable/ic_vec.xml" to vector.toByteArray())),
+      )
+    assertThat(
+        result.diagnostics
+          .filter { it.code == "MISSING_RESOURCE" }
+          .map { it.message }
+          .joinToString(),
+      )
+      .contains("@color/gone")
+  }
+
+  @Test
   fun `bad input is a diagnostic not an exception`() {
     for (bad in listOf("", "not xml at all", "<WatchFace", "<Other/>", "<WatchFace></Oops>")) {
       val result = WffRemoteCompose.compile(bad)

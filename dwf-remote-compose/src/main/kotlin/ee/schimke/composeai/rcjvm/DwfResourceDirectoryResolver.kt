@@ -39,7 +39,16 @@ private constructor(
     return if (raw.startsWith("@string/")) resolveString(raw) else raw
   }
 
-  override fun resolveColor(name: String): Int? = resolveColorInternal(name, mutableSetOf())
+  /**
+   * Told about each `@color/…` reference that does not resolve, including the ones inside vector
+   * drawables, which resolve against this resolver rather than whatever wraps it.
+   */
+  internal var onMissingColor: ((String) -> Unit)? = null
+
+  override fun resolveColor(name: String): Int? =
+    resolveColorInternal(name, mutableSetOf()).also {
+      if (it == null && name.trim().startsWith("@color/")) onMissingColor?.invoke(name.trim())
+    }
 
   private fun resolveColorInternal(name: String, visited: MutableSet<String>): Int? {
     val key = normalizeDwfResourceKey(name)

@@ -303,10 +303,13 @@ private class MissingTrackingResolver(
   override fun resolveVectorDrawable(name: String): DwfVectorDrawable? =
     inner.resolveVectorDrawable(name)
 
-  override fun resolveColor(name: String): Int? =
-    inner.resolveColor(name).also {
-      if (it == null && name.trim().startsWith("@color/")) missingOther += name.trim()
-    }
+  // Colors referenced from inside vector drawables resolve against `inner` directly, so misses
+  // are collected there rather than here.
+  init {
+    inner.onMissingColor = { missingOther += it }
+  }
+
+  override fun resolveColor(name: String): Int? = inner.resolveColor(name)
 
   override fun resolveString(name: String): String? =
     inner.resolveString(name).also {
