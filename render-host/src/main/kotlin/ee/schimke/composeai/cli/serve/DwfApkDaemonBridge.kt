@@ -884,6 +884,8 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           add("-XX:G1PeriodicGCInterval=5000")
           add("--enable-native-access=ALL-UNNAMED")
           add("--add-opens=java.base/java.net=ALL-UNNAMED")
+          add("--add-opens=java.base/java.io=ALL-UNNAMED")
+          add("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
           add("-Djava.awt.headless=true")
           add("-javaagent:${simulatorHostJar.absolutePath}")
           if (robolectricDepsDir != null) {
