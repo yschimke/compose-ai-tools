@@ -19,7 +19,7 @@ fail() {
   failures=$((failures + 1))
 }
 
-ALL="alpha beta compose-preview-config compose-preview-plugin daemon-launch-builder gamma preview-discovery"
+ALL="alpha beta compose-preview-config compose-preview-plugin daemon-launch-builder delta epsilon gamma preview-discovery"
 
 repo="${tmp}/repo"
 mkdir -p "${repo}"
@@ -28,11 +28,13 @@ git init -q -b main
 git config user.email test@example.com
 git config user.name test
 
-mkdir -p alpha beta lib/gamma gradle-plugin build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic build-logic/src/test/kotlin gradle
+mkdir -p alpha beta delta epsilon lib/gamma gradle-plugin build-logic/src/main/kotlin/ee/schimke/composeai/buildlogic build-logic/src/test/kotlin gradle
 cat > settings.gradle.kts <<'EOF'
 include(":alpha")
 include(":beta")
 include(":gamma")
+include(":delta")
+include(":epsilon")
 project(":gamma").projectDir = file("lib/gamma")
 
 dependencyResolutionManagement {
@@ -64,6 +66,14 @@ dependencies {
       .ktx
   )
 }
+EOF
+# The renderer the plugin bakes the version of (`:rc-render-jvm`), and a module it depends on.
+cat > delta/build.gradle.kts <<'EOF'
+plugins { id("composeai.maven-publishing") }
+dependencies { implementation(project(":epsilon")) }
+EOF
+cat > epsilon/build.gradle.kts <<'EOF'
+plugins { id("composeai.maven-publishing") }
 EOF
 cat > lib/gamma/build.gradle.kts <<'EOF'
 plugins {
@@ -98,9 +108,14 @@ package ee.schimke.composeai.buildlogic
 
 class CheckLayerBoundary
 EOF
-# As the real `gradle-plugin/build.gradle.kts` does: the daemon version is baked into the plugin.
+# As the real `gradle-plugin/build.gradle.kts` does: the daemon version is baked into the plugin,
+# and so is the published version of a sibling module.
 cat > gradle-plugin/build.gradle.kts <<'EOF'
 val previewDaemon = libs.versions.composeai.preview.daemon.get()
+
+fun siblingPublishedVersion(artifactId: String): String = artifactId
+
+val rcRenderJvm = siblingPublishedVersion("delta")
 EOF
 # As the included build's `:preview-discovery` does: the same shared source, through `rootDir`.
 mkdir -p gradle-plugin/preview-discovery shared/src/commonMain/kotlin
@@ -323,6 +338,35 @@ check verification_only ""
 # v2.21.1: release wiring lives in root-tasks.gradle.kts, outside the shared set.
 change_root_tasks() { sed -i 's/:alpha:publish/:alpha:publishAndReleaseToMavenCentral/' root-tasks.gradle.kts; }
 check root_tasks ""
+
+# v2.97.0: a renderer fix in the module whose version the plugin bakes in. The plugin resolves the
+# renderer at that baked version, so it must republish or keep using the old renderer.
+change_baked_sibling() {
+  mkdir -p delta/src/main/kotlin
+  echo 'class Renderer' > delta/src/main/kotlin/Renderer.kt
+}
+check baked_sibling "compose-preview-config compose-preview-plugin daemon-launch-builder delta preview-discovery"
+
+# ...including when the baked module only republishes because a dependency of it changed.
+change_baked_sibling_dependency() {
+  mkdir -p epsilon/src/main/kotlin
+  echo 'class Font' > epsilon/src/main/kotlin/Font.kt
+}
+check baked_sibling_dependency "compose-preview-config compose-preview-plugin daemon-launch-builder delta epsilon preview-discovery"
+
+# v2.97.0 as released: the renderer published at 2.97.0, the plugin was last published at 2.95.1 and
+# still bakes in that version. Nothing changed since, but the plugin is stale and publishes.
+change_baked_sibling_already_ahead() { :; }
+cp "${tmp}/manifest.json" "${tmp}/manifest.json.orig"
+sed 's/"delta":"1.0.0"/"delta":"1.0.1"/' "${tmp}/manifest.json.orig" > "${tmp}/manifest.json"
+git tag v1.0.1 v1.0.0
+check baked_sibling_already_ahead "compose-preview-config compose-preview-plugin daemon-launch-builder preview-discovery"
+# ...but a plugin published after the renderer baked in its latest version: nothing publishes.
+change_baked_sibling_behind() { :; }
+sed -e 's/"compose-preview-plugin":"1.0.0"/"compose-preview-plugin":"1.0.1"/' \
+  "${tmp}/manifest.json.orig" > "${tmp}/manifest.json"
+check baked_sibling_behind ""
+mv "${tmp}/manifest.json.orig" "${tmp}/manifest.json"
 
 if [ "${failures}" -gt 0 ]; then
   echo "${failures} failure(s)" >&2

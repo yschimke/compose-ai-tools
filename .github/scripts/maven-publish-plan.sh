@@ -494,25 +494,58 @@ for aid, directory in modules.items():
         print(f"  {aid}: uses a changed catalog entry; publishing", file=sys.stderr)
         dirty.add(aid)
 
-# The included build's root publish task publishes all four of its coordinates at the tag version
-# (`root-tasks.gradle.kts` adds it when any one is in the set), so the plan must name all four or
-# none: a `srcDir` change that dirties only `preview-discovery` still republishes the other three,
-# and a plan omitting them leaves `release.yml` and the BOM on their old versions.
-if dirty.intersection(INCLUDED_BUILD_IDS):
-    dirty.update(INCLUDED_BUILD_IDS)
+# The sibling coordinates whose published version the plugin bakes in as a value
+# (`siblingPublishedVersion("rc-render-jvm")` in `gradle-plugin/build.gradle.kts`): the version it
+# resolves the DWF renderer at. Rule 2 cannot see this, as it is no project dependency, so a
+# renderer fix shipped in `rc-render-jvm` 2.97.0 while the plugin stayed on 2.95.1 and every build
+# using it kept rendering watch faces with `rc-render-jvm` 2.95.1.
+BAKED_SIBLING = re.compile(r'siblingPublishedVersion\(\s*"([^"]+)"\s*\)')
+try:
+    baked_text = open(os.path.join(INCLUDED_BUILD_DIR, "build.gradle.kts"), encoding="utf-8").read()
+    BAKED_IDS = {a for a in BAKED_SIBLING.findall(baked_text) if a != "artifactId"}
+except OSError:
+    BAKED_IDS = set()
 
 # Rule 2: anything depending on a dirty module is dirty too, transitively.
 rev = collections.defaultdict(set)
 for aid, ds in deps.items():
     for d in ds:
         rev[d].add(aid)
-stack = list(dirty)
-while stack:
-    m = stack.pop()
-    for r in rev.get(m, ()):
-        if r not in dirty:
-            dirty.add(r)
-            stack.append(r)
+
+def propagate():
+    stack = list(dirty)
+    while stack:
+        m = stack.pop()
+        for r in rev.get(m, ()):
+            if r not in dirty:
+                dirty.add(r)
+                stack.append(r)
+
+propagate()
+# The plugin bakes in its siblings' versions as published when it is, so a sibling published AFTER
+# the plugin left it naming an older one, whether or not the sibling changes again in this window.
+# A sibling published before it (renderer 2.97.0, plugin 2.98.0) is what it baked: not stale.
+PLUGIN_ID = "compose-preview-plugin"
+
+def version_key(v):
+    return [int(p) if p.isdigit() else -1 for p in re.split(r"[.-]", v)]
+
+baked_stale = sorted(a for a in BAKED_IDS
+                     if a in recorded and PLUGIN_ID in recorded
+                     and version_key(recorded[a]) > version_key(recorded[PLUGIN_ID]))
+baked_dirty = sorted((dirty & BAKED_IDS) | set(baked_stale))
+if baked_dirty and not dirty.issuperset(INCLUDED_BUILD_IDS):
+    print(f"  compose-preview-plugin bakes in {', '.join(baked_dirty)}; publishing it",
+          file=sys.stderr)
+    dirty.update(INCLUDED_BUILD_IDS)
+
+# The included build's root publish task publishes all four of its coordinates at the tag version
+# (`root-tasks.gradle.kts` adds it when any one is in the set), so the plan must name all four or
+# none: a `srcDir` change that dirties only `preview-discovery` still republishes the other three,
+# and a plan omitting them leaves `release.yml` and the BOM on their old versions.
+if dirty.intersection(INCLUDED_BUILD_IDS):
+    dirty.update(INCLUDED_BUILD_IDS)
+propagate()
 
 print(f"  {len(dirty)} of {len(modules)} modules publish", file=sys.stderr)
 for aid in sorted(dirty):
