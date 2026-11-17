@@ -109,6 +109,9 @@ final class SimulatorSandbox {
                 // Optional Wear SDK APIs are signature-only Android library classes bundled by
                 // Wear apps, not android.jar. The simulator supplies the safe haptic mapping.
                 ShadowWearHapticFeedbackConstants.class,
+                // Wear OS display offload stubs bundled in DeclarativeWatchFaceRuntime.
+                ShadowDisplayOffloadManager.class,
+                ShadowDisplayControlLock.class,
                 // Dynamic Material 3 system colors derived from the active watch face palette.
                 SimulatorShadowResources.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
@@ -193,6 +196,8 @@ final class SimulatorSandbox {
     builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
+    builder.addInstrumentedClass(ShadowDisplayOffloadManager.TARGET);
+    builder.addInstrumentedClass(ShadowDisplayControlLock.TARGET);
     // `android.jar` deliberately has no Wear SDK surface. Wear Compose calls this optional API
     // during scroll setup, so instrument the app-bundled signature classes and route the small
     // simulator-safe subset through explicit shadows. This is inert for phone apps.
