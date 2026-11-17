@@ -51,6 +51,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import zipfile
+from pathlib import Path
 
 PLUGIN_ID = "ee.schimke.composeai.preview"
 MARKER_ARTIFACT = f"{PLUGIN_ID}.gradle.plugin"
@@ -287,11 +289,59 @@ def run(version: str, budget: float) -> int:
     return 1
 
 
+CLI_VERSION_RESOURCE = "ee/schimke/composeai/cli/cli-version.properties"
+_RELEASE_VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
+
+
+def cli_plugin_version(cli_home: str) -> str | None:
+    """The Gradle plugin version an installed CLI asks for, or None if it does not say.
+
+    A release publishes only the modules it changed (`maven-publish-plan.sh`), so a release that
+    leaves `gradle-plugin/` alone ships a CLI pinned to the plugin's *last* Central version, and no
+    plugin is ever published at the release's own version. The CLI records the one it injects as
+    `mavenLineVersion` in `cli-version.properties`; `maven-readiness.yml` reads the same field.
+    """
+    lib = Path(cli_home) / "lib"
+    if not lib.is_dir():
+        return None
+    for jar in sorted(lib.glob("compose-preview-*.jar")):
+        try:
+            with zipfile.ZipFile(jar) as zf:
+                if CLI_VERSION_RESOURCE not in zf.namelist():
+                    continue
+                props = zf.read(CLI_VERSION_RESOURCE).decode("utf-8", "replace")
+        except (OSError, zipfile.BadZipFile):
+            continue
+        for line in props.splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "mavenLineVersion":
+                value = value.strip()
+                # It goes into a Maven URL path: a release version or nothing.
+                return value if _RELEASE_VERSION_RE.fullmatch(value) else None
+        return None
+    return None
+
+
 def main() -> None:
     version = (os.environ.get("VER") or "").strip()
     if not version:
         print("::error::plugin readiness check ran with no resolved version", file=sys.stderr)
         raise SystemExit(1)
+    cli_home = (os.environ.get("CLI_HOME") or "").strip()
+    if cli_home:
+        plugin_version = cli_plugin_version(cli_home)
+        if plugin_version is None:
+            print(
+                f"::warning::could not read mavenLineVersion from the CLI in {cli_home}; "
+                f"waiting for the plugin at the release's own version {version}.",
+                file=sys.stderr,
+            )
+        elif plugin_version != version:
+            print(
+                f"compose-preview {version} did not republish the Gradle plugin; its CLI uses "
+                f"plugin {plugin_version}, so that is the version checked."
+            )
+            version = plugin_version
     raw_budget = (os.environ.get("BUDGET") or "").strip()
     if not raw_budget.isdigit():
         print(

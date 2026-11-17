@@ -112,24 +112,6 @@ runs:
         printf 'deadline=%s\n' "$(( $(date +%s) + budget ))" >> "$GITHUB_OUTPUT"
         printf '::notice::Resolved compose-preview version: %s\n' "$ver"
 
-    # `version: latest` already prefers a release carrying its Maven-readiness marker
-    # (resolve-version.py), so this normally passes on the first sweep. It is here for every other
-    # mode — a literal version, `pin`, `catalog` — where the version is whatever the consumer
-    # named, and for the case where no release in the window has a marker at all.
-    #
-    # A script rather than inline shell: it walks the plugin's POMs to derive the artifact set,
-    # keeps every request and sleep inside the caller's budget, and is unit-tested next door
-    # (test_plugin_readiness.py). `python3` is already a hard requirement of this action — the
-    # Resolve step above runs resolve-version.py.
-    - name: Wait for the plugin to be published
-      if: ${{ inputs.plugin-readiness-timeout != '0' }}
-      shell: bash
-      env:
-        VER: ${{ steps.resolve.outputs.version }}
-        BUDGET: ${{ inputs.plugin-readiness-timeout }}
-        ACTION_PATH: ${{ github.action_path }}
-      run: python3 "$ACTION_PATH/plugin-readiness.py"
-
     - name: Download CLI
       shell: bash
       env:
@@ -188,9 +170,8 @@ runs:
         }
         # A failed first download is most often the release-publication window: the tarball
         # sits on a *draft* release, and draft assets 404 at the public URL, until release.yml
-        # publishes it, which can be after the plugin is already on Maven Central, so the
-        # readiness step above passed (m3-catalog#584, 2026-10-12: requested 36 s before
-        # v2.53.0 went public). curl's retries span ~7 s; wait-for-release.py polls the same
+        # publishes it, which can be after the plugin is already on Maven Central
+        # (m3-catalog#584, 2026-10-12: requested 36 s before v2.53.0 went public). curl's retries span ~7 s; wait-for-release.py polls the same
         # URL with backoff for whatever is left of the shared readiness budget, then fails
         # naming the window. A release that is already public never reaches it.
         if ! download; then
@@ -246,6 +227,29 @@ runs:
         # influence over every later step's $PATH.
         sudo mkdir -p /opt/compose-preview
         sudo tar -xzf "$tmp/$asset" -C /opt/compose-preview --strip-components=1
+
+    # `version: latest` already prefers a release carrying its Maven-readiness marker
+    # (resolve-version.py), so this normally passes on the first sweep. It is here for every other
+    # mode — a literal version, `pin`, `catalog` — where the version is whatever the consumer
+    # named, and for the case where no release in the window has a marker at all.
+    #
+    # A script rather than inline shell: it walks the plugin's POMs to derive the artifact set,
+    # keeps every request and sleep inside the caller's budget, and is unit-tested next door
+    # (test_plugin_readiness.py). `python3` is already a hard requirement of this action — the
+    # Resolve step above runs resolve-version.py.
+    - name: Wait for the plugin to be published
+      if: ${{ inputs.plugin-readiness-timeout != '0' }}
+      shell: bash
+      env:
+        VER: ${{ steps.resolve.outputs.version }}
+        # The plugin version to wait for is the one the installed CLI injects (`mavenLineVersion`),
+        # not the release's own: a release that leaves `gradle-plugin/` unchanged publishes no plugin
+        # at its version (`maven-publish-plan.sh`), and its CLI pins the last published one. Hence
+        # this step runs after the download, which is what lets it read that.
+        CLI_HOME: /opt/compose-preview
+        BUDGET: ${{ inputs.plugin-readiness-timeout }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/plugin-readiness.py"
 
     - name: Add CLI to PATH
       shell: bash
