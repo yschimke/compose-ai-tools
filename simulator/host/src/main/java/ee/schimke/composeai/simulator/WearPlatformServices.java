@@ -18,15 +18,18 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.robolectric.Shadows;
 import org.robolectric.shadows.ShadowApplication;
 
 /**
  * Installs Wear OS platform services as real bindable Android system services via {@link
- * ShadowApplication#setComponentNameAndServiceForBindService(ComponentName, IBinder)}.
+ * ShadowApplication#setComponentNameAndServiceForBindServiceForIntent}, scoped to each service's
+ * own bind intent so unrelated binds keep Robolectric's default (null) binder.
  */
 final class WearPlatformServices {
 
@@ -75,9 +78,11 @@ final class WearPlatformServices {
 
   static void install(Application app) {
     ShadowApplication shadowApp = Shadows.shadowOf(app);
-    shadowApp.setComponentNameAndServiceForBindService(
-        new ComponentName(WEATHER_PROVIDER_PACKAGE, WEATHER_PROVIDER_CLASS),
-        new WeatherProviderBinder(app));
+    ComponentName weather = new ComponentName(WEATHER_PROVIDER_PACKAGE, WEATHER_PROVIDER_CLASS);
+    Intent weatherIntent = new Intent().setComponent(weather);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(
+        weatherIntent, weather, new WeatherProviderBinder(app));
+    Navigator.registerForeignBind(weatherIntent);
 
     Intent healthIntent = new Intent(HEALTH_PASSIVE_ACTION).setPackage(HEALTH_SERVICES_PACKAGE);
     shadowApp.setComponentNameAndServiceForBindServiceForIntent(
@@ -85,6 +90,20 @@ final class WearPlatformServices {
         new ComponentName(HEALTH_SERVICES_PACKAGE, HEALTH_PASSIVE_CLASS),
         new HealthPassiveBinder(app));
     Navigator.registerForeignBind(healthIntent);
+  }
+
+  /**
+   * The intent Robolectric matches a bind against: any bind addressed to the weather provider's
+   * package, whatever action or extras it carries, resolves to its one registered component.
+   */
+  static Intent canonicalBindIntent(Intent intent) {
+    ComponentName component = intent.getComponent();
+    String pkg = component != null ? component.getPackageName() : intent.getPackage();
+    if (WEATHER_PROVIDER_PACKAGE.equals(pkg)) {
+      return new Intent()
+          .setComponent(new ComponentName(WEATHER_PROVIDER_PACKAGE, WEATHER_PROVIDER_CLASS));
+    }
+    return intent;
   }
 
   static String conditionDisplayName(int condition) {
@@ -383,8 +402,9 @@ final class WearPlatformServices {
 
   private static final class HealthPassiveBinder extends Binder {
     private final Application app;
-    private final Set<IBinder> registeredCallbacks =
-        Collections.synchronizedSet(new LinkedHashSet<>());
+    /** Passive listener callbacks keyed by the registering package, as AndroidX unregisters. */
+    private final Map<String, IBinder> registeredCallbacks =
+        Collections.synchronizedMap(new LinkedHashMap<>());
     private volatile boolean listening;
 
     HealthPassiveBinder(Application app) {
@@ -404,7 +424,8 @@ final class WearPlatformServices {
           {
             data.enforceInterface(HEALTH_PASSIVE_DESCRIPTOR);
             reply.writeNoException();
-            reply.writeInt(3);
+            // AndroidX gates set/clear of passive listener services and callbacks on >= 4.
+            reply.writeInt(4);
             return true;
           }
         case HS_TRANSACTION_GET_CAPABILITIES:
@@ -426,13 +447,15 @@ final class WearPlatformServices {
         case HS_TRANSACTION_REGISTER_LISTENER_CALLBACK:
           {
             data.enforceInterface(HEALTH_PASSIVE_DESCRIPTOR);
+            String packageName = null;
             if (data.readInt() != 0) {
-              data.createByteArray();
+              packageName = HealthRequestProto.readPackageName(data.createByteArray());
             }
+            if (packageName == null) packageName = app.getPackageName();
             IBinder listener = data.readStrongBinder();
             IBinder statusCallback = data.readStrongBinder();
             if (listener != null) {
-              registeredCallbacks.add(listener);
+              registeredCallbacks.put(packageName, listener);
               ensureWatchStateListener();
             }
             reply.writeNoException();
@@ -457,8 +480,11 @@ final class WearPlatformServices {
         case HS_TRANSACTION_UNREGISTER_LISTENER_SERVICE:
           {
             data.enforceInterface(HEALTH_PASSIVE_DESCRIPTOR);
-            data.readString();
+            String packageName = data.readString();
             IBinder statusCallback = data.readStrongBinder();
+            if (code == HS_TRANSACTION_UNREGISTER_LISTENER_CALLBACK) {
+              registeredCallbacks.remove(packageName != null ? packageName : app.getPackageName());
+            }
             reply.writeNoException();
             sendStatusSuccess(statusCallback);
             return true;
@@ -491,13 +517,13 @@ final class WearPlatformServices {
     private void pushAllUpdates() {
       List<IBinder> targets;
       synchronized (registeredCallbacks) {
-        targets = new ArrayList<>(registeredCallbacks);
+        targets = new ArrayList<>(registeredCallbacks.values());
       }
       for (IBinder target : targets) {
         try {
           pushUpdate(target);
         } catch (RemoteException ignored) {
-          registeredCallbacks.remove(target);
+          registeredCallbacks.values().remove(target);
         }
       }
     }
