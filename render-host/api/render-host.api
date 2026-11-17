@@ -3495,8 +3495,12 @@ public final class ee/schimke/composeai/cli/serve/ServeBroadcastHub {
 
 public final class ee/schimke/composeai/cli/serve/ServeBundleDaemon {
 	public static final field ANDROID_LIVE_SEAT_WEIGHT I
+	public static final field DWF_MODULE_DESCRIPTOR Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/cli/serve/ServeBundleDaemon;
 	public final fun bundleDaemonClasspaths (Ljava/io/File;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Z)Lee/schimke/composeai/cli/serve/ServeBundleDaemon$BundleDaemonClasspaths;
+	public final fun dwfAssetPaths (Ljava/io/File;)Ljava/util/Map;
+	public final fun dwfModuleDescriptor (Ljava/io/File;ZLkotlin/jvm/functions/Function1;Lokio/FileSystem;)Ljava/io/File;
+	public static synthetic fun dwfModuleDescriptor$default (Lee/schimke/composeai/cli/serve/ServeBundleDaemon;Ljava/io/File;ZLkotlin/jvm/functions/Function1;Lokio/FileSystem;ILjava/lang/Object;)Ljava/io/File;
 	public final fun extractKnobSidecars ([BLjava/io/File;Lokio/FileSystem;)V
 	public final fun jarPrecedesDaemonSidecar (Ljava/io/File;)Z
 	public final fun liveSeatWeightForDescriptor (Ljava/io/File;)I
