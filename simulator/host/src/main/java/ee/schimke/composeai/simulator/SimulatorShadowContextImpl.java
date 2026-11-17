@@ -31,6 +31,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
     if (DeviceServices.ownerOf(service) != null) {
       return DeviceServices.bind(service, connection, flags, null);
     }
+    service = WearPlatformServices.canonicalBindIntent(service);
     Navigator.prepareBind(service);
     return super.bindService(service, connection, flags);
   }
@@ -42,6 +43,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
     if (DeviceServices.ownerOf(service) != null) {
       return DeviceServices.bind(service, connection, flags, executor);
     }
+    service = WearPlatformServices.canonicalBindIntent(service);
     Navigator.prepareBind(service);
     return super.bindService(service, flags, executor, connection);
   }
@@ -215,6 +217,7 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
     if (DeviceServices.ownerOf(service) != null) {
       return DeviceServices.bind(service, connection, flags, null);
     }
+    service = WearPlatformServices.canonicalBindIntent(service);
     Navigator.prepareBind(service);
     return super.bindServiceAsUser(service, connection, flags, user);
   }

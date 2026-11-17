@@ -69,6 +69,10 @@ What it does not do, and this command adds:
 - **Remote control.** The default `RemoteControl` is a no-op; Google's internal one is not
   published.
 
+## Design principle: system services and process boundaries first
+
+When emulating Android platform capabilities in `:simulator-host`, implement them through real Android **system services, binder/AIDL interfaces, `ContentProvider`s, or process boundaries** (`Navigator` service binding, `DeviceServices`, `DeviceProviders`, `SystemApps`) so the simulated app executes its unmodified production IPC code paths. Fall back to **in-app Robolectric shadows only as a last resort** when no service or process boundary exists (or when the framework itself requires a shadow hook to intercept the IPC).
+
 ## How it works
 
 ```

@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -14,7 +15,10 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.RemoteException;
 import android.os.SharedMemory;
+import android.service.wallpaper.WallpaperService;
 import android.text.TextUtils;
+import android.view.Display;
+import android.view.WindowManager;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
@@ -27,8 +31,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -62,9 +68,15 @@ final class WatchFaceClient {
   static final String CONTROL_DESCRIPTOR =
       "androidx.wear.watchface.control.IWatchFaceControlService";
   static final String HEADLESS_DESCRIPTOR = "androidx.wear.watchface.control.IHeadlessWatchFace";
+  static final String INTERACTIVE_DESCRIPTOR =
+      "androidx.wear.watchface.control.IInteractiveWatchFace";
+  static final String PENDING_INTERACTIVE_DESCRIPTOR =
+      "androidx.wear.watchface.control.IPendingInteractiveWatchFace";
 
   /** {@code IWatchFaceControlService.createHeadlessWatchFaceInstance} (transaction 4). */
   static final int TRANSACTION_CREATE_HEADLESS = IBinder.FIRST_CALL_TRANSACTION + 3;
+  /** {@code IWatchFaceControlService.getOrCreateInteractiveWatchFaceClient} (transaction 5). */
+  static final int TRANSACTION_GET_OR_CREATE_INTERACTIVE = IBinder.FIRST_CALL_TRANSACTION + 4;
 
   /** {@code IHeadlessWatchFace} transactions (verified against the published AIDL). */
   static final int TRANSACTION_GET_USER_STYLE_SCHEMA = IBinder.FIRST_CALL_TRANSACTION + 3; // 4
@@ -73,11 +85,24 @@ final class WatchFaceClient {
       IBinder.FIRST_CALL_TRANSACTION + 5; // 6
   static final int TRANSACTION_RELEASE = IBinder.FIRST_CALL_TRANSACTION + 7; // 8
 
+  /** {@code IInteractiveWatchFace} transactions. */
+  static final int TRANSACTION_INTERACTIVE_GET_USER_STYLE_SCHEMA =
+      IBinder.FIRST_CALL_TRANSACTION + 8; // 9
+  static final int TRANSACTION_INTERACTIVE_GET_COMPLICATION_DETAILS =
+      IBinder.FIRST_CALL_TRANSACTION + 9; // 10
+  static final int TRANSACTION_INTERACTIVE_RENDER_WATCH_FACE_TO_BITMAP =
+      IBinder.FIRST_CALL_TRANSACTION + 10; // 11
+  static final int TRANSACTION_INTERACTIVE_RELEASE = IBinder.FIRST_CALL_TRANSACTION + 11; // 12
+
   private static final String PARCEL_IMPL = "androidx.versionedparcelable.ParcelImpl";
   private static final String HEADLESS_PARAMS_WIRE =
       "androidx.wear.watchface.control.data.HeadlessWatchFaceInstanceParamsParcelizer";
+  private static final String INTERACTIVE_PARAMS_WIRE =
+      "androidx.wear.watchface.control.data.WallpaperInteractiveWatchFaceInstanceParamsParcelizer";
   private static final String DEVICE_CONFIG_WIRE =
       "androidx.wear.watchface.data.DeviceConfigParcelizer";
+  private static final String WATCH_UI_STATE_WIRE =
+      "androidx.wear.watchface.data.WatchUiStateParcelizer";
   private static final String WATCH_FACE_RENDER_PARAMS_WIRE =
       "androidx.wear.watchface.control.data.WatchFaceRenderParamsParcelizer";
   private static final String RENDER_PARAMETERS_WIRE =
@@ -244,7 +269,11 @@ final class WatchFaceClient {
   private final Map<String, String> userStyleIds = new LinkedHashMap<>();
 
   private IBinder control;
+  private ComponentName wallpaperComponent;
+  private IBinder wallpaperService;
+  private volatile IBinder wallpaperEngine;
   private volatile IBinder headless;
+  private volatile boolean interactive;
   private volatile List<Slot> slots = Collections.emptyList();
   private volatile List<StyleSetting> schema = Collections.emptyList();
   private volatile String defaultFlavorId;
@@ -620,11 +649,36 @@ final class WatchFaceClient {
       IBinder binder = navigator.bindForHost(new Intent(CONTROL_ACTION).setComponent(service));
       if (binder == null) throw new IllegalStateException(service + " returned no binder");
       control = binder;
+      try {
+        ComponentName wpComponent = component;
+        if (wpComponent.getClassName().isEmpty()) {
+          List<ResolveInfo> wpFound =
+              app.getPackageManager()
+                  .queryIntentServices(
+                      new Intent(WallpaperService.SERVICE_INTERFACE)
+                          .setPackage(service.getPackageName()),
+                      0);
+          if (wpFound != null && !wpFound.isEmpty()) {
+            wpComponent =
+                new ComponentName(
+                    wpFound.get(0).serviceInfo.packageName, wpFound.get(0).serviceInfo.name);
+          }
+        }
+        wallpaperComponent = wpComponent;
+        wallpaperService =
+            wpComponent.getClassName().isEmpty()
+                ? null
+                : navigator.bindForHost(
+                    new Intent(WallpaperService.SERVICE_INTERFACE).setComponent(wpComponent));
+      } catch (RuntimeException e) {
+        wallpaperService = null;
+      }
     } catch (RuntimeException e) {
       fail(e);
       return;
     }
     IBinder controlBinder = control;
+    IBinder wpBinder = wallpaperService;
     WatchState ws = WatchState.current();
     boolean burnIn = ws != null && ws.burnIn();
     boolean lowBit = ws != null && ws.lowBit();
@@ -632,14 +686,22 @@ final class WatchFaceClient {
         () -> {
           try {
             IBinder instance =
-                createHeadlessInstance(controlBinder, component, width, height, burnIn, lowBit);
+                tryCreateInteractiveInstance(
+                    controlBinder, wpBinder, width, height, burnIn, lowBit, ambient);
+            if (instance != null) {
+              interactive = true;
+            } else {
+              interactive = false;
+              instance =
+                  createHeadlessInstance(controlBinder, component, width, height, burnIn, lowBit);
+            }
             if (instance == null) {
               throw new IllegalStateException(
                   component + " is not a watch face the control service can create");
             }
             headless = instance;
-            slots = readSlots(instance);
-            schema = readStyleSchema(instance);
+            slots = readSlots(instance, interactive);
+            schema = readStyleSchema(instance, interactive);
             synchronized (userStyle) {
               for (Map.Entry<String, String> sel : new LinkedHashMap<>(userStyleIds).entrySet()) {
                 StyleSetting matched = null;
@@ -717,12 +779,17 @@ final class WatchFaceClient {
     Parcel reply = Parcel.obtain();
     Bundle bundle;
     try {
-      data.writeInterfaceToken(HEADLESS_DESCRIPTOR);
+      String descriptor = interactive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR;
+      int tx =
+          interactive
+              ? TRANSACTION_INTERACTIVE_RENDER_WATCH_FACE_TO_BITMAP
+              : TRANSACTION_RENDER_WATCH_FACE_TO_BITMAP;
+      data.writeInterfaceToken(descriptor);
       data.writeInt(1);
       writeRenderParams(
           data, ambient ? DRAW_AMBIENT : DRAW_INTERACTIVE, timeMillis, snapshot, styleSnapshot);
       data.setDataPosition(0);
-      instance.transact(TRANSACTION_RENDER_WATCH_FACE_TO_BITMAP, data, reply, 0);
+      instance.transact(tx, data, reply, 0);
       reply.setDataPosition(0);
       reply.readException();
       bundle = reply.readInt() != 0 ? Bundle.CREATOR.createFromParcel(reply) : null;
@@ -736,6 +803,165 @@ final class WatchFaceClient {
     Bitmap decoded = readImage(bundle);
     lastBitmap = decoded;
     post(decoded, null);
+  }
+
+  private IBinder tryCreateInteractiveInstance(
+      IBinder controlBinder,
+      IBinder wpBinder,
+      int width,
+      int height,
+      boolean burnIn,
+      boolean lowBit,
+      boolean ambient) {
+    if (wpBinder == null) return null;
+    CompletableFuture<IBinder> pendingFuture = new CompletableFuture<>();
+    Binder pendingCallback =
+        new Binder() {
+          @Override
+          protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+              throws RemoteException {
+            if (code == INTERFACE_TRANSACTION) {
+              reply.writeString(PENDING_INTERACTIVE_DESCRIPTOR);
+              return true;
+            }
+            if (code == IBinder.FIRST_CALL_TRANSACTION + 1) {
+              data.enforceInterface(PENDING_INTERACTIVE_DESCRIPTOR);
+              reply.writeNoException();
+              reply.writeInt(1);
+              return true;
+            }
+            if (code == IBinder.FIRST_CALL_TRANSACTION + 2) {
+              data.enforceInterface(PENDING_INTERACTIVE_DESCRIPTOR);
+              pendingFuture.complete(data.readStrongBinder());
+              return true;
+            }
+            if (code == IBinder.FIRST_CALL_TRANSACTION + 3) {
+              data.enforceInterface(PENDING_INTERACTIVE_DESCRIPTOR);
+              pendingFuture.completeExceptionally(
+                  new IllegalStateException("Interactive watch face crashed"));
+              return true;
+            }
+            return super.onTransact(code, data, reply, flags);
+          }
+        };
+    Parcel data = Parcel.obtain();
+    Parcel reply = Parcel.obtain();
+    IBinder syncInstance = null;
+    try {
+      data.writeInterfaceToken(CONTROL_DESCRIPTOR);
+      data.writeInt(1);
+      writeInteractiveParams(
+          data,
+          "simulator",
+          component.getClassName().isEmpty() ? component.getPackageName() : null,
+          burnIn,
+          lowBit,
+          ambient);
+      data.writeStrongBinder(pendingCallback);
+      data.setDataPosition(0);
+      if (!controlBinder.transact(TRANSACTION_GET_OR_CREATE_INTERACTIVE, data, reply, 0)) {
+        return null;
+      }
+      reply.setDataPosition(0);
+      reply.readException();
+      syncInstance = reply.readStrongBinder();
+    } catch (Throwable t) {
+      t.printStackTrace(System.err);
+      return null;
+    } finally {
+      reply.recycle();
+      data.recycle();
+    }
+    if (syncInstance != null) {
+      return syncInstance;
+    }
+    Binder connection =
+        new Binder() {
+          @Override
+          protected boolean onTransact(int code, Parcel in, Parcel out, int flags)
+              throws RemoteException {
+            String desc = "android.service.wallpaper.IWallpaperConnection";
+            if (code == INTERFACE_TRANSACTION) {
+              out.writeString(desc);
+              return true;
+            }
+            if (code == 1) { // attachEngine(IWallpaperEngine, int displayId)
+              in.enforceInterface(desc);
+              IBinder engine = in.readStrongBinder();
+              in.readInt();
+              wallpaperEngine = engine;
+              if (engine != null) {
+                transactWallpaperEngine(engine, 1, width, height); // setDesiredSize
+                transactWallpaperEngine(engine, 3, 1, 0); // setVisibility(true)
+              }
+              out.writeNoException();
+              return true;
+            }
+            if (code == 3) { // setWallpaper
+              in.enforceInterface(desc);
+              out.writeNoException();
+              out.writeInt(0);
+              return true;
+            }
+            if (code >= 2 && code <= 5) {
+              in.enforceInterface(desc);
+              out.writeNoException();
+              return true;
+            }
+            return super.onTransact(code, in, out, flags);
+          }
+        };
+    main.post(
+        () -> {
+          Parcel wpData = Parcel.obtain();
+          try {
+            wpData.writeInterfaceToken("android.service.wallpaper.IWallpaperService");
+            wpData.writeStrongBinder(connection);
+            wpData.writeStrongBinder(new Binder());
+            wpData.writeInt(WindowManager.LayoutParams.TYPE_WALLPAPER);
+            wpData.writeInt(0); // isPreview = false
+            wpData.writeInt(width);
+            wpData.writeInt(height);
+            wpData.writeInt(1);
+            new Rect(0, 0, 0, 0).writeToParcel(wpData, 0);
+            wpData.writeInt(Display.DEFAULT_DISPLAY);
+            wpData.writeInt(0); // which
+            wpData.writeInt(0); // WallpaperInfo = null
+            wpData.setDataPosition(0);
+            wpBinder.transact(1, wpData, null, IBinder.FLAG_ONEWAY);
+          } catch (Throwable t) {
+            pendingFuture.completeExceptionally(t);
+          } finally {
+            wpData.recycle();
+          }
+        });
+    try {
+      return pendingFuture.get(3, TimeUnit.SECONDS);
+    } catch (Throwable t) {
+      t.printStackTrace(System.err);
+      return null;
+    }
+  }
+
+  private static void transactWallpaperEngine(IBinder engine, int tx, int arg1, int arg2) {
+    Parcel p = Parcel.obtain();
+    try {
+      p.writeInterfaceToken("android.service.wallpaper.IWallpaperEngine");
+      if (tx == 1) {
+        p.writeInt(arg1);
+        p.writeInt(arg2);
+      } else if (tx == 3) {
+        p.writeInt(arg1);
+      } else if (tx == 6) {
+        p.writeInt(arg1);
+        p.writeLong(0L);
+      }
+      p.setDataPosition(0);
+      engine.transact(tx, p, null, IBinder.FLAG_ONEWAY);
+    } catch (Throwable ignored) {
+    } finally {
+      p.recycle();
+    }
   }
 
   private static IBinder createHeadlessInstance(
@@ -790,13 +1016,20 @@ final class WatchFaceClient {
     return bitmap;
   }
 
-  private static List<Slot> readSlots(IBinder instance) throws RemoteException {
+  private static List<Slot> readSlots(IBinder instance, boolean interactive)
+      throws RemoteException {
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
     try {
-      data.writeInterfaceToken(HEADLESS_DESCRIPTOR);
+      data.writeInterfaceToken(interactive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR);
       data.setDataPosition(0);
-      instance.transact(TRANSACTION_GET_COMPLICATION_STATE, data, reply, 0);
+      instance.transact(
+          interactive
+              ? TRANSACTION_INTERACTIVE_GET_COMPLICATION_DETAILS
+              : TRANSACTION_GET_COMPLICATION_STATE,
+          data,
+          reply,
+          0);
       reply.setDataPosition(0);
       reply.readException();
       int count = reply.readInt();
@@ -814,13 +1047,17 @@ final class WatchFaceClient {
     }
   }
 
-  private static List<StyleSetting> readStyleSchema(IBinder instance) {
+  private static List<StyleSetting> readStyleSchema(IBinder instance, boolean interactive) {
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
     try {
-      data.writeInterfaceToken(HEADLESS_DESCRIPTOR);
+      data.writeInterfaceToken(interactive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR);
       data.setDataPosition(0);
-      if (!instance.transact(TRANSACTION_GET_USER_STYLE_SCHEMA, data, reply, 0)) {
+      int tx =
+          interactive
+              ? TRANSACTION_INTERACTIVE_GET_USER_STYLE_SCHEMA
+              : TRANSACTION_GET_USER_STYLE_SCHEMA;
+      if (!instance.transact(tx, data, reply, 0)) {
         return Collections.emptyList();
       }
       reply.setDataPosition(0);
@@ -838,15 +1075,25 @@ final class WatchFaceClient {
   /** Lets the instance and the control service go, as changing the watch face does. */
   void release() {
     IBinder instance = headless;
+    boolean wasInteractive = interactive;
     headless = null;
+    IBinder engine = wallpaperEngine;
+    wallpaperEngine = null;
+    if (engine != null) {
+      transactWallpaperEngine(engine, 10, 0, 0); // destroy
+    }
     worker.execute(
         () -> {
           if (instance == null) return;
           Parcel data = Parcel.obtain();
           try {
-            data.writeInterfaceToken(HEADLESS_DESCRIPTOR);
+            data.writeInterfaceToken(wasInteractive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR);
             data.setDataPosition(0);
-            instance.transact(TRANSACTION_RELEASE, data, null, IBinder.FLAG_ONEWAY);
+            instance.transact(
+                wasInteractive ? TRANSACTION_INTERACTIVE_RELEASE : TRANSACTION_RELEASE,
+                data,
+                null,
+                IBinder.FLAG_ONEWAY);
           } catch (Throwable ignored) {
             // Already gone.
           } finally {
@@ -854,6 +1101,11 @@ final class WatchFaceClient {
           }
         });
     worker.shutdown();
+    if (wallpaperService != null && wallpaperComponent != null) {
+      navigator.unbindService(
+          new Intent(WallpaperService.SERVICE_INTERFACE).setComponent(wallpaperComponent));
+      wallpaperService = null;
+    }
     if (control != null) {
       ComponentName service = controlService(app);
       if (service != null) {
@@ -893,6 +1145,54 @@ final class WatchFaceClient {
   // (`String.valueOf(mFieldId).compareTo(String.valueOf(fieldId)) > 0`), so fields in every nested
   // sub-parcel MUST be written in ascending order of `String.valueOf(fieldId)` (for example,
   // WatchFaceRenderParams writes 1, 100, 3, 5).
+
+  static void writeInteractiveParams(
+      Parcel parcel,
+      String instanceId,
+      String auxiliaryPackageName,
+      boolean burnIn,
+      boolean lowBit,
+      boolean ambient) {
+    parcel.writeString(PARCEL_IMPL);
+    parcel.writeString(INTERACTIVE_PARAMS_WIRE);
+    // Field 1: String mInstanceId
+    int f1 = openField(parcel, 1);
+    parcel.writeString(instanceId);
+    closeField(parcel, f1);
+    // Field 100 ("100" < "2"): List<IdAndComplicationDataWireFormat>
+    int f100 = openField(parcel, 100);
+    parcel.writeInt(0);
+    closeField(parcel, f100);
+    // Field 101: auxiliaryComponentName
+    int f101 = openField(parcel, 101);
+    parcel.writeString(null);
+    closeField(parcel, f101);
+    // Field 102: resourcePackageName
+    int f102 = openField(parcel, 102);
+    parcel.writeString(auxiliaryPackageName);
+    closeField(parcel, f102);
+    // Field 2: DeviceConfig mDeviceConfig (fields 1, 2, 4, 5)
+    int f2 = openField(parcel, 2);
+    parcel.writeString(DEVICE_CONFIG_WIRE);
+    writeBooleanField(parcel, 1, lowBit);
+    writeBooleanField(parcel, 2, burnIn);
+    writeLongField(parcel, 4, 0L);
+    writeLongField(parcel, 5, 0L);
+    closeField(parcel, f2);
+    // Field 3: WatchUiState (field 1: inAmbientMode, field 2: interruptionFilter)
+    int f3 = openField(parcel, 3);
+    parcel.writeString(WATCH_UI_STATE_WIRE);
+    writeBooleanField(parcel, 1, ambient);
+    writeIntField(parcel, 2, 1);
+    closeField(parcel, f3);
+    // Field 4: UserStyleWireFormat (field 1: Map<String, byte[]>)
+    int f4 = openField(parcel, 4);
+    parcel.writeString(USER_STYLE_WIRE);
+    int f4_1 = openField(parcel, 1);
+    writeUserStyleMap(parcel, Collections.emptyMap());
+    closeField(parcel, f4_1);
+    closeField(parcel, f4);
+  }
 
   static void writeHeadlessParams(
       Parcel parcel, ComponentName component, int width, int height, String instanceId) {
