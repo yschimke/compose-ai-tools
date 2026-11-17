@@ -30,6 +30,9 @@ dependencies {
   implementation(libs.jetbrains.compose.ui)
   implementation(libs.jetbrains.compose.foundation)
   api(project(":bundle-format"))
+  // The WFF -> Remote Compose translator (`ee.schimke.composeai.rccreation.dwf`,
+  // `WffRemoteCompose`).
+  api(project(":dwf-remote-compose"))
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.composeai.daemon.protocol)

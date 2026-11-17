@@ -357,8 +357,13 @@ include(":render-host")
 
 // The `compose-preview serve` cmp-jvm render worker: draws a captured `.rc` document to PNG or
 // layered SVG through `rc-player-compose`. Staged into the CLI install as `lib-rcjvm/` and spawned
-// by `:render-host`; not published.
+// by `:render-host`. Published (the Gradle plugin resolves it for `composePreviewRenderDwf`).
 include(":rc-render-jvm")
+
+// The Watch Face Format -> Remote Compose translator as a published library (`WffRemoteCompose`):
+// the compiler half split out of `:rc-render-jvm` so a host (the UI builder) can compile WFF XML to
+// `.rc` without the player, Skiko window or daemon protocol. `:rc-render-jvm` depends on it.
+include(":dwf-remote-compose")
 
 // Public render-session library. `:render-session-api` is the pure-interface surface every
 // consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`

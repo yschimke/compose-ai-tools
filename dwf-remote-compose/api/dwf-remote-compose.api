@@ -1,0 +1,202 @@
+public final class ee/schimke/composeai/dwf/NamedValueCategory : java/lang/Enum {
+	public static final field AMBIENT Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field BATTERY Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field CLOCK Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field COLOR_THEME Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field COMPLICATION Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field CONFIGURATION Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field METRIC Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field NOTIFICATIONS Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field OTHER Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field SENSOR Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static final field WEATHER Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/dwf/NamedValueCategory;
+	public static fun values ()[Lee/schimke/composeai/dwf/NamedValueCategory;
+}
+
+public final class ee/schimke/composeai/dwf/NamedValueSpec {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Lee/schimke/composeai/dwf/NamedValueType;Lee/schimke/composeai/dwf/WffValue;Lee/schimke/composeai/dwf/NamedValueCategory;Ljava/lang/String;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCategory ()Lee/schimke/composeai/dwf/NamedValueCategory;
+	public final fun getDefault ()Lee/schimke/composeai/dwf/WffValue;
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getType ()Lee/schimke/composeai/dwf/NamedValueType;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/NamedValueType : java/lang/Enum {
+	public static final field BOOLEAN Lee/schimke/composeai/dwf/NamedValueType;
+	public static final field COLOR Lee/schimke/composeai/dwf/NamedValueType;
+	public static final field FLOAT Lee/schimke/composeai/dwf/NamedValueType;
+	public static final field INT Lee/schimke/composeai/dwf/NamedValueType;
+	public static final field TEXT Lee/schimke/composeai/dwf/NamedValueType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/dwf/NamedValueType;
+	public static fun values ()[Lee/schimke/composeai/dwf/NamedValueType;
+}
+
+public final class ee/schimke/composeai/dwf/WffCompileOptions {
+	public static final field $stable I
+	public static final field Companion Lee/schimke/composeai/dwf/WffCompileOptions$Companion;
+	public static final field DEFAULT_WFF_VERSION I
+	public static final field MAX_WFF_VERSION I
+	public static final field MIN_WFF_VERSION I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Integer;Ljava/lang/Integer;FZLjava/lang/String;Ljava/util/Map;IZZ)V
+	public synthetic fun <init> (Ljava/lang/Integer;Ljava/lang/Integer;FZLjava/lang/String;Ljava/util/Map;IZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAmbient ()Z
+	public final fun getClipToWatchShape ()Z
+	public final fun getConfiguration ()Ljava/util/Map;
+	public final fun getDensity ()F
+	public final fun getFlavor ()Ljava/lang/String;
+	public final fun getHeightPx ()Ljava/lang/Integer;
+	public final fun getPlaceholderMissingResources ()Z
+	public final fun getWffVersion ()I
+	public final fun getWidthPx ()Ljava/lang/Integer;
+}
+
+public final class ee/schimke/composeai/dwf/WffCompileOptions$Companion {
+}
+
+public final class ee/schimke/composeai/dwf/WffCompileResult {
+	public static final field $stable I
+	public fun <init> ([BLjava/util/List;Ljava/util/List;IIIIIJ)V
+	public final fun getCompileMillis ()J
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getHeightPx ()I
+	public final fun getNamedValues ()Ljava/util/List;
+	public final fun getRcBytes ()[B
+	public final fun getWatchFaceHeight ()I
+	public final fun getWatchFaceWidth ()I
+	public final fun getWffVersion ()I
+	public final fun getWidthPx ()I
+	public final fun isSuccess ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffDiagnostic {
+	public static final field $stable I
+	public fun <init> (Lee/schimke/composeai/dwf/WffSeverity;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getSeverity ()Lee/schimke/composeai/dwf/WffSeverity;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffNamedValuesKt {
+	public static final fun extractNamedValueSpecs ([BLjava/util/Set;)Ljava/util/List;
+	public static synthetic fun extractNamedValueSpecs$default ([BLjava/util/Set;ILjava/lang/Object;)Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/dwf/WffRemoteCompose {
+	public static final field $stable I
+	public static final field INSTANCE Lee/schimke/composeai/dwf/WffRemoteCompose;
+	public final fun compile (Ljava/lang/String;Lee/schimke/composeai/dwf/WffResourceSource;Lee/schimke/composeai/dwf/WffCompileOptions;)Lee/schimke/composeai/dwf/WffCompileResult;
+	public static synthetic fun compile$default (Lee/schimke/composeai/dwf/WffRemoteCompose;Ljava/lang/String;Lee/schimke/composeai/dwf/WffResourceSource;Lee/schimke/composeai/dwf/WffCompileOptions;ILjava/lang/Object;)Lee/schimke/composeai/dwf/WffCompileResult;
+}
+
+public abstract interface class ee/schimke/composeai/dwf/WffResourceSource {
+	public static final field Companion Lee/schimke/composeai/dwf/WffResourceSource$Companion;
+}
+
+public final class ee/schimke/composeai/dwf/WffResourceSource$Companion {
+	public final fun of (Ljava/util/Map;)Lee/schimke/composeai/dwf/WffResourceSource;
+	public final fun ofDirectory (Ljava/io/File;)Lee/schimke/composeai/dwf/WffResourceSource;
+}
+
+public final class ee/schimke/composeai/dwf/WffResourceSource$Directories : ee/schimke/composeai/dwf/WffResourceSource {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;)V
+	public final fun getDirs ()Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/dwf/WffResourceSource$Empty : ee/schimke/composeai/dwf/WffResourceSource {
+	public static final field $stable I
+	public static final field INSTANCE Lee/schimke/composeai/dwf/WffResourceSource$Empty;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffResourceSource$InMemory : ee/schimke/composeai/dwf/WffResourceSource {
+	public static final field $stable I
+	public fun <init> (Ljava/util/Map;)V
+	public final fun getFiles ()Ljava/util/Map;
+}
+
+public final class ee/schimke/composeai/dwf/WffSeverity : java/lang/Enum {
+	public static final field ERROR Lee/schimke/composeai/dwf/WffSeverity;
+	public static final field INFO Lee/schimke/composeai/dwf/WffSeverity;
+	public static final field WARNING Lee/schimke/composeai/dwf/WffSeverity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/dwf/WffSeverity;
+	public static fun values ()[Lee/schimke/composeai/dwf/WffSeverity;
+}
+
+public abstract interface class ee/schimke/composeai/dwf/WffValue {
+}
+
+public final class ee/schimke/composeai/dwf/WffValue$Bool : ee/schimke/composeai/dwf/WffValue {
+	public static final field $stable I
+	public fun <init> (Z)V
+	public final fun component1 ()Z
+	public final fun copy (Z)Lee/schimke/composeai/dwf/WffValue$Bool;
+	public static synthetic fun copy$default (Lee/schimke/composeai/dwf/WffValue$Bool;ZILjava/lang/Object;)Lee/schimke/composeai/dwf/WffValue$Bool;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffValue$Color : ee/schimke/composeai/dwf/WffValue {
+	public static final field $stable I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/dwf/WffValue$Color;
+	public static synthetic fun copy$default (Lee/schimke/composeai/dwf/WffValue$Color;IILjava/lang/Object;)Lee/schimke/composeai/dwf/WffValue$Color;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArgb ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffValue$Float : ee/schimke/composeai/dwf/WffValue {
+	public static final field $stable I
+	public fun <init> (F)V
+	public final fun component1 ()F
+	public final fun copy (F)Lee/schimke/composeai/dwf/WffValue$Float;
+	public static synthetic fun copy$default (Lee/schimke/composeai/dwf/WffValue$Float;FILjava/lang/Object;)Lee/schimke/composeai/dwf/WffValue$Float;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffValue$Int : ee/schimke/composeai/dwf/WffValue {
+	public static final field $stable I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/dwf/WffValue$Int;
+	public static synthetic fun copy$default (Lee/schimke/composeai/dwf/WffValue$Int;IILjava/lang/Object;)Lee/schimke/composeai/dwf/WffValue$Int;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/dwf/WffValue$Text : ee/schimke/composeai/dwf/WffValue {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/dwf/WffValue$Text;
+	public static synthetic fun copy$default (Lee/schimke/composeai/dwf/WffValue$Text;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/dwf/WffValue$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

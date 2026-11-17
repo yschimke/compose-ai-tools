@@ -6,6 +6,7 @@ import ee.schimke.composeai.rccreation.dwf.DwfVectorDrawable
 import ee.schimke.composeai.rccreation.dwf.decodeDwfImageBitmap
 import ee.schimke.composeai.rccreation.dwf.normalizeDwfResourceKey
 import ee.schimke.composeai.rccreation.dwf.parseDwfColorArgb
+import java.io.ByteArrayInputStream
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
@@ -18,8 +19,13 @@ import org.w3c.dom.Element
  * XMLs, `@color/<name>` values and selector XMLs, and `@string/<name>` values without requiring an
  * Android runtime.
  */
-public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) :
-  DwfResourceResolver {
+public class DwfResourceDirectoryResolver
+private constructor(
+  private val resourceDirs: List<DwfResTree>,
+  @Suppress("UNUSED_PARAMETER") tag: Unit,
+) : DwfResourceResolver {
+
+  public constructor(resourceDirs: List<File>) : this(resourceDirs.map(::DwfFileResTree), Unit)
 
   private val stringsByKey: Map<String, String> by lazy { loadValueEntries("string") }
   private val rawColorsByKey: Map<String, String> by lazy { loadColorEntries() }
@@ -33,7 +39,16 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     return if (raw.startsWith("@string/")) resolveString(raw) else raw
   }
 
-  override fun resolveColor(name: String): Int? = resolveColorInternal(name, mutableSetOf())
+  /**
+   * Told about each `@color/…` reference that does not resolve, including the ones inside vector
+   * drawables, which resolve against this resolver rather than whatever wraps it.
+   */
+  internal var onMissingColor: ((String) -> Unit)? = null
+
+  override fun resolveColor(name: String): Int? =
+    resolveColorInternal(name, mutableSetOf()).also {
+      if (it == null && name.trim().startsWith("@color/")) onMissingColor?.invoke(name.trim())
+    }
 
   private fun resolveColorInternal(name: String, visited: MutableSet<String>): Int? {
     val key = normalizeDwfResourceKey(name)
@@ -54,7 +69,7 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     if (key.isEmpty()) return null
     if (imageCache.containsKey(key)) return imageCache[key]
     val file = findRasterResourceFile(key)
-    val decoded = file?.let { runCatching { decodeDwfImageBitmap(it.readBytes()) }.getOrNull() }
+    val decoded = file?.let { runCatching { decodeDwfImageBitmap(it.read()) }.getOrNull() }
     imageCache[key] = decoded
     return decoded
   }
@@ -66,7 +81,7 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     val file = findXmlResourceFile(key)
     val parsed = file?.let { xmlFile ->
       runCatching {
-        val xml = xmlFile.readText()
+        val xml = xmlFile.read().toString(Charsets.UTF_8)
         DwfVectorDrawable.parseOrNull(xml) { colorRef -> parseDwfColorArgb(colorRef, this) }
       }
         .getOrNull()
@@ -115,20 +130,23 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     val key = normalizeDwfResourceKey(trimmed)
     if (key.isEmpty()) return null
     val file = findFontFile(key, listOf("ttf", "otf", "ttc")) ?: return null
-    return runCatching { file.readBytes() }.getOrNull()
+    return runCatching { file.read() }.getOrNull()
   }
 
-  private fun findFontFile(key: String, extensions: List<String>): File? {
+  /** Whether a font file (`ttf`/`otf`/`ttc`, or a font-family `xml`) exists for [name]. */
+  internal fun hasFont(name: String): Boolean {
+    val key = normalizeDwfResourceKey(name.trim())
+    return key.isNotEmpty() && findFontFile(key, listOf("ttf", "otf", "ttc", "xml")) != null
+  }
+
+  private fun findFontFile(key: String, extensions: List<String>): DwfResFile? {
     for (resDir in resourceDirs) {
-      val fontDirs =
-        resDir
-          .listFiles()
-          ?.filter { it.isDirectory && (it.name == "font" || it.name.startsWith("font-")) }
-          .orEmpty()
+      val fontDirs = resDir.subdirs().filter { it == "font" || it.startsWith("font-") }
       for (dir in fontDirs) {
         for (ext in extensions) {
-          val candidate = File(dir, "$key.$ext")
-          if (candidate.isFile) return candidate
+          resDir.file(dir, "$key.$ext")?.let {
+            return it
+          }
         }
       }
     }
@@ -138,19 +156,16 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
   private fun loadValueEntries(tagName: String): Map<String, String> {
     val out = LinkedHashMap<String, String>()
     for (resDir in resourceDirs) {
-      if (!resDir.isDirectory) continue
+      if (!resDir.exists) continue
       val valueDirs =
         resDir
-          .listFiles()
-          ?.filter { it.isDirectory && (it.name == "values" || it.name.startsWith("values-")) }
-          ?.sortedBy { if (it.name == "values") 0 else 1 }
-          .orEmpty()
+          .subdirs()
+          .filter { it == "values" || it.startsWith("values-") }
+          .sortedBy { if (it == "values") 0 else 1 }
       for (valDir in valueDirs) {
-        val xmlFiles =
-          valDir.listFiles()?.filter { it.isFile && it.extension.equals("xml", true) }?.sorted()
-            ?: continue
-        for (xmlFile in xmlFiles) {
-          val doc = parseXmlFileOrNull(xmlFile) ?: continue
+        val xmlFiles = resDir.files(valDir).filter { it.endsWith(".xml", ignoreCase = true) }
+        for (xmlName in xmlFiles) {
+          val doc = parseXmlOrNull(resDir.file(valDir, xmlName) ?: continue) ?: continue
           val children = doc.childNodes
           for (i in 0 until children.length) {
             val el = children.item(i) as? Element ?: continue
@@ -158,7 +173,7 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
               el.tagName == tagName || (el.tagName == "item" && el.getAttribute("type") == tagName)
             ) {
               val entryName = el.getAttribute("name").trim()
-              if (entryName.isNotEmpty() && (valDir.name == "values" || entryName !in out)) {
+              if (entryName.isNotEmpty() && (valDir == "values" || entryName !in out)) {
                 out[entryName] = el.textContent.trim()
               }
             }
@@ -173,17 +188,15 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
 
   private fun findColorSelectorValue(key: String): String? {
     for (resDir in resourceDirs) {
-      if (!resDir.isDirectory) continue
+      if (!resDir.exists) continue
       val colorDirs =
         resDir
-          .listFiles()
-          ?.filter { it.isDirectory && (it.name == "color" || it.name.startsWith("color-")) }
-          ?.sortedBy { if (it.name == "color") 0 else 1 }
-          .orEmpty()
+          .subdirs()
+          .filter { it == "color" || it.startsWith("color-") }
+          .sortedBy { if (it == "color") 0 else 1 }
       for (dir in colorDirs) {
-        val file = File(dir, "$key.xml")
-        if (!file.isFile) continue
-        val root = parseXmlFileOrNull(file) ?: continue
+        val file = resDir.file(dir, "$key.xml") ?: continue
+        val root = parseXmlOrNull(file) ?: continue
         val items = root.getElementsByTagName("item")
         for (i in 0 until items.length) {
           val item = items.item(i) as? Element ?: continue
@@ -196,43 +209,33 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     return null
   }
 
-  private fun findRasterResourceFile(key: String): File? {
+  private fun findRasterResourceFile(key: String): DwfResFile? {
     for (resDir in resourceDirs) {
-      if (!resDir.isDirectory) continue
-      val direct = RASTER_EXTENSIONS.firstNotNullOfOrNull { ext ->
-        File(resDir, "$key.$ext").takeIf(File::isFile)
-      }
+      if (!resDir.exists) continue
+      val direct = RASTER_EXTENSIONS.firstNotNullOfOrNull { ext -> resDir.file("", "$key.$ext") }
       if (direct != null) return direct
-      val subdirs =
-        resDir
-          .listFiles()
-          ?.filter { it.isDirectory && isGraphicSubdir(it.name) }
-          ?.sortedBy { densityRank(it.name) }
-          .orEmpty()
+      val subdirs = resDir.subdirs().filter { isGraphicSubdir(it) }.sortedBy { densityRank(it) }
       for (sub in subdirs) {
         for (ext in RASTERS_IN_ORDER) {
-          val candidate = File(sub, "$key.$ext")
-          if (candidate.isFile) return candidate
+          resDir.file(sub, "$key.$ext")?.let {
+            return it
+          }
         }
       }
     }
     return null
   }
 
-  private fun findXmlResourceFile(key: String): File? {
+  private fun findXmlResourceFile(key: String): DwfResFile? {
     for (resDir in resourceDirs) {
-      if (!resDir.isDirectory) continue
-      val direct = File(resDir, "$key.xml").takeIf(File::isFile)
+      if (!resDir.exists) continue
+      val direct = resDir.file("", "$key.xml")
       if (direct != null) return direct
-      val subdirs =
-        resDir
-          .listFiles()
-          ?.filter { it.isDirectory && isXmlSubdir(it.name) }
-          ?.sortedBy { densityRank(it.name) }
-          .orEmpty()
+      val subdirs = resDir.subdirs().filter { isXmlSubdir(it) }.sortedBy { densityRank(it) }
       for (sub in subdirs) {
-        val candidate = File(sub, "$key.xml")
-        if (candidate.isFile) return candidate
+        resDir.file(sub, "$key.xml")?.let {
+          return it
+        }
       }
     }
     return null
@@ -262,13 +265,13 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
       else -> 7
     }
 
-  private fun parseXmlFileOrNull(file: File): Element? = runCatching {
+  private fun parseXmlOrNull(file: DwfResFile): Element? = runCatching {
     val factory =
       DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = false
         setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
       }
-    val doc = factory.newDocumentBuilder().parse(file)
+    val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(file.read()))
     doc.documentElement?.also { it.normalize() }
   }
     .getOrNull()
@@ -295,8 +298,72 @@ public class DwfResourceDirectoryResolver(private val resourceDirs: List<File>) 
     }
   }
 
-  private companion object {
-    val RASTERS_IN_ORDER: List<String> = listOf("png", "webp", "jpg", "jpeg", "gif")
-    val RASTER_EXTENSIONS: List<String> = RASTERS_IN_ORDER
+  internal companion object {
+    /** A resolver over in-memory or on-disk trees (`WffResourceSource`). */
+    fun over(trees: List<DwfResTree>): DwfResourceDirectoryResolver =
+      DwfResourceDirectoryResolver(trees, Unit)
+
+    private val RASTERS_IN_ORDER: List<String> = listOf("png", "webp", "jpg", "jpeg", "gif")
+    private val RASTER_EXTENSIONS: List<String> = RASTERS_IN_ORDER
   }
+}
+
+/** A resource root (`res/`, `composeResources/`) the resolver reads, on disk or in memory. */
+internal interface DwfResTree {
+  /** `false` for a missing directory; the resolver skips the root. */
+  val exists: Boolean
+
+  /** Immediate sub-directory names (`drawable`, `values-fr`, ...), sorted. */
+  fun subdirs(): List<String>
+
+  /** File names directly in [dir] (`""` is the root itself), sorted. */
+  fun files(dir: String): List<String>
+
+  /** The file [name] in [dir], or `null` when absent. */
+  fun file(dir: String, name: String): DwfResFile?
+}
+
+internal class DwfResFile(private val bytes: () -> ByteArray) {
+  fun read(): ByteArray = bytes()
+}
+
+internal class DwfFileResTree(private val root: File) : DwfResTree {
+  override val exists: Boolean
+    get() = root.isDirectory
+
+  override fun subdirs(): List<String> =
+    root.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted().orEmpty()
+
+  override fun files(dir: String): List<String> =
+    dirOf(dir).listFiles()?.filter { it.isFile }?.map { it.name }?.sorted().orEmpty()
+
+  override fun file(dir: String, name: String): DwfResFile? =
+    File(dirOf(dir), name).takeIf(File::isFile)?.let { f -> DwfResFile(f::readBytes) }
+
+  private fun dirOf(dir: String): File = if (dir.isEmpty()) root else File(root, dir)
+}
+
+/**
+ * An in-memory `res/` tree keyed by res-relative path (`drawable/hand.png`, `values/colors.xml`).
+ * Anything nested deeper than one directory is ignored, as it is on disk.
+ */
+internal class DwfMapResTree(entries: Map<String, ByteArray>) : DwfResTree {
+  private val byDir: Map<String, Map<String, ByteArray>> =
+    entries.entries
+      .map { (path, bytes) ->
+        val clean = path.replace('\\', '/').trimStart('/').removePrefix("res/")
+        clean.substringBeforeLast('/', "") to (clean.substringAfterLast('/') to bytes)
+      }
+      .groupBy({ it.first }, { it.second })
+      .mapValues { (_, files) -> files.toMap() }
+
+  override val exists: Boolean = true
+
+  override fun subdirs(): List<String> =
+    byDir.keys.filter { it.isNotEmpty() && '/' !in it }.sorted()
+
+  override fun files(dir: String): List<String> = byDir[dir]?.keys?.sorted().orEmpty()
+
+  override fun file(dir: String, name: String): DwfResFile? =
+    byDir[dir]?.get(name)?.let { bytes -> DwfResFile { bytes } }
 }
