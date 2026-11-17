@@ -450,6 +450,7 @@ public fun renderDwfPreviews(
         year = activeFakes?.year ?: 2026,
         month = activeFakes?.month ?: 11,
         dayOfMonth = activeFakes?.dayOfMonth ?: 18,
+        typefaces = dwfTypefaces(resourceDirs),
       )
 
     for (capture in entry.captures.ifEmpty { listOf(DwfCaptureDto()) }) {

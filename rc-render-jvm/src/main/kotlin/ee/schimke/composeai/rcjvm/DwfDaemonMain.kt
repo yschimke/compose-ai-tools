@@ -1091,7 +1091,7 @@ private class DwfDaemonSession(
 
     val sx = widthPx.toFloat() / nativeW.toFloat()
     val sy = heightPx.toFloat() / nativeH.toFloat()
-    val typefaces = dwfTypefaces()
+    val typefaces = dwfTypefaces(config.resourceDirs)
     val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(1f))
     val pngBytes: ByteArray
     val semanticsPayload: ComposeSemanticsPayload
