@@ -13,6 +13,7 @@ import contextlib
 import importlib.util
 import io
 import unittest
+import unittest.mock
 import urllib.error
 from pathlib import Path
 
@@ -247,6 +248,56 @@ class BudgetTests(ReadinessTestCase):
         self.assertEqual(
             0.0, readiness._request_timeout(readiness.time.monotonic() - 1, minimum=False)
         )
+
+
+
+class CliPluginVersionTest(unittest.TestCase):
+    """The plugin version is read from the installed CLI, not assumed to be the release's."""
+
+    def _cli(self, props: str | None, jar_name: str = "compose-preview-2.95.3.jar") -> str:
+        import tempfile
+        import zipfile
+
+        home = Path(tempfile.mkdtemp())
+        lib = home / "lib"
+        lib.mkdir()
+        # A sibling jar without the resource must not stop the search.
+        with zipfile.ZipFile(lib / "compose-preview-config-2.95.1.jar", "w") as zf:
+            zf.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+        with zipfile.ZipFile(lib / jar_name, "w") as zf:
+            if props is not None:
+                zf.writestr(readiness.CLI_VERSION_RESOURCE, props)
+        return str(home)
+
+    def test_reads_maven_line_version_from_a_cli_only_release(self) -> None:
+        home = self._cli("version=2.95.3\nmavenLineVersion=2.95.1\npreviewDaemonVersion=1.0.0\n")
+        self.assertEqual("2.95.1", readiness.cli_plugin_version(home))
+
+    def test_missing_field_or_resource_is_none(self) -> None:
+        self.assertIsNone(readiness.cli_plugin_version(self._cli("version=2.95.3\n")))
+        self.assertIsNone(readiness.cli_plugin_version(self._cli(None)))
+        self.assertIsNone(readiness.cli_plugin_version("/nonexistent/compose-preview"))
+
+    def test_rejects_a_value_that_is_not_a_release_version(self) -> None:
+        home = self._cli("mavenLineVersion=../../evil\n")
+        self.assertIsNone(readiness.cli_plugin_version(home))
+
+    def test_main_checks_the_cli_plugin_version(self) -> None:
+        home = self._cli("version=2.95.3\nmavenLineVersion=2.95.1\n")
+        seen: list[str] = []
+        real_run = readiness.run
+        readiness.run = lambda version, budget: seen.append(version) or 0
+        env = {"VER": "2.95.3", "BUDGET": "10", "CLI_HOME": home}
+        try:
+            with unittest.mock.patch.dict(readiness.os.environ, env), contextlib.redirect_stdout(
+                io.StringIO()
+            ):
+                with self.assertRaises(SystemExit) as exit_:
+                    readiness.main()
+        finally:
+            readiness.run = real_run
+        self.assertEqual(0, exit_.exception.code)
+        self.assertEqual(["2.95.1"], seen)
 
 
 if __name__ == "__main__":
