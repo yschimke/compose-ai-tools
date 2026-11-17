@@ -1413,9 +1413,18 @@ private class DwfDaemonSession(
           }
             .onFailure { err ->
               val tookMs = ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
+              val message = err.message ?: err::class.simpleName.orEmpty()
+              // `RenderFailedParams`: the reason travels as `error`, which the host reads; a
+              // top-level `message` alone reached nobody, so every DWF failure surfaced as a bare
+              // "daemon reported renderFailed". The top-level field stays for older readers.
               val failNotif = buildJsonObject {
                 put("id", pid)
-                put("message", err.message ?: err::class.simpleName.orEmpty())
+                putJsonObject("error") {
+                  put("kind", "runtime")
+                  put("message", message)
+                  put("stackTrace", err.stackTraceToString().take(8_000))
+                }
+                put("message", message)
                 put("tookMs", tookMs)
               }
               sendNotification("renderFailed", failNotif)

@@ -10,6 +10,7 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrideValue
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.daemon.protocol.RenderFailedParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
@@ -230,6 +231,18 @@ class DwfDaemonMainTest {
 
         // 1. Default render + fetch watchface/complications & compose/semantics
         val defaultHash = harness.renderAndHash("dwf__raw_watchface", null)
+
+        // A failed render reports its reason as `RenderFailedParams.error`, which is what the host
+        // reads; a text value on an int variable fails inside the player.
+        val failure =
+          harness.renderExpectingFailure(
+            "dwf__raw_watchface",
+            namedOverrides(
+              DwfVariables.complicationTypeKey(1) to RemoteNamedValue.StringValue("not-an-int"),
+            ),
+          )
+        assertThat(failure.id).isEqualTo("dwf__raw_watchface")
+        assertThat(failure.error.message).contains("dwf.complication.1.type")
         val defaultCompPayload = harness.fetchComplications("dwf__raw_watchface")
         assertThat(defaultCompPayload.slots).hasSize(2)
         assertThat(defaultCompPayload.slots[0].slotId).isEqualTo(1)
@@ -608,6 +621,20 @@ class DwfDaemonMainTest {
       return MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
         "%02x".format(it)
       }
+    }
+
+    fun renderExpectingFailure(previewId: String, overrides: PreviewOverrides): RenderFailedParams {
+      notifications.clear()
+      val params = buildJsonObject {
+        putJsonArray("previews") { add(JsonPrimitive(previewId)) }
+        put("overrides", json.encodeToJsonElement(PreviewOverrides.serializer(), overrides))
+      }
+      request("renderNow", params)
+      val (notifMethod, notifParams) =
+        notifications.poll(30, TimeUnit.SECONDS)
+          ?: error("Timed out waiting for renderFailed for $previewId")
+      assertThat(notifMethod).isEqualTo("renderFailed")
+      return json.decodeFromJsonElement(RenderFailedParams.serializer(), notifParams)
     }
 
     fun fetchComplications(previewId: String): WatchFaceComplicationsPayload {
