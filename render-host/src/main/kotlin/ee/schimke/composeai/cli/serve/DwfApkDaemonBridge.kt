@@ -166,6 +166,11 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         val daemon = ensureDaemon(env, runtimeClasses, wffApk)
         daemon.pushWatchFace(wffApk)
         applyOverrides(daemon, preview, overrides)
+        // A face that has just been pushed has not drawn yet, so the first request after a load
+        // would capture the simulator's placeholder. Wait for the app's face to produce a frame.
+        awaitAppWatchFace(
+          status = { daemon.command("watchface", buildJsonObject { put("op", "status") }) },
+        )
         val shotFile = Files.createTempFile("dwf-apk-shot-", ".png").toFile()
         try {
           daemon.command(
@@ -255,6 +260,30 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     }
   }
 
+  /**
+   * Polls [status] until the app's watch face is showing a frame, returning null, or until
+   * [timeoutMillis] passes, returning the last [appWatchFaceProblem]. A reported `error` is final,
+   * so it returns at once rather than waiting out the timeout.
+   */
+  internal fun awaitAppWatchFace(
+    status: () -> JsonElement?,
+    timeoutMillis: Long = FIRST_FRAME_TIMEOUT_MILLIS,
+    pollMillis: Long = 100,
+    nanoTime: () -> Long = System::nanoTime,
+    sleep: (Long) -> Unit = Thread::sleep,
+  ): String? {
+    val deadline = nanoTime() + timeoutMillis * 1_000_000
+    while (true) {
+      val current = status()
+      val problem = appWatchFaceProblem(current) ?: return null
+      val failed = ((current as? JsonObject)?.get("error") as? JsonPrimitive)?.contentOrNull != null
+      if (failed || nanoTime() - deadline >= 0) return problem
+      sleep(pollMillis)
+    }
+  }
+
+  private const val FIRST_FRAME_TIMEOUT_MILLIS = 10_000L
+
   internal fun buildOverrideCommands(
     preview: ServePreview,
     overrides: PreviewOverrides,
@@ -267,23 +296,28 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     val ambientState = overrides.ambient
     if (ambientState != null) {
       val isAmbient = ambientState.state == AmbientStateOverride.AMBIENT
+      // The simulator's `ambient` command reads `value`; without it the command toggles, so every
+      // request flipped the long-lived daemon between interactive and ambient.
       commands +=
         "ambient" to
           buildJsonObject {
-            put("state", if (isAmbient) "AMBIENT" else "INTERACTIVE")
+            put("value", isAmbient)
             ambientState.burnInProtectionRequired?.let { put("burnIn", it) }
             ambientState.deviceHasLowBitAmbient?.let { put("lowBit", it) }
           }
     } else {
       val rcAmb = (rc["dwf.is_ambient"] as? RemoteNamedValue.BooleanValue)?.value
-      commands +=
-        "ambient" to
-          buildJsonObject { put("state", if (rcAmb == true) "AMBIENT" else "INTERACTIVE") }
+      commands += "ambient" to buildJsonObject { put("value", rcAmb == true) }
     }
 
-    overrides.clockEpochMillis?.let { epochMillis ->
-      commands += "clock" to buildJsonObject { put("timeMillis", epochMillis) }
-    }
+    // The daemon outlives a request, so a clock one request pinned stays pinned for the next
+    // unless it is reset: a request that names no time renders at the current time.
+    commands +=
+      "clock" to
+        buildJsonObject {
+          val epochMillis = overrides.clockEpochMillis
+          if (epochMillis != null) put("timeMillis", epochMillis) else put("reset", true)
+        }
 
     val heartRate =
       (named["wf.heartRate"] as? PreviewOverrideValue.FloatValue)?.value?.toDouble()
