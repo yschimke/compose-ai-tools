@@ -422,6 +422,43 @@ class DwfRenderMainTest {
     assertThat(resolver.resolveFontBytes("SYNC_TO_DEVICE")).isNull()
   }
 
+  @Test
+  fun servesTheWatchFacesOwnFontsToThePlayer() {
+    val resDir = temp.newFolder("res-own-font")
+    File(resDir, "font").mkdirs()
+    File(resDir, "font/digital7.ttf").writeBytes(byteArrayOf(0x00, 0x01, 0x00, 0x00))
+    val base =
+      object : ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader {
+        override val families: Set<String> = setOf("Roboto Flex")
+
+        override fun typeface(
+          family: String,
+          variations: ee.schimke.composeai.rcplayer.compose.RcFontVariations?,
+        ): androidx.compose.ui.text.font.FontFamily =
+          androidx.compose.ui.text.font.FontFamily.Monospace
+      }
+
+    val loader = DwfResourceTypefaces(listOf(resDir), base)
+
+    // `<Font family="digital7">` compiles to `RemoteTypeface.Named("digital7")`; the player must
+    // find that name, or it draws the system face.
+    assertThat(loader.families).containsExactly("Roboto Flex", "digital7")
+    val own = loader.typeface("digital7", null)
+    assertThat(own).isInstanceOf(androidx.compose.ui.text.font.FontListFontFamily::class.java)
+    val font = (own as androidx.compose.ui.text.font.FontListFontFamily).fonts.single()
+    assertThat((font as androidx.compose.ui.text.platform.LoadedFont).identity)
+      .isEqualTo("dwf-res:digital7")
+    assertThat(
+        loader.typeface("@font/digital7", null),
+      )
+      .isSameInstanceAs(own)
+    // Everything else is the base loader's.
+    assertThat(
+        loader.typeface("Roboto Flex", null),
+      )
+      .isEqualTo(androidx.compose.ui.text.font.FontFamily.Monospace)
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {
