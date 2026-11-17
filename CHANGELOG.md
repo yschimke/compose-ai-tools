@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.98.0](https://github.com/yschimke/compose-ai-tools/compare/v2.97.0...v2.98.0) (2026-11-17)
+
+
+### Features
+
+* publish the WFF to Remote Compose translator as dwf-remote-compose ([#6614](https://github.com/yschimke/compose-ai-tools/issues/6614)) ([e14120b](https://github.com/yschimke/compose-ai-tools/commit/e14120bd3005292c3781c5fc1d1b481ec3851b4b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency de.femtopedia.dex2jar:dex-tools to v2.4.39 ([#6610](https://github.com/yschimke/compose-ai-tools/issues/6610)) ([147c81d](https://github.com/yschimke/compose-ai-tools/commit/147c81d88402e3fc1d6638b0cba1954f3205f4fb))
+* **dwf-apk:** set ambient and clock explicitly and wait for the face's first frame ([#6615](https://github.com/yschimke/compose-ai-tools/issues/6615)) ([970e5a2](https://github.com/yschimke/compose-ai-tools/commit/970e5a2685776f68d0f46ef7849f649ae6a69726))
+
 ## [2.97.0](https://github.com/yschimke/compose-ai-tools/compare/v2.96.0...v2.97.0) (2026-11-17)
 
 
