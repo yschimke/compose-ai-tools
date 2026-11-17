@@ -301,7 +301,9 @@ final class WatchState {
     if (c.has("rate") && !c.isNull("rate")) {
       double newRate = c.getDouble("rate");
       if (newRate < 0) throw new IllegalArgumentException("clock rate must be >= 0");
-      long current = nowMillis();
+      // A time set in this same command is the base: re-reading nowMillis() would add however long
+      // the clock ran (at the old rate) since it was set above.
+      long current = resolvedMillis != null ? resolvedMillis.longValue() : nowMillis();
       baseSimMillis = Long.valueOf(current);
       baseUptimeMillis = safeUptimeMillis();
       clockRate = newRate;
@@ -310,7 +312,8 @@ final class WatchState {
       }
     }
     if (c.has("frozen") && !c.isNull("frozen")) {
-      long current = nowMillis();
+      // As for `rate`: freeze at the time this command set, not that time plus the elapsed uptime.
+      long current = resolvedMillis != null ? resolvedMillis.longValue() : nowMillis();
       baseSimMillis = Long.valueOf(current);
       baseUptimeMillis = safeUptimeMillis();
       clockFrozen = c.getBoolean("frozen");
