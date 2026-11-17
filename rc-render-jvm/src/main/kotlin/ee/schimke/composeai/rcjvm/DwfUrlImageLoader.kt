@@ -201,20 +201,17 @@ internal object DwfSampleUrlAssets {
     return out.toByteArray()
   }
 
+  /**
+   * Default monochromatic complication icon: the bullseye the Wear OS runtime shows for system
+   * providers that carry no icon of their own. Served by URL so every monochromatic fallback (and
+   * hosts that replace the named bitmap) resolves to the same image.
+   */
   private fun renderDefaultMonochromaticPng(): ByteArray =
     encodePng(48, 48) { g ->
       g.color = Color.WHITE
-      val star = GeneralPath()
-      star.moveTo(24f, 4f)
-      star.lineTo(29.6f, 18.4f)
-      star.lineTo(44f, 24f)
-      star.lineTo(29.6f, 29.6f)
-      star.lineTo(24f, 44f)
-      star.lineTo(18.4f, 29.6f)
-      star.lineTo(4f, 24f)
-      star.lineTo(18.4f, 18.4f)
-      star.closePath()
-      g.fill(star)
+      g.stroke = BasicStroke(5f)
+      g.draw(Ellipse2D.Float(9f, 9f, 30f, 30f))
+      g.fill(Ellipse2D.Float(17f, 17f, 14f, 14f))
     }
 
   private fun renderDefaultSmallPng(): ByteArray =

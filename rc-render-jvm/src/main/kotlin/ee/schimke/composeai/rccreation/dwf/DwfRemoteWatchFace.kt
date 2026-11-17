@@ -2,7 +2,6 @@ package ee.schimke.composeai.rccreation.dwf
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import ee.schimke.composeai.rccreation.common.CoreDocument
 import ee.schimke.composeai.rccreation.common.ImageScaling
@@ -2070,49 +2069,12 @@ private class DwfCanvasRenderer(
         return
       }
     }
-    if (
-      (explicitUrl == null || explicitUrl == DwfVariables.DEFAULT_MONOCHROMATIC_IMAGE_URL) &&
-        compImage.kind == DwfExpressionCompiler.ComplicationImageKind.MONOCHROMATIC
-    ) {
-      val bmp =
-        namedBitmaps.getOrPut(varKey) {
-          RemoteImageBitmap.createNamedRemoteImageBitmap(
-            varKey,
-            defaultMonochromaticBullseyeBitmap,
-            RemoteState.Domain.User,
-          )
-        }
-      drawRemoteBitmap(bmp, alphaFactor, effectiveTint, dstW, dstH)
-      return
-    }
     val url = explicitUrl ?: defaultUrl
     val bmp =
       namedBitmaps.getOrPut(varKey) {
         RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
       }
     drawRemoteBitmap(bmp, alphaFactor, effectiveTint, dstW, dstH)
-  }
-
-  private val defaultMonochromaticBullseyeBitmap: ImageBitmap by lazy {
-    val size = 48
-    val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(size, size)
-    val canvas = surface.canvas
-    val strokePaint =
-      org.jetbrains.skia.Paint().apply {
-        color = org.jetbrains.skia.Color.WHITE
-        mode = org.jetbrains.skia.PaintMode.STROKE
-        strokeWidth = 5f
-        isAntiAlias = true
-      }
-    val fillPaint =
-      org.jetbrains.skia.Paint().apply {
-        color = org.jetbrains.skia.Color.WHITE
-        mode = org.jetbrains.skia.PaintMode.FILL
-        isAntiAlias = true
-      }
-    canvas.drawCircle(24f, 24f, 15f, strokePaint)
-    canvas.drawCircle(24f, 24f, 7f, fillPaint)
-    surface.makeImageSnapshot().toComposeImageBitmap()
   }
 
   private fun RemoteDrawScope.renderVectorDrawable(

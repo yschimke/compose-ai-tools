@@ -369,6 +369,46 @@ class DwfRenderMainTest {
   }
 
   @Test
+  fun systemProviderComplicationDrawsDefaultBullseyeIcon() {
+    val workDir = temp.newFolder("dwf-mono-default")
+    val wfDir = File(workDir, "watchfaces").apply { mkdirs() }
+    File(wfDir, "mono_default.xml")
+      .writeText(
+        """
+        <WatchFace width="450" height="450">
+          <Scene backgroundColor="#FF000000">
+            <ComplicationSlot x="177" y="177" width="96" height="96" slotId="1"
+                supportedTypes="SHORT_TEXT">
+              <DefaultProviderPolicy defaultSystemProvider="STEP_COUNT"
+                  defaultSystemProviderType="SHORT_TEXT" />
+              <BoundingBox x="0" y="0" width="96" height="96" />
+              <Complication type="SHORT_TEXT">
+                <PartImage x="0" y="0" width="96" height="96">
+                  <Image resource="[COMPLICATION.MONOCHROMATIC_IMAGE]" />
+                </PartImage>
+              </Complication>
+            </ComplicationSlot>
+          </Scene>
+        </WatchFace>
+        """
+          .trimIndent(),
+      )
+
+    val manifest = compileApkWatchFaces(workDir)
+    val rcBytes = File(workDir, manifest.watchFaces.single().rcFile).readBytes()
+    val png = renderDwfDocumentToPng(bytes = rcBytes, widthPx = 450, heightPx = 450)
+    val bmp = Bitmap.makeFromImage(Image.makeFromEncoded(png))
+
+    // The 48px icon is drawn at 2x; its centre is (225, 225).
+    // Centre dot (radius 7 -> 14px): white.
+    assertThat(bmp.getColor(225, 225) and 0xFF).isGreaterThan(200)
+    // Gap between dot and ring (radius 10 -> 20px): black.
+    assertThat(bmp.getColor(245, 225) and 0xFF).isLessThan(40)
+    // Ring on the diagonal (radius 15 -> 30px): white.
+    assertThat(bmp.getColor(246, 246) and 0xFF).isGreaterThan(200)
+  }
+
+  @Test
   fun resolvesCustomFontBytesAndSkipsSystemFamilies() {
     val resDir = temp.newFolder("res-font")
     val fontDir = File(resDir, "font").apply { mkdirs() }
