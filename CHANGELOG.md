@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.96.0](https://github.com/yschimke/compose-ai-tools/compare/v2.95.3...v2.96.0) (2026-11-17)
+
+
+### Features
+
+* **simulator:** host interactive watch faces and Wear platform services ([#6600](https://github.com/yschimke/compose-ai-tools/issues/6600)) ([cf18236](https://github.com/yschimke/compose-ai-tools/commit/cf18236d060653ccacf20bf4e0cb22f5bd796e99))
+
+
+### Bug Fixes
+
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.9.1 ([#6602](https://github.com/yschimke/compose-ai-tools/issues/6602)) ([83c3501](https://github.com/yschimke/compose-ai-tools/commit/83c3501868874d3ab5f69566baddfa295e02f5fd))
+* **dwf-apk:** fail the render instead of serving the simulator's built-in face ([#6604](https://github.com/yschimke/compose-ai-tools/issues/6604)) ([feb40c0](https://github.com/yschimke/compose-ai-tools/commit/feb40c0a7277fd2cbac85cff50d612a77dd7621f))
+* **dwf:** serve default monochromatic bullseye through the URL image loader ([#6599](https://github.com/yschimke/compose-ai-tools/issues/6599)) ([a7cd1f2](https://github.com/yschimke/compose-ai-tools/commit/a7cd1f239ef9cf6bbd805a3dce20b72009c5cd61))
+* **install:** wait for the plugin version the CLI uses, not the release's ([#6603](https://github.com/yschimke/compose-ai-tools/issues/6603)) ([41776b5](https://github.com/yschimke/compose-ai-tools/commit/41776b5bb5771feecee396aee1c2dc6e9cc69ded))
+
 ## [2.95.3](https://github.com/yschimke/compose-ai-tools/compare/v2.95.2...v2.95.3) (2026-11-17)
 
 
