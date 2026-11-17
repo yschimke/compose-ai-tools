@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.95.3](https://github.com/yschimke/compose-ai-tools/compare/v2.95.2...v2.95.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **render-host:** add java.io and jdk.internal.access add-opens for DWF APK simulator ([#6595](https://github.com/yschimke/compose-ai-tools/issues/6595)) ([85998e6](https://github.com/yschimke/compose-ai-tools/commit/85998e6c2be8981fe2141dad04d96fefbcadfbbc))
+* **simulator:** shadow DisplayOffloadManager and DisplayControlLock stubs ([#6597](https://github.com/yschimke/compose-ai-tools/issues/6597)) ([2a8e8a1](https://github.com/yschimke/compose-ai-tools/commit/2a8e8a1c16eddaa7f842f9677ef092a645470ca0))
+
 ## [2.95.2](https://github.com/yschimke/compose-ai-tools/compare/v2.95.1...v2.95.2) (2026-11-16)
 
 
