@@ -115,13 +115,12 @@ public suspend fun captureDwfRemoteDocumentBytes(
   resources: DwfResourceResolver = DwfResourceResolver.Empty,
   options: DwfRenderOptions = DwfRenderOptions(),
   encodePng: ((ImageBitmap) -> ByteArray?)? = ::encodeDwfPng,
+  widthPx: Int = document.width,
+  heightPx: Int = document.height,
+  densityDpi: Int = 160,
 ): ByteArray {
   val displayInfo =
-    RemoteCreationDisplayInfo(
-      document.width.coerceAtLeast(1),
-      document.height.coerceAtLeast(1),
-      160,
-    )
+    RemoteCreationDisplayInfo(widthPx.coerceAtLeast(1), heightPx.coerceAtLeast(1), densityDpi)
   return captureCommonRemoteDocument(
     creationDisplayInfo = displayInfo,
     profile = DwfCaptureProfile,

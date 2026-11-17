@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.dwf.WffValue
+import ee.schimke.composeai.dwf.extractNamedValueSpecs
 import ee.schimke.composeai.rccreation.dwf.DwfComplicationSeed
 import ee.schimke.composeai.rccreation.dwf.DwfDocument
 import ee.schimke.composeai.rccreation.dwf.DwfParser
@@ -28,12 +30,6 @@ import ee.schimke.composeai.rcplayer.compose.LocalRcTimeSource
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
 import ee.schimke.composeai.rcplayer.compose.RcManifestTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader
-import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
-import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
-import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
-import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
-import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
-import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSnapshot
 import ee.schimke.composeai.rcplayer.runtime.RcTimeSource
@@ -727,75 +723,26 @@ internal fun extractDwfDeclarationsPayload(
   doc: DwfDocument,
   rcBytes: ByteArray,
 ): RemoteComposeDeclarationsPayload {
-  val rcDoc = RcDocumentCodec.decode(rcBytes)
-  val texts = HashMap<Int, String>()
-  val floats = HashMap<Int, Float>()
-  val ints = HashMap<Int, Int>()
-  val colors = HashMap<Int, Int>()
-
-  val booleanConfigKeys =
-    doc.userConfigurations
-      .filterIsInstance<DwfUserConfiguration.BooleanConfiguration>()
-      .map { DwfVariables.configKey(it.id) }
-      .toSet()
-  val knownBooleanKeys =
-    setOf(
-      DwfVariables.IS_AMBIENT,
-      DwfVariables.IS_24_HOUR,
-      DwfVariables.IS_DST,
-      DwfVariables.BATTERY_CHARGING,
-      DwfVariables.BATTERY_IS_LOW,
-    ) + booleanConfigKeys
-
-  for (op in rcDoc.operations) {
-    when (op) {
-      is RcTextData -> texts[op.id] = op.text
-      is RcFloatConstant -> floats[op.id] = op.value.value
-      is RcIntegerConstant -> ints[op.id] = op.value
-      is RcColorConstant -> colors[op.id] = op.argb
-      else -> {}
-    }
-  }
-
-  val declarations = LinkedHashMap<String, RemoteComposeKnobDeclaration>()
-  for (op in rcDoc.operations) {
-    if (op !is RcNamedVariable) continue
-    val rawName = op.name
-    if (rawName.contains(':') && !rawName.startsWith("USER:")) continue
-    val cleanName = rawName.removePrefix("USER:")
-    if (cleanName.isBlank() || cleanName in declarations) continue
-    val defaultVal: RemoteNamedValue? =
-      when (op.type) {
-        RcNamedVariable.STRING_TYPE -> RemoteNamedValue.StringValue(texts[op.id].orEmpty())
-        RcNamedVariable.FLOAT_TYPE -> RemoteNamedValue.FloatValue(floats[op.id] ?: 0f)
-        RcNamedVariable.INT_TYPE -> {
-          val v = ints[op.id] ?: 0
-          val isBooleanVar =
-            cleanName in knownBooleanKeys ||
-              cleanName.endsWith(".is_available") ||
-              cleanName.endsWith(".is_day") ||
-              (cleanName.startsWith("dwf.complication.") &&
-                (cleanName.contains(".has_") || cleanName.endsWith("_interpolate")))
-          if (isBooleanVar) {
-            RemoteNamedValue.BooleanValue(v != 0)
-          } else {
-            RemoteNamedValue.IntValue(v)
+  val declarations =
+    extractNamedValueSpecs(
+        rcBytes,
+        doc.userConfigurations
+          .filterIsInstance<DwfUserConfiguration.BooleanConfiguration>()
+          .map { it.id }
+          .toSet(),
+      )
+      .map { spec ->
+        val default: RemoteNamedValue =
+          when (val v = spec.default) {
+            is WffValue.Text -> RemoteNamedValue.StringValue(v.value)
+            is WffValue.Float -> RemoteNamedValue.FloatValue(v.value)
+            is WffValue.Int -> RemoteNamedValue.IntValue(v.value)
+            is WffValue.Bool -> RemoteNamedValue.BooleanValue(v.value)
+            is WffValue.Color -> RemoteNamedValue.ColorValue("#%08X".format(v.argb))
           }
-        }
-        RcNamedVariable.COLOR_TYPE -> {
-          val argb = colors[op.id] ?: 0xFFFFFFFF.toInt()
-          RemoteNamedValue.ColorValue("#%08X".format(argb))
-        }
-        else -> null
+        RemoteComposeKnobDeclaration(spec.name, default)
       }
-    if (defaultVal != null) {
-      declarations[cleanName] = RemoteComposeKnobDeclaration(cleanName, defaultVal)
-    }
-  }
-
-  return RemoteComposeDeclarationsPayload(declarations.values.toList()).apply {
-    capturePlayer = "cmp-jvm"
-  }
+  return RemoteComposeDeclarationsPayload(declarations).apply { capturePlayer = "cmp-jvm" }
 }
 
 private fun collectComplicationSlots(nodes: List<DwfSceneNode>): List<CompiledApkDwfSlot> {

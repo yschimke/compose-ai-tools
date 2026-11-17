@@ -27,6 +27,7 @@ this index as the map of everything else.
 
 - [RENDERER_COMPATIBILITY.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/RENDERER_COMPATIBILITY.md) — renderer/consumer AndroidX alignment (consult before bumping versions). In compose-preview-daemon, with the renderers.
 - [SDK_COMPATIBILITY.md](SDK_COMPATIBILITY.md) — JDK × Android SDK support matrix.
+- [DWF_REMOTE_COMPOSE.md](DWF_REMOTE_COMPOSE.md) — `dwf-remote-compose`: Watch Face Format XML → Remote Compose `.rc` as a library (`WffRemoteCompose.compile`), the named-value manifest, diagnostics.
 - [RENDER_LANE_PARITY.md](RENDER_LANE_PARITY.md) — measured snapshot / live / Wasm / SVG parity for the `compose-m3` + `wear-m3` catalogs.
 - [BENCHMARKS.md](BENCHMARKS.md) — **measurement**: end-to-end latency, RSS memory, visual fidelity, structural inspection and reliability across `compose-preview` (CLI + render daemon + in-process Kotlin BTA), Google's `android preview` CLI, and `android studio render-compose-preview`.
 - [DATA_PRODUCTS.md](https://github.com/yschimke/compose-preview-daemon/blob/main/docs/DATA_PRODUCTS.md) — the two senses of "data product" and the single-producer model. In compose-preview-daemon, with the extractors.
