@@ -28,6 +28,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -174,10 +176,21 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
             },
           )
           val bytes = Files.readAllBytes(shotFile.toPath())
-          if (bytes.isEmpty()) {
-            RenderOutcome.Failed("DWF APK daemon produced an empty screenshot")
-          } else {
-            RenderOutcome.Ok(bytes, RenderOutcome.Generation.DAEMON)
+          // The simulator draws its own built-in demo face whenever the app's face has no frame
+          // (it failed to load or to render), so a screenshot alone cannot tell a render from
+          // that placeholder. Ask which face is showing and fail rather than serve the demo face.
+          val faceProblem =
+            appWatchFaceProblem(
+              daemon.command("watchface", buildJsonObject { put("op", "status") }),
+            )
+          when {
+            faceProblem != null ->
+              RenderOutcome.Failed(
+                "wfRenderer '${WatchFaceRendererIds.DWF_APK}' did not render '${preview.id}': " +
+                  faceProblem,
+              )
+            bytes.isEmpty() -> RenderOutcome.Failed("DWF APK daemon produced an empty screenshot")
+            else -> RenderOutcome.Ok(bytes, RenderOutcome.Generation.DAEMON)
           }
         } finally {
           shotFile.delete()
@@ -220,6 +233,26 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       daemon.command(cmd, payload)
     }
     daemon.setOverriddenSlots(newOverriddenSlots)
+  }
+
+  /**
+   * Why the simulator is not showing the app's watch face, from a `watchface status` result, or
+   * null when it is. The simulator falls back to its built-in demo face (`kind: "built-in"`) when
+   * no app face is set, and keeps showing it while the app's face reports an `error` or has not
+   * produced a frame.
+   */
+  internal fun appWatchFaceProblem(status: JsonElement?): String? {
+    val obj = status as? JsonObject ?: return "the simulator returned no watch face status"
+    val kind = obj["kind"]?.jsonPrimitive?.contentOrNull
+    val error = (obj["error"] as? JsonPrimitive)?.contentOrNull
+    val frames = obj["frames"]?.jsonPrimitive?.intOrNull
+    return when {
+      error != null -> "the watch face failed: $error"
+      kind == null || kind == "built-in" ->
+        "the watch face did not load; the simulator is showing its built-in face"
+      frames != null && frames <= 0 -> "the watch face has not rendered a frame"
+      else -> null
+    }
   }
 
   internal fun buildOverrideCommands(
