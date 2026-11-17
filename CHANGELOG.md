@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.97.0](https://github.com/yschimke/compose-ai-tools/compare/v2.96.0...v2.97.0) (2026-11-17)
+
+
+### Features
+
+* **render-host:** render a local module's watch faces in the DWF daemon from source ([#6607](https://github.com/yschimke/compose-ai-tools/issues/6607)) ([6c3df26](https://github.com/yschimke/compose-ai-tools/commit/6c3df26faf12b7ffbf4bbb778ca31fcfd6537dbf))
+
+
+### Bug Fixes
+
+* **dwf:** draw a watch face's own fonts instead of the system face ([#6608](https://github.com/yschimke/compose-ai-tools/issues/6608)) ([ddb243c](https://github.com/yschimke/compose-ai-tools/commit/ddb243c06c74d318d87bace98dfd2a370aa4dba0))
+* **dwf:** report DWF render failures as RenderFailedParams.error ([#6606](https://github.com/yschimke/compose-ai-tools/issues/6606)) ([7281e06](https://github.com/yschimke/compose-ai-tools/commit/7281e0623d82ecc762eeec309e9262def750beac))
+
 ## [2.96.0](https://github.com/yschimke/compose-ai-tools/compare/v2.95.3...v2.96.0) (2026-11-17)
 
 
