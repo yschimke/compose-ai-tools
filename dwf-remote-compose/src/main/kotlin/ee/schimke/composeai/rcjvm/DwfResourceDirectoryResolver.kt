@@ -124,6 +124,12 @@ private constructor(
     return runCatching { file.read() }.getOrNull()
   }
 
+  /** Whether a font file (`ttf`/`otf`/`ttc`, or a font-family `xml`) exists for [name]. */
+  internal fun hasFont(name: String): Boolean {
+    val key = normalizeDwfResourceKey(name.trim())
+    return key.isNotEmpty() && findFontFile(key, listOf("ttf", "otf", "ttc", "xml")) != null
+  }
+
   private fun findFontFile(key: String, extensions: List<String>): DwfResFile? {
     for (resDir in resourceDirs) {
       val fontDirs = resDir.subdirs().filter { it == "font" || it.startsWith("font-") }

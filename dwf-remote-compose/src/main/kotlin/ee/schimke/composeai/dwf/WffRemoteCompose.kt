@@ -281,7 +281,7 @@ private fun WffResourceSource.toTrees(): List<DwfResTree> =
  * when neither a bitmap nor a vector drawable resolves: the renderer asks for the bitmap first.
  */
 private class MissingTrackingResolver(
-  private val inner: DwfResourceResolver,
+  private val inner: DwfResourceDirectoryResolver,
   private val placeholder: Boolean,
 ) : DwfResourceResolver {
   private val missingDrawables = LinkedHashSet<String>()
@@ -315,7 +315,8 @@ private class MissingTrackingResolver(
 
   override fun resolveFontFamily(name: String): String? =
     inner.resolveFontFamily(name).also {
-      if (it == null && name.trim().startsWith("@font/")) missingOther += name.trim()
+      // The directory resolver names any `@font/` reference without checking the file exists.
+      if (name.trim().startsWith("@font/") && !inner.hasFont(name)) missingOther += name.trim()
     }
 
   override fun resolveFontBytes(name: String): ByteArray? = inner.resolveFontBytes(name)

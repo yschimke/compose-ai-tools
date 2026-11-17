@@ -256,6 +256,19 @@ class WffRemoteComposeTest {
   }
 
   @Test
+  fun `a missing custom font is reported`() {
+    val face =
+      """<WatchFace width="450" height="450"><Scene><PartText x="0" y="0" width="450" height="100">""" +
+        """<Text><Font family="@font/nope" size="40"><Template>hi</Template></Font></Text></PartText></Scene></WatchFace>"""
+    val missing =
+      WffRemoteCompose.compile(face).diagnostics.filter { it.code == "MISSING_RESOURCE" }
+    assertThat(missing.map { it.message }.joinToString()).contains("@font/nope")
+    val present =
+      WffRemoteCompose.compile(face, WffResourceSource.of(mapOf("font/nope.ttf" to ByteArray(4))))
+    assertThat(present.diagnostics.none { it.code == "MISSING_RESOURCE" }).isTrue()
+  }
+
+  @Test
   fun `bad input is a diagnostic not an exception`() {
     for (bad in listOf("", "not xml at all", "<WatchFace", "<Other/>", "<WatchFace></Oops>")) {
       val result = WffRemoteCompose.compile(bad)
