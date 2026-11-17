@@ -651,4 +651,37 @@ class WatchFaceSupportTest {
       outDir.deleteRecursively()
     }
   }
+
+  @Test
+  fun dwfApkRejectsTheSimulatorBuiltInFace() {
+    fun status(json: String) = Json.parseToJsonElement(json)
+    // The simulator's own demo face: the app's watch face never loaded.
+    val builtIn =
+      DwfApkDaemonBridge.appWatchFaceProblem(
+        status("""{"watchFace":"built-in","kind":"built-in"}"""),
+      )
+    assertNotNull(builtIn)
+    assertTrue("built-in" in builtIn)
+    // Loaded, but its frames fail: the failure itself is reported.
+    val failed =
+      DwfApkDaemonBridge.appWatchFaceProblem(
+        status(
+          """{"kind":"dwf-runtime","error":"InaccessibleObjectException: java.io","frames":0}""",
+        ),
+      )
+    assertNotNull(failed)
+    assertTrue("InaccessibleObjectException" in failed)
+    assertNotNull(
+      DwfApkDaemonBridge.appWatchFaceProblem(
+        status("""{"kind":"dwf-runtime","error":null,"frames":0}"""),
+      ),
+    )
+    assertNotNull(DwfApkDaemonBridge.appWatchFaceProblem(null))
+    // The app's face is showing.
+    assertNull(
+      DwfApkDaemonBridge.appWatchFaceProblem(
+        status("""{"kind":"dwf-runtime","error":null,"frames":3}"""),
+      ),
+    )
+  }
 }

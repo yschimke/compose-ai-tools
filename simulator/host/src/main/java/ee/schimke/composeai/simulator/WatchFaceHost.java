@@ -1234,6 +1234,8 @@ final class WatchFaceHost {
         new Protocol.Json()
             .put("watchFace", activeName)
             .put("kind", kind)
+            // The last frame's failure, while the built-in face is shown in its place.
+            .put("error", error != null ? error : JSONObject.NULL)
             .put("ambient", ambient)
             .put("editor", editorMode)
             .put("highlightSlot", highlightedSlot != null ? highlightedSlot : JSONObject.NULL)
