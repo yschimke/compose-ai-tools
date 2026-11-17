@@ -1798,9 +1798,16 @@ internal constructor(
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
+      // A session of watch faces renders in the DWF daemon, reading its resources in place.
+      val launchDescriptor =
+        ServeBundleDaemon.dwfModuleDescriptor(
+          descriptorPath,
+          watchFacesOnly = previews.isNotEmpty() && previews.all { it.isWatchFace },
+          onLog = onLog,
+        ) ?: descriptorPath
       val config =
         RenderSessionConfig(
-          descriptorPath = descriptorPath,
+          descriptorPath = launchDescriptor,
           workspaceRoot = workspaceRoot.absoluteFile,
           workspaceName = workspaceName.ifBlank { workspaceRoot.name },
           systemPropertyOverrides = systemPropertyOverrides,
@@ -1816,10 +1823,10 @@ internal constructor(
         // split Skiko pair, attributed classpath gap, Remote Compose family split, and last the
         // unattributed gap (which matches any missing coordinate, related or not).
         linkageDiagnosis = { reason ->
-          SkikoNativePairing.linkageDiagnosis(reason, descriptorPath)
-            ?: BundleClasspathGaps.attributedDiagnosis(reason, descriptorPath)
-            ?: RemoteComposePairing.linkageDiagnosis(reason, descriptorPath)
-            ?: BundleClasspathGaps.unattributedDiagnosis(reason, descriptorPath)
+          SkikoNativePairing.linkageDiagnosis(reason, launchDescriptor)
+            ?: BundleClasspathGaps.attributedDiagnosis(reason, launchDescriptor)
+            ?: RemoteComposePairing.linkageDiagnosis(reason, launchDescriptor)
+            ?: BundleClasspathGaps.unattributedDiagnosis(reason, launchDescriptor)
         },
       )
     }

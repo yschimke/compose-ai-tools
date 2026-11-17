@@ -485,6 +485,16 @@ public object ServeBundleDaemon {
     return declaredThemesFromPreviews(manifest.previews)
   }
 
+  /**
+   * Preview id → `params.dwfAssetPath` for the watch faces in a `previews.json`, which the shared
+   * manifest model does not carry. Empty when the file is missing or unreadable. A local module's
+   * previews use it to be recognised as watch faces ([ServePreview.isWatchFace]).
+   */
+  public fun dwfAssetPaths(previewsJson: File): Map<String, String> = runCatching {
+    readDwfAssetPaths(previewsJson.readText())
+  }
+    .getOrDefault(emptyMap())
+
   private fun readDwfAssetPaths(text: String): Map<String, String> {
     val root =
       runCatching { previewsManifestJson.parseToJsonElement(text) }.getOrNull()
@@ -505,6 +515,84 @@ public object ServeBundleDaemon {
       out[id] = assetPath
     }
     return out
+  }
+
+  /**
+   * For a local module session (`serve --module`, `browse`) serving only Declarative Watch Faces
+   * ([watchFacesOnly]): a `dwf-daemon-launch.json` beside [moduleDescriptor] that runs
+   * `DwfDaemonMain` against the module's own resource directories, or null to keep
+   * [moduleDescriptor]. The DWF daemon skips the manifest's other previews, so a module that also
+   * has composables qualifies when the session is filtered to its watch faces.
+   *
+   * The module's descriptor launches its Compose daemon, which can only replay a watch face through
+   * an embedded Remote Compose player that a Watch Face Format app does not depend on, so every
+   * render failed with a linkage error. `DwfDaemonMain` compiles the XML itself, the way a
+   * watch-face bundle is served. Reading `src/main/res` in place (the descriptor's
+   * `sourceWatch.resourceDirs`) rather than a build output is what lets an edit show without a
+   * build: the daemon recompiles a watch face whose XML changed, and
+   * [ServeRenderHost.sourcesChanged] has it drop the rest.
+   *
+   * Null when not [watchFacesOnly], when the descriptor is not a module's (no `sourceWatch`) or
+   * already launches the DWF daemon, or when the DWF sidecars are missing.
+   */
+  public fun dwfModuleDescriptor(
+    moduleDescriptor: File,
+    watchFacesOnly: Boolean,
+    onLog: (String) -> Unit = {},
+    fileSystem: FileSystem = SystemFileSystem,
+  ): File? {
+    if (!watchFacesOnly) return null
+    val descriptor = readLaunchDescriptor(moduleDescriptor) ?: return null
+    val sourceWatch = descriptor.sourceWatch ?: return null
+    if (descriptor.mainClass == DWF_DAEMON_MAIN_CLASS) return null
+    val previewsJson =
+      (descriptor.manifestPath ?: descriptor.systemProperties["composeai.daemon.previewsJsonPath"])
+        ?.let(::File) ?: return null
+    val resourceDirs = sourceWatch.resourceDirs.map(::File).filter { it.isDirectory }
+    if (resourceDirs.isEmpty()) {
+      onLog("${descriptor.modulePath}: watch faces but no resource directory to read them from")
+      return null
+    }
+    val launch = dwfDaemonLaunch(descriptor.modulePath, resourceDirs, onLog) ?: return null
+    val outputDir = moduleDescriptor.absoluteFile.parentFile ?: return null
+    val dwf =
+      DaemonLaunchDescriptor.Builder(
+          schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
+          modulePath = descriptor.modulePath,
+          variant = launch.variant,
+          enabled = true,
+          mainClass = launch.mainClass,
+          classpath = launch.daemonClasspath,
+          jvmArgs = launch.jvmArgs,
+          systemProperties =
+            buildMap {
+              put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
+              descriptor.systemProperties["composeai.daemon.moduleProjectDir"]?.let {
+                put("composeai.daemon.moduleProjectDir", it)
+              }
+              put("composeai.render.outputDir", File(outputDir, "dwf-live-renders").absolutePath)
+              put("composeai.render.placeholderMissingResources", "true")
+              putAll(launch.extraSystemProperties)
+            },
+          workingDirectory = descriptor.workingDirectory,
+          manifestPath = previewsJson.absolutePath,
+        )
+        .apply { this.sourceWatch = sourceWatch }
+        .build()
+    val file = File(outputDir, DWF_MODULE_DESCRIPTOR)
+    return try {
+      fileSystem.write(file.path.toPath()) {
+        writeUtf8(json.encodeToString(DaemonLaunchDescriptor.serializer(), dwf))
+      }
+      onLog(
+        "${descriptor.modulePath}: watch faces render in DwfDaemonMain from " +
+          resourceDirs.joinToString { it.path },
+      )
+      file
+    } catch (e: Exception) {
+      onLog("${descriptor.modulePath}: could not write $DWF_MODULE_DESCRIPTOR (${e.message})")
+      null
+    }
   }
 
   private fun isDwfOnlyManifest(previewsJson: File, fileSystem: FileSystem): Boolean {
@@ -822,6 +910,18 @@ public object ServeBundleDaemon {
     classesDir: File,
     extraClasspathDirs: List<File>,
     onLog: (String) -> Unit,
+  ): BackendDaemonLaunch? =
+    dwfDaemonLaunch(
+      system,
+      resourceDirs = listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory },
+      onLog = onLog,
+    )
+
+  /** The `DwfDaemonMain` launch, reading watch-face XML and resources from [resourceDirs]. */
+  private fun dwfDaemonLaunch(
+    system: String,
+    resourceDirs: List<File>,
+    onLog: (String) -> Unit,
   ): BackendDaemonLaunch? {
     val rcjvmJars = locateBundleSidecarJars("lib-rcjvm")
     if (rcjvmJars.isEmpty()) {
@@ -840,11 +940,7 @@ public object ServeBundleDaemon {
       return null
     }
     val rendererJars = locateBundleSidecarJars("lib-renderer")
-    val resDirs =
-      (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory })
-        .map { it.absolutePath }
-        .distinct()
-        .joinToString(File.pathSeparator)
+    val resDirs = resourceDirs.map { it.absolutePath }.distinct().joinToString(File.pathSeparator)
     return BackendDaemonLaunch(
       variant = "dwf",
       daemonClasspath =
@@ -1091,4 +1187,7 @@ public object ServeBundleDaemon {
 
   /** Descriptor schema version — mirrors `SubprocessRenderSessions.openBundleDaemon`. */
   private const val DAEMON_LAUNCH_SCHEMA_VERSION = 2
+
+  /** [dwfModuleDescriptor]'s output, beside the module's own `daemon-launch.json`. */
+  public const val DWF_MODULE_DESCRIPTOR: String = "dwf-daemon-launch.json"
 }
