@@ -3,7 +3,9 @@ package ee.schimke.composeai.simulator;
 import android.app.Application;
 import android.app.PendingIntent;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -63,6 +65,8 @@ final class WearPlatformServices {
       "androidx.health.services.client.impl.IPassiveMonitoringApiService";
   private static final String HEALTH_PASSIVE_CALLBACK_DESCRIPTOR =
       "androidx.health.services.client.impl.IPassiveListenerCallback";
+  private static final String HEALTH_LISTENER_SERVICE_DESCRIPTOR =
+      "androidx.health.services.client.impl.IPassiveListenerService";
   private static final String HEALTH_STATUS_CALLBACK_DESCRIPTOR =
       "androidx.health.services.client.impl.internal.IStatusCallback";
 
@@ -73,6 +77,12 @@ final class WearPlatformServices {
   private static final int HS_TRANSACTION_REGISTER_LISTENER_CALLBACK = 12;
   private static final int HS_TRANSACTION_UNREGISTER_LISTENER_SERVICE = 13;
   private static final int HS_TRANSACTION_UNREGISTER_LISTENER_CALLBACK = 14;
+
+  /** {@code IPassiveListenerCallback.onPassiveListenerEvent}. */
+  private static final int LISTENER_CALLBACK_ON_EVENT = 1;
+
+  /** {@code IPassiveListenerService.onPassiveListenerEvent}. */
+  private static final int LISTENER_SERVICE_ON_EVENT = 2;
 
   private WearPlatformServices() {}
 
@@ -104,6 +114,11 @@ final class WearPlatformServices {
           .setComponent(new ComponentName(WEATHER_PROVIDER_PACKAGE, WEATHER_PROVIDER_CLASS));
     }
     return intent;
+  }
+
+  /** The Health Services passive monitoring binder, for wire-level tests. */
+  static IBinder newHealthPassiveBinder(Application app) {
+    return new HealthPassiveBinder(app);
   }
 
   static String conditionDisplayName(int condition) {
@@ -405,6 +420,10 @@ final class WearPlatformServices {
     /** Passive listener callbacks keyed by the registering package, as AndroidX unregisters. */
     private final Map<String, IBinder> registeredCallbacks =
         Collections.synchronizedMap(new LinkedHashMap<>());
+
+    /** The app's bound {@code PassiveListenerService}s, keyed by the registering package. */
+    private final Map<String, ServiceListener> registeredServices =
+        Collections.synchronizedMap(new LinkedHashMap<>());
     private volatile boolean listening;
 
     HealthPassiveBinder(Application app) {
@@ -461,18 +480,24 @@ final class WearPlatformServices {
             reply.writeNoException();
             sendStatusSuccess(statusCallback);
             if (listener != null) {
-              pushUpdate(listener);
+              pushUpdate(listener, HEALTH_PASSIVE_CALLBACK_DESCRIPTOR, LISTENER_CALLBACK_ON_EVENT);
             }
             return true;
           }
         case HS_TRANSACTION_REGISTER_LISTENER_SERVICE:
           {
             data.enforceInterface(HEALTH_PASSIVE_DESCRIPTOR);
-            if (data.readInt() != 0) {
-              data.createByteArray();
-            }
+            byte[] request = data.readInt() != 0 ? data.createByteArray() : null;
             IBinder statusCallback = data.readStrongBinder();
+            String packageName = HealthRequestProto.readPackageName(request);
+            if (packageName == null) packageName = app.getPackageName();
+            String serviceClass = HealthRequestProto.readListenerServiceClass(request);
             reply.writeNoException();
+            if (serviceClass == null) {
+              sendStatusError(statusCallback, "Missing listener service class");
+              return true;
+            }
+            registerService(packageName, new ComponentName(packageName, serviceClass));
             sendStatusSuccess(statusCallback);
             return true;
           }
@@ -482,8 +507,11 @@ final class WearPlatformServices {
             data.enforceInterface(HEALTH_PASSIVE_DESCRIPTOR);
             String packageName = data.readString();
             IBinder statusCallback = data.readStrongBinder();
+            String key = packageName != null ? packageName : app.getPackageName();
             if (code == HS_TRANSACTION_UNREGISTER_LISTENER_CALLBACK) {
-              registeredCallbacks.remove(packageName != null ? packageName : app.getPackageName());
+              registeredCallbacks.remove(key);
+            } else {
+              unregisterService(key);
             }
             reply.writeNoException();
             sendStatusSuccess(statusCallback);
@@ -521,14 +549,81 @@ final class WearPlatformServices {
       }
       for (IBinder target : targets) {
         try {
-          pushUpdate(target);
+          pushUpdate(target, HEALTH_PASSIVE_CALLBACK_DESCRIPTOR, LISTENER_CALLBACK_ON_EVENT);
         } catch (RemoteException ignored) {
           registeredCallbacks.values().remove(target);
         }
       }
+      List<ServiceListener> services;
+      synchronized (registeredServices) {
+        services = new ArrayList<>(registeredServices.values());
+      }
+      for (ServiceListener service : services) {
+        service.push();
+      }
     }
 
-    private void pushUpdate(IBinder listener) throws RemoteException {
+    /**
+     * Binds the app's {@code PassiveListenerService} the way Health Services does, replacing any
+     * earlier registration from [packageName], and delivers the current metrics once connected.
+     */
+    private void registerService(String packageName, ComponentName component) {
+      unregisterService(packageName);
+      ServiceListener listener = new ServiceListener(component);
+      registeredServices.put(packageName, listener);
+      ensureWatchStateListener();
+      boolean bound =
+          app.bindService(
+              new Intent().setComponent(component), listener, Context.BIND_AUTO_CREATE);
+      if (!bound) {
+        registeredServices.remove(packageName, listener);
+      }
+    }
+
+    private void unregisterService(String packageName) {
+      ServiceListener previous = registeredServices.remove(packageName);
+      if (previous != null) {
+        try {
+          app.unbindService(previous);
+        } catch (IllegalArgumentException ignored) {
+          // Never connected.
+        }
+      }
+    }
+
+    /** A bound {@code PassiveListenerService}, which receives updates over its own AIDL. */
+    private final class ServiceListener implements ServiceConnection {
+      final ComponentName component;
+      volatile IBinder binder;
+
+      ServiceListener(ComponentName component) {
+        this.component = component;
+      }
+
+      @Override
+      public void onServiceConnected(ComponentName name, IBinder service) {
+        binder = service;
+        push();
+      }
+
+      @Override
+      public void onServiceDisconnected(ComponentName name) {
+        binder = null;
+      }
+
+      void push() {
+        IBinder target = binder;
+        if (target == null) return;
+        try {
+          pushUpdate(target, HEALTH_LISTENER_SERVICE_DESCRIPTOR, LISTENER_SERVICE_ON_EVENT);
+        } catch (RemoteException e) {
+          binder = null;
+        }
+      }
+    }
+
+    private void pushUpdate(IBinder listener, String descriptor, int transaction)
+        throws RemoteException {
       WatchState state = WatchState.current();
       if (state == null) return;
       try {
@@ -581,10 +676,10 @@ final class WearPlatformServices {
 
         Parcel out = Parcel.obtain();
         try {
-          out.writeInterfaceToken(HEALTH_PASSIVE_CALLBACK_DESCRIPTOR);
+          out.writeInterfaceToken(descriptor);
           out.writeInt(1);
           event.writeToParcel(out, 0);
-          listener.transact(1, out, null, IBinder.FLAG_ONEWAY);
+          listener.transact(transaction, out, null, IBinder.FLAG_ONEWAY);
         } finally {
           out.recycle();
         }
@@ -623,6 +718,20 @@ final class WearPlatformServices {
         return (Parcelable) respClass.getConstructor(capsClass).newInstance(caps);
       } catch (ReflectiveOperationException e) {
         throw new RemoteException("Failed to build health capabilities: " + e.getMessage());
+      }
+    }
+
+    /** {@code IStatusCallback.onFailure(String)}. */
+    private static void sendStatusError(IBinder statusCallback, String message)
+        throws RemoteException {
+      if (statusCallback == null) return;
+      Parcel out = Parcel.obtain();
+      try {
+        out.writeInterfaceToken(HEALTH_STATUS_CALLBACK_DESCRIPTOR);
+        out.writeString(message);
+        statusCallback.transact(2, out, null, IBinder.FLAG_ONEWAY);
+      } finally {
+        out.recycle();
       }
     }
 

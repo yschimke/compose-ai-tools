@@ -36,4 +36,13 @@ public class WearPlatformServicesTest {
     assertNull(HealthRequestProto.readPackageName(new byte[] {0x0A, 0x7F, 0x41}));
     assertNull(HealthRequestProto.readPackageName(null));
   }
+
+  @Test
+  public void readsListenerServiceClassAfterSkippingOtherFields() {
+    // package_name (1) = "p", a varint field 9 = 300, listener_service_class (2) = "Svc".
+    byte[] proto = {0x0A, 0x01, 'p', 0x48, (byte) 0xAC, 0x02, 0x12, 0x03, 'S', 'v', 'c'};
+    assertEquals("p", HealthRequestProto.readPackageName(proto));
+    assertEquals("Svc", HealthRequestProto.readListenerServiceClass(proto));
+    assertNull(HealthRequestProto.readListenerServiceClass(new byte[] {0x0A, 0x01, 'p'}));
+  }
 }
