@@ -275,6 +275,36 @@ public data class DwfWeatherSeed(
 }
 
 /**
+ * Collects the non-fatal problems the translator finds in a face (an unknown data source, a
+ * malformed expression, an unsupported element), so a host can show them. Rendering continues with
+ * a documented fallback; this only makes the fallback visible. Entries are de-duplicated, and the
+ * collector is safe to share across threads.
+ */
+public class DwfDiagnostics {
+  private val seen = LinkedHashMap<String, String>()
+
+  /** The `(code, message)` entries, in the order first reported. */
+  public val entries: List<Pair<String, String>>
+    get() = synchronized(seen) { seen.map { (message, code) -> code to message } }
+
+  /** Records [message] under [code]; a repeat of the same message is ignored. */
+  public fun add(code: String, message: String) {
+    synchronized(seen) { seen.putIfAbsent(message, code) }
+  }
+
+  public companion object {
+    /** A `[SOURCE]` the translator does not know; it evaluates to 0. */
+    public const val UNKNOWN_SOURCE: String = "UNKNOWN_SOURCE"
+    /** An expression that does not parse cleanly. */
+    public const val MALFORMED_EXPRESSION: String = "MALFORMED_EXPRESSION"
+    /** A function the expression language does not have. */
+    public const val UNKNOWN_FUNCTION: String = "UNKNOWN_FUNCTION"
+    /** An element the translator recognises but does not draw. */
+    public const val UNSUPPORTED_ELEMENT: String = "UNSUPPORTED_ELEMENT"
+  }
+}
+
+/**
  * Authoring/capture options controlling initial default values of named host variables in the
  * emitted Remote Compose document.
  */
@@ -314,6 +344,8 @@ public data class DwfRenderOptions(
    * `RECTANGLE`). Defaults to `true`.
    */
   public val applyWatchShapeClip: Boolean = true,
+  /** Where to report non-fatal translation problems, or `null` to drop them. */
+  public val diagnostics: DwfDiagnostics? = null,
 )
 
 /**

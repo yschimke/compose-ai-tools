@@ -312,7 +312,13 @@ public data class CompiledApkDwfConfigOption(
  *    [--fakes-json <file>]`): compiles discovered `<WatchFace>` XML assets to `<stem>.rc`, writes
  *    `<stem>.remotecompose.json` knob declarations (`capturePlayer = "cmp-jvm"`), and renders
  *    deterministic `<stem>.png` stills using Wear OS `Roboto Flex` typography.
- * 2. **APK simulator compile mode** (`--compile-apk-dwf-dir <dir>`): compiles extracted APK watch
+ * 2. **Single face mode** (`--watchface <watchface.xml> --png <out.png> [--resource-dir <res>]...
+ *    [--set name=value]... [--time HH:MM[:SS]] [--date YYYY-MM-DD] [--fakes-json <file>]`): renders
+ *    one face to one PNG with named-value overrides, for example `--set dwf.is_ambient=true`,
+ *    `--set metrics.heart_rate=120`, `--set dwf.complication.1.text=Hi`, `--set dwf.config.x=2`.
+ *    Run once with an unknown name to list the names the face declares. Translator warnings (an
+ *    unknown data source, a malformed expression) go to stderr.
+ * 3. **APK simulator compile mode** (`--compile-apk-dwf-dir <dir>`): compiles extracted APK watch
  *    face XMLs against `<dir>/res` into `.rc` documents + `compiled-manifest.json` for
  *    `compose-preview launch`.
  */
@@ -321,6 +327,11 @@ public fun main(args: Array<String>) {
   var outputDirPath: String? = null
   var compileApkDirPath: String? = null
   var fakesJsonPath: String? = null
+  var watchFacePath: String? = null
+  var outputPngPath: String? = null
+  var timeArg: String? = null
+  var dateArg: String? = null
+  val setArgs = mutableListOf<String>()
   val resourceDirs = mutableListOf<File>()
   val filters = mutableListOf<String>()
   val idFilters = mutableListOf<String>()
@@ -333,6 +344,11 @@ public fun main(args: Array<String>) {
       "--output-dir" -> outputDirPath = args[++i]
       "--compile-apk-dwf-dir" -> compileApkDirPath = args[++i]
       "--fakes-json" -> fakesJsonPath = args[++i]
+      "--watchface" -> watchFacePath = args[++i]
+      "--png" -> outputPngPath = args[++i]
+      "--set" -> setArgs += args[++i]
+      "--time" -> timeArg = args[++i]
+      "--date" -> dateArg = args[++i]
       "--resource-dir" -> resourceDirs += File(args[++i])
       "--filter" -> filters += args[++i]
       "--id-filter" -> idFilters += args[++i]
@@ -346,6 +362,24 @@ public fun main(args: Array<String>) {
   }
 
   try {
+    if (watchFacePath != null) {
+      val png = outputPngPath?.let(::File) ?: error("DwfRenderMain: --png is required")
+      val overrides = parseDwfSetArgs(setArgs)
+      val result =
+        renderDwfFaceFile(
+          xmlFile = File(watchFacePath),
+          resourceDirs = resourceDirs,
+          overrides = overrides,
+          time = timeArg,
+          date = dateArg,
+          fakesJson = fakesJsonPath?.let(::File),
+        )
+      png.absoluteFile.parentFile?.mkdirs()
+      png.writeBytes(result.png)
+      for ((code, message) in result.diagnostics) System.err.println("warning $code: $message")
+      println("wrote ${png.path}")
+      return
+    }
     if (compileApkDirPath != null) {
       compileApkWatchFaces(File(compileApkDirPath), fakesJsonPath?.let(::File))
       return
@@ -367,6 +401,103 @@ public fun main(args: Array<String>) {
     System.err.println("DwfRenderMain failed: ${t.message}")
     t.printStackTrace(System.err)
     exitProcess(1)
+  }
+}
+
+/** A parsed `--set name=value` argument; the value is typed against the face's declarations. */
+internal data class DwfSetArg(val name: String, val raw: String)
+
+internal fun parseDwfSetArgs(args: List<String>): List<DwfSetArg> = args.map { arg ->
+  val eq = arg.indexOf('=')
+  require(eq > 0) { "DwfRenderMain: --set expects name=value, got '$arg'" }
+  DwfSetArg(arg.substring(0, eq).trim(), arg.substring(eq + 1))
+}
+
+internal class DwfFaceRender(val png: ByteArray, val diagnostics: List<Pair<String, String>>)
+
+/**
+ * Renders one watch face file to PNG with [overrides] seeded as named values. Each override is
+ * typed by the face's own declaration of that name, so `--set dwf.is_ambient=true`, `--set
+ * metrics.heart_rate=120` and `--set dwf.complication.1.text=Hi` need no type syntax. A name the
+ * face does not declare is an error that lists the ones it does.
+ */
+internal fun renderDwfFaceFile(
+  xmlFile: File,
+  resourceDirs: List<File>,
+  overrides: List<DwfSetArg>,
+  time: String? = null,
+  date: String? = null,
+  fakesJson: File? = null,
+): DwfFaceRender {
+  require(xmlFile.isFile) { "DwfRenderMain: watch face '$xmlFile' does not exist" }
+  val resolver = DwfResourceDirectoryResolver(resourceDirs)
+  val doc = DwfParser.parse(xmlFile.readText(), resolver)
+  val fakes =
+    fakesJson?.takeIf(File::isFile)?.let { dwfJson.decodeFromString<DwfFakesConfig>(it.readText()) }
+      ?: findSidecarFakes(xmlFile)
+  val diagnostics = ee.schimke.composeai.rccreation.dwf.DwfDiagnostics()
+  val options = (fakes?.toRenderOptions() ?: DwfRenderOptions()).copy(diagnostics = diagnostics)
+  val rcBytes = runBlocking { captureDwfRemoteDocumentBytes(doc, resolver, options) }
+  val specs =
+    extractNamedValueSpecs(
+        rcBytes,
+        doc.userConfigurations
+          .filterIsInstance<DwfUserConfiguration.BooleanConfiguration>()
+          .map { it.id }
+          .toSet(),
+      )
+      .associateBy { it.name }
+  val seeds = LinkedHashMap<String, RcNamedValue>()
+  for (o in overrides) {
+    val spec =
+      specs[o.name]
+        ?: error(
+          "DwfRenderMain: the face does not declare '${o.name}'. Declared names: " +
+            specs.keys.sorted().joinToString(", "),
+        )
+    seeds[o.name] = typedDwfSeed(o, spec.default)
+  }
+  val (hour, minute, second) = parsePreviewHms(time ?: fakes?.previewTime ?: doc.previewTime)
+  val day =
+    date?.let { runCatching { LocalDate.parse(it.trim()) }.getOrNull() }
+      ?: LocalDate.of(fakes?.year ?: 2026, fakes?.month ?: 11, fakes?.dayOfMonth ?: 18)
+  val png =
+    renderDwfDocumentToPng(
+      bytes = rcBytes,
+      widthPx = doc.width.coerceAtLeast(1),
+      heightPx = doc.height.coerceAtLeast(1),
+      hour = hour,
+      minute = minute,
+      second = second,
+      seeds = seeds,
+      year = day.year,
+      month = day.monthValue,
+      dayOfMonth = day.dayOfMonth,
+      typefaces = dwfTypefaces(resourceDirs),
+    )
+  return DwfFaceRender(png, diagnostics.entries)
+}
+
+private fun typedDwfSeed(arg: DwfSetArg, declared: WffValue): RcNamedValue {
+  val raw = arg.raw.trim()
+  fun bad(kind: String): Nothing =
+    error("DwfRenderMain: --set ${arg.name}=${arg.raw}: expected $kind")
+  return when (declared) {
+    is WffValue.Text -> RcNamedValue.Text(arg.raw)
+    is WffValue.Float -> RcNamedValue.FloatValue(raw.toFloatOrNull() ?: bad("a number"))
+    is WffValue.Int -> RcNamedValue.Integer(raw.toIntOrNull() ?: bad("an integer"))
+    is WffValue.Bool ->
+      RcNamedValue.BooleanValue(
+        when (raw.lowercase()) {
+          "true",
+          "1" -> true
+          "false",
+          "0" -> false
+          else -> bad("true, false, 1 or 0")
+        },
+      )
+    is WffValue.Color ->
+      RcNamedValue.Color(parseDwfColorArgb(raw) ?: bad("a colour such as #FF00AA33"))
   }
 }
 

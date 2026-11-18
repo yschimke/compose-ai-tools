@@ -459,6 +459,48 @@ class DwfRenderMainTest {
       .isEqualTo(androidx.compose.ui.text.font.FontFamily.Monospace)
   }
 
+  @Test
+  fun singleFaceModeSeedsTypedNamedValueOverrides() {
+    val dir = temp.newFolder("single-face")
+    val xml = File(dir, "watchface.xml")
+    xml.writeText(
+      """
+      <WatchFace width="450" height="450"><Scene backgroundColor="#FF000000">
+        <PartDraw x="0" y="0" width="450" height="450">
+          <Variant mode="AMBIENT" target="alpha" value="0"/>
+          <Rectangle x="150" y="150" width="100" height="100"><Fill color="#FFFFFFFF"/></Rectangle>
+        </PartDraw>
+        <Group x="0" y="0" width="450" height="450">
+          <Condition><Expressions><Expression name="hr">[HEART_RATE] &gt; 100</Expression></Expressions>
+            <Compare expression="hr"><PartDraw x="0" y="0" width="450" height="450"><Rectangle x="300" y="150" width="50" height="50"><Fill color="#FFFF0000"/></Rectangle></PartDraw></Compare>
+          </Condition>
+        </Group>
+      </Scene></WatchFace>
+      """
+        .trimIndent(),
+    )
+    fun render(vararg set: String): Bitmap =
+      Bitmap.makeFromImage(
+        Image.makeFromEncoded(
+          renderDwfFaceFile(xml, emptyList(), parseDwfSetArgs(set.toList())).png,
+        ),
+      )
+    val base = render()
+    assertThat(base.getColor(200, 200) and 0xFFFFFF).isEqualTo(0xFFFFFF)
+    assertThat(base.getColor(320, 170) and 0xFFFFFF).isEqualTo(0)
+    val ambient = render("dwf.is_ambient=true")
+    assertThat(ambient.getColor(200, 200) and 0xFFFFFF).isEqualTo(0)
+    val hr = render("metrics.heart_rate=120")
+    assertThat(hr.getColor(320, 170) and 0xFFFFFF).isEqualTo(0xFF0000)
+
+    val unknown =
+      runCatching { render("dwf.no_such_value=1") }.exceptionOrNull() as IllegalStateException
+    assertThat(unknown.message).contains("does not declare 'dwf.no_such_value'")
+    assertThat(unknown.message).contains("dwf.is_ambient")
+    val badValue = runCatching { render("metrics.heart_rate=fast") }.exceptionOrNull()
+    assertThat(badValue).isInstanceOf(IllegalStateException::class.java)
+  }
+
   private fun pixelHash(bitmap: Bitmap): Long {
     var h = 1125899906842597L
     for (y in 0 until bitmap.height step 3) {

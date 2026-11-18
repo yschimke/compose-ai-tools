@@ -49,9 +49,20 @@ is a `WARNING` `MISSING_RESOURCE`, and (with `placeholderMissingResources`, the 
 magenta crossed tile so the author sees where it belongs. A name counts as missing only if neither a
 bitmap nor a vector drawable resolves.
 
-`wffVersion` (1–4, default 2) is **advisory today**: the translator accepts the union of versions 1–4
+Problems that are not fatal come back as `WARNING` diagnostics and the face still renders with a
+documented fallback: `UNKNOWN_SOURCE` (a `[SOURCE]` the translator does not know evaluates to 0),
+`MALFORMED_EXPRESSION` (unbalanced parenthesis, trailing tokens, stray characters),
+`UNKNOWN_FUNCTION` and `UNSUPPORTED_ELEMENT` (a v4 `<Reference>` is ignored, so what reads it gets 0).
+
+`wffVersion` (1–5, default 2) is **advisory today**: the translator accepts the union of versions 1–5
 and does not flag features newer than the target; an out-of-range value is `INVALID_OPTION`. It is
 echoed back so hosts can thread it already. See *Moving onto `wff-core`* below.
+
+**Ambient.** Ambient is dimmed about 15% (a `0x26000000` scene scrim) to match the real runtime, as
+measured in #6586 with `dwf-diff`. On top of that, only what a face authors changes: `<Variant
+mode="AMBIENT">`, and the second hand hiding unless it has an ambient variant. Group `alpha` is
+applied per draw, so two overlapping shapes under a translucent group show their overlap (a
+layer-composited alpha is a follow-up).
 
 ## Named values
 
@@ -89,8 +100,8 @@ date through that, not through a name here.
 | `dwf.weather.last_updated_text` | text | WEATHER | Preformatted for `icuText(…, [WEATHER.LAST_UPDATED])`. |
 | `dwf.weather.hours.<1..24>.{is_available,is_day,condition,temperature,uv_index}` | mixed | WEATHER | Hourly forecast, +N hours. |
 | `dwf.weather.days.<1..7>.{is_available,condition_day,condition_night,temperature_high,temperature_low,chance_of_precipitation,chance_of_precipitation_night,uv_index}` | mixed | WEATHER | Daily forecast, +N days. |
-| `dwf.config.<id>` | text / bool | CONFIGURATION | The selected value of a `<UserConfigurations>` entry: option id (list, color), `true`/`false` (boolean). Flavors set these. |
-| `dwf.color.<id>.<n>` | color | COLOR_THEME | Resolved ARGB of color *n* of `<ColorConfiguration id>`. |
+| `dwf.config.<id>` | int / bool | CONFIGURATION | The selected value of a `<UserConfigurations>` entry as an **integer, not text**: the zero-based ordinal of the chosen `<ListOption>` / `<ColorOption>` in document order (so `dwf.config.theme=2` picks the third option; an option id such as `cyan` is not accepted), and `0`/`1` for a `<BooleanConfiguration>`. Flavors set these. |
+| `dwf.color.<id>.<n>` | color | COLOR_THEME | Resolved ARGB of color *n* of `<ColorConfiguration id>`, read wherever the face writes `[CONFIGURATION.<id>.<n>]`. **This is what recolours such a face**: seeding `dwf.config.<id>` alone does not change a colour read through `[CONFIGURATION.<id>.<n>]`, so seed `dwf.color.<id>.<n>` (for each *n* the face reads) as well. The ordinal in `dwf.config.<id>` still drives `<ListConfiguration>` / `<ColorConfiguration>` option switches and a colour that is chosen per option while the alpha is not 1. |
 | `dwf.complication.<slot>.type` | int | COMPLICATION | 0 EMPTY, 1 SHORT_TEXT, 2 LONG_TEXT, 3 RANGED_VALUE, 4 MONOCHROMATIC_IMAGE, 5 SMALL_IMAGE, 6 PHOTO_IMAGE, 7 GOAL_PROGRESS, 8 WEIGHTED_ELEMENTS. |
 | `dwf.complication.<slot>.text`, `.title` | text | COMPLICATION | `[COMPLICATION.TEXT]` / `.TITLE`. |
 | `dwf.complication.<slot>.value`, `.min`, `.max` | float | COMPLICATION | Ranged / goal value and bounds. |
@@ -109,6 +120,27 @@ catalogue; `WffRemoteComposeTest` fails if a `dwf.*` / `metrics.*` name appears 
 The names a given face declares (from the Wear OS samples): SimpleAnalog `dwf.is_ambient`,
 `dwf.config.themeColor`; Flavors adds `metrics.heart_rate`, `dwf.complication.0.*`; Complications declares
 slots 0–4; Weather declares the `dwf.weather.*` family and `dwf.is_24_hour`.
+
+### Rendering with overrides from the command line
+
+`DwfRenderMain` renders one face with named-value overrides, with no Kotlin test needed:
+
+```
+java -cp <rc-render-jvm classpath> ee.schimke.composeai.rcjvm.DwfRenderMainKt \
+  --watchface res/raw/watchface.xml --resource-dir res --png out.png \
+  --set dwf.is_ambient=true --set metrics.heart_rate=120 \
+  --set dwf.complication.1.text=Hi --set dwf.config.theme=2 \
+  --time 15:08:00 --date 2026-11-18
+```
+
+`--set` takes any name from the manifest above; the value is typed by the face's own declaration
+(`true`/`false`/`1`/`0` for a bool, a number for an int or float, `#AARRGGBB` for a colour, anything
+for text). A name the face does not declare is an error that lists the ones it does. `--time` and
+`--date` set the clock (default `10:10:30` on 2026-11-18). `--fakes-json` (or a `<face>.fakes.json`
+beside the XML) seeds defaults. Translator warnings (unknown data source, malformed expression,
+unsupported `<Reference>`) are printed to stderr as `warning CODE: message`; the same entries are
+the `UNKNOWN_SOURCE`, `MALFORMED_EXPRESSION`, `UNKNOWN_FUNCTION` and `UNSUPPORTED_ELEMENT`
+diagnostics of `WffRemoteCompose.compile`.
 
 ## Latency
 

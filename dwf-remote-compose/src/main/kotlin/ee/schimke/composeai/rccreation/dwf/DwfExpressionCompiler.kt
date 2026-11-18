@@ -130,7 +130,11 @@ internal class DwfExpressionCompiler(
     trimmed.toFloatOrNull()?.let {
       return it.rf
     }
-    return runCatching { evaluate(trimmed, mutableSetOf()).toFloat() }.getOrElse { fallback.rf }
+    return runCatching { evaluate(trimmed, mutableSetOf()).toFloat() }
+      .getOrElse {
+        malformed(trimmed, it)
+        fallback.rf
+      }
   }
 
   fun compileBoolean(raw: String, fallback: Boolean = false): RemoteBoolean {
@@ -140,10 +144,16 @@ internal class DwfExpressionCompiler(
     if (trimmed.equals("false", ignoreCase = true)) return RemoteBoolean(false)
     localExpressions[trimmed]?.let { inline ->
       return runCatching { evaluate(inline, mutableSetOf(trimmed)).toBool() }
-        .getOrElse { RemoteBoolean(fallback) }
+        .getOrElse {
+          malformed(inline, it)
+          RemoteBoolean(fallback)
+        }
     }
     return runCatching { evaluate(trimmed, mutableSetOf()).toBool() }
-      .getOrElse { RemoteBoolean(fallback) }
+      .getOrElse {
+        malformed(trimmed, it)
+        RemoteBoolean(fallback)
+      }
   }
 
   fun compileString(raw: String): RemoteString {
@@ -153,7 +163,10 @@ internal class DwfExpressionCompiler(
       return (resources.resolveString(trimmed) ?: trimmed.substringAfter('/')).rs
     }
     return runCatching { evaluate(trimmed, mutableSetOf()).toRemoteString() }
-      .getOrElse { trimmed.rs }
+      .getOrElse {
+        malformed(trimmed, it)
+        trimmed.rs
+      }
   }
 
   fun compileColor(raw: String, fallbackArgb: Int = 0xFFFFFFFF.toInt()): RemoteColor {
@@ -163,7 +176,10 @@ internal class DwfExpressionCompiler(
       return RemoteColor(it)
     }
     return runCatching { evaluate(trimmed, mutableSetOf()).toColor(fallbackArgb) }
-      .getOrElse { RemoteColor(fallbackArgb) }
+      .getOrElse {
+        malformed(trimmed, it)
+        RemoteColor(fallbackArgb)
+      }
   }
 
   /** Compiles a list of `<Text>` / `<Font>` / `<BitmapFont>` rich text elements into one string. */
@@ -199,7 +215,10 @@ internal class DwfExpressionCompiler(
     if (parameterExpressions.isEmpty()) return format.replace("%%", "%").rs
     val compiledParams = parameterExpressions.map { expr ->
       runCatching { evaluate(expr.trim(), mutableSetOf()) }
-        .getOrElse { EvalValue.Text(expr.rs, expr) }
+        .getOrElse {
+          malformed(expr.trim(), it)
+          EvalValue.Text(expr.rs, expr)
+        }
     }
     var result: RemoteString? = null
     fun appendPart(part: RemoteString) {
@@ -381,11 +400,9 @@ internal class DwfExpressionCompiler(
           DwfHourFormat.TWENTY_FOUR -> twentyFour
           DwfHourFormat.TWELVE -> twelve
           DwfHourFormat.SYNC_TO_DEVICE ->
-            if (token == 'H') {
-              v.is24Hour.select(twentyFour, twelve)
-            } else {
-              twelve
-            }
+            // SYNC_TO_DEVICE follows the device's 12/24 hour setting for either letter; only
+            // an explicit TWELVE / TWENTY_FOUR pins the clock.
+            v.is24Hour.select(twentyFour, twelve)
         }
       }
       'k' -> pad(v.hour1To24, count)
@@ -499,9 +516,37 @@ internal class DwfExpressionCompiler(
         return evaluate(mapped, visited)
       }
     }
-    val tokens = tokenize(expression)
-    val parser = ExprParser(tokens, visited)
-    return parser.parseTernary()
+    val outerExpression = currentExpression
+    currentExpression = expression
+    try {
+      val tokens = tokenize(expression)
+      val parser = ExprParser(tokens, visited)
+      val value = parser.parseTernary()
+      parser.reportTrailingTokens()
+      return value
+    } finally {
+      currentExpression = outerExpression
+    }
+  }
+
+  /** The expression being evaluated, so a diagnostic can quote it. */
+  private var currentExpression: String? = null
+
+  /** Records a problem with an expression on [DwfRenderOptions.diagnostics], once per message. */
+  private fun report(code: String, message: String) {
+    val expression = currentExpression
+    options.diagnostics?.add(
+      code,
+      if (expression != null) "$message (in expression `$expression`)" else message,
+    )
+  }
+
+  private fun malformed(expression: String, cause: Throwable) {
+    options.diagnostics?.add(
+      DwfDiagnostics.MALFORMED_EXPRESSION,
+      "Malformed expression `$expression`: ${cause.message ?: cause.javaClass.simpleName}; " +
+        "it evaluates to its fallback.",
+    )
   }
 
   internal sealed interface EvalValue {
@@ -753,7 +798,15 @@ internal class DwfExpressionCompiler(
         else -> {
           val start = i
           while (i < n && (src[i].isLetterOrDigit() || src[i] == '_' || src[i] == '.')) i++
-          if (i == start) i++ else out += Token.Ident(src.substring(start, i))
+          if (i == start) {
+            report(
+              DwfDiagnostics.MALFORMED_EXPRESSION,
+              "Unexpected character `${src[i]}`; it is ignored.",
+            )
+            i++
+          } else {
+            out += Token.Ident(src.substring(start, i))
+          }
         }
       }
     }
@@ -1013,7 +1066,7 @@ internal class DwfExpressionCompiler(
         is Token.SourceRef -> resolveSourceToken(tok.name)
         is Token.LParen -> {
           val inner = parseTernary()
-          if (peek() is Token.RParen) consume()
+          expectRParen()
           inner
         }
         is Token.Ident -> {
@@ -1027,14 +1080,51 @@ internal class DwfExpressionCompiler(
                 args += parseTernary()
               }
             }
-            if (peek() is Token.RParen) consume()
+            expectRParen()
             invokeFunction(tok.name, args)
           } else {
             resolveIdentifier(tok.name)
           }
         }
-        else -> EvalValue.Num(0f.rf)
+        else -> {
+          report(
+            DwfDiagnostics.MALFORMED_EXPRESSION,
+            "Expected a value but found ${describe(tok)}; it evaluates to 0.",
+          )
+          EvalValue.Num(0f.rf)
+        }
       }
+
+    /** Reports tokens left over after a complete expression, such as `1 2` or `a b`. */
+    fun reportTrailingTokens() {
+      val next = peek()
+      if (next !is Token.Eof) {
+        report(
+          DwfDiagnostics.MALFORMED_EXPRESSION,
+          "Unexpected ${describe(next)} after a complete expression; it is ignored.",
+        )
+      }
+    }
+
+    private fun describe(tok: Token): String =
+      when (tok) {
+        is Token.Eof -> "the end of the expression"
+        is Token.RParen -> "`)`"
+        is Token.LParen -> "`(`"
+        is Token.Comma -> "`,`"
+        is Token.Question -> "`?`"
+        is Token.Colon -> "`:`"
+        is Token.Op -> "`${tok.symbol}`"
+        else -> tok.toString()
+      }
+
+    private fun expectRParen() {
+      if (peek() is Token.RParen) {
+        consume()
+      } else {
+        report(DwfDiagnostics.MALFORMED_EXPRESSION, "Missing `)`.")
+      }
+    }
 
     private fun resolveIdentifier(ident: String): EvalValue {
       when {
@@ -1157,7 +1247,13 @@ internal class DwfExpressionCompiler(
           val str = args.getOrNull(0)?.toRemoteString() ?: "".rs
           EvalValue.Num(str.length.toRemoteFloat(), isInteger = true)
         }
-        else -> args.firstOrNull() ?: EvalValue.Num(0f.rf)
+        else -> {
+          report(
+            DwfDiagnostics.UNKNOWN_FUNCTION,
+            "Unknown function `$name`; it evaluates to its first argument.",
+          )
+          args.firstOrNull() ?: EvalValue.Num(0f.rf)
+        }
       }
     }
   }
@@ -1218,6 +1314,7 @@ internal class DwfExpressionCompiler(
         EvalValue.Text(v.hour1To24.toRemoteStringOptions(2, 0, TextFromFloat.PAD_PRE_ZERO))
       "HOUR_1_24_MINUTE" -> EvalValue.Num(v.hour1To24 + (v.minute / 60f))
       "DAY",
+      "DAY_OF_MONTH",
       "DAY_1_31" -> EvalValue.Num(v.day, isInteger = true)
       "DAY_Z" -> EvalValue.Text(v.day.toRemoteStringOptions(2, 0, TextFromFloat.PAD_PRE_ZERO))
       "DAY_0_30" -> EvalValue.Num(v.day0To30, isInteger = true)
@@ -1235,6 +1332,8 @@ internal class DwfExpressionCompiler(
       "YEAR" -> EvalValue.Num(v.year, isInteger = true)
       "YEAR_S" ->
         EvalValue.Text(v.yearShort.toRemoteStringOptions(2, 0, TextFromFloat.PAD_PRE_ZERO))
+      // `AMPM_STATE` is 0 for AM and 1 for PM, which is `amPmPosition`.
+      "AMPM_STATE",
       "AMPM_POSITION" -> EvalValue.Num(v.amPmPosition, isInteger = true)
       "AMPM_STRING",
       "AMPM_STRING_ENG",
@@ -1272,7 +1371,13 @@ internal class DwfExpressionCompiler(
       "MOON_PHASE_TYPE_STRING" -> EvalValue.Text("Waxing Gibbous".rs, "Waxing Gibbous")
       "LANGUAGE_CODE",
       "LANGUAGE_LOCALE_NAME" -> EvalValue.Text("en_US".rs, "en_US")
-      else -> EvalValue.Num(0f.rf)
+      else -> {
+        report(
+          DwfDiagnostics.UNKNOWN_SOURCE,
+          "Unknown data source `[$name]`; it evaluates to 0.",
+        )
+        EvalValue.Num(0f.rf)
+      }
     }
   }
 
@@ -1648,6 +1753,10 @@ internal class DwfExpressionCompiler(
           )
         }
         else -> {
+          options.diagnostics?.add(
+            DwfDiagnostics.UNKNOWN_SOURCE,
+            "`[CONFIGURATION.$rest]` names a configuration the face does not declare.",
+          )
           if (candidateIdx != null) {
             val key = DwfVariables.colorThemeKey(candidateId, candidateIdx)
             val rcColor =
@@ -1721,7 +1830,7 @@ internal class DwfExpressionCompiler(
             val pct = hourSeed?.chanceOfPrecipitation ?: if (cond == 6) 60 else 10
             EvalValue.Num(pct.toFloat().rf, isInteger = true)
           }
-          else -> EvalValue.Num(0f.rf, isInteger = true)
+          else -> unknownWeather(prop)
         }
       }
       if (prop.startsWith("DAYS.")) {
@@ -1796,7 +1905,7 @@ internal class DwfExpressionCompiler(
               weatherIntCache.getOrPut(key) { RemoteInt.createNamedRemoteInt(key, wd.uvIndex) }
             EvalValue.Num(state.toRemoteFloat(), isInteger = true)
           }
-          else -> EvalValue.Num(0f.rf, isInteger = true)
+          else -> unknownWeather(prop)
         }
       }
       return when (prop) {
@@ -1835,8 +1944,16 @@ internal class DwfExpressionCompiler(
           EvalValue.Num(state.toRemoteFloat(), isInteger = true)
         }
         "LAST_UPDATED" -> EvalValue.Num(0f.rf, isInteger = true, sourceTag = "WEATHER.LAST_UPDATED")
-        else -> EvalValue.Num(0f.rf, isInteger = true)
+        else -> unknownWeather(prop)
       }
+    }
+
+    private fun unknownWeather(prop: String): EvalValue {
+      options.diagnostics?.add(
+        DwfDiagnostics.UNKNOWN_SOURCE,
+        "Unknown data source `[WEATHER.$prop]`; it evaluates to 0.",
+      )
+      return EvalValue.Num(0f.rf, isInteger = true)
     }
 
     private fun seedForSlot(slotId: Int): DwfComplicationSeed {

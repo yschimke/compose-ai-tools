@@ -1,0 +1,5 @@
+<WatchFace width="450" height="450"><Scene backgroundColor="#ff000000">
+  <PartText x="0" y="90" width="450" height="40"><Text align="CENTER"><Font family="SYNC_TO_DEVICE" size="26" color="#ffffffff"><Template>dom:%d<Parameter expression="[DAY_OF_MONTH]"/></Template></Font></Text></PartText>
+  <PartText x="0" y="140" width="450" height="40"><Text align="CENTER"><Font family="SYNC_TO_DEVICE" size="26" color="#ffffffff"><Template>ampm:%s<Parameter expression="[AMPM_STATE]"/></Template></Font></Text></PartText>
+  <DigitalClock x="0" y="0" width="450" height="450"><TimeText format="hh:mm" hourFormat="SYNC_TO_DEVICE" align="CENTER" x="0" y="190" width="450" height="60"><Font family="SYNC_TO_DEVICE" size="40" color="#ffffffff"/></TimeText></DigitalClock>
+</Scene></WatchFace>

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.dwf
 
 import androidx.compose.ui.graphics.ImageBitmap
+import ee.schimke.composeai.rccreation.dwf.DwfDiagnostics
 import ee.schimke.composeai.rccreation.dwf.DwfParser
 import ee.schimke.composeai.rccreation.dwf.DwfRenderOptions
 import ee.schimke.composeai.rccreation.dwf.DwfResourceResolver
@@ -53,8 +54,8 @@ public sealed interface WffResourceSource {
  * @property ambient the default of `dwf.is_ambient`; a host flips the named value to switch live.
  * @property flavor `<Flavor id>` to activate before [configuration], or `null` for the default.
  * @property configuration overrides for `<UserConfigurations>` keyed by configuration id.
- * @property wffVersion the Watch Face Format version the design targets, `1..4`. **Advisory
- *   today**: the translator accepts the union of versions 1–4 and does not yet flag features newer
+ * @property wffVersion the Watch Face Format version the design targets, `1..5`. **Advisory
+ *   today**: the translator accepts the union of versions 1–5 and does not yet flag features newer
  *   than the target. It is echoed in [WffCompileResult.wffVersion] so hosts can already thread it.
  * @property clipToWatchShape apply `<WatchFace clipShape>` (circle / rounded rectangle).
  * @property placeholderMissingResources draw a visible placeholder for a drawable that cannot be
@@ -76,7 +77,7 @@ public class WffCompileOptions(
     /** The version a design targets unless it says otherwise. */
     public const val DEFAULT_WFF_VERSION: Int = 2
     public const val MIN_WFF_VERSION: Int = 1
-    public const val MAX_WFF_VERSION: Int = 4
+    public const val MAX_WFF_VERSION: Int = 5
   }
 }
 
@@ -161,7 +162,7 @@ public object WffRemoteCompose {
         WffDiagnostic(
           WffSeverity.WARNING,
           "INVALID_OPTION",
-          "wffVersion $version is outside 1..4; using ${WffCompileOptions.DEFAULT_WFF_VERSION}.",
+          "wffVersion $version is outside ${WffCompileOptions.MIN_WFF_VERSION}..${WffCompileOptions.MAX_WFF_VERSION}; using ${WffCompileOptions.DEFAULT_WFF_VERSION}.",
         )
       version = WffCompileOptions.DEFAULT_WFF_VERSION
     }
@@ -200,8 +201,10 @@ public object WffRemoteCompose {
         return failure("PARSE_ERROR", e.message ?: e.javaClass.simpleName)
       }
 
+    val translatorDiagnostics = DwfDiagnostics()
     val renderOptions =
       DwfRenderOptions(
+        diagnostics = translatorDiagnostics,
         isAmbientDefault = options.ambient,
         flavorDefault = options.flavor,
         configurationDefaults = options.configuration,
@@ -243,6 +246,10 @@ public object WffRemoteCompose {
           )
         emptyList()
       }
+
+    for ((code, message) in translatorDiagnostics.entries) {
+      diagnostics += WffDiagnostic(WffSeverity.WARNING, code, message)
+    }
 
     for (name in resolver.missing()) {
       diagnostics +=
