@@ -1,0 +1,18 @@
+<WatchFace width="450" height="450">
+  <UserConfigurations>
+    <ColorConfiguration id="accent" displayName="a" defaultValue="0">
+      <ColorOption id="0" displayName="l" colors="#ff9be15d"/>
+      <ColorOption id="1" displayName="c" colors="#ff4fd1ff"/>
+    </ColorConfiguration>
+  </UserConfigurations>
+  <Scene backgroundColor="#ff000000">
+    <PartDraw x="0" y="0" width="450" height="450">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Arc centerX="225" centerY="225" width="420" height="420" startAngle="120" endAngle="240" direction="CLOCKWISE"><Stroke thickness="14" color="[CONFIGURATION.accent.0]" cap="ROUND"/></Arc>
+    </PartDraw>
+    <PartDraw x="0" y="0" width="450" height="450">
+      <Variant mode="AMBIENT" target="alpha" value="0"/>
+      <Arc centerX="225" centerY="225" width="300" height="300" startAngle="120" endAngle="240" direction="CLOCKWISE"><Stroke thickness="14" color="#ff4fd1ff" cap="ROUND"/></Arc>
+    </PartDraw>
+  </Scene>
+</WatchFace>

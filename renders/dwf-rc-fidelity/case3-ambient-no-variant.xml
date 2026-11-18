@@ -1,0 +1,7 @@
+<WatchFace width="450" height="450">
+  <Scene backgroundColor="#FF000000">
+    <PartDraw x="0" y="0" width="450" height="450">
+      <Rectangle x="125" y="125" width="200" height="200"><Fill color="#FFFFFFFF"/></Rectangle>
+    </PartDraw>
+  </Scene>
+</WatchFace>

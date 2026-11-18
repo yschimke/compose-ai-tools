@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- seed:dwf.weather.condition=2 -->
+<WatchFace width="450" height="450">
+  <Scene backgroundColor="#FF000000">
+    <Group x="0" y="0" width="450" height="450">
+      <Variant mode="AMBIENT" target="alpha" value="120"/>
+      <Condition>
+        <Expressions>
+          <Expression name="is_one">[WEATHER.CONDITION] == 1</Expression>
+          <Expression name="is_two">[WEATHER.CONDITION] == 2</Expression>
+        </Expressions>
+        <Compare expression="is_one">
+          <PartDraw x="75" y="75" width="300" height="300"><RoundRectangle x="0" y="0" width="300" height="200" cornerRadiusX="40" cornerRadiusY="40"><Fill color="#FFB8C4D0"/></RoundRectangle></PartDraw>
+        </Compare>
+        <Compare expression="is_two">
+          <PartDraw x="75" y="75" width="300" height="300"><Ellipse x="0" y="0" width="300" height="200"><Fill color="#FFB8C4D0"/></Ellipse><Line startX="50" startY="220" endX="40" endY="290"><Stroke color="#FF4FA8FF" thickness="12" cap="ROUND"/></Line></PartDraw>
+        </Compare>
+      </Condition>
+    </Group>
+  </Scene>
+</WatchFace>
