@@ -162,4 +162,24 @@ class DwfReferenceTest {
     }
     assertEquals(DwfDiagnostics.UNSUPPORTED_ELEMENT, diagnostics.entries.single().first)
   }
+
+  @Test
+  fun expressionReferenceOnANumericAttributeStaysDataDriven() {
+    // `alpha` parses as a plain float, so a literal copy of `[HOUR_0_23]...` would read as the
+    // default 255 at every hour. Bound as a Transform it follows the clock.
+    val xml =
+      """
+      <WatchFace width="450" height="450"><Scene backgroundColor="#FF000000">
+        <PartDraw x="0" y="0" width="450" height="450">
+          <Rectangle x="100" y="100" width="250" height="250">
+            <Fill color="#FFFFFFFF"/>
+          </Rectangle>
+          <Reference name="alpha" source="([HOUR_0_23] - 15) * 255" defaultValue="255"/>
+        </PartDraw>
+      </Scene></WatchFace>
+      """
+        .trimIndent()
+    assertEquals(0x000000, render(xml, hour = 15).rgb(225, 225))
+    assertEquals(0xFFFFFF, render(xml, hour = 16).rgb(225, 225))
+  }
 }

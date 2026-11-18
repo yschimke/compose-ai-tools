@@ -1005,6 +1005,7 @@ private class ReferenceResolver {
     val refEls = el.childElements("Reference")
     if (refEls.isEmpty() && el.children.none { it is XmlElement }) return el
     val attrs = LinkedHashMap(el.attributes)
+    val bindings = ArrayList<XmlElement>()
     for (ref in refEls) {
       val name = ref.attr("name")?.trim().orEmpty()
       val source = ref.attr("source")?.trim().orEmpty()
@@ -1020,7 +1021,23 @@ private class ReferenceResolver {
       val usable = source.isNotEmpty() && (configId == null || configId in declaredConfigs)
       val value = if (usable) source else default.orEmpty()
       references[name] = DwfReference(name, value, default)
-      attrs[name] = value
+      if (configId == null && value.contains('[')) {
+        // A data-driven source (`[SECOND]`, `[HOUR_0_23] * 15`) cannot be an attribute literal:
+        // numeric attributes parse as plain floats and would silently drop it. Bind it the way
+        // the scene parser already evaluates at runtime, as a `<Transform target value>`; the
+        // attribute keeps `defaultValue` (or its own value) as the static fallback.
+        bindings.add(
+          XmlElement(
+            name = "Transform",
+            localName = "Transform",
+            attributes = linkedMapOf("target" to name, "value" to value),
+            children = emptyList(),
+          ),
+        )
+        if (default != null) attrs[name] = default
+      } else {
+        attrs[name] = value
+      }
     }
     val kids =
       el.children.mapNotNull { child ->
@@ -1029,7 +1046,7 @@ private class ReferenceResolver {
           child is XmlElement -> rewriteElement(child)
           else -> child
         }
-      }
+      } + bindings
     return el.copy(attributes = attrs, children = kids)
   }
 
