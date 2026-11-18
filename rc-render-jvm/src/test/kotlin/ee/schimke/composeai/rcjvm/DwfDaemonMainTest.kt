@@ -514,6 +514,110 @@ class DwfDaemonMainTest {
     }
   }
 
+  /** An original face whose background is a colour configuration, with two flavors over it. */
+  private val flavorWatchFaceXml =
+    """
+    <WatchFace width="200" height="200" clipShape="CIRCLE">
+      <UserConfigurations>
+        <ColorConfiguration id="bg" defaultValue="0" displayName="Background">
+          <ColorOption id="0" displayName="Navy" colors="#FF102040" />
+          <ColorOption id="1" displayName="Red" colors="#FFC01818" />
+          <ColorOption id="2" displayName="Green" colors="#FF18A040" />
+        </ColorConfiguration>
+      </UserConfigurations>
+      <Flavors defaultValue="calm">
+        <Flavor id="calm" displayName="Calm"><Configuration id="bg" optionId="0" /></Flavor>
+        <Flavor id="alarm" displayName="Alarm"><Configuration id="bg" optionId="1" /></Flavor>
+      </Flavors>
+      <Scene>
+        <PartDraw x="0" y="0" width="200" height="200">
+          <Rectangle x="0" y="0" width="200" height="200"><Fill color="[CONFIGURATION.bg.0]" /></Rectangle>
+        </PartDraw>
+      </Scene>
+    </WatchFace>
+    """
+      .trimIndent()
+
+  @Test
+  fun `a requested flavor applies its configurations, under explicit config overrides`() {
+    val doc = ee.schimke.composeai.rccreation.dwf.DwfParser.parse(flavorWatchFaceXml)
+    val seeded = LinkedHashMap<String, RemoteNamedValue>()
+    applyDwfFlavor(doc, "alarm", seeded)
+    assertThat(seeded).containsExactly("dwf.config.bg", RemoteNamedValue.StringValue("1"))
+    // Unknown flavor and no flavor change nothing.
+    val untouched = LinkedHashMap<String, RemoteNamedValue>()
+    applyDwfFlavor(doc, "nope", untouched)
+    applyDwfFlavor(doc, null, untouched)
+    assertThat(untouched).isEmpty()
+
+    assertThat(
+        requestedFlavorId(
+          PreviewOverrides(
+            namedOverrides = mapOf("wf.flavor" to PreviewOverrideValue.StringValue("alarm")),
+          ),
+        ),
+      )
+      .isEqualTo("alarm")
+    assertThat(
+        requestedFlavorId(namedOverrides("dwf.flavor" to RemoteNamedValue.StringValue("alarm"))),
+      )
+      .isEqualTo("alarm")
+    assertThat(requestedFlavorId(null)).isNull()
+
+    val root = Files.createTempDirectory("dwf-daemon-flavor-").toFile()
+    try {
+      val resDir = File(root, "src/main/res").apply { mkdirs() }
+      File(resDir, "raw").apply { mkdirs() }.resolve("watchface.xml").writeText(flavorWatchFaceXml)
+      val previewsDir = File(root, "build/compose-previews").apply { mkdirs() }
+      val outputDir = File(previewsDir, "dwf-renders").apply { mkdirs() }
+      val previewsJson = File(previewsDir, "previews.json")
+      previewsJson.writeText(
+        """
+        {"previews": [{"id": "dwf__raw_watchface", "functionName": "watchface",
+          "params": {"name": "FlavorFace", "widthDp": 200, "heightDp": 200, "density": 1.0,
+                     "dwfAssetPath": "raw/watchface.xml"},
+          "captures": [{"renderOutput": "dwf-renders/dwf__raw_watchface_0.png"}]}]}
+        """
+          .trimIndent(),
+      )
+      val harness =
+        DaemonHarness(
+          DwfDaemonConfig(
+            previewsJson = previewsJson,
+            outputDir = outputDir,
+            resourceDirs = listOf(resDir),
+            moduleProjectDir = root,
+          ),
+        )
+      try {
+        harness.request("initialize", buildJsonObject { put("protocolVersion", 2) })
+        fun wf(vararg pairs: Pair<String, String>) =
+          PreviewOverrides(
+            namedOverrides = pairs.associate { (k, v) -> k to PreviewOverrideValue.StringValue(v) },
+          )
+        val default = harness.renderAndHash("dwf__raw_watchface", null)
+        val alarm = harness.renderAndHash("dwf__raw_watchface", wf("wf.flavor" to "alarm"))
+        val red = harness.renderAndHash("dwf__raw_watchface", wf("wf.config.bg" to "1"))
+        val calm = harness.renderAndHash("dwf__raw_watchface", wf("wf.flavor" to "calm"))
+        val alarmButGreen =
+          harness.renderAndHash(
+            "dwf__raw_watchface",
+            wf("wf.flavor" to "alarm", "wf.config.bg" to "2"),
+          )
+        val green = harness.renderAndHash("dwf__raw_watchface", wf("wf.config.bg" to "2"))
+
+        assertThat(alarm).isNotEqualTo(default)
+        assertThat(alarm).isEqualTo(red)
+        assertThat(calm).isEqualTo(default)
+        assertThat(alarmButGreen).isEqualTo(green)
+      } finally {
+        harness.close()
+      }
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
   private fun namedOverrides(vararg pairs: Pair<String, RemoteNamedValue>): PreviewOverrides =
     PreviewOverrides(
       remoteCompose = RemoteComposeOverride.Builder().apply { namedValues = mapOf(*pairs) }.build(),
