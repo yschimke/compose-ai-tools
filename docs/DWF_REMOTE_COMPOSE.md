@@ -67,7 +67,10 @@ measured in #6586 with `dwf-diff`. On top of that, only what a face authors chan
 mode="AMBIENT">`, and the second hand hiding unless it has an ambient variant. A `Group` or `PartDraw` `alpha` below 255 (constant or
 variant-driven) composites as one offscreen layer, so overlapping children read uniform. Remote
 Compose has no `saveLayer`; this uses `drawToOffscreenBitmap` at document size, and a layer nested
-inside a layer falls back to per-draw alpha (the offscreen draw does not nest).
+inside a layer falls back to per-draw alpha (the offscreen draw does not nest). The layer is cleared
+every frame, and a data-driven alpha draws through it at every value rather than straight through
+while opaque: one emission of the content, so no expression is first written inside a branch the
+player skips.
 
 ## Named values
 

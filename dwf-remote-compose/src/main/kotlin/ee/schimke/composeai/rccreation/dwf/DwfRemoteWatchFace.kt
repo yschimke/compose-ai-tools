@@ -658,7 +658,10 @@ private class DwfCanvasRenderer(
         )
       insideAlphaLayer = true
       try {
-        remoteCanvas.drawToOffscreenBitmap(layer) { drawTransformed() }
+        // The colour overload clears the layer to transparent on every frame; the plain overload is
+        // MODE_NO_INITIALIZE, which keeps the last frame's pixels and so accumulates translucent
+        // content frame after frame.
+        remoteCanvas.drawToOffscreenBitmap(layer, 0x00000000) { drawTransformed() }
       } finally {
         insideAlphaLayer = false
       }
@@ -668,20 +671,13 @@ private class DwfCanvasRenderer(
       }
       remoteCanvas.drawBitmap(layer, 0f.rf, 0f.rf, layerPaint)
     }
-    val drawBody: RemoteDrawScope.() -> Unit =
-      when {
-        !useLayer -> drawTransformed
-        ownConst != null -> drawLayered
-        else -> {
-          // Alpha is data-driven (an ambient Variant, say): draw straight through while it reads
-          // opaque so the interactive frame is untouched, and as a layer only while it dims.
-          {
-            val opaque = ownAlphaFactor.isGreaterThan(0.999f.rf)
-            drawConditionally(opaque) { drawTransformed() }
-            drawConditionally(opaque.not()) { drawLayered() }
-          }
-        }
-      }
+    // A data-driven alpha (an ambient Variant, say) also always draws through the layer, composited
+    // at whatever the alpha reads. Drawing the content twice, straight through while opaque and as
+    // a
+    // layer while dimmed, would emit every expression in it twice under two exclusive conditionals:
+    // Remote Compose caches an expression at its first emission, so whichever branch the player
+    // skipped left the other reading uninitialised ids (geometry and colours vanished in ambient).
+    val drawBody: RemoteDrawScope.() -> Unit = if (useLayer) drawLayered else drawTransformed
 
     if (constAlpha != null) {
       drawBody()

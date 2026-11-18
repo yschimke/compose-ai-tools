@@ -143,4 +143,44 @@ class DwfLayerAlphaTest {
     val f = render(xml)
     assertEquals(f.r(100, 200), f.r(200, 200))
   }
+
+  @Test
+  fun dataDrivenGeometryUnderDataDrivenAlphaIsInitialisedInEitherBranch() {
+    // The opaque and layered branches draw the same content. An expression first emitted inside
+    // the branch the player skips must not leave the other branch reading an uninitialised id.
+    val xml =
+      """
+      <WatchFace width="450" height="450"><Scene backgroundColor="#FF000000">
+        <Group x="0" y="0" width="450" height="450">
+          <Variant mode="AMBIENT" target="alpha" value="128"/>
+          <Transform target="x" value="[HOUR_0_23] * 10"/>
+          <PartDraw x="0" y="0" width="450" height="450">
+            <Rectangle x="0" y="100" width="100" height="200"><Fill color="#FFFFFFFF"/></Rectangle>
+          </PartDraw>
+        </Group>
+        <Group x="0" y="0" width="450" height="450">
+          <Variant mode="AMBIENT" target="alpha" value="128"/>
+          <PartDraw x="0" y="0" width="450" height="450">
+            <Rectangle x="0" y="320" width="100" height="100">
+              <Transform target="x" value="[HOUR_0_23] * 10"/>
+              <Fill color="#FFFFFFFF"><Transform target="color" value="[HOUR_0_23] > 100 ? #FF000000 : #FFFFFFFF"/></Fill>
+            </Rectangle>
+          </PartDraw>
+        </Group>
+      </Scene></WatchFace>
+      """
+        .trimIndent()
+    val ambient =
+      render(xml, overrides = mapOf(DwfVariables.IS_AMBIENT to RcNamedValue.BooleanValue(true)))
+    assertEquals(0, ambient.r(50, 200), "the group is translated to x=150, not left at 0")
+    assertTrue(ambient.r(200, 200) in 100..125, "dimmed white at x=150..250")
+    assertEquals(0, ambient.r(50, 370), "child-level x Transform applied in the layered branch")
+    assertTrue(
+      ambient.r(200, 370) in 100..125,
+      "child rectangle at x=150, was ${ambient.r(200, 370)}",
+    )
+    val interactive = render(xml)
+    assertEquals(0, interactive.r(50, 200))
+    assertEquals(255, interactive.r(200, 200))
+  }
 }
