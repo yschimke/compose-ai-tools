@@ -288,6 +288,18 @@ final class WatchFaceClient {
   private volatile IBinder wallpaperEngine;
   private volatile IBinder headless;
   private volatile boolean interactive;
+  /**
+   * The id of this client's interactive instance. The runtime keeps one instance per id, so a face
+   * set again while the previous client is still being torn down (a push right after the initial
+   * face) must not ask for the id the old client holds.
+   */
+  private final String instanceId = "simulator-" + INSTANCE_IDS.incrementAndGet();
+
+  private static final java.util.concurrent.atomic.AtomicInteger INSTANCE_IDS =
+      new java.util.concurrent.atomic.AtomicInteger();
+  /** Set by {@link #release()}: whatever the runtime hands back after it is not wanted. */
+  private volatile boolean released;
+
   private volatile LiveFrameSource live;
   /** Whether the last frame published came from the live draw (else the screenshot call). */
   private volatile boolean lastFrameLive;
@@ -718,6 +730,17 @@ final class WatchFaceClient {
               throw new IllegalStateException(
                   component + " is not a watch face the control service can create");
             }
+            if (released) {
+              // Released while the runtime was still creating the instance (a face set again right
+              // after the initial one): the instance is handed back after release() looked for it.
+              // Left alive it holds the runtime's one interactive slot, and the next face's
+              // instance is never created, so that face falls back to screenshots.
+              releaseInstance(instance, interactive);
+              IBinder lateEngine = wallpaperEngine;
+              wallpaperEngine = null;
+              if (lateEngine != null) transactWallpaperEngine(lateEngine, 10, 0, 0);
+              return;
+            }
             headless = instance;
             slots = readSlots(instance, interactive);
             schema = readStyleSchema(instance, interactive);
@@ -836,7 +859,7 @@ final class WatchFaceClient {
     post(decoded, null, false);
   }
 
-  private static final long LIVE_ENGINE_WAIT_MS = 5_000;
+  private static final long LIVE_ENGINE_WAIT_MS = 30_000;
 
   /**
    * The wallpaper engine, waiting up to [timeoutMs] for it: the runtime hands back its interactive
@@ -967,7 +990,7 @@ final class WatchFaceClient {
       Parcel reply = Parcel.obtain();
       try {
         data.writeInterfaceToken(INTERACTIVE_DESCRIPTOR);
-        data.writeString("simulator");
+        data.writeString(instanceId);
         data.writeInt(1);
         writeUserStyleParcel(data, style);
         data.setDataPosition(0);
@@ -1111,7 +1134,7 @@ final class WatchFaceClient {
       data.writeInt(1);
       writeInteractiveParams(
           data,
-          "simulator",
+          instanceId,
           component.getClassName().isEmpty() ? component.getPackageName() : null,
           burnIn,
           lowBit,
@@ -1149,7 +1172,9 @@ final class WatchFaceClient {
               IBinder engine = in.readStrongBinder();
               in.readInt();
               wallpaperEngine = engine;
-              if (engine != null) {
+              if (engine != null && released) {
+                transactWallpaperEngine(engine, 10, 0, 0); // destroy: nobody will draw it
+              } else if (engine != null) {
                 transactWallpaperEngine(engine, 1, width, height); // setDesiredSize
                 transactWallpaperEngine(engine, 3, 1, 0); // setVisibility(true)
               }
@@ -1332,7 +1357,26 @@ final class WatchFaceClient {
   }
 
   /** Lets the instance and the control service go, as changing the watch face does. */
+  private static void releaseInstance(IBinder instance, boolean wasInteractive) {
+    if (instance == null) return;
+    Parcel data = Parcel.obtain();
+    try {
+      data.writeInterfaceToken(wasInteractive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR);
+      data.setDataPosition(0);
+      instance.transact(
+          wasInteractive ? TRANSACTION_INTERACTIVE_RELEASE : TRANSACTION_RELEASE,
+          data,
+          null,
+          IBinder.FLAG_ONEWAY);
+    } catch (Throwable ignored) {
+      // Already gone.
+    } finally {
+      data.recycle();
+    }
+  }
+
   void release() {
+    released = true;
     IBinder instance = headless;
     boolean wasInteractive = interactive;
     headless = null;
@@ -1345,24 +1389,7 @@ final class WatchFaceClient {
     if (engine != null) {
       transactWallpaperEngine(engine, 10, 0, 0); // destroy
     }
-    worker.execute(
-        () -> {
-          if (instance == null) return;
-          Parcel data = Parcel.obtain();
-          try {
-            data.writeInterfaceToken(wasInteractive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR);
-            data.setDataPosition(0);
-            instance.transact(
-                wasInteractive ? TRANSACTION_INTERACTIVE_RELEASE : TRANSACTION_RELEASE,
-                data,
-                null,
-                IBinder.FLAG_ONEWAY);
-          } catch (Throwable ignored) {
-            // Already gone.
-          } finally {
-            data.recycle();
-          }
-        });
+    worker.execute(() -> releaseInstance(instance, wasInteractive));
     worker.shutdown();
     if (wallpaperService != null && wallpaperComponent != null) {
       navigator.unbindService(
