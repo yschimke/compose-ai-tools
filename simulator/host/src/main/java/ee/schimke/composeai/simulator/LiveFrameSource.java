@@ -98,14 +98,17 @@ final class LiveFrameSource {
   /** As {@link #attach(IBinder, int, int)}, for an engine already in hand. */
   static LiveFrameSource attach(WallpaperService.Engine engine, int width, int height) {
     if (engine == null || width <= 0 || height <= 0) return null;
+    LiveFrameSource source = null;
     try {
       SurfaceHolder holder = engine.getSurfaceHolder();
       if (holder == null) return null;
-      LiveFrameSource source = new LiveFrameSource(engine, holder, width, height);
+      source = new LiveFrameSource(engine, holder, width, height);
       source.start();
       return source;
     } catch (ReflectiveOperationException | RuntimeException e) {
       e.printStackTrace(System.err);
+      // The reader thread and the reader's buffers must not outlive a source nobody will use.
+      if (source != null) source.release();
       return null;
     }
   }

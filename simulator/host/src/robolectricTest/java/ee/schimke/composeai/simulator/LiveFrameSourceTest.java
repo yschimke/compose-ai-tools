@@ -172,6 +172,32 @@ public class LiveFrameSourceTest {
   }
 
   @Test
+  public void aFailedAttachLeavesNoReaderThreadBehind() throws Exception {
+    WallpaperService.Engine failing =
+        new WallpaperService() {
+          @Override
+          public Engine onCreateEngine() {
+            return new Engine() {
+              @Override
+              public void onSurfaceCreated(SurfaceHolder holder) {
+                throw new IllegalStateException("surface callback failed");
+              }
+            };
+          }
+        }.onCreateEngine();
+    assertNull(LiveFrameSource.attach(failing, 40, 30));
+    long deadline = System.nanoTime() + 5_000_000_000L;
+    while (readerThreads() > 0 && System.nanoTime() < deadline) Thread.sleep(20);
+    assertEquals(0, readerThreads());
+  }
+
+  private static long readerThreads() {
+    return Thread.getAllStackTraces().keySet().stream()
+        .filter(t -> t.getName().equals("live-frame-reader") && t.isAlive())
+        .count();
+  }
+
+  @Test
   public void theFaceIsToldItIsVisible() {
     // A face that is not visible keeps its complications empty; an engine with a window is told by
     // the system, this one by the source.
