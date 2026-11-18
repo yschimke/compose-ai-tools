@@ -931,6 +931,16 @@ public final class ApkClassConverter {
         && "(Landroid/graphics/RenderNode;)V".equals(descriptor);
   }
 
+  private static final String SIMULATOR_CLOCK = "ee/schimke/composeai/simulator/SimulatorClock";
+
+  /** {@code ZonedDateTime.now()}, which reads the host's clock rather than the simulated one. */
+  static boolean isZonedDateTimeNow(int opcode, String owner, String method, String descriptor) {
+    return opcode == Opcodes.INVOKESTATIC
+        && "java/time/ZonedDateTime".equals(owner)
+        && "now".equals(method)
+        && "()Ljava/time/ZonedDateTime;".equals(descriptor);
+  }
+
   private static byte[] rewrite(
       byte[] bytes,
       Set<String> synthesizedInits,
@@ -984,6 +994,15 @@ public final class ApkClassConverter {
                       SOFTWARE_RENDER_NODES,
                       "draw",
                       "(Landroid/graphics/Canvas;Landroid/graphics/RenderNode;)V",
+                      false);
+                  return;
+                }
+                if (isZonedDateTimeNow(opcode, owner, method, descriptor)) {
+                  super.visitMethodInsn(
+                      Opcodes.INVOKESTATIC,
+                      SIMULATOR_CLOCK,
+                      "zonedNow",
+                      "()Ljava/time/ZonedDateTime;",
                       false);
                   return;
                 }

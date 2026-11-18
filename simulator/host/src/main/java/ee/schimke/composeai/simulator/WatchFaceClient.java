@@ -93,6 +93,12 @@ final class WatchFaceClient {
   static final int TRANSACTION_INTERACTIVE_RENDER_WATCH_FACE_TO_BITMAP =
       IBinder.FIRST_CALL_TRANSACTION + 10; // 11
   static final int TRANSACTION_INTERACTIVE_RELEASE = IBinder.FIRST_CALL_TRANSACTION + 11; // 12
+  /** Read off the runtime's {@code IInteractiveWatchFace} stub, as the published AIDL numbers. */
+  static final int TRANSACTION_INTERACTIVE_SET_WATCH_UI_STATE = 16;
+
+  static final int TRANSACTION_INTERACTIVE_UPDATE_INSTANCE_SYNC = 29;
+  static final int TRANSACTION_INTERACTIVE_OVERRIDE_COMPLICATION_DATA = 27;
+  static final int TRANSACTION_INTERACTIVE_CLEAR_COMPLICATION_DATA = 28;
 
   private static final String PARCEL_IMPL = "androidx.versionedparcelable.ParcelImpl";
   private static final String HEADLESS_PARAMS_WIRE =
@@ -274,6 +280,10 @@ final class WatchFaceClient {
   private volatile IBinder wallpaperEngine;
   private volatile IBinder headless;
   private volatile boolean interactive;
+  private volatile LiveFrameSource live;
+  /** Whether the last frame published came from the live draw (else the screenshot call). */
+  private volatile boolean lastFrameLive;
+  private boolean liveTried;
   private volatile List<Slot> slots = Collections.emptyList();
   private volatile List<StyleSetting> schema = Collections.emptyList();
   private volatile String defaultFlavorId;
@@ -781,6 +791,12 @@ final class WatchFaceClient {
     synchronized (userStyle) {
       styleSnapshot = new LinkedHashMap<>(userStyle);
     }
+    Bitmap liveFrame = renderLive(ambient, snapshot, styleSnapshot);
+    if (liveFrame != null) {
+      lastBitmap = liveFrame;
+      post(liveFrame, null, true);
+      return;
+    }
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
     Bundle bundle;
@@ -808,7 +824,218 @@ final class WatchFaceClient {
     }
     Bitmap decoded = readImage(bundle);
     lastBitmap = decoded;
-    post(decoded, null);
+    post(decoded, null, false);
+  }
+
+  /** Whether frames come from the engine's live draw rather than the screenshot call. */
+  boolean usesLiveFrames() {
+    return lastFrameLive;
+  }
+
+  /** A frame from the engine's live draw, or null to use the screenshot call. */
+  private Bitmap renderLive(
+      boolean ambient, Map<Integer, Object> complicationSnapshot, Map<String, byte[]> style) {
+    if (!interactive || !component.getClassName().isEmpty()) return null;
+    if (Boolean.getBoolean("composeai.simulator.noLiveFrames")) return null;
+    if (!liveTried) {
+      liveTried = true;
+      IBinder engine = wallpaperEngine;
+      java.util.concurrent.atomic.AtomicReference<LiveFrameSource> out =
+          new java.util.concurrent.atomic.AtomicReference<>();
+      java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+      main.post(
+          () -> {
+            try {
+              out.set(LiveFrameSource.attach(engine, width, height));
+            } finally {
+              done.countDown();
+            }
+          });
+      try {
+        done.await(10, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      live = out.get();
+    }
+    LiveFrameSource source = live;
+    if (source == null) return null;
+    try {
+      applyLiveState(ambient, complicationSnapshot, style);
+    } catch (RemoteException | RuntimeException e) {
+      e.printStackTrace(System.err);
+      return null;
+    }
+    // The face's own clock reads ZonedDateTime.now(), which the converter points at the simulated
+    // clock; a pinned time for this face overrides it, and TIME_SET makes the face re-read it.
+    SimulatorClock.setOverride(fixedTimeMillis);
+    long now = SimulatorClock.nowMillis();
+    WatchState liveWs = WatchState.current();
+    boolean simulated =
+        fixedTimeMillis != null || (liveWs != null && liveWs.isClockPinnedOrScaled());
+    if (!simulated) {
+      // The host's own clock: the face's timers already follow it.
+      if (liveClock != null) {
+        liveClock = null;
+        liveStateChanged = true;
+        app.sendBroadcast(mockTime(1f, -1L));
+        app.sendBroadcast(new Intent(Intent.ACTION_TIME_CHANGED));
+      }
+    } else if (SimulatorClock.needsRefresh(liveClock, now, fixedTimeMillis != null)) {
+      liveClock = now;
+      liveStateChanged = true;
+      app.sendBroadcast(mockTime(0f, now));
+      app.sendBroadcast(new Intent(Intent.ACTION_TIME_CHANGED));
+    }
+    if (liveStateChanged) {
+      liveStateChanged = false;
+      // The face takes state on its own threads: let it settle, then draw once to flush.
+      try {
+        Thread.sleep(LIVE_SETTLE_MS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    Bitmap drawn = source.draw();
+    return drawn;
+  }
+
+  private Long liveClock;
+
+  /**
+   * androidx's {@code MockTime} broadcast: the time its renderer is handed is {@code min +
+   * ((now - min) * speed) mod (max - min)}, so a speed of 0 stands still at [min]. (Reset with a
+   * speed of 1 and no minimum.)
+   */
+  static Intent mockTime(float speed, long min) {
+    return new Intent("androidx.wear.watchface.MockTime")
+        .putExtra("androidx.wear.watchface.extra.MOCK_TIME_SPEED_MULTIPLIER", speed)
+        .putExtra("androidx.wear.watchface.extra.MOCK_TIME_WRAPPING_MIN_TIME", min)
+        .putExtra("androidx.wear.watchface.extra.MOCK_TIME_WRAPPING_MAX_TIME", Long.MAX_VALUE);
+  }
+  private static final long LIVE_SETTLE_MS = 400;
+
+  private Boolean liveAmbient;
+  private Map<String, byte[]> liveStyle = Collections.emptyMap();
+  private String liveComplicationSignature = "";
+  private boolean liveStateChanged;
+
+  private static String signature(Map<Integer, Object> complications) {
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<Integer, Object> e : complications.entrySet()) {
+      Parcel p = Parcel.obtain();
+      try {
+        p.writeParcelable((Parcelable) e.getValue(), 0);
+        sb.append(e.getKey()).append(':').append(java.util.Arrays.hashCode(p.marshall())).append(';');
+      } finally {
+        p.recycle();
+      }
+    }
+    return sb.toString();
+  }
+
+  /** Puts the interactive instance in the state a frame is asked for. */
+  private void applyLiveState(
+      boolean ambient, Map<Integer, Object> complicationSnapshot, Map<String, byte[]> style)
+      throws RemoteException {
+    IBinder instance = headless;
+    if (!sameStyle(style, liveStyle)) {
+      Parcel data = Parcel.obtain();
+      Parcel reply = Parcel.obtain();
+      try {
+        data.writeInterfaceToken(INTERACTIVE_DESCRIPTOR);
+        data.writeString("simulator");
+        data.writeInt(1);
+        writeUserStyleParcel(data, style);
+        data.setDataPosition(0);
+        instance.transact(TRANSACTION_INTERACTIVE_UPDATE_INSTANCE_SYNC, data, reply, 0);
+        reply.setDataPosition(0);
+        reply.readException();
+      } finally {
+        reply.recycle();
+        data.recycle();
+      }
+      liveStyle = new LinkedHashMap<>(style);
+      liveStateChanged = true;
+    }
+    String complicationSignature = signature(complicationSnapshot);
+    if (!complicationSignature.equals(liveComplicationSignature)) {
+      if (!complicationSignature.equals(liveComplicationSignature)) liveStateChanged = true;
+      liveComplicationSignature = complicationSignature;
+      Parcel data = Parcel.obtain();
+      Parcel reply = Parcel.obtain();
+      try {
+        data.writeInterfaceToken(INTERACTIVE_DESCRIPTOR);
+        int tx;
+        if (complicationSnapshot.isEmpty()) {
+          tx = TRANSACTION_INTERACTIVE_CLEAR_COMPLICATION_DATA;
+        } else {
+          tx = TRANSACTION_INTERACTIVE_OVERRIDE_COMPLICATION_DATA;
+          data.writeInt(complicationSnapshot.size());
+          for (Map.Entry<Integer, Object> entry : complicationSnapshot.entrySet()) {
+            data.writeInt(1);
+            data.writeString(PARCEL_IMPL);
+            data.writeString(ID_AND_COMPLICATION_DATA_WIRE);
+            writeIntField(data, 1, entry.getKey());
+            int f2 = openField(data, 2);
+            data.writeParcelable((Parcelable) entry.getValue(), 0);
+            closeField(data, f2);
+          }
+        }
+        data.setDataPosition(0);
+        instance.transact(tx, data, reply, 0);
+        reply.setDataPosition(0);
+        reply.readException();
+      } finally {
+        reply.recycle();
+        data.recycle();
+      }
+    }
+    if (!Boolean.valueOf(ambient).equals(liveAmbient)) {
+      sendUiState(instance, ambient);
+      liveAmbient = ambient;
+      liveStateChanged = true;
+    }
+  }
+
+  private void sendUiState(IBinder instance, boolean ambient) throws RemoteException {
+    Parcel data = Parcel.obtain();
+    Parcel reply = Parcel.obtain();
+    try {
+      data.writeInterfaceToken(INTERACTIVE_DESCRIPTOR);
+      data.writeInt(1);
+      writeWatchUiState(data, ambient);
+      data.setDataPosition(0);
+      instance.transact(TRANSACTION_INTERACTIVE_SET_WATCH_UI_STATE, data, reply, 0);
+      reply.setDataPosition(0);
+      reply.readException();
+    } finally {
+      reply.recycle();
+      data.recycle();
+    }
+  }
+
+  private static boolean sameStyle(Map<String, byte[]> a, Map<String, byte[]> b) {
+    if (a.size() != b.size()) return false;
+    for (Map.Entry<String, byte[]> e : a.entrySet()) {
+      if (!java.util.Arrays.equals(e.getValue(), b.get(e.getKey()))) return false;
+    }
+    return true;
+  }
+
+  static void writeWatchUiState(Parcel parcel, boolean ambient) {
+    parcel.writeString(PARCEL_IMPL);
+    parcel.writeString(WATCH_UI_STATE_WIRE);
+    writeBooleanField(parcel, 1, ambient);
+    writeIntField(parcel, 2, 1);
+  }
+
+  static void writeUserStyleParcel(Parcel parcel, Map<String, byte[]> style) {
+    parcel.writeString(PARCEL_IMPL);
+    parcel.writeString(USER_STYLE_WIRE);
+    int f1 = openField(parcel, 1);
+    writeUserStyleMap(parcel, style);
+    closeField(parcel, f1);
   }
 
   private IBinder tryCreateInteractiveInstance(
@@ -1085,6 +1312,10 @@ final class WatchFaceClient {
     headless = null;
     IBinder engine = wallpaperEngine;
     wallpaperEngine = null;
+    SimulatorClock.setOverride(null);
+    LiveFrameSource liveSource = live;
+    live = null;
+    if (liveSource != null) liveSource.release();
     if (engine != null) {
       transactWallpaperEngine(engine, 10, 0, 0); // destroy
     }
@@ -1122,12 +1353,18 @@ final class WatchFaceClient {
   }
 
   private void post(Bitmap frame, Throwable e) {
+    post(frame, e, false);
+  }
+
+  private void post(Bitmap frame, Throwable e, boolean fromLiveDraw) {
     main.post(
         () -> {
           if (e != null) {
             fail(e);
           } else {
             error = null;
+            // Which path made the bitmap the listener is about to publish, for `watchface status`.
+            lastFrameLive = fromLiveDraw;
             frames++;
             listener.rendered(this, frame, null);
           }

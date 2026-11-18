@@ -207,6 +207,61 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void zonedDateTimeNowFollowsTheSimulatedClock() throws Exception {
+    // The runtime's live draw reads the date and time from ZonedDateTime.now(); the converter points
+    // it (and only the no-argument form) at the simulated clock.
+    ClassWriter writer = new ClassWriter(0);
+    writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Clock", null, "java/lang/Object", null);
+    MethodVisitor mv =
+        writer.visitMethod(
+            Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+            "read",
+            "(Ljava/time/ZoneId;)V",
+            null,
+            null);
+    mv.visitCode();
+    mv.visitMethodInsn(
+        Opcodes.INVOKESTATIC,
+        "java/time/ZonedDateTime",
+        "now",
+        "()Ljava/time/ZonedDateTime;",
+        false);
+    mv.visitInsn(Opcodes.POP);
+    mv.visitVarInsn(Opcodes.ALOAD, 0);
+    mv.visitMethodInsn(
+        Opcodes.INVOKESTATIC,
+        "java/time/ZonedDateTime",
+        "now",
+        "(Ljava/time/ZoneId;)Ljava/time/ZonedDateTime;",
+        false);
+    mv.visitInsn(Opcodes.POP);
+    mv.visitInsn(Opcodes.RETURN);
+    mv.visitMaxs(1, 1);
+    mv.visitEnd();
+    writer.visitEnd();
+    byte[] clock = writer.toByteArray();
+
+    ClassNode node = new ClassNode();
+    new ClassReader(
+            ApkClassConverter.rewrite(clock, hierarchy(clock), new ApkClassConverter.Summary()))
+        .accept(node, 0);
+    List<String> calls = new ArrayList<>();
+    for (org.objectweb.asm.tree.AbstractInsnNode insn : method(node, "read").instructions) {
+      if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call) {
+        calls.add(call.getOpcode() + " " + call.owner + "." + call.name + call.desc);
+      }
+    }
+    assertEquals(
+        List.of(
+            Opcodes.INVOKESTATIC
+                + " ee/schimke/composeai/simulator/SimulatorClock.zonedNow()"
+                + "Ljava/time/ZonedDateTime;",
+            Opcodes.INVOKESTATIC
+                + " java/time/ZonedDateTime.now(Ljava/time/ZoneId;)Ljava/time/ZonedDateTime;"),
+        calls);
+  }
+
+  @Test
   public void protectedMembersBecomePublic() throws Exception {
     ClassWriter writer = new ClassWriter(0);
     writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Base", null, "java/lang/Object", null);
