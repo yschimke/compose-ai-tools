@@ -130,6 +130,48 @@ public class LiveFrameSourceTest {
   }
 
   @Test
+  public void aFaceThatNeverGoesQuietStillAnswersWithinTheDeadline() throws Exception {
+    FillingService service = new FillingService();
+    WallpaperService.Engine engine = service.onCreateEngine();
+    LiveFrameSource source = LiveFrameSource.attach(engine, 40, 30);
+    assertNotNull(source);
+    source.timeoutMs = 800;
+    // An animation: a frame every 10 ms, so the reader is never quiet for 40 ms.
+    java.util.concurrent.atomic.AtomicBoolean running =
+        new java.util.concurrent.atomic.AtomicBoolean(true);
+    Thread animation =
+        new Thread(
+            () -> {
+              while (running.get()) {
+                Canvas canvas = engine.getSurfaceHolder().lockHardwareCanvas();
+                if (canvas != null) {
+                  canvas.drawColor(Color.GREEN);
+                  engine.getSurfaceHolder().unlockCanvasAndPost(canvas);
+                }
+                try {
+                  Thread.sleep(10);
+                } catch (InterruptedException e) {
+                  return;
+                }
+              }
+            });
+    animation.start();
+    try {
+      long start = System.nanoTime();
+      Bitmap frame = draw(source);
+      long tookMs = (System.nanoTime() - start) / 1_000_000;
+      // Not blocked forever: the request returns (a frame, or null for the screenshot path) in
+      // about the quiet cap plus the deadline.
+      org.junit.Assert.assertTrue("took " + tookMs + " ms", tookMs < 5_000);
+      if (frame != null) assertEquals(Color.GREEN, frame.getPixel(10, 10));
+    } finally {
+      running.set(false);
+      animation.join();
+      source.release();
+    }
+  }
+
+  @Test
   public void theFaceIsToldItIsVisible() {
     // A face that is not visible keeps its complications empty; an engine with a window is told by
     // the system, this one by the source.

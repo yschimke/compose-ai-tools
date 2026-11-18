@@ -42,12 +42,18 @@ final class LiveFrameSource {
   /** How long the reader must be idle for earlier frames to count as read back. */
   static final long QUIET_MS = 40;
 
+  /** The most a request waits for earlier frames before it is made. */
+  static final long QUIET_MAX_MS = 1_000;
+
   private final WallpaperService.Engine engine;
   private final SurfaceHolder holder;
   private final Handler main;
   private final int width;
   private final int height;
   private final HandlerThread readerThread = new HandlerThread("live-frame-reader");
+
+  /** The most one {@link #draw} takes; settable for tests. */
+  volatile long timeoutMs = FRAME_TIMEOUT_MS;
 
   private ImageReader reader;
   private Bitmap latest;
@@ -196,11 +202,14 @@ final class LiveFrameSource {
       // loop, an earlier timed-out request) may land after a counter snapshot and pass for this
       // one. Let those land first: frames come in the order they were posted, so once the reader
       // has been quiet, everything counted below is this request's.
-      awaitQuiet();
+      // A face that never goes quiet (an animation) must not hold the request: give up on the
+      // wait and take the snapshot as it is.
+      awaitQuiet(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(QUIET_MAX_MS));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return null;
     }
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     synchronized (lock) {
       before = posted;
     }
@@ -217,8 +226,7 @@ final class LiveFrameSource {
           }
         });
     try {
-      if (!drawn.await(FRAME_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return null;
-      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(FRAME_TIMEOUT_MS);
+      if (!drawn.await(timeoutMs, TimeUnit.MILLISECONDS)) return null;
       synchronized (lock) {
         while (posted <= before) {
           long left = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
@@ -228,7 +236,8 @@ final class LiveFrameSource {
       }
       // This request's frame was queued before the draw returned, behind nothing older; wait for
       // the rest of its burst (a face may post more than once) and take the last.
-      awaitQuiet();
+      // Under the same deadline: a face still posting when it expires gives its latest frame.
+      awaitQuiet(deadline);
       synchronized (lock) {
         return latest;
       }
@@ -241,12 +250,13 @@ final class LiveFrameSource {
     }
   }
 
-  /** Returns once no frame has been read back for {@link #QUIET_MS}. */
-  private void awaitQuiet() throws InterruptedException {
+  /** Returns once no frame has been read back for {@link #QUIET_MS}, or at [deadlineNs]. */
+  private void awaitQuiet(long deadlineNs) throws InterruptedException {
     long quiet = TimeUnit.MILLISECONDS.toNanos(QUIET_MS);
     synchronized (lock) {
       while (true) {
-        long left = quiet - (System.nanoTime() - lastReadNs);
+        long now = System.nanoTime();
+        long left = Math.min(quiet - (now - lastReadNs), deadlineNs - now);
         if (left <= 0) return;
         TimeUnit.NANOSECONDS.timedWait(lock, left);
       }
