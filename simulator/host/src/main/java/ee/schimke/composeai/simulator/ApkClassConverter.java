@@ -914,6 +914,23 @@ public final class ApkClassConverter {
         : access;
   }
 
+  private static final String SOFTWARE_RENDER_NODES =
+      "ee/schimke/composeai/simulator/SoftwareRenderNodes";
+
+  /**
+   * A {@code Canvas.drawRenderNode} call made through a plain {@code Canvas} reference, which on a
+   * software canvas throws. Rewritten to {@link SoftwareRenderNodes#draw}, which passes a hardware
+   * canvas through unchanged. Calls typed {@code RecordingCanvas} are always hardware and are left
+   * alone.
+   */
+  static boolean isSoftwareUnsafeDrawRenderNode(
+      int opcode, String owner, String method, String descriptor) {
+    return opcode == Opcodes.INVOKEVIRTUAL
+        && "android/graphics/Canvas".equals(owner)
+        && "drawRenderNode".equals(method)
+        && "(Landroid/graphics/RenderNode;)V".equals(descriptor);
+  }
+
   private static byte[] rewrite(
       byte[] bytes,
       Set<String> synthesizedInits,
@@ -961,6 +978,15 @@ public final class ApkClassConverter {
               @Override
               public void visitMethodInsn(
                   int opcode, String owner, String method, String descriptor, boolean itf) {
+                if (isSoftwareUnsafeDrawRenderNode(opcode, owner, method, descriptor)) {
+                  super.visitMethodInsn(
+                      Opcodes.INVOKESTATIC,
+                      SOFTWARE_RENDER_NODES,
+                      "draw",
+                      "(Landroid/graphics/Canvas;Landroid/graphics/RenderNode;)V",
+                      false);
+                  return;
+                }
                 boolean staticOrSpecial =
                     opcode == Opcodes.INVOKESTATIC || opcode == Opcodes.INVOKESPECIAL;
                 if (!itf && staticOrSpecial && hierarchy.isInterface(owner)) {

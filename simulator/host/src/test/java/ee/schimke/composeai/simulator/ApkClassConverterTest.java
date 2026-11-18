@@ -20,6 +20,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +145,65 @@ public class ApkClassConverterTest {
       conditions.add(condition.vt.name());
     }
     assertEquals(List.of("GE", "LT", "EQ", "LT"), conditions);
+  }
+
+  @Test
+  public void softwareCanvasDrawRenderNodeGoesThroughTheSimulator() throws Exception {
+    // DeclarativeWatchFaceRuntime draws its cached layers with canvas.drawRenderNode(node), also
+    // onto renderWatchFaceToBitmap's software canvas, where the framework throws.
+    ClassWriter writer = new ClassWriter(0);
+    writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Layer", null, "java/lang/Object", null);
+    MethodVisitor mv =
+        writer.visitMethod(
+            Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+            "draw",
+            "(Landroid/graphics/Canvas;Landroid/graphics/RecordingCanvas;"
+                + "Landroid/graphics/RenderNode;)V",
+            null,
+            null);
+    mv.visitCode();
+    mv.visitVarInsn(Opcodes.ALOAD, 0);
+    mv.visitVarInsn(Opcodes.ALOAD, 2);
+    mv.visitMethodInsn(
+        Opcodes.INVOKEVIRTUAL,
+        "android/graphics/Canvas",
+        "drawRenderNode",
+        "(Landroid/graphics/RenderNode;)V",
+        false);
+    mv.visitVarInsn(Opcodes.ALOAD, 1);
+    mv.visitVarInsn(Opcodes.ALOAD, 2);
+    mv.visitMethodInsn(
+        Opcodes.INVOKEVIRTUAL,
+        "android/graphics/RecordingCanvas",
+        "drawRenderNode",
+        "(Landroid/graphics/RenderNode;)V",
+        false);
+    mv.visitInsn(Opcodes.RETURN);
+    mv.visitMaxs(2, 3);
+    mv.visitEnd();
+    writer.visitEnd();
+    byte[] layer = writer.toByteArray();
+
+    ClassNode node = new ClassNode();
+    new ClassReader(
+            ApkClassConverter.rewrite(layer, hierarchy(layer), new ApkClassConverter.Summary()))
+        .accept(node, 0);
+    List<String> calls = new ArrayList<>();
+    for (org.objectweb.asm.tree.AbstractInsnNode insn : method(node, "draw").instructions) {
+      if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call) {
+        calls.add(call.getOpcode() + " " + call.owner + "." + call.name + call.desc);
+      }
+    }
+    assertEquals(
+        List.of(
+            Opcodes.INVOKESTATIC
+                + " ee/schimke/composeai/simulator/SoftwareRenderNodes.draw"
+                + "(Landroid/graphics/Canvas;Landroid/graphics/RenderNode;)V",
+            // Always hardware: left alone.
+            Opcodes.INVOKEVIRTUAL
+                + " android/graphics/RecordingCanvas.drawRenderNode"
+                + "(Landroid/graphics/RenderNode;)V"),
+        calls);
   }
 
   @Test

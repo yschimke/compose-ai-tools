@@ -503,7 +503,9 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private fun ensureRuntimeClasses(env: Environment): File {
     val sha = sha256(env.runtimeApk)
     val cacheDir = composeAiCacheDir("dwf-apk-daemon").apply { mkdirs() }
-    val outJar = File(cacheDir, "runtime-v2-$sha.jar")
+    // v3: the converter rewrites Canvas.drawRenderNode for software canvases (SoftwareRenderNodes),
+    // so a runtime converted by an earlier simulator must be converted again.
+    val outJar = File(cacheDir, "runtime-v3-$sha.jar")
     if (outJar.isFile && outJar.length() > 0L) return outJar
 
     val simulatorHostJar =
