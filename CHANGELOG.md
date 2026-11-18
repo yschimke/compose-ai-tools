@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.98.2](https://github.com/yschimke/compose-ai-tools/compare/v2.98.1...v2.98.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **dwf-apk:** draw the runtime's render-node layers onto software canvases ([#6620](https://github.com/yschimke/compose-ai-tools/issues/6620)) ([3eca852](https://github.com/yschimke/compose-ai-tools/commit/3eca8527d379a7c6a328586118f7321bd2057550))
+
 ## [2.98.1](https://github.com/yschimke/compose-ai-tools/compare/v2.98.0...v2.98.1) (2026-11-18)
 
 
