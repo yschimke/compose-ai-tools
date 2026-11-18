@@ -297,14 +297,27 @@ internal object WffSourceBundle {
       has("gnu general public license", "version 2") -> "GPL-2.0"
       has("eclipse public license", "2.0") -> "EPL-2.0"
       has("permission is hereby granted, free of charge") -> "MIT"
-      has("redistribution and use in source and binary forms") ->
-        when {
-          "neither the name" in t || "names of its contributors" in t -> "BSD-3-Clause"
-          else -> "BSD-2-Clause"
-        }
+      has("redistribution and use in source and binary forms") -> bsdVariant(t)
       has("isc license") ||
         has("permission to use, copy, modify, and/or distribute this software") -> "ISC"
       else -> null
+    }
+  }
+
+  /**
+   * The BSD variant of a normalised (lower-case, single-spaced) BSD text: the advertising clause
+   * makes it BSD-4-Clause, the non-endorsement clause BSD-3-Clause, and the two redistribution
+   * clauses alone BSD-2-Clause. A text missing either redistribution clause is null rather than
+   * defaulting to a variant it might not be.
+   */
+  private fun bsdVariant(t: String): String? {
+    val sourceClause = "redistributions of source code must retain" in t
+    val binaryClause = "redistributions in binary form must reproduce" in t
+    if (!sourceClause || !binaryClause) return null
+    return when {
+      "advertising materials" in t -> "BSD-4-Clause"
+      "neither the name" in t || "names of its contributors" in t -> "BSD-3-Clause"
+      else -> "BSD-2-Clause"
     }
   }
 
@@ -401,9 +414,9 @@ internal object WffSourceBundle {
 }
 
 /**
- * `"<repoUrl> <commit>"` of the git checkout containing [Params.directory], re-read on every build
- * so a new commit re-packs an otherwise unchanged bundle (the WFF manifest records the commit).
- * Empty outside a git checkout.
+ * `"<repoUrl> <commit> <licence>:<sha256>"` of the git checkout containing [Params.directory],
+ * re-read on every build so a new commit or an edited licence re-packs an otherwise unchanged
+ * bundle (the WFF manifest records both). Blank fields outside a git checkout.
  */
 internal abstract class WffSourceRevisionValueSource :
   ValueSource<String, WffSourceRevisionValueSource.Params> {
@@ -413,6 +426,13 @@ internal abstract class WffSourceRevisionValueSource :
 
   override fun obtain(): String {
     val provenance = WffSourceBundle.gitProvenance(parameters.directory.get())
-    return "${provenance.repoUrl.orEmpty()} ${provenance.commit.orEmpty()}".trim()
+    // The licence file the packer will pick (same lookup, at the git root, case-insensitive), by
+    // path and content hash, so editing it re-packs even when HEAD doesn't move.
+    val license =
+      provenance.repoRoot?.let(WffSourceBundle::findLicenseFile)?.let { f ->
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+        "${f.name}:${digest.joinToString("") { "%02x".format(it) }}"
+      }
+    return listOf(provenance.repoUrl, provenance.commit, license).joinToString(" ") { it.orEmpty() }
   }
 }

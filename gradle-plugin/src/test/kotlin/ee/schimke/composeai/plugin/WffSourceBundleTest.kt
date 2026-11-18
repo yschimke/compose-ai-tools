@@ -227,10 +227,28 @@ class WffSourceBundleTest {
         ),
       )
       .isEqualTo("MIT")
-    val bsd = "Redistribution and use in source and binary forms, with or without modification"
+    val bsd =
+      "Redistribution and use in source and binary forms, with or without modification, are " +
+        "permitted provided that: 1. Redistributions of source code must retain the above " +
+        "copyright notice. 2. Redistributions in binary form must reproduce the above copyright " +
+        "notice."
     assertThat(WffSourceBundle.detectSpdx(bsd)).isEqualTo("BSD-2-Clause")
-    assertThat(WffSourceBundle.detectSpdx("$bsd. Neither the name of the copyright holder"))
-      .isEqualTo("BSD-3-Clause")
+    val bsd3 = "$bsd 3. Neither the name of the copyright holder nor the names of its contributors"
+    assertThat(WffSourceBundle.detectSpdx(bsd3)).isEqualTo("BSD-3-Clause")
+    // The advertising clause is BSD-4-Clause, never mistaken for the allowlisted 3-clause.
+    assertThat(
+        WffSourceBundle.detectSpdx(
+          "$bsd3. All advertising materials mentioning features or use of this software must",
+        ),
+      )
+      .isEqualTo("BSD-4-Clause")
+    // A BSD-shaped text without both redistribution clauses is unknown, not a guessed variant.
+    assertThat(
+        WffSourceBundle.detectSpdx(
+          "Redistribution and use in source and binary forms, with or without modification",
+        ),
+      )
+      .isNull()
     assertThat(WffSourceBundle.detectSpdx("Creative Commons CC0 1.0 Universal"))
       .isEqualTo("CC0-1.0")
     assertThat(
@@ -252,5 +270,23 @@ class WffSourceBundleTest {
     assertThat(WffSourceBundle.detectSpdx("GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007"))
       .isEqualTo("GPL-3.0")
     assertThat(WffSourceBundle.detectSpdx("All rights reserved.")).isNull()
+  }
+
+  @Test
+  fun `revision value source changes when the git-root licence is edited, whatever its case`() {
+    val root = repo()
+    File(root, "LICENSE").delete()
+    val license = File(root, "license.md").apply { writeText("MIT License") }
+    val project = org.gradle.testfixtures.ProjectBuilder.builder().withProjectDir(root).build()
+    fun revision() =
+      project.providers
+        .of(WffSourceRevisionValueSource::class.java) {
+          parameters.directory.set(File(root, "app"))
+        }
+        .get()
+    val before = revision()
+    assertThat(before).startsWith("https://github.com/bonstio/casino-gshark $sha license.md:")
+    license.writeText("Apache License Version 2.0")
+    assertThat(revision()).isNotEqualTo(before)
   }
 }

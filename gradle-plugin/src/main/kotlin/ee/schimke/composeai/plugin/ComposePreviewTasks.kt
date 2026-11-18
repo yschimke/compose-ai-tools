@@ -2374,8 +2374,8 @@ internal object ComposePreviewTasks {
   /**
    * Wires the Watch Face Format source-bundle inputs of a module with `<WatchFace>` XML:
    * [resourceDirs] to assemble `previews/<id>.wff.zip` from, the source manifests (for the WFF
-   * version), the repository's licence-file candidates, and the git revision as a value source so a
-   * new commit re-packs.
+   * version), and the git revision and licence as a value source so a new commit or licence
+   * re-packs.
    */
   internal fun configureWffSourceBundle(
     project: Project,
@@ -2387,15 +2387,11 @@ internal object ComposePreviewTasks {
       project.providers.of(WffSourceRevisionValueSource::class.java) {
         parameters.directory.set(projectDir)
       }
-    val root = repositoryRootDirectory(project)
     bundleTask.configure {
       wffResourceDirs.from(resourceDirs)
       wffAndroidManifests.from(
         project.layout.projectDirectory.file("src/main/AndroidManifest.xml"),
         project.layout.projectDirectory.file("src/androidMain/AndroidManifest.xml"),
-      )
-      wffLicenseFiles.from(
-        root.asFileTree.matching { include("LICENSE*", "LICENCE*", "COPYING*", "UNLICENSE*") },
       )
       wffSourceRevision.set(revision)
     }

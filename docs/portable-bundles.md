@@ -217,7 +217,7 @@ timestamp, so the zip is byte-stable across packs.
 | `commit` | `HEAD` (detached, loose ref or `packed-refs`), read from `.git` without running git | not a git checkout |
 | `sourcePath` | the face XML relative to the work-tree root | not a git checkout |
 | `sourceUrl` | `<repoUrl>/blob/<commit>/<sourcePath>` | any of those is null, or the host isn't github.com |
-| `license` | SPDX id matched from the licence file's text (`Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `CC0-1.0`, `Unlicense`, `CC-BY-4.0`, `ISC`, `MPL-2.0`, `EPL-2.0`, `GPL-2.0`/`-3.0`, `LGPL-2.1`/`-3.0`, `AGPL-3.0`) | no top-level `LICENSE`/`LICENCE`/`COPYING`/`UNLICENSE`, or text that matches none — never guessed |
+| `license` | SPDX id matched from the licence file's text (`Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `BSD-4-Clause`, `CC0-1.0`, `Unlicense`, `CC-BY-4.0`, `ISC`, `MPL-2.0`, `EPL-2.0`, `GPL-2.0`/`-3.0`, `LGPL-2.1`/`-3.0`, `AGPL-3.0`) | no top-level `LICENSE`/`LICENCE`/`COPYING`/`UNLICENSE`, or text that matches none — never guessed |
 | `licenseFile` | the repository-relative path that was read (carried as `LICENSE` in the zip) | no licence file |
 
 The producer **records, never filters**: a face whose licence is `null` or not redistributable is

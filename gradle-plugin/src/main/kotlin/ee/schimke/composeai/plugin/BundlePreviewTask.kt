@@ -296,13 +296,10 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val wffAndroidManifests: ConfigurableFileCollection
 
-  /** Repository licence-file candidates, tracked so a licence change re-packs. */
-  @get:InputFiles
-  @get:Optional
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val wffLicenseFiles: ConfigurableFileCollection
-
-  /** [WffSourceRevisionValueSource]: the origin URL and commit the WFF manifest records. */
+  /**
+   * [WffSourceRevisionValueSource]: the origin URL, commit and licence file the WFF manifest
+   * records.
+   */
   @get:Input @get:Optional abstract val wffSourceRevision: Property<String>
 
   @get:OutputFile abstract val output: RegularFileProperty
