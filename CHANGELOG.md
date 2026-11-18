@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.99.3](https://github.com/yschimke/compose-ai-tools/compare/v2.99.2...v2.99.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **dwf-apk:** bridge requests name their whole state and wait for their frame ([#6642](https://github.com/yschimke/compose-ai-tools/issues/6642)) ([e35b77f](https://github.com/yschimke/compose-ai-tools/commit/e35b77f5452b3fff9e76a976e99b3732461899de))
+* **dwf-apk:** create runtime instances one at a time and keep the runtime's services bound ([#6641](https://github.com/yschimke/compose-ai-tools/issues/6641)) ([c2ee4e1](https://github.com/yschimke/compose-ai-tools/commit/c2ee4e1f061c0ff7f25ea0953407f7e9876a6488))
+* **dwf-apk:** release an instance the runtime hands back after its client was released ([#6640](https://github.com/yschimke/compose-ai-tools/issues/6640)) ([e376c9b](https://github.com/yschimke/compose-ai-tools/commit/e376c9bbab99d198dec157da7a2fe6883df4ccae))
+* **dwf-rc:** apply a requested watch-face flavor ([#6637](https://github.com/yschimke/compose-ai-tools/issues/6637)) ([f636397](https://github.com/yschimke/compose-ai-tools/commit/f636397b42039f44b38998135541746fb87d682e))
+
 ## [2.99.2](https://github.com/yschimke/compose-ai-tools/compare/v2.99.1...v2.99.2) (2026-11-18)
 
 
