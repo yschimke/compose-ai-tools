@@ -745,4 +745,66 @@ class WatchFaceSupportTest {
     val ambient = commands.first { it.first == "ambient" }.second
     assertEquals("INTERACTIVE", ambient["state"]?.toString()?.trim('"'))
   }
+
+  @Test
+  fun aBareRequestResetsTheClockAndSensorsAnEarlierRequestSet() {
+    val preview = ServePreview(id = "p", label = "p")
+    val (commands, _) = DwfApkDaemonBridge.buildOverrideCommands(preview, PreviewOverrides())
+    // The daemon is shared between requests: nothing a pin or sensor override left may survive.
+    assertEquals("null", commands.first { it.first == "clock" }.second["timeMillis"]?.toString())
+    val health = commands.first { it.first == "health" }.second
+    assertEquals("72.0", health["heartRate"]?.toString())
+    assertEquals("4200", health["steps"]?.toString())
+    assertEquals("100", commands.first { it.first == "battery" }.second["level"]?.toString())
+
+    val (pinned, _) =
+      DwfApkDaemonBridge.buildOverrideCommands(
+        preview,
+        PreviewOverrides(clockEpochMillis = 1772705310000L),
+      )
+    assertEquals(
+      "1772705310000",
+      pinned.first { it.first == "clock" }.second["timeMillis"]?.toString(),
+    )
+  }
+
+  @Test
+  fun awaitSettledWaitsForTheFaceToFinishRenderingWithinTheBound() {
+    val rendering = listOf(true, true, false)
+    var polls = 0
+    var clock = 0L
+    val last =
+      DwfApkDaemonBridge.awaitSettled(
+        status = {
+          kotlinx.serialization.json.buildJsonObject {
+            put("rendering", kotlinx.serialization.json.JsonPrimitive(rendering[polls++]))
+          }
+        },
+        timeoutMillis = 10_000,
+        sleep = { clock += it },
+        nowMillis = { clock },
+      )
+    assertEquals(3, polls)
+    assertEquals(
+      false,
+      (last as kotlinx.serialization.json.JsonObject)["rendering"].toString().toBoolean(),
+    )
+
+    // A face that never settles does not hold the request past the bound.
+    polls = 0
+    clock = 0L
+    DwfApkDaemonBridge.awaitSettled(
+      status = {
+        polls++
+        kotlinx.serialization.json.buildJsonObject {
+          put("rendering", kotlinx.serialization.json.JsonPrimitive(true))
+        }
+      },
+      timeoutMillis = 500,
+      pollMillis = 100,
+      sleep = { clock += it },
+      nowMillis = { clock },
+    )
+    assertTrue(polls in 5..7, "polls=$polls")
+  }
 }
