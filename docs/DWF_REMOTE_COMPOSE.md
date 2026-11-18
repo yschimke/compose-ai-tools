@@ -41,6 +41,17 @@ Stable surface = package `ee.schimke.composeai.dwf`, pinned by the ABI dump
 (`ee.schimke.composeai.rccreation.dwf`, `DwfResourceDirectoryResolver`) are public so the daemons and
 the Gradle plugin's DWF task can link them, but are **not** pinned.
 
+### Self-contained documents
+
+A compiled face needs no resource host the browser (CMP Wasm) player lacks. A custom font family whose
+file is under `font/` is embedded as a `FontData` operation, once per family, under the id of the
+family-name text the paint names it by (the creation writer can only name a family, so the font is
+spliced in after the header once capture finishes). The CMP player resolves a family text that shares
+its id with a `FontData` as that font; the AndroidX player keeps texts and fonts apart and still
+resolves the family by name. Local drawables and the complication/photo placeholders are inline
+bitmaps. `WffSelfContainedDocumentTest` asks the CMP player's own `composeSupportReport` that a face
+with a custom font, a drawable and three image complications is fully renderable.
+
 ### Never throws for bad input
 
 A malformed document gives `rcBytes == null` and an `ERROR` diagnostic (`PARSE_ERROR`,
@@ -121,7 +132,9 @@ date through that, not through a name here.
 | `dwf.complication.<slot>.{image_color,accent_color}` | color | COMPLICATION | Icon tint; badge/backdrop accent. |
 
 Image-valued variables (`…monochromatic_image`, `…small_image`, `…photo_image`, photo configuration)
-are URL-backed bitmaps, not seedable scalars, and are not in the manifest. `DwfVariables` is the
+are named bitmaps, not seedable scalars, and are not in the manifest. Their placeholders
+(`DwfDefaultImages`) are inlined into the document, so a host replaces them by name but a player with
+no image host still draws them; only an image the face itself names by URL stays a URL reference. `DwfVariables` is the
 catalogue; `WffRemoteComposeTest` fails if a `dwf.*` / `metrics.*` name appears that
 `describeNamedValue` does not document.
 

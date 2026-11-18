@@ -47,6 +47,9 @@ dependencies {
   testImplementation(kotlin("test"))
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  // The CMP player's support report is what the browser (CMP Wasm) lane refuses a document by; the
+  // tests ask it directly whether a compiled face is playable there.
+  testImplementation(libs.rcplayer.compose)
   @Suppress("DEPRECATION") testRuntimeOnly(compose.desktop.currentOs)
 }
 
@@ -55,10 +58,18 @@ dependencies {
 val wearOsSamples =
   layout.projectDirectory.dir("../rc-render-jvm/src/test/resources/wear-os-samples")
 
+// An OFL font already in the repository, embedded by the custom-font test rather than copied here.
+val testFont =
+  layout.projectDirectory.file(
+    "../samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/LobsterTwo-Regular.ttf",
+  )
+
 tasks.withType<Test>().configureEach {
   jvmArgs("--enable-native-access=ALL-UNNAMED")
   inputs.dir(wearOsSamples).withPropertyName("wearOsSamples")
   systemProperty("dwf.wearOsSamplesDir", wearOsSamples.asFile.absolutePath)
+  inputs.file(testFont).withPropertyName("testFont")
+  systemProperty("dwf.testFont", testFont.asFile.absolutePath)
 }
 
 composeAiMavenPublishing {
