@@ -145,6 +145,8 @@ bundle.json          # manifest; classpath[] differs per producer/mode
 previews.json
 previews/<id>.png            # baked images — IDENTICAL across all build systems
 previews/<id>.semantics.json # (opt-in) per-preview compose/semantics tree (resolved fg/bg colours)
+previews/<id>.wff.zip        # (watch faces) WFF source bundle — see "Watch Face Format source bundle"
+previews/<id>.wff.json       # (watch faces) its provenance + licence manifest
 classes/app.jar       # module bytecode, minimized (ClassGraph closure is build-system-agnostic:
                       #   it walks whatever class dirs + jars it's given — Bazel/Amper outputs work)
 libs/<name>.jar       # inlined deps: today only project-style; in "embedded" mode, all reachable deps
@@ -155,6 +157,83 @@ report.json
 The minimizer (`BundlePreviewTask.closureWalk`) already takes a flat
 `scanPaths = classDirs + jars` — it has **no Gradle dependency**, so a contrib
 producer can reuse the same reachability pruning over Bazel/Amper outputs.
+
+### Watch Face Format source bundle (`previews/<id>.wff.zip` + `.wff.json`)
+
+Every preview discovered from a `<WatchFace>` XML (`params.dwfAssetPath` set — the `dwf__*` ids)
+also carries the face's **source**, so a detached consumer can repackage it, for example
+compose-preview-server building a signed APK for the Watch Face Push app. Two entries per face,
+beside its other sidecars:
+
+```
+previews/<id>.wff.zip    # the face in the standard WFF layout (below)
+previews/<id>.wff.json   # provenance manifest (below)
+```
+
+`previews/<id>.wff.zip` holds exactly one face:
+
+```
+res/raw/watchface.xml          # the preview's face, ALWAYS at this path — WFF requires it — whatever
+                               #   the module called it (`sourcePath` keeps the original)
+res/xml/*.xml                  # watch_face_info.xml and the other xml resources, except other faces
+                               #   and the shape map (see below)
+res/values*/*.xml              # all of them (strings, colours, integers)
+res/drawable*/…, res/mipmap*/…,
+res/font*/…                    # only files whose resource name the face, an xml/values resource,
+                               #   or the manifest mentions (closed transitively); qualifiers kept
+AndroidManifest.xml            # the module's src/main manifest, verbatim, when present
+LICENSE                        # the source repository's top-level licence file, when present
+```
+
+A module with several faces (`raw/watchface.xml`, `raw/watchface_pixel.xml`, …) gets one zip per
+face, each relocated to `res/raw/watchface.xml`. Other `<WatchFace>` documents and the
+`res/xml/watch_face_shapes.xml` shape map (`<WatchFaces><WatchFace file="@raw/…"/>`) are left
+out, because a shape map would point at faces the zip does not carry; a packager that wants the
+per-shape variants combines the per-preview zips itself. Entries are sorted with a fixed
+timestamp, so the zip is byte-stable across packs.
+
+`previews/<id>.wff.json` (`ee.schimke.composeai.bundle.WffSourceManifest`):
+
+```json
+{
+  "schemaVersion": 1,
+  "previewId": "dwf__raw_watchface",
+  "bundle": "previews/dwf__raw_watchface.wff.zip",
+  "wffVersion": 2,
+  "repoUrl": "https://github.com/bonstio/casino-gshark",
+  "commit": "2087f9f9b9c27ee3c3f5b824ff73221e413cc7c7",
+  "sourcePath": "app/src/main/res/raw/watchface.xml",
+  "sourceUrl": "https://github.com/bonstio/casino-gshark/blob/2087f9f9b9c27ee3c3f5b824ff73221e413cc7c7/app/src/main/res/raw/watchface.xml",
+  "license": null,
+  "licenseFile": null,
+  "files": ["AndroidManifest.xml", "res/drawable/…", "res/raw/watchface.xml", "…"]
+}
+```
+
+| Field | Source | Null when |
+| --- | --- | --- |
+| `wffVersion` | `com.google.wear.watchface.format.version` on a `<property>` / `<meta-data>` in the manifest; `@integer/…` is resolved from `values*` | no manifest, or it doesn't declare it |
+| `repoUrl` | the checkout's `origin` remote, normalised to `https://host/owner/repo` with credentials stripped | not a git checkout, or a non-URL remote |
+| `commit` | `HEAD` (detached, loose ref or `packed-refs`), read from `.git` without running git | not a git checkout |
+| `sourcePath` | the face XML relative to the work-tree root | not a git checkout |
+| `sourceUrl` | `<repoUrl>/blob/<commit>/<sourcePath>` | any of those is null, or the host isn't github.com |
+| `license` | SPDX id matched from the licence file's text (`Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `BSD-4-Clause`, `CC0-1.0`, `Unlicense`, `CC-BY-4.0`, `ISC`, `MPL-2.0`, `EPL-2.0`, `GPL-2.0`/`-3.0`, `LGPL-2.1`/`-3.0`, `AGPL-3.0`) | no top-level `LICENSE`/`LICENCE`/`COPYING`/`UNLICENSE`, or text that matches none — never guessed |
+| `licenseFile` | the repository-relative path that was read (carried as `LICENSE` in the zip) | no licence file |
+
+The producer **records, never filters**: a face whose licence is `null` or not redistributable is
+still packed. Whoever redistributes it applies the allowlist; compose-preview-server packages only
+`Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `CC0-1.0`, `Unlicense` and `CC-BY-4.0`.
+
+In an import (`design-artifacts-reusable.yml` with `upstream-repository`), the upstream is
+fetched into `upstream/` with `origin` set to `https://github.com/<owner>/<repo>.git` and `HEAD`
+detached at the resolved SHA, so `repoUrl` and `commit` name the imported project, not the
+importer. Patches from `upstream-patches` are applied to the working tree and so are included in
+the zip, while `commit` still names the unpatched upstream revision.
+
+Additive: no `schemaVersion` bump. Readers that don't know the suffixes ignore them. `bundle split`
+copies both entries into each per-preview bundle, and `bundle merge` carries them like any
+`previews/<id>.*` artifact. On a `design-artifacts/<system>` branch they live inside
+`bundle/bundle.png` (and each `bundle/modules/<m>/…png` for an all-module catalog).
 
 ### Externalized resources (post-pack, opt-in) — fonts fetched, not carried
 

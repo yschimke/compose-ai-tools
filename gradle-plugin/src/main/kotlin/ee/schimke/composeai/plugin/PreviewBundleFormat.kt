@@ -449,6 +449,19 @@ const val BUNDLE_REMOTECOMPOSE_SIDECAR_EXT: String = "remotecompose.json"
 const val BUNDLE_WATCHFACE_SIDECAR_EXT: String = "watchface.json"
 
 /**
+ * Extension of a Watch Face Format preview's source bundle, `previews/<id>.wff.zip` (the face in
+ * the standard `res/` layout). Mirrors `BUNDLE_WFF_SOURCE_SUFFIX` in `:bundle-format`; see
+ * [WffSourceBundle].
+ */
+const val BUNDLE_WFF_SOURCE_EXT: String = "wff.zip"
+
+/**
+ * Extension of the provenance manifest beside [BUNDLE_WFF_SOURCE_EXT], `previews/<id>.wff.json`
+ * (`{wffVersion, repoUrl, commit, sourceUrl, license, …}`). Mirrors `BUNDLE_WFF_MANIFEST_SUFFIX`.
+ */
+const val BUNDLE_WFF_MANIFEST_EXT: String = "wff.json"
+
+/**
  * Extension of the render-failure sidecar: `<png>.error.json` on disk, `previews/<id>.error.json`
  * in the bundle.
  */

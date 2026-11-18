@@ -281,6 +281,27 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   @get:Internal abstract val uiBuilderTemplateRoots: ConfigurableFileCollection
 
+  /**
+   * Resource roots a Watch Face Format preview's source bundle (`previews/<id>.wff.zip`) is
+   * assembled from: the module's `res` directories. Empty for a module without watch faces.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val wffResourceDirs: ConfigurableFileCollection
+
+  /** Source `AndroidManifest.xml` candidates, first existing wins; carries the WFF version. */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val wffAndroidManifests: ConfigurableFileCollection
+
+  /**
+   * [WffSourceRevisionValueSource]: the origin URL, commit and licence file the WFF manifest
+   * records.
+   */
+  @get:Input @get:Optional abstract val wffSourceRevision: Property<String>
+
   @get:OutputFile abstract val output: RegularFileProperty
 
   @TaskAction
@@ -508,6 +529,10 @@ abstract class BundlePreviewTask : DefaultTask() {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_WATCHFACE_SIDECAR_EXT"] = it
       }
     }
+
+    // Watch Face Format source bundles, `previews/<id>.wff.zip` + `previews/<id>.wff.json`, so a
+    // detached consumer can repackage each face. See [WffSourceBundle].
+    overrideFiles.putAll(wffSourceEntries(selected, bundleIds))
 
     // Catalog-token sidecars (#2167, theme tables per #2179), packed as
     // `previews/<id>.catalog.json` for detached importers. Only CATALOG / THEME_CATALOG sheets have
@@ -789,6 +814,48 @@ abstract class BundlePreviewTask : DefaultTask() {
       listOfNotNull(captureDir?.let { File(it, sidecarName) }, File(rendersRoot, sidecarName))
         .firstOrNull { it.isFile && it.length() > 0 } ?: return null
     return f.readBytes()
+  }
+
+  /**
+   * `previews/<id>.wff.zip` and `previews/<id>.wff.json` for every selected `<WatchFace>` preview
+   * whose XML is under [wffResourceDirs]. Provenance (origin URL, commit, licence) is read from the
+   * git checkout containing the module; anything it can't detect is recorded as null.
+   */
+  private fun wffSourceEntries(
+    selected: List<PreviewInfo>,
+    bundleIds: Map<String, String>,
+  ): Map<String, ByteArray> {
+    val watchFaces = selected.filter { !it.params.dwfAssetPath.isNullOrBlank() }
+    val resRoots = wffResourceDirs.files.toList()
+    if (watchFaces.isEmpty() || resRoots.isEmpty()) return emptyMap()
+    val provenance =
+      moduleProjectDir.orNull?.asFile?.let(WffSourceBundle::gitProvenance)
+        ?: WffSourceBundle.Provenance()
+    val out = LinkedHashMap<String, ByteArray>()
+    for (preview in watchFaces) {
+      val bundleId = bundleIds.getValue(preview.id)
+      val zipPath = "$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_WFF_SOURCE_EXT"
+      val packed =
+        WffSourceBundle.pack(
+          previewId = bundleId,
+          bundlePath = zipPath,
+          dwfAssetPath = preview.params.dwfAssetPath!!,
+          resRoots = resRoots,
+          androidManifests = wffAndroidManifests.files.toList(),
+          provenance = provenance,
+        )
+      if (packed == null) {
+        logger.info(
+          "composePreviewBundle: no resource root holds ${preview.params.dwfAssetPath} for " +
+            "${preview.id}; packing it without a WFF source bundle.",
+        )
+        continue
+      }
+      out[zipPath] = packed.zip
+      out["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_WFF_MANIFEST_EXT"] =
+        WffSourceBundle.encodeManifest(packed.manifest)
+    }
+    return out
   }
 
   /**

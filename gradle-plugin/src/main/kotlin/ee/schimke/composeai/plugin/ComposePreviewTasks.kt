@@ -636,17 +636,18 @@ internal object ComposePreviewTasks {
         backendId = if (hasDwfSources && !hasJvmSources(project)) "dwf" else "desktop",
       )
     if (hasDwfSources) {
+      val dwfRoots =
+        project.files(
+          project.layout.projectDirectory.dir("src/main/resources"),
+          project.layout.projectDirectory.dir("src/commonMain/resources"),
+          project.layout.projectDirectory.dir("src/jvmMain/resources"),
+          project.layout.projectDirectory.dir("src/desktopMain/resources"),
+        )
       bundleTask.configure {
         moduleResourceRoots.from(sourceResourceDirs)
-        moduleResourceRoots.from(
-          project.files(
-            project.layout.projectDirectory.dir("src/main/resources"),
-            project.layout.projectDirectory.dir("src/commonMain/resources"),
-            project.layout.projectDirectory.dir("src/jvmMain/resources"),
-            project.layout.projectDirectory.dir("src/desktopMain/resources"),
-          ),
-        )
+        moduleResourceRoots.from(dwfRoots)
       }
+      configureWffSourceBundle(project, bundleTask, project.files(dwfRoots, sourceResourceDirs))
     }
 
     // Must run at apply time, before task realization, where MutationGuard rejects `afterEvaluate`.
@@ -2370,6 +2371,32 @@ internal object ComposePreviewTasks {
    * safe: `rootProject.layout` from a subproject is a cross-project access IP rejects ("Project
    * ':app' cannot access 'Project.layout' functionality on another project ':'").
    */
+  /**
+   * Wires the Watch Face Format source-bundle inputs of a module with `<WatchFace>` XML:
+   * [resourceDirs] to assemble `previews/<id>.wff.zip` from, the source manifests (for the WFF
+   * version), and the git revision and licence as a value source so a new commit or licence
+   * re-packs.
+   */
+  internal fun configureWffSourceBundle(
+    project: Project,
+    bundleTask: TaskProvider<BundlePreviewTask>,
+    resourceDirs: FileCollection,
+  ) {
+    val projectDir = project.projectDir
+    val revision =
+      project.providers.of(WffSourceRevisionValueSource::class.java) {
+        parameters.directory.set(projectDir)
+      }
+    bundleTask.configure {
+      wffResourceDirs.from(resourceDirs)
+      wffAndroidManifests.from(
+        project.layout.projectDirectory.file("src/main/AndroidManifest.xml"),
+        project.layout.projectDirectory.file("src/androidMain/AndroidManifest.xml"),
+      )
+      wffSourceRevision.set(revision)
+    }
+  }
+
   private fun repositoryRootDirectory(project: Project): Directory =
     project.isolated.rootProject.projectDirectory
 

@@ -223,10 +223,23 @@ class DwfPreviewBundleTest {
     task.producedBy.set("test")
     task.backend.set("dwf")
     task.previewIds.set(emptyList())
+    val resDir = File(tmp.root, "src/main/res")
+    File(resDir, "raw").mkdirs()
+    File(resDir, "raw/watchface.xml")
+      .writeText("""<WatchFace width="450" height="450"><Scene/></WatchFace>""")
+    task.wffResourceDirs.from(resDir)
+    task.moduleProjectDir.set(tmp.root)
     task.pack()
 
     val zipBytes = extractZipBytes(task.output.get().asFile.readBytes())
     val entries = readAllZipEntries(zipBytes)
+    // The Watch Face Format source bundle and its provenance manifest travel beside the renders.
+    assertThat(entries.keys).contains("previews/$stem.wff.zip")
+    val wffManifest =
+      Json.parseToJsonElement(entries.getValue("previews/$stem.wff.json").decodeToString())
+        .jsonObject
+    assertThat(wffManifest["previewId"]?.jsonPrimitive?.content).isEqualTo(stem)
+    assertThat(wffManifest["bundle"]?.jsonPrimitive?.content).isEqualTo("previews/$stem.wff.zip")
     assertThat(entries.keys).contains("ir/$stem.rc")
     assertThat(entries.keys).contains("previews/$stem.png")
     assertThat(entries.keys).contains("previews/$stem.remotecompose.json")

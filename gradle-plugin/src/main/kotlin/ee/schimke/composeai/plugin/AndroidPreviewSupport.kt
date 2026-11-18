@@ -2867,6 +2867,13 @@ internal object AndroidPreviewSupport {
         moduleResourceRoots.from(androidDwfResDirs)
       }
     }
+    if (hasDwfSources) {
+      ComposePreviewTasks.configureWffSourceBundle(
+        project,
+        bundleTask,
+        project.files().apply { variant.sources.res?.all?.let { from(it) } },
+      )
+    }
     if (xrPreviewsEnabled) {
       // `renderFiles` tracks the shared renders tree including XR scenes; order after both XR
       // writers.
