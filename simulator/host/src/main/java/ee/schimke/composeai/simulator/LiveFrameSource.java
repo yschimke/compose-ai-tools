@@ -70,6 +70,21 @@ final class LiveFrameSource {
     this.main = new Handler(Looper.getMainLooper());
   }
 
+  /** [source]'s value, polled for up to [timeoutMs] until it is not null; null if it never is. */
+  static <T> T await(java.util.function.Supplier<T> source, long timeoutMs) {
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+    T value;
+    while ((value = source.get()) == null && System.nanoTime() < deadline) {
+      try {
+        Thread.sleep(20);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return null;
+      }
+    }
+    return value;
+  }
+
   /**
    * The engine behind [engineBinder] (the {@code IWallpaperEngine} the service handed the
    * connection), or null if it is not an in-process wallpaper engine.

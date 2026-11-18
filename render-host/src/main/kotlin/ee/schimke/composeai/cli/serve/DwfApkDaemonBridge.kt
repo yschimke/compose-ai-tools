@@ -69,6 +69,13 @@ public interface DwfApkSessionBridge {
 internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private const val FIRST_FRAME_TIMEOUT_MILLIS = 90_000L
 
+  /**
+   * The converted runtime's cache name prefix; bump it when `ApkClassConverter`'s output changes.
+   */
+  internal const val RUNTIME_CLASSES_VERSION = "runtime-v4"
+
+  internal fun runtimeClassesFileName(sha: String): String = "$RUNTIME_CLASSES_VERSION-$sha.jar"
+
   private val json = Json { ignoreUnknownKeys = true }
   private val lock = Any()
   private var activeDaemon: SimulatorDaemonProcess? = null
@@ -540,9 +547,11 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private fun ensureRuntimeClasses(env: Environment): File {
     val sha = sha256(env.runtimeApk)
     val cacheDir = composeAiCacheDir("dwf-apk-daemon").apply { mkdirs() }
-    // v3: the converter rewrites Canvas.drawRenderNode for software canvases (SoftwareRenderNodes),
-    // so a runtime converted by an earlier simulator must be converted again.
-    val outJar = File(cacheDir, "runtime-v3-$sha.jar")
+    // The cache name changes whenever the converter's output does, so a runtime converted by an
+    // earlier simulator is converted again: v3 added the Canvas.drawRenderNode rewrite for software
+    // canvases (SoftwareRenderNodes), v4 the ZonedDateTime.now() rewrite (SimulatorClock) that
+    // makes a pinned time reach the live draw.
+    val outJar = File(cacheDir, runtimeClassesFileName(sha))
     if (outJar.isFile && outJar.length() > 0L) return outJar
 
     val simulatorHostJar =
