@@ -16,6 +16,14 @@ public object DwfVariables {
   /** `1` (or boolean true) when 24-hour clock display is active, `0` for 12-hour mode. */
   public const val IS_24_HOUR: String = "dwf.is_24_hour"
 
+  /**
+   * Moon phase as a fraction of the synodic month, `[0, 1)` (`RemoteFloat`): 0 is a new moon, 0.25
+   * first quarter, 0.5 a full moon, 0.75 last quarter. The default `-1` means "derive it from the
+   * face's date"; seed `0..1` to preview a specific phase (`[MOON_PHASE_POSITION]`,
+   * `[MOON_PHASE_TYPE]` and `[MOON_PHASE_TYPE_STRING]` all follow it).
+   */
+  public const val MOON_PHASE: String = "dwf.moon.phase"
+
   /** `1` (or boolean true) when Daylight Saving Time is active, `0` otherwise. */
   public const val IS_DST: String = "dwf.is_dst"
 

@@ -263,10 +263,20 @@ class WffRemoteComposeTest {
   }
 
   @Test
-  fun `a v4 Reference is reported as unsupported`() {
+  fun `a well formed v4 Reference compiles with no diagnostic`() {
     val result =
       WffRemoteCompose.compile(
         """<WatchFace width="450" height="450"><Scene><Reference name="r" source="[HOUR_0_23]"/></Scene></WatchFace>""",
+      )
+    assertThat(result.isSuccess).isTrue()
+    assertThat(result.codes()).isEmpty()
+  }
+
+  @Test
+  fun `a malformed v4 Reference is still reported`() {
+    val result =
+      WffRemoteCompose.compile(
+        """<WatchFace width="450" height="450"><Scene><Reference source="[HOUR_0_23]"/></Scene></WatchFace>""",
       )
     assertThat(result.isSuccess).isTrue()
     assertThat(result.diagnostics.filter { it.code == "UNSUPPORTED_ELEMENT" }).hasSize(1)

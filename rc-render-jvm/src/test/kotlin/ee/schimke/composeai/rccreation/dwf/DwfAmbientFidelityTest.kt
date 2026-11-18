@@ -104,8 +104,10 @@ class DwfAmbientFidelityTest {
       render(weatherRepro, overrides = mapOf("dwf.weather.condition" to RcNamedValue.Integer(2)))
     // Ellipse centre (75+150, 75+100). Fill must be the full B8C4D0.
     assertEquals(0xB8C4D0, frame.rgb(225, 175), "the taken branch's Fill must draw")
-    // The stroke still draws too.
-    assertEquals(0x4FA8FF, frame.rgb(125 + 0, 75 + 255), "the Line stroke must draw")
+    // The stroke still draws too. Sampled at the stroke's centre (x 114..124 is solid at y 330):
+    // x=125 is its antialiased edge pixel, whose coverage shifts by a few percent through the
+    // group's alpha layer.
+    assertEquals(0x4FA8FF, frame.rgb(120, 75 + 255), "the Line stroke must draw")
     val ambient =
       render(
         weatherRepro,

@@ -23,6 +23,7 @@ import ee.schimke.composeai.rccreation.compose.shaders.RemoteShaderBrush
 import ee.schimke.composeai.rccreation.compose.shaders.linearGradient
 import ee.schimke.composeai.rccreation.compose.shaders.radialGradient
 import ee.schimke.composeai.rccreation.compose.shaders.sweepGradient
+import ee.schimke.composeai.rccreation.compose.state.MutableRemoteImageBitmap
 import ee.schimke.composeai.rccreation.compose.state.RemoteBitmapFont
 import ee.schimke.composeai.rccreation.compose.state.RemoteBlendMode
 import ee.schimke.composeai.rccreation.compose.state.RemoteBlendModeColorFilter
@@ -253,6 +254,9 @@ private class DwfCanvasRenderer(
 
   fun renderWatchFace(scope: RemoteDrawScope, compiler: DwfExpressionCompiler) =
     with(scope) {
+      for (issue in dwfDoc.referenceIssues) {
+        compiler.options.diagnostics?.add(DwfDiagnostics.UNSUPPORTED_ELEMENT, issue)
+      }
       val docW = dwfDoc.width.coerceAtLeast(1).toFloat()
       val docH = dwfDoc.height.coerceAtLeast(1).toFloat()
       val sx = width / docW.rf
@@ -338,11 +342,13 @@ private class DwfCanvasRenderer(
   ) {
     when (node) {
       is DwfSceneNode.Group ->
-        withNodeGeometry(node.geometry, compiler, inheritedAlphaFactor, inheritedTint) {
-          alphaFactor,
-          tint,
-          _,
-          _ ->
+        withNodeGeometry(
+          node.geometry,
+          compiler,
+          inheritedAlphaFactor,
+          inheritedTint,
+          layerAlpha = true,
+        ) { alphaFactor, tint, _, _ ->
           val maskNodes =
             node.children.filter { child ->
               when (child) {
@@ -363,11 +369,13 @@ private class DwfCanvasRenderer(
           }
         }
       is DwfSceneNode.PartDraw ->
-        withNodeGeometry(node.geometry, compiler, inheritedAlphaFactor, inheritedTint) {
-          alphaFactor,
-          tint,
-          w,
-          h ->
+        withNodeGeometry(
+          node.geometry,
+          compiler,
+          inheritedAlphaFactor,
+          inheritedTint,
+          layerAlpha = true,
+        ) { alphaFactor, tint, w, h ->
           val sceneBgArgb =
             parseDwfColorArgb(dwfDoc.scene.backgroundColor ?: "#FF000000", resources)
               ?: 0xFF000000.toInt()
@@ -548,12 +556,8 @@ private class DwfCanvasRenderer(
           }
         }
       }
-      is DwfSceneNode.Reference ->
-        compiler.options.diagnostics?.add(
-          DwfDiagnostics.UNSUPPORTED_ELEMENT,
-          "<Reference name=\"${node.name}\"> (Watch Face Format 4) is not supported and is " +
-            "ignored; expressions that read it evaluate to 0.",
-        )
+      // Resolved by the parser (attribute binding + `[REFERENCE.name]`); nothing to draw.
+      is DwfSceneNode.Reference -> Unit
     }
   }
 
@@ -562,6 +566,7 @@ private class DwfCanvasRenderer(
     compiler: DwfExpressionCompiler,
     inheritedAlphaFactor: RemoteFloat,
     inheritedTint: RemoteColor?,
+    layerAlpha: Boolean = false,
     block:
       RemoteDrawScope.(
         alphaFactor: RemoteFloat,
@@ -605,7 +610,16 @@ private class DwfCanvasRenderer(
       if (gyro.alpha != 0f) rawAlpha += normX * gyro.alpha.rf
     }
 
-    val localAlphaFactor = clamp(rawAlpha / 255f.rf, 0f.rf, 1f.rf) * inheritedAlphaFactor
+    val ownAlphaFactor = clamp(rawAlpha / 255f.rf, 0f.rf, 1f.rf)
+    val effectiveAlphaFactor = ownAlphaFactor * inheritedAlphaFactor
+    // A Group / PartDraw with alpha < 1 (constant or expression driven) composites as ONE layer:
+    // its children draw opaque into an offscreen bitmap that is then drawn with the node's alpha,
+    // so overlapping children read uniform instead of showing per-draw seams.
+    val ownConst = ownAlphaFactor.constantValueOrNull
+    // Remote Compose's offscreen draw does not nest (the inner layer's composite lands on the main
+    // canvas, not the outer layer), so a layer inside a layer falls back to per-draw alpha.
+    val useLayer = layerAlpha && !insideAlphaLayer && (ownConst == null || ownConst < 0.999f)
+    val localAlphaFactor = if (useLayer) inheritedAlphaFactor else effectiveAlphaFactor
     val nodeTint =
       geom.tintColor?.let {
         compiler.resolveTransformedColor(
@@ -616,11 +630,11 @@ private class DwfCanvasRenderer(
         )
       } ?: inheritedTint
 
-    val constAlpha = localAlphaFactor.constantValueOrNull
+    val constAlpha = effectiveAlphaFactor.constantValueOrNull
     if (constAlpha != null && constAlpha <= 0.001f) return
 
-    val visible = localAlphaFactor.isGreaterThan(0.001f.rf)
-    val drawBody: RemoteDrawScope.() -> Unit = {
+    val visible = effectiveAlphaFactor.isGreaterThan(0.001f.rf)
+    val drawTransformed: RemoteDrawScope.() -> Unit = {
       val pivot = RemoteOffset(pivotXRatio * w, pivotYRatio * h)
       translate(x, y) {
         val hasRotation = angle.constantValueOrNull != 0f
@@ -636,6 +650,34 @@ private class DwfCanvasRenderer(
         }
       }
     }
+    val drawLayered: RemoteDrawScope.() -> Unit = {
+      // Each layer needs its own backing bitmap: identical blank bitmaps would share one id.
+      val layer =
+        MutableRemoteImageBitmap(
+          ImageBitmap(dwfDoc.width.coerceAtLeast(1), dwfDoc.height.coerceAtLeast(1)),
+        )
+      insideAlphaLayer = true
+      try {
+        // The colour overload clears the layer to transparent on every frame; the plain overload is
+        // MODE_NO_INITIALIZE, which keeps the last frame's pixels and so accumulates translucent
+        // content frame after frame.
+        remoteCanvas.drawToOffscreenBitmap(layer, 0x00000000) { drawTransformed() }
+      } finally {
+        insideAlphaLayer = false
+      }
+      val layerPaint = RemotePaint {
+        isAntiAlias = true
+        color = applyAlpha(RemoteColor(0xFFFFFFFF.toInt()), ownAlphaFactor)
+      }
+      remoteCanvas.drawBitmap(layer, 0f.rf, 0f.rf, layerPaint)
+    }
+    // A data-driven alpha (an ambient Variant, say) also always draws through the layer, composited
+    // at whatever the alpha reads. Drawing the content twice, straight through while opaque and as
+    // a
+    // layer while dimmed, would emit every expression in it twice under two exclusive conditionals:
+    // Remote Compose caches an expression at its first emission, so whichever branch the player
+    // skipped left the other reading uninitialised ids (geometry and colours vanished in ambient).
+    val drawBody: RemoteDrawScope.() -> Unit = if (useLayer) drawLayered else drawTransformed
 
     if (constAlpha != null) {
       drawBody()
@@ -2164,6 +2206,8 @@ private class DwfCanvasRenderer(
     val siteSalt = (++alphaExpressionSites) * 1e-6f
     return base.copy(alpha = clamp(base.alpha * alphaFactor, 0f.rf, (1f + siteSalt).rf))
   }
+
+  private var insideAlphaLayer = false
 
   /** Counts non-constant alpha expressions so each gets a structurally unique cache key. */
   private var alphaExpressionSites = 0

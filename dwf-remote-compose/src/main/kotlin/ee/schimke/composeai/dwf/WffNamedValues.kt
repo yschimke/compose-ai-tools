@@ -176,6 +176,10 @@ internal fun describeNamedValue(name: String): Pair<NamedValueCategory, String> 
         "True in ambient (always-on) mode; WFF `<Variant mode=\"AMBIENT\">` switches on it."
     DwfVariables.IS_24_HOUR ->
       return NamedValueCategory.CLOCK to "True for 24-hour clock presentation, false for 12-hour."
+    DwfVariables.MOON_PHASE ->
+      return NamedValueCategory.CLOCK to
+        "Moon phase, 0..1 of the synodic month (0 new, 0.5 full); -1 derives it from the date " +
+          "(`[MOON_PHASE_POSITION]`, `[MOON_PHASE_TYPE]`)."
     DwfVariables.IS_DST ->
       return NamedValueCategory.CLOCK to "True while Daylight Saving Time is in effect."
     DwfVariables.BATTERY_PERCENT ->

@@ -23,7 +23,9 @@ public object DwfParser {
     xml: String,
     resources: DwfResourceResolver = DwfResourceResolver.Empty,
   ): DwfDocument {
-    val root = XmlMiniDom.parseDocument(xml)
+    val parsedRoot = XmlMiniDom.parseDocument(xml)
+    val refs = ReferenceResolver()
+    val root = if (parsedRoot.localName == "WatchFace") refs.rewrite(parsedRoot) else parsedRoot
     require(root.localName == "WatchFace") {
       "Expected root <WatchFace> element, got <${root.name}>"
     }
@@ -70,6 +72,8 @@ public object DwfParser {
       flavors = flavors,
       bitmapFonts = bitmapFonts,
       scene = scene,
+      references = refs.references,
+      referenceIssues = refs.issues,
     )
   }
 
@@ -972,5 +976,81 @@ public object DwfParser {
       }
     }
     return raw
+  }
+}
+
+/**
+ * Resolves WFF v4 `<Reference name="attr" source="[X]" defaultValue="d"/>`: a child of an element E
+ * binds E's attribute `attr` to `source` (an expression, a `[CONFIGURATION.id.n]` colour, or a
+ * literal), falling back to `defaultValue` when the source names a configuration the face does not
+ * declare. Every Reference is also readable as `[REFERENCE.name]`. The Reference children are
+ * removed from the tree, so the scene parser never sees them.
+ */
+private class ReferenceResolver {
+  val references = LinkedHashMap<String, DwfReference>()
+  val issues = ArrayList<String>()
+  private var declaredConfigs: Set<String> = emptySet()
+
+  fun rewrite(root: XmlElement): XmlElement {
+    declaredConfigs =
+      root
+        .childElements("UserConfigurations")
+        .flatMap { it.childElements() }
+        .mapNotNull { it.attr("id")?.trim() }
+        .toSet()
+    return rewriteElement(root)
+  }
+
+  private fun rewriteElement(el: XmlElement): XmlElement {
+    val refEls = el.childElements("Reference")
+    if (refEls.isEmpty() && el.children.none { it is XmlElement }) return el
+    val attrs = LinkedHashMap(el.attributes)
+    val bindings = ArrayList<XmlElement>()
+    for (ref in refEls) {
+      val name = ref.attr("name")?.trim().orEmpty()
+      val source = ref.attr("source")?.trim().orEmpty()
+      val default = ref.attr("defaultValue")
+      if (name.isEmpty() || (source.isEmpty() && default == null)) {
+        issues.add(
+          "<Reference> needs a `name` and a `source` or `defaultValue` (found name=\"$name\", " +
+            "source=\"$source\"); it is ignored.",
+        )
+        continue
+      }
+      val configId = configRef.matchEntire(source)?.groupValues?.get(1)
+      val usable = source.isNotEmpty() && (configId == null || configId in declaredConfigs)
+      val value = if (usable) source else default.orEmpty()
+      references[name] = DwfReference(name, value, default)
+      if (configId == null && value.contains('[')) {
+        // A data-driven source (`[SECOND]`, `[HOUR_0_23] * 15`) cannot be an attribute literal:
+        // numeric attributes parse as plain floats and would silently drop it. Bind it the way
+        // the scene parser already evaluates at runtime, as a `<Transform target value>`; the
+        // attribute keeps `defaultValue` (or its own value) as the static fallback.
+        bindings.add(
+          XmlElement(
+            name = "Transform",
+            localName = "Transform",
+            attributes = linkedMapOf("target" to name, "value" to value),
+            children = emptyList(),
+          ),
+        )
+        if (default != null) attrs[name] = default
+      } else {
+        attrs[name] = value
+      }
+    }
+    val kids =
+      el.children.mapNotNull { child ->
+        when {
+          child is XmlElement && child.localName == "Reference" -> null
+          child is XmlElement -> rewriteElement(child)
+          else -> child
+        }
+      } + bindings
+    return el.copy(attributes = attrs, children = kids)
+  }
+
+  private companion object {
+    val configRef = Regex("""^\[CONFIGURATION\.([^.\]]+)(?:\.[^\]]*)?\]$""")
   }
 }
