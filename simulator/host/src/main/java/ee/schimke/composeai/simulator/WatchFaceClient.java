@@ -300,6 +300,9 @@ final class WatchFaceClient {
   /** Set by {@link #release()}: whatever the runtime hands back after it is not wanted. */
   private volatile boolean released;
 
+  private static final java.util.concurrent.locks.ReentrantLock CREATION_LOCK =
+      new java.util.concurrent.locks.ReentrantLock();
+
   private volatile LiveFrameSource live;
   /** Whether the last frame published came from the live draw (else the screenshot call). */
   private volatile boolean lastFrameLive;
@@ -716,9 +719,29 @@ final class WatchFaceClient {
     worker.execute(
         () -> {
           try {
-            IBinder instance =
-                tryCreateInteractiveInstance(
-                    controlBinder, wpBinder, width, height, burnIn, lowBit, ambient);
+            IBinder instance;
+            // One request at a time: the runtime answers a second request made while the first is
+            // pending for only one of them (the other waits out its whole timeout), and a face set
+            // again right after the initial one (a push) is exactly that. A client released before
+            // its turn never asks.
+            CREATION_LOCK.lock();
+            try {
+              if (released) return;
+              instance =
+                  tryCreateInteractiveInstance(
+                      controlBinder, wpBinder, width, height, burnIn, lowBit, ambient);
+              if (instance != null && released) {
+                // Released while the runtime was creating it: left alive it holds the runtime's one
+                // interactive slot and the next face's instance is never created.
+                releaseInstance(instance, true);
+                IBinder lateEngine = wallpaperEngine;
+                wallpaperEngine = null;
+                if (lateEngine != null) transactWallpaperEngine(lateEngine, 10, 0, 0);
+                return;
+              }
+            } finally {
+              CREATION_LOCK.unlock();
+            }
             if (instance != null) {
               interactive = true;
             } else {
@@ -1391,12 +1414,17 @@ final class WatchFaceClient {
     }
     worker.execute(() -> releaseInstance(instance, wasInteractive));
     worker.shutdown();
-    if (wallpaperService != null && wallpaperComponent != null) {
+    // The runtime's services are shared by every client of it, and unbinding by intent unbinds them
+    // for the next face too (a face set again right after the last one: its instance request then
+    // died with "Job was cancelled" when the service's scope was torn down under it). Keep them
+    // bound: the next client reuses them.
+    boolean sharedRuntime = component.getClassName().isEmpty();
+    if (!sharedRuntime && wallpaperService != null && wallpaperComponent != null) {
       navigator.unbindService(
           new Intent(WallpaperService.SERVICE_INTERFACE).setComponent(wallpaperComponent));
       wallpaperService = null;
     }
-    if (control != null) {
+    if (!sharedRuntime && control != null) {
       ComponentName service = controlService(app);
       if (service != null) {
         navigator.unbindService(new Intent(CONTROL_ACTION).setComponent(service));
