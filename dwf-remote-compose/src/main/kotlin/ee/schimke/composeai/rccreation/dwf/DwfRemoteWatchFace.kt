@@ -50,10 +50,15 @@ import ee.schimke.composeai.rccreation.compose.state.rs
 import ee.schimke.composeai.rccreation.compose.state.sin
 import ee.schimke.composeai.rccreation.compose.state.toRad
 import ee.schimke.composeai.rccreation.compose.text.RemoteTypeface
+import ee.schimke.composeai.rcplayer.protocol.ExperimentalRcWireExtension
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDrawTextAnchored
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcProfileOperations
+import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcWireExtensions
+import ee.schimke.composeai.rcplayer.protocol.RcWireWriter
 
 /**
  * Emits a parsed [DwfDocument] (Declarative Watch Face / Watch Face Format XML) as a
@@ -68,9 +73,32 @@ public fun DwfWatchFace(
   options: DwfRenderOptions = DwfRenderOptions(),
   modifier: RemoteModifier = RemoteModifier.fillMaxSize(),
 ) {
+  DwfWatchFace(document, resources, options, modifier, customFonts = null)
+}
+
+/**
+ * [customFonts], when given, collects every custom font family the face names: the family text the
+ * document carries, mapped to the name [DwfResourceResolver.resolveFontBytes] resolves its bytes
+ * by. [captureDwfRemoteDocumentBytes] embeds those bytes after capture (see [embedDwfFonts]).
+ */
+@Composable
+@RemoteComposable
+private fun DwfWatchFace(
+  document: DwfDocument,
+  resources: DwfResourceResolver,
+  options: DwfRenderOptions,
+  modifier: RemoteModifier,
+  customFonts: MutableMap<String, String>?,
+) {
   val compiler =
     DwfExpressionCompiler(document = document, resources = resources, options = options)
-  val renderer = DwfCanvasRenderer(dwfDoc = document, resources = resources, options = options)
+  val renderer =
+    DwfCanvasRenderer(
+      dwfDoc = document,
+      resources = resources,
+      options = options,
+      customFonts = customFonts,
+    )
   RemoteCanvas(modifier) { renderer.renderWatchFace(this, compiler) }
 }
 
@@ -122,12 +150,76 @@ public suspend fun captureDwfRemoteDocumentBytes(
 ): ByteArray {
   val displayInfo =
     RemoteCreationDisplayInfo(widthPx.coerceAtLeast(1), heightPx.coerceAtLeast(1), densityDpi)
-  return captureCommonRemoteDocument(
-    creationDisplayInfo = displayInfo,
-    profile = DwfCaptureProfile,
-    encodePng = encodePng,
-  ) {
-    DwfWatchFace(document = document, resources = resources, options = options)
+  val customFonts = LinkedHashMap<String, String>()
+  val bytes =
+    captureCommonRemoteDocument(
+      creationDisplayInfo = displayInfo,
+      profile = DwfCaptureProfile,
+      encodePng = encodePng,
+    ) {
+      DwfWatchFace(
+        document = document,
+        resources = resources,
+        options = options,
+        modifier = RemoteModifier.fillMaxSize(),
+        customFonts = customFonts,
+      )
+    }
+  return embedDwfFonts(bytes, customFonts, resources)
+}
+
+/**
+ * Appends a `FontData` operation carrying the font file for each custom family in [customFonts]
+ * that [resources] has bytes for, so the document no longer needs a player with that family
+ * installed.
+ *
+ * The creation writer can only name a family (`RemoteTypeface.Named`, written as the text id of the
+ * family name); it has no call that writes font bytes. The font is therefore added to the captured
+ * wire bytes, under **the id of that family-name text**: a family-name text that shares its id with
+ * a `FontData` is that font, which is how the CMP player resolves a paint's typeface and how its
+ * support report accepts it. The AndroidX player keeps texts and fonts in separate tables, so the
+ * text is untouched there and the family still resolves by name.
+ *
+ * Each font is written once per family, right after the header so it is loaded before anything
+ * draws. A document that already embeds a font under an id is left alone for that id.
+ */
+@OptIn(ExperimentalRcWireExtension::class)
+internal fun embedDwfFonts(
+  bytes: ByteArray,
+  customFonts: Map<String, String>,
+  resources: DwfResourceResolver,
+): ByteArray {
+  if (customFonts.isEmpty()) return bytes
+  val document = runCatching { RcDocumentCodec.decode(bytes) }.getOrNull() ?: return bytes
+  val embedded = document.operations.filterIsInstance<RcFontData>().mapTo(HashSet()) { it.fontId }
+  val textIds = HashMap<String, MutableList<Int>>()
+  for (op in document.operations) {
+    if (op is RcTextData) textIds.getOrPut(op.text) { ArrayList() } += op.id
+  }
+  val fonts = ArrayList<RcFontData>()
+  for ((family, sourceName) in customFonts) {
+    val ids = textIds[family]?.filter { it !in embedded } ?: continue
+    if (ids.isEmpty()) continue
+    val fontBytes = resources.resolveFontBytes(sourceName)?.takeIf { it.isNotEmpty() } ?: continue
+    for (id in ids) {
+      fonts += RcFontData(fontId = id, type = 0, data = fontBytes)
+      embedded += id
+    }
+  }
+  if (fonts.isEmpty()) return bytes
+  val fontOps = RcWireWriter()
+  fonts.forEach { RcDocumentCodec.encodeOperation(fontOps, it, RcWireExtensions.None) }
+  val headerOut = RcWireWriter()
+  RcDocumentCodec.encodeOperation(headerOut, document.header, RcWireExtensions.None)
+  val header = headerOut.toByteArray()
+  val headerRoundTrips = header.size <= bytes.size && header.indices.all { header[it] == bytes[it] }
+  // The header re-encodes to its own bytes in practice; if it ever does not, the fonts go at the
+  // end
+  // instead, which every player still loads (both read the whole stream before drawing).
+  return if (headerRoundTrips) {
+    header + fontOps.toByteArray() + bytes.copyOfRange(header.size, bytes.size)
+  } else {
+    bytes + fontOps.toByteArray()
   }
 }
 
@@ -183,6 +275,7 @@ private class DwfCanvasRenderer(
   private val dwfDoc: DwfDocument,
   private val resources: DwfResourceResolver,
   private val options: DwfRenderOptions,
+  private val customFonts: MutableMap<String, String>? = null,
 ) {
   private val remoteBitmaps = HashMap<String, RemoteImageBitmap?>()
   private val namedBitmaps = HashMap<String, RemoteImageBitmap>()
@@ -1890,7 +1983,8 @@ private class DwfCanvasRenderer(
         "MONOSPACE" -> "monospace"
         "SERIF" -> "serif"
         else ->
-          resources.resolveFontFamily(fontSpec.family) ?: normalizeDwfResourceKey(fontSpec.family)
+          (resources.resolveFontFamily(fontSpec.family) ?: normalizeDwfResourceKey(fontSpec.family))
+            .also { customFonts?.putIfAbsent(it, fontSpec.family) }
       }
     return RemoteTypeface.Named(resolvedFamily, weightInt, italic)
   }
@@ -2044,7 +2138,7 @@ private class DwfCanvasRenderer(
       namedBitmaps.getOrPut(varKey) {
         val url = normalizeDwfImageUrl(source)
         if (url != null) {
-          RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
+          namedUrlBitmap(varKey, url)
         } else {
           val localImg = source?.let(resources::resolveImage)
           if (localImg != null) {
@@ -2054,15 +2148,28 @@ private class DwfCanvasRenderer(
               RemoteState.Domain.User,
             )
           } else {
-            RemoteImageBitmap.createNamedRemoteImageBitmap(
-              varKey,
-              DwfVariables.DEFAULT_PHOTO_IMAGE_URL,
-              RemoteState.Domain.User,
-            )
+            namedUrlBitmap(varKey, DwfVariables.DEFAULT_PHOTO_IMAGE_URL)
           }
         }
       }
     drawRemoteBitmap(bmp, alphaFactor, tint, dstW, dstH)
+  }
+
+  private val defaultImages = HashMap<String, ImageBitmap?>()
+
+  /**
+   * A named bitmap for [url]. A [DwfDefaultImages] placeholder is inlined (its bytes are known
+   * here, so a player with no image host can still draw it); any other URL stays a URL reference
+   * for the host to resolve. Either way a host can replace the image by [varKey].
+   */
+  private fun namedUrlBitmap(varKey: String, url: String): RemoteImageBitmap {
+    val inline =
+      defaultImages.getOrPut(url) { DwfDefaultImages.png(url)?.let(::decodeDwfImageBitmap) }
+    return if (inline != null) {
+      RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, inline, RemoteState.Domain.User)
+    } else {
+      RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
+    }
   }
 
   private fun RemoteDrawScope.renderComplicationImage(
@@ -2117,10 +2224,7 @@ private class DwfCanvasRenderer(
       }
     }
     val url = explicitUrl ?: defaultUrl
-    val bmp =
-      namedBitmaps.getOrPut(varKey) {
-        RemoteImageBitmap.createNamedRemoteImageBitmap(varKey, url, RemoteState.Domain.User)
-      }
+    val bmp = namedBitmaps.getOrPut(varKey) { namedUrlBitmap(varKey, url) }
     drawRemoteBitmap(bmp, alphaFactor, effectiveTint, dstW, dstH)
   }
 
