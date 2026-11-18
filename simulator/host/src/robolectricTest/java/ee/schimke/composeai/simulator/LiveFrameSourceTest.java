@@ -101,6 +101,20 @@ public class LiveFrameSourceTest {
   }
 
   @Test
+  public void anOddWidthReadsBackRowByRow() throws Exception {
+    // A width whose rows the reader may pad: each row must still land at its own y.
+    FillingService service = new FillingService();
+    service.color = Color.GREEN;
+    LiveFrameSource source = LiveFrameSource.attach(service.onCreateEngine(), 37, 9);
+    assertNotNull(source);
+    Bitmap frame = draw(source);
+    assertNotNull(frame);
+    assertEquals(Color.GREEN, frame.getPixel(0, 0));
+    assertEquals(Color.GREEN, frame.getPixel(36, 8));
+    source.release();
+  }
+
+  @Test
   public void theFaceIsToldItIsVisible() {
     // A face that is not visible keeps its complications empty; an engine with a window is told by
     // the system, this one by the source.

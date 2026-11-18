@@ -155,7 +155,22 @@ final class LiveFrameSource {
       if (image == null) return;
       Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
       Image.Plane plane = image.getPlanes()[0];
-      bitmap.copyPixelsFromBuffer(plane.getBuffer());
+      int rowStride = plane.getRowStride();
+      java.nio.ByteBuffer buffer = plane.getBuffer();
+      if (rowStride == width * 4) {
+        bitmap.copyPixelsFromBuffer(buffer);
+      } else {
+        // A padded row: copy each row's pixels, not the padding (as SoftwareRenderNodes does).
+        java.nio.ByteBuffer packed = java.nio.ByteBuffer.allocate(width * height * 4);
+        byte[] row = new byte[width * 4];
+        for (int y = 0; y < height; y++) {
+          buffer.position(y * rowStride);
+          buffer.get(row);
+          packed.put(row);
+        }
+        packed.rewind();
+        bitmap.copyPixelsFromBuffer(packed);
+      }
       synchronized (lock) {
         latest = bitmap;
         posted++;
