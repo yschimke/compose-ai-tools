@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.100.0](https://github.com/yschimke/compose-ai-tools/compare/v2.99.3...v2.100.0) (2026-11-18)
+
+
+### Features
+
+* **render-host:** export the DWF simulator launcher ([#6643](https://github.com/yschimke/compose-ai-tools/issues/6643)) ([aec3ae0](https://github.com/yschimke/compose-ai-tools/commit/aec3ae04b4b28d0a108fa2c6157896637db6f581))
+
+
+### Bug Fixes
+
+* **deps:** update dependency org.jetbrains.kotlinx:kotlinx-serialization-json to v1.13.0 ([#6645](https://github.com/yschimke/compose-ai-tools/issues/6645)) ([42b6b46](https://github.com/yschimke/compose-ai-tools/commit/42b6b4623c38f2e7b898062ad44757992986dcb3))
+
 ## [2.99.3](https://github.com/yschimke/compose-ai-tools/compare/v2.99.2...v2.99.3) (2026-11-18)
 
 
