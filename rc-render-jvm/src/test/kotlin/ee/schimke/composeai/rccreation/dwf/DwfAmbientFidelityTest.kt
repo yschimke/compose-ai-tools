@@ -115,9 +115,12 @@ class DwfAmbientFidelityTest {
             DwfVariables.IS_AMBIENT to RcNamedValue.BooleanValue(true),
           ),
       )
-    // 120/255 of B8C4D0 over black, no extra dim overlay.
+    // 120/255 of B8C4D0 (~0x57) then the 15% ambient scrim (#6586) gives ~0x4A.
     val r = (ambient.rgb(225, 175) shr 16) and 0xFF
-    assertTrue(r in 0x54..0x5A, "ambient fill should be ~47% of 0xB8, was 0x${r.toString(16)}")
+    assertTrue(
+      r in 0x46..0x4E,
+      "ambient fill should be ~0x4A (alpha 120 plus scrim), was 0x${r.toString(16)}",
+    )
   }
 
   private val arcRepro =
@@ -153,7 +156,7 @@ class DwfAmbientFidelityTest {
   }
 
   @Test
-  fun anAmbientFullSceneScrimIsNotAddedToDrawsWithNoAmbientVariant() {
+  fun ambientDimsDrawsWithNoAmbientVariantLikeTheRealRuntime() {
     val xml =
       """
       <WatchFace width="450" height="450"><Scene backgroundColor="#FF000000">
@@ -163,7 +166,12 @@ class DwfAmbientFidelityTest {
         .trimIndent()
     val ambient =
       render(xml, overrides = mapOf(DwfVariables.IS_AMBIENT to RcNamedValue.BooleanValue(true)))
-    assertEquals(0xFFFFFF, ambient.rgb(150, 150), "no ambient variant: the draw stays full white")
+    // #6586 measured the 0x26000000 scrim against the real DeclarativeWatchFaceRuntime with
+    // dwf-diff: ambient similarity rose on all six faces (e.g. wff-complications 0.924 to 0.977),
+    // so a draw with no ambient variant reads ~217/255 in ambient. Do not remove it.
+    val v = ambient.rgb(150, 150) and 0xFF
+    assertTrue(v in 214..220, "ambient scrim should dim white to ~217, was $v")
+    assertEquals(0xFFFFFF, render(xml).rgb(150, 150), "interactive stays full white")
   }
 
   @Test

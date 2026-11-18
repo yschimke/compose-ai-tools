@@ -58,10 +58,11 @@ documented fallback: `UNKNOWN_SOURCE` (a `[SOURCE]` the translator does not know
 and does not flag features newer than the target; an out-of-range value is `INVALID_OPTION`. It is
 echoed back so hosts can thread it already. See *Moving onto `wff-core`* below.
 
-**Ambient.** Only what a face authors changes in ambient mode: `<Variant mode="AMBIENT">`, and the
-second hand hiding unless it has an ambient variant. There is no full-scene dimming scrim, because
-the format does not specify one. Group `alpha` is applied per draw, so two overlapping shapes under
-a translucent group show their overlap (a layer-composited alpha is a follow-up).
+**Ambient.** Ambient is dimmed about 15% (a `0x26000000` scene scrim) to match the real runtime, as
+measured in #6586 with `dwf-diff`. On top of that, only what a face authors changes: `<Variant
+mode="AMBIENT">`, and the second hand hiding unless it has an ambient variant. Group `alpha` is
+applied per draw, so two overlapping shapes under a translucent group show their overlap (a
+layer-composited alpha is a follow-up).
 
 ## Named values
 

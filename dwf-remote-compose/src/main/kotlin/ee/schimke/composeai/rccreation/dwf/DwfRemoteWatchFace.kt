@@ -306,14 +306,15 @@ private class DwfCanvasRenderer(
           inheritedAlphaFactor = 1f.rf,
           inheritedTint = null,
         )
-        // Keep `dwf.is_ambient` in the document even when nothing in the face reads it, so a host
-        // always has the switch. An empty draw costs nothing and is never visible.
+        // Ambient dims the whole scene by ~15%: measured against the real runtime in #6586.
         drawConditionally(compiler.isAmbient) {
-          remoteCanvas.drawRect(0f.rf, 0f.rf, 0f.rf, 0f.rf, RemotePaint { color = bgColor })
+          val ambientDimPaint = RemotePaint {
+            isAntiAlias = false
+            style = RemotePaintingStyle.Fill
+            color = RemoteColor(0x26000000)
+          }
+          remoteCanvas.drawRect(0f.rf, 0f.rf, docW.rf, docH.rf, ambientDimPaint)
         }
-        // No full-scene ambient scrim: WFF does not specify one, and a face that wants a dimmer
-        // ambient look says so with `<Variant mode="AMBIENT" ...>`. A hand with no ambient variant
-        // keeps its full colour.
         remoteCanvas.restoreToCount(saveCount)
       }
     }
