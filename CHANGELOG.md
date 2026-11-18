@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.98.1](https://github.com/yschimke/compose-ai-tools/compare/v2.98.0...v2.98.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **dwf-apk:** revert the explicit ambient/clock commands and first-frame wait ([#6617](https://github.com/yschimke/compose-ai-tools/issues/6617)) ([04587fa](https://github.com/yschimke/compose-ai-tools/commit/04587fa920f449ce2a0aa46dcc0eb80bd8bfa458))
+
 ## [2.98.0](https://github.com/yschimke/compose-ai-tools/compare/v2.97.0...v2.98.0) (2026-11-17)
 
 
