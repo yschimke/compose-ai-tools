@@ -306,14 +306,14 @@ private class DwfCanvasRenderer(
           inheritedAlphaFactor = 1f.rf,
           inheritedTint = null,
         )
+        // Keep `dwf.is_ambient` in the document even when nothing in the face reads it, so a host
+        // always has the switch. An empty draw costs nothing and is never visible.
         drawConditionally(compiler.isAmbient) {
-          val ambientDimPaint = RemotePaint {
-            isAntiAlias = false
-            style = RemotePaintingStyle.Fill
-            color = RemoteColor(0x26000000)
-          }
-          remoteCanvas.drawRect(0f.rf, 0f.rf, docW.rf, docH.rf, ambientDimPaint)
+          remoteCanvas.drawRect(0f.rf, 0f.rf, 0f.rf, 0f.rf, RemotePaint { color = bgColor })
         }
+        // No full-scene ambient scrim: WFF does not specify one, and a face that wants a dimmer
+        // ambient look says so with `<Variant mode="AMBIENT" ...>`. A hand with no ambient variant
+        // keeps its full colour.
         remoteCanvas.restoreToCount(saveCount)
       }
     }
@@ -547,7 +547,12 @@ private class DwfCanvasRenderer(
           }
         }
       }
-      is DwfSceneNode.Reference -> {}
+      is DwfSceneNode.Reference ->
+        compiler.options.diagnostics?.add(
+          DwfDiagnostics.UNSUPPORTED_ELEMENT,
+          "<Reference name=\"${node.name}\"> (Watch Face Format 4) is not supported and is " +
+            "ignored; expressions that read it evaluate to 0.",
+        )
     }
   }
 
@@ -2149,8 +2154,18 @@ private class DwfCanvasRenderer(
       val newA = (origA * constFactor).toInt().coerceIn(0, 255)
       return RemoteColor((newA shl 24) or (constArgb and 0x00FFFFFF))
     }
-    return base.copy(alpha = clamp(base.alpha * alphaFactor, 0f.rf, 1f.rf))
+    // Remote Compose caches an expression by its structure and emits it at its *first* use. If
+    // that first use sits inside a branch the player skips (a `Compare` the data does not take, a
+    // `ColorOption` that is not selected), every later identical expression reads an
+    // uninitialised id and draws nothing (dogfood triage item 4). Give each use site its own
+    // expression by varying a clamp bound that can never bind (alpha * factor stays within 0..1),
+    // so each one is emitted in the scope that draws with it.
+    val siteSalt = (++alphaExpressionSites) * 1e-6f
+    return base.copy(alpha = clamp(base.alpha * alphaFactor, 0f.rf, (1f + siteSalt).rf))
   }
+
+  /** Counts non-constant alpha expressions so each gets a structurally unique cache key. */
+  private var alphaExpressionSites = 0
 
   private fun toRemoteStrokeCap(cap: DwfStrokeCap): RemoteStrokeCap =
     when (cap) {

@@ -277,7 +277,9 @@ internal fun describeNamedValue(name: String): Pair<NamedValueCategory, String> 
   if (name.startsWith("dwf.config.")) {
     return NamedValueCategory.CONFIGURATION to
       "Selected value of `<UserConfigurations>` entry `${name.removePrefix("dwf.config.")}`: the " +
-        "chosen option id (list / color), true / false (boolean), or the photo (photos)."
+        "zero-based ordinal of the chosen option (list / color, an integer, not the option id), " +
+        "0 / 1 (boolean), or the photo (photos). Colors read as [CONFIGURATION.id.n] come from " +
+        "dwf.color.id.n, not from this value."
   }
   return NamedValueCategory.OTHER to "Named variable declared by the watch face."
 }

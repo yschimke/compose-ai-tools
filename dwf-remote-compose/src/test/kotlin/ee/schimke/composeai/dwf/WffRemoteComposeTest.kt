@@ -207,11 +207,69 @@ class WffRemoteComposeTest {
     val ok =
       WffRemoteCompose.compile(xml("SimpleAnalog"), options = WffCompileOptions(wffVersion = 4))
     assertThat(ok.wffVersion).isEqualTo(4)
+    val five =
+      WffRemoteCompose.compile(xml("SimpleAnalog"), options = WffCompileOptions(wffVersion = 5))
+    assertThat(five.wffVersion).isEqualTo(5)
+    assertThat(five.diagnostics.map { it.code }).doesNotContain("INVALID_OPTION")
     val bad =
       WffRemoteCompose.compile(xml("SimpleAnalog"), options = WffCompileOptions(wffVersion = 9))
     assertThat(bad.wffVersion).isEqualTo(WffCompileOptions.DEFAULT_WFF_VERSION)
     assertThat(bad.diagnostics.map { it.code }).contains("INVALID_OPTION")
     assertThat(bad.isSuccess).isTrue()
+  }
+
+  private fun textFace(vararg expressions: String) =
+    """<WatchFace width="450" height="450"><Scene backgroundColor="#ff000000">""" +
+      expressions.joinToString("") {
+        """<PartText x="0" y="0" width="450" height="40"><Text><Font family="SYNC_TO_DEVICE" size="20" color="#ffffffff"><Template>%s<Parameter expression="$it"/></Template></Font></Text></PartText>"""
+      } +
+      "</Scene></WatchFace>"
+
+  private fun WffCompileResult.codes(): List<String> =
+    diagnostics.filter { it.severity != WffSeverity.INFO }.map { it.code }
+
+  @Test
+  fun `an unknown data source is reported and still renders`() {
+    val result = WffRemoteCompose.compile(textFace("[NOT_A_REAL_SOURCE]", "[WEATHER.NOPE]"))
+    assertThat(result.isSuccess).isTrue()
+    val unknown = result.diagnostics.filter { it.code == "UNKNOWN_SOURCE" }.map { it.message }
+    assertThat(unknown.any { "NOT_A_REAL_SOURCE" in it }).isTrue()
+    assertThat(unknown.any { "WEATHER.NOPE" in it }).isTrue()
+  }
+
+  @Test
+  fun `a malformed expression is reported and still renders`() {
+    for (bad in listOf("[HOUR_0_23] + (1", "1 2", "--", "nope(1)", "[DAY] +")) {
+      val result = WffRemoteCompose.compile(textFace(bad))
+      assertThat(result.isSuccess).isTrue()
+      assertThat(result.codes()).isNotEmpty()
+    }
+  }
+
+  @Test
+  fun `known sources and well formed expressions raise no diagnostics`() {
+    val result =
+      WffRemoteCompose.compile(
+        textFace(
+          "[DAY]",
+          "[DAY_OF_MONTH]",
+          "[AMPM_STATE]",
+          "([HOUR_0_23] + 1) * 2",
+          "[IS_24_HOUR_MODE] ? [HOUR_0_23] : [HOUR_1_12]",
+          "clamp([STEP_PERCENT], 0, 100)",
+        ),
+      )
+    assertThat(result.codes()).isEmpty()
+  }
+
+  @Test
+  fun `a v4 Reference is reported as unsupported`() {
+    val result =
+      WffRemoteCompose.compile(
+        """<WatchFace width="450" height="450"><Scene><Reference name="r" source="[HOUR_0_23]"/></Scene></WatchFace>""",
+      )
+    assertThat(result.isSuccess).isTrue()
+    assertThat(result.diagnostics.filter { it.code == "UNSUPPORTED_ELEMENT" }).hasSize(1)
   }
 
   // --- degradation, never a throw -----------------------------------------------------------
