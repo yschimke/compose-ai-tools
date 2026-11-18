@@ -218,6 +218,14 @@ final class WearSystemUi {
     return onTop() ? surface.id : "app";
   }
 
+  /**
+   * The failure of the app's watch face while the watch face is what the screen shows, else null.
+   * A screenshot then shows the built-in face in its place, which is not the face asked for.
+   */
+  String watchFaceFailure() {
+    return surface == Surface.WATCHFACE && onTop() ? watchFaces.failure() : null;
+  }
+
   private boolean onTop() {
     return home != null && navigator.top() == home;
   }

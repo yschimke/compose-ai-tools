@@ -966,6 +966,16 @@ final class Session {
       return new Protocol.Json().put("displays", shots).object();
     }
     int displayId = displays.target(c);
+    if (displayId == android.view.Display.DEFAULT_DISPLAY
+        && wear != null
+        && !c.optBoolean("allowFailedWatchFace", false)) {
+      String failure = wear.watchFaceFailure();
+      if (failure != null) {
+        throw new IllegalStateException(
+            "the watch face failed to render, and the screen shows the built-in face instead: "
+                + failure);
+      }
+    }
     Bitmap bitmap =
         displayId == android.view.Display.DEFAULT_DISPLAY
             ? ui.takeScreenshot()
