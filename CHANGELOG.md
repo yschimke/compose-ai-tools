@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.98.3](https://github.com/yschimke/compose-ai-tools/compare/v2.98.2...v2.98.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **dwf-apk:** ambient command no longer toggles; failed faces fail; wait for first frame ([#6623](https://github.com/yschimke/compose-ai-tools/issues/6623)) ([d4e9da7](https://github.com/yschimke/compose-ai-tools/commit/d4e9da74ac3ed903e65299a41176ca4def2af563))
+* **dwf-remote-compose:** ambient variants no longer blank unrelated draws, report bad expressions ([#6624](https://github.com/yschimke/compose-ai-tools/issues/6624)) ([0472ba0](https://github.com/yschimke/compose-ai-tools/commit/0472ba02a26c0323dfe888d5f8f73191de9c41cd))
+
 ## [2.98.2](https://github.com/yschimke/compose-ai-tools/compare/v2.98.1...v2.98.2) (2026-11-18)
 
 
