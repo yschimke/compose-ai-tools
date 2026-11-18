@@ -851,6 +851,22 @@ public final class ee/schimke/composeai/cli/serve/DwfRcWatchFaceRendererBackend 
 	public fun render (Lee/schimke/composeai/cli/serve/ServeHost;Lee/schimke/composeai/cli/serve/ServePreview;Lee/schimke/composeai/daemon/protocol/PreviewOverrides;)Lee/schimke/composeai/cli/serve/RenderOutcome;
 }
 
+public abstract interface class ee/schimke/composeai/cli/serve/DwfSimulatorConnection : java/lang/AutoCloseable {
+	public abstract fun command (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lkotlinx/serialization/json/JsonElement;
+	public static synthetic fun command$default (Lee/schimke/composeai/cli/serve/DwfSimulatorConnection;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonElement;
+	public abstract fun getAlive ()Z
+}
+
+public final class ee/schimke/composeai/cli/serve/DwfSimulatorConnection$DefaultImpls {
+	public static synthetic fun command$default (Lee/schimke/composeai/cli/serve/DwfSimulatorConnection;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class ee/schimke/composeai/cli/serve/DwfSimulatorLauncher {
+	public static final field INSTANCE Lee/schimke/composeai/cli/serve/DwfSimulatorLauncher;
+	public final fun connect (Ljava/io/File;)Lee/schimke/composeai/cli/serve/DwfSimulatorConnection;
+	public final fun unavailableReason ()Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/cli/serve/FigmaCommentEvent {
 	public static final field Companion Lee/schimke/composeai/cli/serve/FigmaCommentEvent$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/util/List;Ljava/util/List;)V
