@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.99.1](https://github.com/yschimke/compose-ai-tools/compare/v2.99.0...v2.99.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* make compiled watch faces playable in the browser CMP player ([#6632](https://github.com/yschimke/compose-ai-tools/issues/6632)) ([46d3703](https://github.com/yschimke/compose-ai-tools/commit/46d37037659ada50c588993d5f406606a7c9626e))
+
 ## [2.99.0](https://github.com/yschimke/compose-ai-tools/compare/v2.98.3...v2.99.0) (2026-11-18)
 
 
