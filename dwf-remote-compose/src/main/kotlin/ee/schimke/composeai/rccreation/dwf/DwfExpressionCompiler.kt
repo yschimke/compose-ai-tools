@@ -1274,11 +1274,29 @@ internal class DwfExpressionCompiler(
     return value.toRemoteStringOptions(before, maxFrac, preFlag or postFlag or grouping)
   }
 
+  private var referenceDepth = 0
+
   private fun resolveSourceToken(rawName: String): EvalValue {
     val v = sharedVariables
     val name = rawName.trim()
     if (name.startsWith("CONFIGURATION.", ignoreCase = true)) {
       return v.resolveConfigurationReference(name.substring("CONFIGURATION.".length))
+    }
+    if (name.startsWith("REFERENCE.", ignoreCase = true)) {
+      val ref = document.references[name.substring("REFERENCE.".length)]
+      if (ref == null || referenceDepth >= 8) {
+        report(
+          DwfDiagnostics.UNKNOWN_SOURCE,
+          "Unknown or cyclic `[$name]` (no <Reference> with that name); it evaluates to 0.",
+        )
+        return EvalValue.Num(0f.rf)
+      }
+      referenceDepth++
+      try {
+        return evaluate(ref.source, mutableSetOf())
+      } finally {
+        referenceDepth--
+      }
     }
     if (name.startsWith("COMPLICATION.", ignoreCase = true)) {
       val prop = name.substring("COMPLICATION.".length).uppercase()
@@ -1366,9 +1384,14 @@ internal class DwfExpressionCompiler(
       "ACCELEROMETER_X" -> EvalValue.Num(sin(toRad(v.accelAngleX)) * 9.81f.rf)
       "ACCELEROMETER_Y" -> EvalValue.Num(sin(toRad(v.accelAngleY)) * 9.81f.rf)
       "ACCELEROMETER_Z" -> EvalValue.Num(9.81f.rf)
-      "MOON_PHASE_POSITION" -> EvalValue.Num(((v.day - 1f) / 29.53f) * 28f)
-      "MOON_PHASE_TYPE" -> EvalValue.Num(floor(((v.day - 1f) / 29.53f) * 8f) % 8f, isInteger = true)
-      "MOON_PHASE_TYPE_STRING" -> EvalValue.Text("Waxing Gibbous".rs, "Waxing Gibbous")
+      // 28 positions through the synodic month (0 = new moon, 14 = full moon).
+      "MOON_PHASE_POSITION" ->
+        EvalValue.Num(min(floor(v.moonPhase * 28f), 27f.rf), isInteger = true)
+      // 0 new, 1 waxing crescent, 2 first quarter, 3 waxing gibbous, 4 full, 5 waning gibbous,
+      // 6 last quarter, 7 waning crescent; each phase is centred on its textbook point.
+      "MOON_PHASE_TYPE" -> EvalValue.Num(v.moonPhaseType, isInteger = true)
+      "MOON_PHASE_TYPE_STRING",
+      "MOON_PHASE_TYPE_NAME" -> EvalValue.Text(v.moonPhaseName)
       "LANGUAGE_CODE",
       "LANGUAGE_LOCALE_NAME" -> EvalValue.Text("en_US".rs, "en_US")
       else -> {
@@ -1412,6 +1435,44 @@ internal class DwfExpressionCompiler(
 
     val day: RemoteFloat by lazy { RemoteFloat(RemoteContext.FLOAT_DAY_OF_MONTH) }
     val day0To30: RemoteFloat by lazy { day - 1f }
+
+    /** Moon phase `[0, 1)`: the named override when seeded `>= 0`, else from the date. */
+    val moonPhase: RemoteFloat by lazy {
+      val override = RemoteFloat.createNamedRemoteFloat(DwfVariables.MOON_PHASE, -1f)
+      override.isGreaterThanOrEqualTo(0f.rf).select(override % 1f, moonPhaseFromDate)
+    }
+    val moonPhaseFromDate: RemoteFloat by lazy {
+      // Julian day number (at noon) from the civil date, as small exact integers, minus J2000's.
+      val a = floor((14f.rf - month) / 12f.rf)
+      val y2 = year + 4800f - a
+      val m2 = month + a * 12f - 3f
+      val jdn =
+        day + floor((m2 * 153f + 2f) / 5f) + y2 * 365f + floor(y2 / 4f) - floor(y2 / 100f) +
+          floor(y2 / 400f) - 32045f
+      val daysSinceJ2000 = jdn - 2451545f - 0.5f + secondsInDay / 86400f
+      // Mean new moon at 2000-01-06 18:14 UTC (5.2597 days after J2000); mean synodic month.
+      val age = daysSinceJ2000 - 5.2597f
+      val period = 29.530589f
+      val frac = (age / period) % 1f
+      frac.isLessThan(0f.rf).select(frac + 1f, frac)
+    }
+    val moonPhaseType: RemoteFloat by lazy { floor(moonPhase * 8f + 0.5f) % 8f }
+    val moonPhaseName: RemoteString by lazy {
+      val names =
+        listOf(
+          "New moon",
+          "Waxing crescent",
+          "First quarter",
+          "Waxing gibbous",
+          "Full moon",
+          "Waning gibbous",
+          "Last quarter",
+          "Waning crescent",
+        )
+      var out = names[7].rs
+      for (i in 6 downTo 0) out = moonPhaseType.isEqualTo(i.toFloat().rf).select(names[i].rs, out)
+      out
+    }
     val dayOfYear: RemoteFloat by lazy { RemoteFloat(RemoteContext.FLOAT_DAY_OF_YEAR) }
     val month: RemoteFloat by lazy { RemoteFloat(RemoteContext.FLOAT_CALENDAR_MONTH) }
     val month0To11: RemoteFloat by lazy { month - 1f }

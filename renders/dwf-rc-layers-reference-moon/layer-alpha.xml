@@ -1,0 +1,11 @@
+<WatchFace width="450" height="450">
+  <Scene backgroundColor="#FF101820">
+    <Group x="0" y="0" width="450" height="450" alpha="128">
+      <PartDraw x="0" y="0" width="450" height="450">
+        <Ellipse x="70" y="110" width="200" height="200"><Fill color="#FFFFC107"/></Ellipse>
+        <Ellipse x="180" y="110" width="200" height="200"><Fill color="#FFFFC107"/></Ellipse>
+        <Rectangle x="125" y="260" width="200" height="60"><Fill color="#FFFFC107"/></Rectangle>
+      </PartDraw>
+    </Group>
+  </Scene>
+</WatchFace>

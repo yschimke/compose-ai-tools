@@ -1,0 +1,6 @@
+<WatchFace width="450" height="450">
+  <Scene backgroundColor="#FF000000">
+    <PartText x="25" y="120" width="400" height="60"><Text align="CENTER"><Font family="SYNC_TO_DEVICE" size="34" color="#FFFFFFFF"><Template>%s<Parameter expression="[MOON_PHASE_TYPE_STRING]"/></Template></Font></Text></PartText>
+    <PartText x="25" y="190" width="400" height="60"><Text align="CENTER"><Font family="SYNC_TO_DEVICE" size="34" color="#FFAAAAAA"><Template>type %d pos %d<Parameter expression="[MOON_PHASE_TYPE]"/><Parameter expression="[MOON_PHASE_POSITION]"/></Template></Font></Text></PartText>
+  </Scene>
+</WatchFace>

@@ -1,0 +1,15 @@
+<WatchFace width="450" height="450">
+  <UserConfigurations>
+    <ColorConfiguration id="theme" defaultValue="1" displayName="t" screenReaderText="t">
+      <ColorOption id="0" displayName="red" colors="#FFFF4444"/>
+      <ColorOption id="1" displayName="green" colors="#FF44DD66"/>
+    </ColorConfiguration>
+  </UserConfigurations>
+  <Scene backgroundColor="#FF000000">
+    <PartDraw x="0" y="0" width="450" height="450">
+      <Ellipse x="75" y="75" width="300" height="300">
+        <Stroke thickness="24" color="#FF888888"><Reference name="color" source="[CONFIGURATION.theme.0]" defaultValue="#FF888888"/></Stroke>
+      </Ellipse>
+    </PartDraw>
+  </Scene>
+</WatchFace>

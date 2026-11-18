@@ -16,6 +16,10 @@ public data class DwfDocument(
   public val flavors: List<DwfFlavor> = emptyList(),
   public val bitmapFonts: List<DwfBitmapFont> = emptyList(),
   public val scene: DwfScene = DwfScene(),
+  /** v4 `<Reference name="x" source="...">` entries by name, readable as `[REFERENCE.x]`. */
+  public val references: Map<String, DwfReference> = emptyMap(),
+  /** Problems found while resolving `<Reference>` elements, reported as diagnostics. */
+  public val referenceIssues: List<String> = emptyList(),
 ) {
   /** Author-declared `PREVIEW_TIME` metadata (for example `"10:10:30"`), or `null`. */
   public val previewTime: String?
@@ -25,6 +29,14 @@ public data class DwfDocument(
   public val clockType: String?
     get() = metadata["CLOCK_TYPE"]
 }
+
+/** A v4 `<Reference>`: [name] bound to [source] (an expression or literal), else [defaultValue]. */
+@Immutable
+public data class DwfReference(
+  public val name: String,
+  public val source: String,
+  public val defaultValue: String? = null,
+)
 
 /** Preset `<Flavor id="...">` declared inside `<Flavors>`. */
 @Immutable
