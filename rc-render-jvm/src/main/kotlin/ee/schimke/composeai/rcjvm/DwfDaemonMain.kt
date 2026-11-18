@@ -464,6 +464,40 @@ internal fun applyWfNamedOverrides(
 }
 
 /**
+ * The `<Flavor id>` a request asks for: `wf.flavor` from the viewer's overrides, or the
+ * `dwf.flavor` named value render-host's override parser also writes. Null when neither is set.
+ */
+internal fun requestedFlavorId(overrides: PreviewOverrides?): String? {
+  val named = overrides?.namedOverrides?.get("wf.flavor") as? PreviewOverrideValue.StringValue
+  val rc =
+    (overrides?.remoteCompose?.namedValues?.get("dwf.flavor")
+      ?: overrides?.remoteCompose?.namedValues?.get("USER:dwf.flavor"))
+      as? RemoteNamedValue.StringValue
+  return (named?.value ?: rc?.value)?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/**
+ * Writes the configurations [flavorId]'s `<Flavor>` presets into [out] as `dwf.config.<id>`
+ * option-ID strings, which [normalizeDwfConfigValues] then resolves like any other config value.
+ *
+ * A flavor is a named preset of user configurations, and the compiled document reads those through
+ * its `dwf.config.*` variables, so selecting one at render time is exactly seeding its values. The
+ * caller applies the request's own values afterwards, so an explicit `wf.config.<id>` still wins
+ * over the flavor's. An id the face does not declare changes nothing.
+ */
+internal fun applyDwfFlavor(
+  doc: DwfDocument,
+  flavorId: String?,
+  out: MutableMap<String, RemoteNamedValue>,
+) {
+  if (flavorId == null) return
+  val flavor = doc.flavors.firstOrNull { it.id.equals(flavorId, ignoreCase = true) } ?: return
+  for ((configId, optionId) in flavor.configurations) {
+    out[DwfVariables.configKey(configId)] = RemoteNamedValue.StringValue(optionId)
+  }
+}
+
+/**
  * Resolves option-ID strings (`"red_style"`) or boolean strings (`"true"`) on `dwf.config.<id>`
  * into the typed `RemoteNamedValue` (`IntValue(optionIndex)` or `BooleanValue`) expected by
  * [DwfExpressionCompiler].
@@ -986,17 +1020,19 @@ private class DwfDaemonSession(
     val widthPx = (overrides?.widthPx ?: deviceW ?: nativeW).coerceAtLeast(1)
     val heightPx = (overrides?.heightPx ?: deviceH ?: nativeH).coerceAtLeast(1)
 
-    val effectiveNamed = LinkedHashMap<String, RemoteNamedValue>(compiled.defaultNamedValues)
-    applyWfNamedOverrides(overrides?.namedOverrides, effectiveNamed)
+    // What this request sets, kept apart from the defaults so a flavor can sit between them: the
+    // defaults, then the flavor's configurations, then the request's own values on top.
+    val requested = LinkedHashMap<String, RemoteNamedValue>()
+    applyWfNamedOverrides(overrides?.namedOverrides, requested)
     if (overrides?.ambient != null) {
       val amb = overrides.ambient?.state == AmbientStateOverride.AMBIENT
-      effectiveNamed[DwfVariables.IS_AMBIENT] = RemoteNamedValue.BooleanValue(amb)
+      requested[DwfVariables.IS_AMBIENT] = RemoteNamedValue.BooleanValue(amb)
     }
     val declaredNames = compiled.defaultNamedValues.keys
     val unusedSeeds = mutableListOf<String>()
     for ((rawKey, value) in overrides?.remoteCompose?.namedValues.orEmpty()) {
       val key = rawKey.removePrefix("USER:")
-      effectiveNamed[key] = value
+      requested[key] = value
       if (
         key !in declaredNames &&
           !key.startsWith("dwf.") &&
@@ -1005,6 +1041,9 @@ private class DwfDaemonSession(
         unusedSeeds += key
       }
     }
+    val effectiveNamed = LinkedHashMap<String, RemoteNamedValue>(compiled.defaultNamedValues)
+    applyDwfFlavor(compiled.doc, requestedFlavorId(overrides), effectiveNamed)
+    effectiveNamed.putAll(requested)
     normalizeDwfConfigValues(compiled.doc, effectiveNamed)
 
     val rcSeeds = LinkedHashMap<String, RcNamedValue>()
