@@ -32,4 +32,20 @@ public class SimulatorClockTest {
     long read = SimulatorClock.zonedNow().toInstant().toEpochMilli();
     assertTrue(read >= before - 1 && read <= System.currentTimeMillis() + 1);
   }
+
+  @Test
+  public void anExplicitPinAlwaysRefreshesTheFace() {
+    long minute = 1772705340000L; // 10:09:00Z
+    assertTrue(SimulatorClock.needsRefresh(null, minute, true));
+    // 10:08:59.700 -> 10:09:00.000: under a second, across a minute boundary.
+    assertTrue(SimulatorClock.needsRefresh(minute - 300, minute, true));
+    assertEquals(false, SimulatorClock.needsRefresh(minute, minute, true));
+  }
+
+  @Test
+  public void aRunningSimulatedClockRefreshesOncePerSecond() {
+    long t = 1772705340000L;
+    assertEquals(false, SimulatorClock.needsRefresh(t, t + 400, false));
+    assertTrue(SimulatorClock.needsRefresh(t, t + 1000, false));
+  }
 }

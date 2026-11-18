@@ -39,6 +39,9 @@ final class LiveFrameSource {
   /** How long a requested draw may take to reach the reader. */
   static final long FRAME_TIMEOUT_MS = 10_000;
 
+  /** How long the reader must be idle for earlier frames to count as read back. */
+  static final long QUIET_MS = 40;
+
   private final WallpaperService.Engine engine;
   private final SurfaceHolder holder;
   private final Handler main;
@@ -49,6 +52,7 @@ final class LiveFrameSource {
   private ImageReader reader;
   private Bitmap latest;
   private long posted;
+  private long lastReadNs = System.nanoTime();
   private final Object lock = new Object();
 
   private LiveFrameSource(
@@ -174,6 +178,7 @@ final class LiveFrameSource {
       synchronized (lock) {
         latest = bitmap;
         posted++;
+        lastReadNs = System.nanoTime();
         lock.notifyAll();
       }
     }
@@ -186,6 +191,16 @@ final class LiveFrameSource {
    */
   Bitmap draw() {
     long before;
+    try {
+      // Readback runs on its own thread, so a frame the face posted before this request (its own
+      // loop, an earlier timed-out request) may land after a counter snapshot and pass for this
+      // one. Let those land first: frames come in the order they were posted, so once the reader
+      // has been quiet, everything counted below is this request's.
+      awaitQuiet();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return null;
+    }
     synchronized (lock) {
       before = posted;
     }
@@ -210,6 +225,11 @@ final class LiveFrameSource {
           if (left <= 0) return null;
           lock.wait(left);
         }
+      }
+      // This request's frame was queued before the draw returned, behind nothing older; wait for
+      // the rest of its burst (a face may post more than once) and take the last.
+      awaitQuiet();
+      synchronized (lock) {
         return latest;
       }
     } catch (InterruptedException e) {
@@ -218,6 +238,18 @@ final class LiveFrameSource {
     } finally {
       Throwable t = failure.get();
       if (t != null) t.printStackTrace(System.err);
+    }
+  }
+
+  /** Returns once no frame has been read back for {@link #QUIET_MS}. */
+  private void awaitQuiet() throws InterruptedException {
+    long quiet = TimeUnit.MILLISECONDS.toNanos(QUIET_MS);
+    synchronized (lock) {
+      while (true) {
+        long left = quiet - (System.nanoTime() - lastReadNs);
+        if (left <= 0) return;
+        TimeUnit.NANOSECONDS.timedWait(lock, left);
+      }
     }
   }
 

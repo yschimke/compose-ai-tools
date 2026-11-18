@@ -36,4 +36,15 @@ public final class SimulatorClock {
   public static ZonedDateTime zonedNow() {
     return ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMillis()), ZoneId.systemDefault());
   }
+
+  /**
+   * Whether the face must be told the simulated time changed from [last] (null: never told) to
+   * [now]. An explicit pin that changed always refreshes, however little it moved (two pins under a
+   * second apart can straddle a second or minute boundary); a running simulated clock only once it
+   * has moved a second.
+   */
+  static boolean needsRefresh(Long last, long now, boolean explicitPin) {
+    if (last == null) return true;
+    return explicitPin ? last.longValue() != now : Math.abs(last.longValue() - now) >= 1000;
+  }
 }

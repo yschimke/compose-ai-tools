@@ -115,6 +115,21 @@ public class LiveFrameSourceTest {
   }
 
   @Test
+  public void aFramePostedBeforeTheRequestIsNotTakenForIt() throws Exception {
+    FillingService service = new FillingService();
+    WallpaperService.Engine engine = service.onCreateEngine();
+    LiveFrameSource source = LiveFrameSource.attach(engine, 40, 30);
+    assertNotNull(source);
+    // The face's own loop draws green, and its readback has not necessarily landed when the next
+    // request is made: that request must answer with its own (blue) frame.
+    service.color = Color.GREEN;
+    engine.onSurfaceRedrawNeeded(engine.getSurfaceHolder());
+    service.color = Color.BLUE;
+    assertEquals(Color.BLUE, draw(source).getPixel(10, 10));
+    source.release();
+  }
+
+  @Test
   public void theFaceIsToldItIsVisible() {
     // A face that is not visible keeps its complications empty; an engine with a window is told by
     // the system, this one by the source.

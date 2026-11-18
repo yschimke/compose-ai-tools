@@ -281,6 +281,8 @@ final class WatchFaceClient {
   private volatile IBinder headless;
   private volatile boolean interactive;
   private volatile LiveFrameSource live;
+  /** Whether the last frame published came from the live draw (else the screenshot call). */
+  private volatile boolean lastFrameLive;
   private boolean liveTried;
   private volatile List<Slot> slots = Collections.emptyList();
   private volatile List<StyleSetting> schema = Collections.emptyList();
@@ -792,7 +794,7 @@ final class WatchFaceClient {
     Bitmap liveFrame = renderLive(ambient, snapshot, styleSnapshot);
     if (liveFrame != null) {
       lastBitmap = liveFrame;
-      post(liveFrame, null);
+      post(liveFrame, null, true);
       return;
     }
     Parcel data = Parcel.obtain();
@@ -822,12 +824,12 @@ final class WatchFaceClient {
     }
     Bitmap decoded = readImage(bundle);
     lastBitmap = decoded;
-    post(decoded, null);
+    post(decoded, null, false);
   }
 
   /** Whether frames come from the engine's live draw rather than the screenshot call. */
   boolean usesLiveFrames() {
-    return live != null;
+    return lastFrameLive;
   }
 
   /** A frame from the engine's live draw, or null to use the screenshot call. */
@@ -879,7 +881,7 @@ final class WatchFaceClient {
         app.sendBroadcast(mockTime(1f, -1L));
         app.sendBroadcast(new Intent(Intent.ACTION_TIME_CHANGED));
       }
-    } else if (liveClock == null || Math.abs(liveClock - now) >= 1000) {
+    } else if (SimulatorClock.needsRefresh(liveClock, now, fixedTimeMillis != null)) {
       liveClock = now;
       liveStateChanged = true;
       app.sendBroadcast(mockTime(0f, now));
@@ -1351,12 +1353,18 @@ final class WatchFaceClient {
   }
 
   private void post(Bitmap frame, Throwable e) {
+    post(frame, e, false);
+  }
+
+  private void post(Bitmap frame, Throwable e, boolean fromLiveDraw) {
     main.post(
         () -> {
           if (e != null) {
             fail(e);
           } else {
             error = null;
+            // Which path made the bitmap the listener is about to publish, for `watchface status`.
+            lastFrameLive = fromLiveDraw;
             frames++;
             listener.rendered(this, frame, null);
           }
