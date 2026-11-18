@@ -610,7 +610,17 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     return spawned
   }
 
-  internal fun ensureRuntimeClasses(env: Environment): File {
+  /**
+   * One lock for the runtime conversion across the whole JVM. The bridge's own `lock` does not
+   * cover [DwfSimulatorLauncher.connect], which can run beside a bridge render, and two conversions
+   * of the same runtime must not interleave.
+   */
+  private val runtimeConversionLock = Any()
+
+  internal fun ensureRuntimeClasses(
+    env: Environment,
+    convert: (Environment, File) -> Unit = ::runApkClassConverter,
+  ): File {
     val sha = sha256(env.runtimeApk)
     val cacheDir = composeAiCacheDir("dwf-apk-daemon").apply { mkdirs() }
     // The cache name changes whenever the converter's output does, so a runtime converted by an
@@ -618,8 +628,39 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     // canvases (SoftwareRenderNodes), v4 the ZonedDateTime.now() rewrite (SimulatorClock) that
     // makes a pinned time reach the live draw.
     val outJar = File(cacheDir, runtimeClassesFileName(sha))
-    if (outJar.isFile && outJar.length() > 0L) return outJar
+    fun ready() = outJar.isFile && outJar.length() > 0L
+    if (ready()) return outJar
+    synchronized(runtimeConversionLock) {
+      if (ready()) return outJar
+      // A temp name of its own, so even another process converting the same runtime cannot be
+      // written over; the move is atomic, so a reader never sees half a jar.
+      val tmpJar = File(cacheDir, "runtime-$sha-${java.util.UUID.randomUUID()}.jar.tmp")
+      try {
+        convert(env, tmpJar)
+        check(tmpJar.isFile && tmpJar.length() > 0L) {
+          "ApkClassConverter produced no output for ${env.runtimeApk.name}"
+        }
+        try {
+          Files.move(
+            tmpJar.toPath(),
+            outJar.toPath(),
+            java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+          )
+        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+          Files.move(
+            tmpJar.toPath(),
+            outJar.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+          )
+        }
+      } finally {
+        tmpJar.delete()
+      }
+    }
+    return outJar
+  }
 
+  private fun runApkClassConverter(env: Environment, tmpJar: File) {
     val simulatorHostJar =
       env.simulatorJars.firstOrNull { it.name.startsWith("simulator-host") }
         ?: error("lib-simulator has no simulator-host jar")
@@ -627,8 +668,6 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       (listOf(simulatorHostJar) + env.dex2jarJars + env.simulatorJars + env.androidDaemonJars)
         .distinctBy { it.absolutePath }
         .joinToString(File.pathSeparator) { it.absolutePath }
-    val tmpJar = File(cacheDir, "runtime-$sha.jar.tmp")
-    tmpJar.delete()
     val proc =
       ProcessBuilder(
           javaBinary(),
@@ -644,11 +683,8 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     val output = proc.inputStream.bufferedReader().readText()
     val finished = proc.waitFor(120, TimeUnit.SECONDS)
     if (!finished || proc.exitValue() != 0 || !tmpJar.isFile) {
-      tmpJar.delete()
       error("ApkClassConverter failed for ${env.runtimeApk.name}: $output")
     }
-    Files.move(tmpJar.toPath(), outJar.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    return outJar
   }
 
   init {
