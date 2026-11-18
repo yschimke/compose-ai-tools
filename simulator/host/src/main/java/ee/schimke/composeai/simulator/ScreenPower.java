@@ -229,11 +229,23 @@ final class ScreenPower {
       updateAmbient();
       return describe();
     }
-    boolean ambient =
-        c.has("value")
-            ? c.getBoolean("value")
-            : policy.state() != ScreenPolicy.State.AMBIENT;
+    boolean ambient = requestedAmbient(c, policy.state() == ScreenPolicy.State.AMBIENT);
     return ambient ? to(ScreenPolicy.State.AMBIENT, "ambient") : wake("ambient");
+  }
+
+  /**
+   * Whether an {@code ambient} command asks for ambient. {@code value} (a boolean) and {@code state}
+   * ({@code interactive}/{@code on} or {@code ambient}, any case) name the target; with neither the
+   * command toggles. A command that names its target must never toggle: the render host sends
+   * {@code {"state":"INTERACTIVE"}} before every render, and reading it as a toggle alternated
+   * interactive and ambient renders of identical requests.
+   */
+  static boolean requestedAmbient(JSONObject c, boolean currentlyAmbient) throws JSONException {
+    if (c.has("value") && !c.isNull("value")) return c.getBoolean("value");
+    if (c.has("state") && !c.isNull("state")) {
+      return ScreenPolicy.State.of(c.getString("state")) == ScreenPolicy.State.AMBIENT;
+    }
+    return !currentlyAmbient;
   }
 
   private void details(JSONObject c) throws JSONException {

@@ -743,7 +743,13 @@ final class WatchFaceClient {
 
   /** Renders a frame on the worker; it reaches {@link Listener} on the main looper. */
   void render(boolean ambient) {
-    if (headless == null) return;
+    if (headless == null) {
+      // Not started (or failed to start): there is nothing to render, so report that again rather
+      // than leave the host waiting for a frame that is not coming.
+      String previous = error;
+      if (previous != null) main.post(() -> listener.rendered(this, null, previous));
+      return;
+    }
     worker.execute(
         () -> {
           try {
@@ -1129,12 +1135,7 @@ final class WatchFaceClient {
   }
 
   private void fail(Throwable e) {
-    Throwable cause = e;
-    while (cause instanceof java.lang.reflect.InvocationTargetException
-        && cause.getCause() != null) {
-      cause = cause.getCause();
-    }
-    error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
+    error = FaceErrors.describe(frames == 0 ? "starting the watch face" : "rendering the watch face", e);
     listener.rendered(this, null, error);
   }
 

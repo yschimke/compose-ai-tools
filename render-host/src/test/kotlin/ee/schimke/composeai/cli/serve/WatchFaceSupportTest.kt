@@ -684,4 +684,65 @@ class WatchFaceSupportTest {
       ),
     )
   }
+
+  @Test
+  fun awaitFirstFrameWaitsForTheFirstFrameWithinTheBound() {
+    var polls = 0
+    var clock = 0L
+    val last =
+      DwfApkDaemonBridge.awaitFirstFrame(
+        status = {
+          polls++
+          Json.parseToJsonElement(
+            if (polls < 4) """{"kind":"dwf-runtime","error":null,"frames":0}"""
+            else """{"kind":"dwf-runtime","error":null,"frames":1}""",
+          )
+        },
+        timeoutMillis = 10_000,
+        sleep = { clock += it },
+        nowMillis = { clock },
+      )
+    assertEquals(4, polls)
+    assertNull(DwfApkDaemonBridge.appWatchFaceProblem(last))
+  }
+
+  @Test
+  fun awaitFirstFrameGivesUpAtTheBoundAndStopsEarlyOnAnError() {
+    var clock = 0L
+    var polls = 0
+    val never =
+      DwfApkDaemonBridge.awaitFirstFrame(
+        status = {
+          polls++
+          Json.parseToJsonElement("""{"kind":"dwf-runtime","error":null,"frames":0}""")
+        },
+        timeoutMillis = 1_000,
+        pollMillis = 250,
+        sleep = { clock += it },
+        nowMillis = { clock },
+      )
+    assertNotNull(DwfApkDaemonBridge.appWatchFaceProblem(never))
+    assertTrue(polls in 4..6, "bounded polling, was $polls")
+
+    polls = 0
+    val failed =
+      DwfApkDaemonBridge.awaitFirstFrame(
+        status = {
+          polls++
+          Json.parseToJsonElement("""{"kind":"dwf-runtime","error":"Boom","frames":0}""")
+        },
+        timeoutMillis = 60_000,
+        sleep = { error("must not wait on a failure") },
+      )
+    assertEquals(1, polls)
+    assertTrue("Boom" in DwfApkDaemonBridge.appWatchFaceProblem(failed)!!)
+  }
+
+  @Test
+  fun everyRenderNamesItsAmbientStateSoNoRequestInheritsTheLastOne() {
+    val preview = ServePreview(id = "p", label = "p")
+    val (commands, _) = DwfApkDaemonBridge.buildOverrideCommands(preview, PreviewOverrides())
+    val ambient = commands.first { it.first == "ambient" }.second
+    assertEquals("INTERACTIVE", ambient["state"]?.toString()?.trim('"'))
+  }
 }

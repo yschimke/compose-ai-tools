@@ -1025,13 +1025,21 @@ final class WatchFaceHost {
       pendingRender = true;
       return;
     }
-    if (face != null && face.error() == null) {
+    // An explicit request renders again even after a failed frame: a face that recovers clears
+    // its error (onFrameRendered), so one bad frame does not poison every later request. The
+    // periodic tick below still leaves a failed face alone rather than failing once a second.
+    if (face != null) {
       rendering = true;
       face.render(ambient);
-    } else if (dwfFace != null && dwfFace.error() == null) {
+    } else if (dwfFace != null) {
       rendering = true;
       dwfFace.render(ambient);
     }
+  }
+
+  /** The last frame's failure, or null when the face is rendering (or none is set). */
+  String failure() {
+    return face == null && dwfFace == null ? null : error;
   }
 
   /** Once a cycle: a new frame each second (each minute in ambient), one in flight at a time. */
@@ -1246,6 +1254,15 @@ final class WatchFaceHost {
                 "state",
                 WatchState.current() != null ? WatchState.current().toJson() : JSONObject.NULL)
             .put("complications", complications);
+    if (face != null && face.component.getClassName().isEmpty()) {
+      // The runtime's renderWatchFaceToBitmap (the only frame path hosted here) draws the date as
+      // the 28th of the real clock's month and year, whatever time was requested; the hour and
+      // minute do follow it. Found by reading the runtime's headless render, not configurable.
+      json.put(
+          "dateNote",
+          "the Wear WFF runtime renders bitmaps with the day of the month forced to 28 "
+              + "(month and year follow the real clock); the time of day follows the pinned time");
+    }
     if (face != null || dwfFace != null) {
       json.put("frames", dwfFace != null ? dwfFace.frames() : face.frames());
       Long fixed =

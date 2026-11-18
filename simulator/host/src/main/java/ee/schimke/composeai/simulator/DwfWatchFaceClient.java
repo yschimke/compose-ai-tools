@@ -2203,7 +2203,8 @@ final class DwfWatchFaceClient {
   private void fail(Throwable t) {
     Throwable cause = t;
     while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
-    error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
+    error =
+        FaceErrors.describe(frames == 0 ? "starting the watch face" : "rendering the watch face", cause);
     if (listener != null) {
       listener.rendered(this, null, error);
     }

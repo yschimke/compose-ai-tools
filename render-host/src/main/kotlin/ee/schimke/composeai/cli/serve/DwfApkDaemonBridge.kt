@@ -67,6 +67,8 @@ public interface DwfApkSessionBridge {
  * the rendered frame via `screenshot`.
  */
 internal object DwfApkDaemonBridge : DwfApkSessionBridge {
+  private const val FIRST_FRAME_TIMEOUT_MILLIS = 90_000L
+
   private val json = Json { ignoreUnknownKeys = true }
   private val lock = Any()
   private var activeDaemon: SimulatorDaemonProcess? = null
@@ -166,6 +168,12 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         val daemon = ensureDaemon(env, runtimeClasses, wffApk)
         daemon.pushWatchFace(wffApk)
         applyOverrides(daemon, preview, overrides)
+        // A cold start answers the push before the runtime has drawn anything: wait (bounded) for
+        // the first frame, or its failure, rather than screenshot the built-in face.
+        awaitFirstFrame(
+          status = { daemon.command("watchface", buildJsonObject { put("op", "status") }) },
+          timeoutMillis = FIRST_FRAME_TIMEOUT_MILLIS,
+        )
         val shotFile = Files.createTempFile("dwf-apk-shot-", ".png").toFile()
         try {
           daemon.command(
@@ -233,6 +241,35 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       daemon.command(cmd, payload)
     }
     daemon.setOverriddenSlots(newOverriddenSlots)
+  }
+
+  /**
+   * Polls [status] until the app's face has drawn a frame or reported an error, at most
+   * [timeoutMillis]; returns the last status. Whatever it ends on is judged by
+   * [appWatchFaceProblem], so a face that never renders still fails, just after the wait.
+   */
+  internal fun awaitFirstFrame(
+    status: () -> JsonElement?,
+    timeoutMillis: Long,
+    pollMillis: Long = 200,
+    sleep: (Long) -> Unit = { Thread.sleep(it) },
+    nowMillis: () -> Long = System::currentTimeMillis,
+  ): JsonElement? {
+    val deadline = nowMillis() + timeoutMillis
+    var last = status()
+    while (isWaitingForFrame(last) && nowMillis() < deadline) {
+      sleep(pollMillis)
+      last = status()
+    }
+    return last
+  }
+
+  private fun isWaitingForFrame(status: JsonElement?): Boolean {
+    val obj = status as? JsonObject ?: return false
+    if ((obj["error"] as? JsonPrimitive)?.contentOrNull != null) return false
+    val kind = obj["kind"]?.jsonPrimitive?.contentOrNull
+    val frames = obj["frames"]?.jsonPrimitive?.intOrNull
+    return kind != null && kind != "built-in" && (frames == null || frames <= 0)
   }
 
   /**
