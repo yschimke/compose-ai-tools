@@ -1255,13 +1255,17 @@ final class WatchFaceHost {
                 WatchState.current() != null ? WatchState.current().toJson() : JSONObject.NULL)
             .put("complications", complications);
     if (face != null && face.component.getClassName().isEmpty()) {
-      // The runtime's renderWatchFaceToBitmap (the only frame path hosted here) draws the date as
-      // the 28th of the real clock's month and year, whatever time was requested; the hour and
-      // minute do follow it. Found by reading the runtime's headless render, not configurable.
-      json.put(
-          "dateNote",
-          "the Wear WFF runtime renders bitmaps with the day of the month forced to 28 "
-              + "(month and year follow the real clock); the time of day follows the pinned time");
+      boolean liveFrames = face.usesLiveFrames();
+      json.put("frameSource", liveFrames ? "live" : "screenshot");
+      if (!liveFrames) {
+        // The runtime's renderWatchFaceToBitmap (the fallback frame path) draws the date as the 28th
+        // of the real clock's month and year, whatever time was requested; the hour and minute do
+        // follow it. Found by reading the runtime's headless render, not configurable.
+        json.put(
+            "dateNote",
+            "the Wear WFF runtime renders bitmaps with the day of the month forced to 28 "
+                + "(month and year follow the real clock); the time of day follows the pinned time");
+      }
     }
     if (face != null || dwfFace != null) {
       json.put("frames", dwfFace != null ? dwfFace.frames() : face.frames());
