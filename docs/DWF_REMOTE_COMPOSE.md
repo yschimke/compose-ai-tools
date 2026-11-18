@@ -52,7 +52,11 @@ bitmap nor a vector drawable resolves.
 Problems that are not fatal come back as `WARNING` diagnostics and the face still renders with a
 documented fallback: `UNKNOWN_SOURCE` (a `[SOURCE]` the translator does not know evaluates to 0),
 `MALFORMED_EXPRESSION` (unbalanced parenthesis, trailing tokens, stray characters),
-`UNKNOWN_FUNCTION` and `UNSUPPORTED_ELEMENT` (a v4 `<Reference>` is ignored, so what reads it gets 0).
+`UNKNOWN_FUNCTION` and `UNSUPPORTED_ELEMENT` (a malformed v4 `<Reference>`, one without a `name` and a `source` or `defaultValue`).
+
+**`<Reference>` (v4).** `<Reference name="color" source="[CONFIGURATION.theme.0]" defaultValue="#FF888888"/>` inside an element binds that element's attribute `name` to `source`; `defaultValue` is used when `source` names a configuration the face does not declare. Every Reference is also readable as `[REFERENCE.name]` in expressions (an unknown name is `UNKNOWN_SOURCE`).
+
+**Moon phase.** `[MOON_PHASE_POSITION]` (integer 0..27), `[MOON_PHASE_TYPE]` (0 new, 1 waxing crescent, 2 first quarter, 3 waxing gibbous, 4 full, 5 waning gibbous, 6 last quarter, 7 waning crescent) and `[MOON_PHASE_TYPE_STRING]` / `[MOON_PHASE_TYPE_NAME]` derive from the face's date with the mean synodic month (accurate to about a day). `dwf.moon.phase` (float 0..1, default -1 = from the date) drives them in a preview.
 
 `wffVersion` (1–5, default 2) is **advisory today**: the translator accepts the union of versions 1–5
 and does not flag features newer than the target; an out-of-range value is `INVALID_OPTION`. It is
@@ -60,9 +64,10 @@ echoed back so hosts can thread it already. See *Moving onto `wff-core`* below.
 
 **Ambient.** Ambient is dimmed about 15% (a `0x26000000` scene scrim) to match the real runtime, as
 measured in #6586 with `dwf-diff`. On top of that, only what a face authors changes: `<Variant
-mode="AMBIENT">`, and the second hand hiding unless it has an ambient variant. Group `alpha` is
-applied per draw, so two overlapping shapes under a translucent group show their overlap (a
-layer-composited alpha is a follow-up).
+mode="AMBIENT">`, and the second hand hiding unless it has an ambient variant. A `Group` or `PartDraw` `alpha` below 255 (constant or
+variant-driven) composites as one offscreen layer, so overlapping children read uniform. Remote
+Compose has no `saveLayer`; this uses `drawToOffscreenBitmap` at document size, and a layer nested
+inside a layer falls back to per-draw alpha (the offscreen draw does not nest).
 
 ## Named values
 
