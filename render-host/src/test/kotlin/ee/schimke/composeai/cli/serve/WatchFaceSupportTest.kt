@@ -807,4 +807,27 @@ class WatchFaceSupportTest {
     )
     assertTrue(polls in 5..7, "polls=$polls")
   }
+
+  @Test
+  fun viewerSlotNumbersAreMappedOntoTheSlotsTheFaceDeclares() {
+    fun cmd(op: String, slot: Int) =
+      "watchface" to
+        kotlinx.serialization.json.buildJsonObject {
+          put("op", kotlinx.serialization.json.JsonPrimitive(op))
+          put("slot", kotlinx.serialization.json.JsonPrimitive(slot))
+        }
+    val mapped =
+      DwfApkDaemonBridge.remapSlots(
+        listOf(cmd("complication", 1), cmd("uncomplication", 6), cmd("complication", 13)),
+        listOf(11, 12, 13, 14, 15, 16),
+      )
+    assertEquals(
+      listOf("11", "16", "13"),
+      mapped.map { it.second["slot"].toString() },
+    )
+    // A face whose slots already are 1..N is left alone, as is a face with no known slots.
+    val same = listOf(cmd("complication", 2))
+    assertEquals(same, DwfApkDaemonBridge.remapSlots(same, listOf(1, 2, 3)))
+    assertEquals(same, DwfApkDaemonBridge.remapSlots(same, emptyList()))
+  }
 }

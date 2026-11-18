@@ -251,8 +251,13 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     preview: ServePreview,
     overrides: PreviewOverrides,
   ) {
-    val (commands, newOverriddenSlots) =
+    val (built, newOverriddenSlots) =
       buildOverrideCommands(preview, overrides, daemon.overriddenSlots())
+    val commands =
+      remapSlots(
+        built,
+        faceSlotIds(daemon.command("watchface", buildJsonObject { put("op", "status") })),
+      )
     for ((cmd, payload) in commands) {
       daemon.command(cmd, payload)
     }
@@ -327,6 +332,34 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         "the watch face did not load; the simulator is showing its built-in face"
       frames != null && frames <= 0 -> "the watch face has not rendered a frame"
       else -> null
+    }
+  }
+
+  /** The ids of the slots the face declares, from a `watchface status` result. */
+  internal fun faceSlotIds(status: JsonElement?): List<Int> =
+    ((status as? JsonObject)?.get("slots") as? kotlinx.serialization.json.JsonArray)
+      ?.mapNotNull { (it as? JsonObject)?.get("id")?.jsonPrimitive?.intOrNull }
+      .orEmpty()
+
+  /**
+   * The viewer numbers a face's complication slots 1..N; a face may declare others (a face whose
+   * slots are 11..16 rejects slot 1). A slot the face does not have, and that is within 1..N, is
+   * the Nth of the face's slots in id order.
+   */
+  internal fun remapSlots(
+    commands: List<Pair<String, JsonObject>>,
+    faceSlotIds: List<Int>,
+  ): List<Pair<String, JsonObject>> {
+    if (faceSlotIds.isEmpty()) return commands
+    val sorted = faceSlotIds.sorted()
+    return commands.map { (cmd, payload) ->
+      val slot = payload["slot"]?.jsonPrimitive?.intOrNull
+      if (cmd != "watchface" || slot == null || slot in sorted || slot !in 1..sorted.size) {
+        cmd to payload
+      } else {
+        cmd to
+          JsonObject(payload.toMutableMap().also { it["slot"] = JsonPrimitive(sorted[slot - 1]) })
+      }
     }
   }
 
