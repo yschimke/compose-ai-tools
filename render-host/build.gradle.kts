@@ -39,7 +39,9 @@ dependencies {
 
   implementation(libs.composeai.common.io)
   implementation(project(":common-image-crop"))
-  implementation(libs.kotlinx.serialization.json)
+  // `DwfSimulatorConnection.command` takes and returns kotlinx.serialization `JsonObject` /
+  // `JsonElement`.
+  api(libs.kotlinx.serialization.json)
   implementation(libs.classgraph)
 
   testImplementation(kotlin("test"))

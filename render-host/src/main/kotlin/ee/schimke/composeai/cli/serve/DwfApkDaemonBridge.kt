@@ -87,7 +87,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private val lock = Any()
   private var activeDaemon: SimulatorDaemonProcess? = null
 
-  private data class Environment(
+  internal data class Environment(
     val runtimeApk: File,
     val simulatorJars: List<File>,
     val androidDaemonJars: List<File>,
@@ -99,7 +99,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   internal fun isEnvironmentReady(): Boolean =
     resolveEnvironment(requireAapt2 = false).first != null
 
-  private fun resolveEnvironment(requireAapt2: Boolean = true): Pair<Environment?, String?> {
+  internal fun resolveEnvironment(requireAapt2: Boolean = true): Pair<Environment?, String?> {
     val runtimeApk =
       DwfApkWatchFaceRendererBackend.configuredApkFile()
         ?: return null to
@@ -610,7 +610,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     return spawned
   }
 
-  private fun ensureRuntimeClasses(env: Environment): File {
+  internal fun ensureRuntimeClasses(env: Environment): File {
     val sha = sha256(env.runtimeApk)
     val cacheDir = composeAiCacheDir("dwf-apk-daemon").apply { mkdirs() }
     // The cache name changes whenever the converter's output does, so a runtime converted by an
@@ -943,17 +943,20 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private fun sha256Bytes(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
-  private class SimulatorDaemonProcess(
+  internal class SimulatorDaemonProcess(
     val runtimeApk: File,
     private val process: Process,
     private val writer: BufferedWriter,
     private val reader: BufferedReader,
-  ) : AutoCloseable {
+  ) : DwfSimulatorConnection {
     private val nextId = AtomicInteger(1)
     private var lastPushedApk: String? = null
     private var overriddenSlotsOnDaemon: Set<Int> = emptySet()
 
     fun isAlive(): Boolean = process.isAlive
+
+    override val alive: Boolean
+      get() = process.isAlive
 
     fun overriddenSlots(): Set<Int> = overriddenSlotsOnDaemon
 
@@ -976,7 +979,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       overriddenSlotsOnDaemon = emptySet()
     }
 
-    fun command(cmd: String, payload: JsonObject = JsonObject(emptyMap())): JsonElement? {
+    override fun command(cmd: String, payload: JsonObject): JsonElement? {
       val id = nextId.getAndIncrement()
       val msg = buildJsonObject {
         put("id", id)
