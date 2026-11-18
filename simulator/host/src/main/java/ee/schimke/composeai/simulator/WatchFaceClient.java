@@ -73,6 +73,14 @@ final class WatchFaceClient {
   static final String PENDING_INTERACTIVE_DESCRIPTOR =
       "androidx.wear.watchface.control.IPendingInteractiveWatchFace";
 
+  /**
+   * How long to wait for the runtime to hand back its interactive instance before falling back to
+   * a headless one, whose only frame path is the screenshot call (and so the 28th of the month).
+   * The instance is created on the main thread, which the host's own commands (a push compiles and
+   * installs the face there) can keep busy for several seconds, so this is long.
+   */
+  static final long INTERACTIVE_INSTANCE_TIMEOUT_SECONDS = 60;
+
   /** {@code IWatchFaceControlService.createHeadlessWatchFaceInstance} (transaction 4). */
   static final int TRANSACTION_CREATE_HEADLESS = IBinder.FIRST_CALL_TRANSACTION + 3;
   /** {@code IWatchFaceControlService.getOrCreateInteractiveWatchFaceClient} (transaction 5). */
@@ -681,6 +689,7 @@ final class WatchFaceClient {
                 : navigator.bindForHost(
                     new Intent(WallpaperService.SERVICE_INTERFACE).setComponent(wpComponent));
       } catch (RuntimeException e) {
+        System.err.println("WatchFaceClient: no wallpaper service for " + component + ": " + e);
         wallpaperService = null;
       }
     } catch (RuntimeException e) {
@@ -827,6 +836,17 @@ final class WatchFaceClient {
     post(decoded, null, false);
   }
 
+  private static final long LIVE_ENGINE_WAIT_MS = 5_000;
+
+  /**
+   * The wallpaper engine, waiting up to [timeoutMs] for it: the runtime hands back its interactive
+   * instance before (not after) the engine reports itself to the connection, so the first frame
+   * can be asked for with no engine yet.
+   */
+  private IBinder awaitWallpaperEngine(long timeoutMs) {
+    return LiveFrameSource.await(() -> wallpaperEngine, timeoutMs);
+  }
+
   /** Whether frames come from the engine's live draw rather than the screenshot call. */
   boolean usesLiveFrames() {
     return lastFrameLive;
@@ -838,8 +858,11 @@ final class WatchFaceClient {
     if (!interactive || !component.getClassName().isEmpty()) return null;
     if (Boolean.getBoolean("composeai.simulator.noLiveFrames")) return null;
     if (!liveTried) {
+      IBinder engine = awaitWallpaperEngine(LIVE_ENGINE_WAIT_MS);
+      // No engine yet: take this frame from the screenshot call and look again for the next, so a
+      // face whose engine attaches after its instance is handed back still gets live frames.
+      if (engine == null) return null;
       liveTried = true;
-      IBinder engine = wallpaperEngine;
       java.util.concurrent.atomic.AtomicReference<LiveFrameSource> out =
           new java.util.concurrent.atomic.AtomicReference<>();
       java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
@@ -1046,7 +1069,10 @@ final class WatchFaceClient {
       boolean burnIn,
       boolean lowBit,
       boolean ambient) {
-    if (wpBinder == null) return null;
+    if (wpBinder == null) {
+      System.err.println("WatchFaceClient: no wallpaper service bound, so no interactive instance");
+      return null;
+    }
     CompletableFuture<IBinder> pendingFuture = new CompletableFuture<>();
     Binder pendingCallback =
         new Binder() {
@@ -1169,7 +1195,7 @@ final class WatchFaceClient {
           }
         });
     try {
-      return pendingFuture.get(3, TimeUnit.SECONDS);
+      return pendingFuture.get(INTERACTIVE_INSTANCE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     } catch (Throwable t) {
       t.printStackTrace(System.err);
       return null;
