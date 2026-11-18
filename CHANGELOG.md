@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.99.2](https://github.com/yschimke/compose-ai-tools/compare/v2.99.1...v2.99.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **dwf-apk:** wait for the wallpaper engine so a pushed face gets live frames ([#6635](https://github.com/yschimke/compose-ai-tools/issues/6635)) ([99fff5b](https://github.com/yschimke/compose-ai-tools/commit/99fff5bf81521ddd3b606ca0c47da6222a44e8a0))
+
 ## [2.99.1](https://github.com/yschimke/compose-ai-tools/compare/v2.99.0...v2.99.1) (2026-11-18)
 
 
