@@ -1245,6 +1245,9 @@ final class WatchFaceHost {
             // The last frame's failure, while the built-in face is shown in its place.
             .put("error", error != null ? error : JSONObject.NULL)
             .put("ambient", ambient)
+            // A frame is being drawn, or one more is queued behind it: what is on screen predates
+            // the last command until this is false.
+            .put("rendering", rendering || pendingRender)
             .put("editor", editorMode)
             .put("highlightSlot", highlightedSlot != null ? highlightedSlot : JSONObject.NULL)
             .put("themeFromWatchface", themeFromWatchface)

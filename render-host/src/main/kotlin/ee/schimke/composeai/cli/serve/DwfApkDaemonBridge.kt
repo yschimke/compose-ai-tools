@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -68,6 +69,12 @@ public interface DwfApkSessionBridge {
  */
 internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private const val FIRST_FRAME_TIMEOUT_MILLIS = 90_000L
+  private const val SETTLE_TIMEOUT_MILLIS = 30_000L
+
+  /** The simulator's own sensor values, which a request that names none gets back. */
+  private const val DEFAULT_HEART_RATE = 72.0
+  private const val DEFAULT_STEPS = 4200
+  private const val DEFAULT_BATTERY = 100
 
   /**
    * The converted runtime's cache name prefix; bump it when `ApkClassConverter`'s output changes.
@@ -177,10 +184,12 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         applyOverrides(daemon, preview, overrides)
         // A cold start answers the push before the runtime has drawn anything: wait (bounded) for
         // the first frame, or its failure, rather than screenshot the built-in face.
-        awaitFirstFrame(
-          status = { daemon.command("watchface", buildJsonObject { put("op", "status") }) },
-          timeoutMillis = FIRST_FRAME_TIMEOUT_MILLIS,
-        )
+        val status = { daemon.command("watchface", buildJsonObject { put("op", "status") }) }
+        awaitFirstFrame(status = status, timeoutMillis = FIRST_FRAME_TIMEOUT_MILLIS)
+        // The overrides above (clock, ambient, config, complications) each queue a render and
+        // return at once; a screenshot now would show the frame from before them, and the request
+        // that follows would show this one's.
+        awaitSettled(status = status, timeoutMillis = SETTLE_TIMEOUT_MILLIS)
         val shotFile = Files.createTempFile("dwf-apk-shot-", ".png").toFile()
         try {
           daemon.command(
@@ -242,8 +251,13 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     preview: ServePreview,
     overrides: PreviewOverrides,
   ) {
-    val (commands, newOverriddenSlots) =
+    val (built, newOverriddenSlots) =
       buildOverrideCommands(preview, overrides, daemon.overriddenSlots())
+    val commands =
+      remapSlots(
+        built,
+        faceSlotIds(daemon.command("watchface", buildJsonObject { put("op", "status") })),
+      )
     for ((cmd, payload) in commands) {
       daemon.command(cmd, payload)
     }
@@ -270,6 +284,28 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     }
     return last
   }
+
+  /**
+   * Polls [status] until the face is not rendering (`rendering` false), at most [timeoutMillis].
+   */
+  internal fun awaitSettled(
+    status: () -> JsonElement?,
+    timeoutMillis: Long,
+    pollMillis: Long = 100,
+    sleep: (Long) -> Unit = { Thread.sleep(it) },
+    nowMillis: () -> Long = System::currentTimeMillis,
+  ): JsonElement? {
+    val deadline = nowMillis() + timeoutMillis
+    var last = status()
+    while (isRendering(last) && nowMillis() < deadline) {
+      sleep(pollMillis)
+      last = status()
+    }
+    return last
+  }
+
+  private fun isRendering(status: JsonElement?): Boolean =
+    (status as? JsonObject)?.get("rendering")?.jsonPrimitive?.booleanOrNull == true
 
   private fun isWaitingForFrame(status: JsonElement?): Boolean {
     val obj = status as? JsonObject ?: return false
@@ -299,6 +335,34 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     }
   }
 
+  /** The ids of the slots the face declares, from a `watchface status` result. */
+  internal fun faceSlotIds(status: JsonElement?): List<Int> =
+    ((status as? JsonObject)?.get("slots") as? kotlinx.serialization.json.JsonArray)
+      ?.mapNotNull { (it as? JsonObject)?.get("id")?.jsonPrimitive?.intOrNull }
+      .orEmpty()
+
+  /**
+   * The viewer numbers a face's complication slots 1..N; a face may declare others (a face whose
+   * slots are 11..16 rejects slot 1). A slot the face does not have, and that is within 1..N, is
+   * the Nth of the face's slots in id order.
+   */
+  internal fun remapSlots(
+    commands: List<Pair<String, JsonObject>>,
+    faceSlotIds: List<Int>,
+  ): List<Pair<String, JsonObject>> {
+    if (faceSlotIds.isEmpty()) return commands
+    val sorted = faceSlotIds.sorted()
+    return commands.map { (cmd, payload) ->
+      val slot = payload["slot"]?.jsonPrimitive?.intOrNull
+      if (cmd != "watchface" || slot == null || slot in sorted || slot !in 1..sorted.size) {
+        cmd to payload
+      } else {
+        cmd to
+          JsonObject(payload.toMutableMap().also { it["slot"] = JsonPrimitive(sorted[slot - 1]) })
+      }
+    }
+  }
+
   internal fun buildOverrideCommands(
     preview: ServePreview,
     overrides: PreviewOverrides,
@@ -325,9 +389,15 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           buildJsonObject { put("state", if (rcAmb == true) "AMBIENT" else "INTERACTIVE") }
     }
 
-    overrides.clockEpochMillis?.let { epochMillis ->
-      commands += "clock" to buildJsonObject { put("timeMillis", epochMillis) }
-    }
+    // Every request names the whole state: the daemon is shared, so a clock, sensor or battery
+    // value
+    // an earlier request set must not be left behind for this one (a bare request is the defaults).
+    commands +=
+      "clock" to
+        buildJsonObject {
+          val epochMillis = overrides.clockEpochMillis
+          if (epochMillis != null) put("timeMillis", epochMillis) else put("timeMillis", JsonNull)
+        }
 
     val heartRate =
       (named["wf.heartRate"] as? PreviewOverrideValue.FloatValue)?.value?.toDouble()
@@ -336,22 +406,18 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     val stepCount =
       (named["wf.stepCount"] as? PreviewOverrideValue.IntValue)?.value
         ?: (rc["metrics.day.steps"] as? RemoteNamedValue.IntValue)?.value
-    if (heartRate != null || stepCount != null) {
-      commands +=
-        "health" to
-          buildJsonObject {
-            heartRate?.let { put("heartRate", it) }
-            stepCount?.let { put("steps", it) }
-          }
-    }
+    commands +=
+      "health" to
+        buildJsonObject {
+          put("heartRate", heartRate ?: DEFAULT_HEART_RATE)
+          put("steps", stepCount ?: DEFAULT_STEPS)
+        }
 
     val batteryPercent =
       (named["wf.batteryPercent"] as? PreviewOverrideValue.FloatValue)?.value?.toInt()
         ?: (named["wf.batteryPercent"] as? PreviewOverrideValue.IntValue)?.value
         ?: (rc["dwf.battery_percent"] as? RemoteNamedValue.FloatValue)?.value?.toInt()
-    if (batteryPercent != null) {
-      commands += "battery" to buildJsonObject { put("level", batteryPercent) }
-    }
+    commands += "battery" to buildJsonObject { put("level", batteryPercent ?: DEFAULT_BATTERY) }
 
     val flavorId =
       (named["wf.flavor"] as? PreviewOverrideValue.StringValue)?.value?.takeIf { it.isNotBlank() }
