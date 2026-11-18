@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.99.0](https://github.com/yschimke/compose-ai-tools/compare/v2.98.3...v2.99.0) (2026-11-18)
+
+
+### Features
+
+* WFF to Remote Compose group alpha layers, v4 Reference and real moon phase ([#6627](https://github.com/yschimke/compose-ai-tools/issues/6627)) ([5e57018](https://github.com/yschimke/compose-ai-tools/commit/5e57018b5591e530f11345ea4a6655ed5a27cd6d))
+
+
+### Bug Fixes
+
+* **dwf-apk:** release the live frame reader when attaching fails ([#6631](https://github.com/yschimke/compose-ai-tools/issues/6631)) ([af52a3c](https://github.com/yschimke/compose-ai-tools/commit/af52a3c874d265f7e74fb5602de1439482e88967))
+* **dwf-apk:** take frames from the live engine draw so the date is the real (or pinned) one ([#6628](https://github.com/yschimke/compose-ai-tools/issues/6628)) ([8ed6c97](https://github.com/yschimke/compose-ai-tools/commit/8ed6c971c630d29fd9dcaa2242bf00fa31d8a2d3))
+
 ## [2.98.3](https://github.com/yschimke/compose-ai-tools/compare/v2.98.2...v2.98.3) (2026-11-18)
 
 
