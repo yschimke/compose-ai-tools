@@ -1260,30 +1260,7 @@ final class DwfWatchFaceClient {
         }
       }
       if (player != null) {
-        applyVariables(ambient);
-        int wSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
-        int hSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY);
-        player.measure(wSpec, hSpec);
-        player.layout(0, 0, width, height);
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        // ColorAttribute extends PaintOperation inside CanvasOperations (Phase 2 of
-        // CoreDocument.paint), whereas alpha-multiplying FloatExpressions live in top-level
-        // mOperations (Phase 1). A warm-up draw populates ColorAttribute outputs and marks
-        // dependent top-level FloatExpressions dirty so the real draw pass renders settled RGBA
-        // colors on the very same frame (including frame 1 and palette switches).
-        player.draw(new Canvas(bitmap));
-        bitmap.eraseColor(0);
-        Canvas canvas = new Canvas(bitmap);
-        if ("CIRCLE".equalsIgnoreCase(entry.clipShape) || FormFactor.isRound()) {
-          Path circle = new Path();
-          circle.addOval(0f, 0f, width, height, Path.Direction.CW);
-          canvas.clipPath(circle);
-        }
-        player.draw(canvas);
-        String innerErr = readInnerPlayerError(player);
-        if (innerErr != null) {
-          throw new IllegalStateException("RemoteComposeView disabled: " + innerErr);
-        }
+        Bitmap bitmap = drawPlayerFrame(ambient);
         lastBitmap = bitmap;
         frames++;
         error = null;
@@ -1309,6 +1286,57 @@ final class DwfWatchFaceClient {
               + (initError != null ? ": " + initError : ""));
     } catch (RuntimeException | LinkageError e) {
       fail(e);
+    }
+  }
+
+  private Bitmap drawPlayerFrame(boolean ambient) {
+    applyVariables(ambient);
+    int wSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
+    int hSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY);
+    player.measure(wSpec, hSpec);
+    player.layout(0, 0, width, height);
+    Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+    // ColorAttribute extends PaintOperation inside CanvasOperations (Phase 2 of
+    // CoreDocument.paint), whereas alpha-multiplying FloatExpressions live in top-level
+    // mOperations (Phase 1). A warm-up draw populates ColorAttribute outputs and marks
+    // dependent top-level FloatExpressions dirty so the real draw pass renders settled RGBA
+    // colors on the very same frame (including frame 1 and palette switches).
+    player.draw(new Canvas(bitmap));
+    bitmap.eraseColor(0);
+    Canvas canvas = new Canvas(bitmap);
+    if ("CIRCLE".equalsIgnoreCase(entry.clipShape) || FormFactor.isRound()) {
+      Path circle = new Path();
+      circle.addOval(0f, 0f, width, height, Path.Direction.CW);
+      canvas.clipPath(circle);
+    }
+    player.draw(canvas);
+    String innerErr = readInnerPlayerError(player);
+    if (innerErr != null) {
+      throw new IllegalStateException("RemoteComposeView disabled: " + innerErr);
+    }
+    return bitmap;
+  }
+
+  /** Renders one frame at {@code timeMillis} and {@code ambient} mode without updating UI state. */
+  Bitmap renderBitmapAt(long timeMillis, boolean ambient) {
+    if (player == null) {
+      throw new IllegalStateException(
+          "RemoteComposePlayer unavailable for "
+              + entry.id
+              + (initError != null ? ": " + initError : ""));
+    }
+    Long previousFixed = fixedTimeMillis;
+    fixedTimeMillis = Long.valueOf(timeMillis);
+    try {
+      if (!boundWireComplications.isEmpty()) {
+        for (Map.Entry<Integer, BoundWireComplication> e : boundWireComplications.entrySet()) {
+          refreshBoundWireComplication(
+              e.getKey().intValue(), e.getValue().wireType, e.getValue().rawData, timeMillis);
+        }
+      }
+      return drawPlayerFrame(ambient);
+    } finally {
+      fixedTimeMillis = previousFixed;
     }
   }
 

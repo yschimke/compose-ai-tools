@@ -826,14 +826,43 @@ final class WatchFaceClient {
   }
 
   private void renderNow(boolean ambient) throws RemoteException {
-    IBinder instance = headless;
-    if (instance == null) return;
+    if (headless == null) return;
     Long pinned = fixedTimeMillis;
     WatchState ws = WatchState.current();
     long timeMillis =
         pinned != null
             ? pinned.longValue()
             : (ws != null ? ws.nowMillis() : System.currentTimeMillis());
+    RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
+    if (rendered == null) return;
+    lastBitmap = rendered.bitmap;
+    post(rendered.bitmap, null, rendered.live);
+  }
+
+  /**
+   * Renders one frame at {@code timeMillis} and {@code ambient} mode synchronously. Must be called
+   * off the main thread (live frames post to the main looper and await readback).
+   */
+  Bitmap renderBitmapAt(long timeMillis, boolean ambient) throws RemoteException {
+    RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
+    return rendered != null ? rendered.bitmap : null;
+  }
+
+  private static final class RenderedBitmap {
+    final Bitmap bitmap;
+    final boolean live;
+
+    RenderedBitmap(Bitmap bitmap, boolean live) {
+      this.bitmap = bitmap;
+      this.live = live;
+    }
+  }
+
+  private RenderedBitmap renderBitmapInternal(long timeMillis, boolean ambient)
+      throws RemoteException {
+    IBinder instance = headless;
+    if (instance == null) return null;
+    WatchState ws = WatchState.current();
     rebuildFlavorComplications(ws, null);
     Map<Integer, Object> snapshot = new LinkedHashMap<>();
     synchronized (complications) {
@@ -848,9 +877,7 @@ final class WatchFaceClient {
     }
     Bitmap liveFrame = renderLive(ambient, snapshot, styleSnapshot);
     if (liveFrame != null) {
-      lastBitmap = liveFrame;
-      post(liveFrame, null, true);
-      return;
+      return new RenderedBitmap(liveFrame, true);
     }
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
@@ -877,9 +904,7 @@ final class WatchFaceClient {
     if (bundle == null) {
       throw new IllegalStateException("renderWatchFaceToBitmap returned null bundle");
     }
-    Bitmap decoded = readImage(bundle);
-    lastBitmap = decoded;
-    post(decoded, null, false);
+    return new RenderedBitmap(readImage(bundle), false);
   }
 
   private static final long LIVE_ENGINE_WAIT_MS = 30_000;

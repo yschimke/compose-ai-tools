@@ -374,7 +374,8 @@ final class WearSystemUi {
               && !op.equals("theme")
               && !op.equals("tap")
               && !op.equals("uncomplication")
-              && !op.equals("unset")) {
+              && !op.equals("unset")
+              && !op.equals("profile")) {
             show(Surface.WATCHFACE);
           }
           return result;
