@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.101.0](https://github.com/yschimke/compose-ai-tools/compare/v2.100.0...v2.101.0) (2026-11-19)
+
+
+### Features
+
+* **bundle:** carry each watch face's WFF source bundle and licence ([#6647](https://github.com/yschimke/compose-ai-tools/issues/6647)) ([abda973](https://github.com/yschimke/compose-ai-tools/commit/abda973f9557c220e348b90d8e2e45898543eb0a))
+
 ## [2.100.0](https://github.com/yschimke/compose-ai-tools/compare/v2.99.3...v2.100.0) (2026-11-18)
 
 
