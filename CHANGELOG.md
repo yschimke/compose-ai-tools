@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.101.1](https://github.com/yschimke/compose-ai-tools/compare/v2.101.0...v2.101.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **deps:** update roborazzi to v1.79.0 ([#6653](https://github.com/yschimke/compose-ai-tools/issues/6653)) ([dccd003](https://github.com/yschimke/compose-ai-tools/commit/dccd003aada603bb3a46c9d6e18a7110006795bf))
+* **render-host:** report the DWF APK daemon's exit status and stderr, and cap its heap ([#6656](https://github.com/yschimke/compose-ai-tools/issues/6656)) ([0320653](https://github.com/yschimke/compose-ai-tools/commit/03206538da0b5afb554b4e6634a5881cbcbd682a))
+
 ## [2.101.0](https://github.com/yschimke/compose-ai-tools/compare/v2.100.0...v2.101.0) (2026-11-19)
 
 
