@@ -11,6 +11,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.view.Surface;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * {@code Canvas.drawRenderNode} for a software canvas.
@@ -31,14 +32,29 @@ import java.nio.ByteBuffer;
  * drawn back at identity. The software canvas's clip is not applied to the node.
  */
 public final class SoftwareRenderNodes {
+  private static final AtomicLong DRAW_COUNT = new AtomicLong();
+  private static final AtomicLong SOFTWARE_FALLBACK_COUNT = new AtomicLong();
+
   private SoftwareRenderNodes() {}
+
+  /** Total number of {@link #draw(Canvas, RenderNode)} invocations since process start. */
+  public static long drawCount() {
+    return DRAW_COUNT.get();
+  }
+
+  /** Number of {@link #draw(Canvas, RenderNode)} calls that took the software-canvas fallback. */
+  public static long softwareFallbackCount() {
+    return SOFTWARE_FALLBACK_COUNT.get();
+  }
 
   /** Replacement for {@code canvas.drawRenderNode(node)} in converted APK code. */
   public static void draw(Canvas canvas, RenderNode node) {
+    DRAW_COUNT.incrementAndGet();
     if (canvas.isHardwareAccelerated()) {
       canvas.drawRenderNode(node);
       return;
     }
+    SOFTWARE_FALLBACK_COUNT.incrementAndGet();
     int width = canvas.getWidth();
     int height = canvas.getHeight();
     if (width <= 0 || height <= 0 || !node.hasDisplayList()) return;

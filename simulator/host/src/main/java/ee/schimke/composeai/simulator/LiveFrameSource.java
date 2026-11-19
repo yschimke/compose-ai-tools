@@ -55,6 +55,13 @@ final class LiveFrameSource {
   /** The most one {@link #draw} takes; settable for tests. */
   volatile long timeoutMs = FRAME_TIMEOUT_MS;
 
+  private volatile long lastDrawDurationNs = -1L;
+
+  /** Wall-clock nanoseconds spent inside the most recent {@code onSurfaceRedrawNeeded} call. */
+  long lastDrawDurationNs() {
+    return lastDrawDurationNs;
+  }
+
   private ImageReader reader;
   private Bitmap latest;
   private long posted;
@@ -235,11 +242,13 @@ final class LiveFrameSource {
     AtomicReference<Throwable> failure = new AtomicReference<>();
     main.post(
         () -> {
+          long t0 = System.nanoTime();
           try {
             engine.onSurfaceRedrawNeeded(holder);
           } catch (Throwable t) {
             failure.set(t);
           } finally {
+            lastDrawDurationNs = System.nanoTime() - t0;
             drawn.countDown();
           }
         });

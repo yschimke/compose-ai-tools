@@ -427,14 +427,88 @@ final class WatchFaceHost {
         return configureImageLoader(c);
       case "editor":
         return configureEditor(c);
+      case "profile":
+        return profileCommand(c);
       case "status":
         return describe();
       default:
         throw new IllegalArgumentException(
             "watchface op "
                 + op
-                + ": use set, render, unset, config, complication, uncomplication, tap, theme, editor, imageLoader, push, pushed, removePush or status");
+                + ": use set, render, unset, config, complication, uncomplication, tap, theme, editor, imageLoader, push, pushed, removePush, profile or status");
     }
+  }
+
+  private volatile JSONObject lastProfile;
+  private volatile boolean profiling;
+
+  /**
+   * Profiles the active watch face's per-frame draw effort, animation churn, and ambient OPR /
+   * burn-in. Runs synchronously for Remote Compose DWF faces and on the client's single-threaded
+   * render worker for interactive Android watch faces (emitting a {@code watchface} {@code
+   * state=profiled} event) so profiling never overlaps normal renders.
+   */
+  private JSONObject profileCommand(JSONObject c) throws JSONException {
+    if (face == null && dwfFace == null) {
+      throw new IllegalStateException("no hosted watch face is set; call op:set first");
+    }
+    if (profiling) {
+      throw new IllegalStateException("watch face profiling is already in progress");
+    }
+    long defaultStart =
+        WatchState.current() != null
+            ? WatchState.current().nowMillis()
+            : System.currentTimeMillis();
+    WatchFaceFrameCostProfiler.Options options =
+        WatchFaceFrameCostProfiler.Options.fromJson(c, defaultStart);
+    if (dwfFace != null) {
+      DwfWatchFaceClient target = dwfFace;
+      try {
+        WatchFaceFrameCostProfiler.Report report =
+            WatchFaceFrameCostProfiler.profile(
+                (ts, amb) ->
+                    WatchFaceFrameCostProfiler.FrameSample.fromBitmap(
+                        target.renderBitmapAt(ts, amb)),
+                options);
+        JSONObject json = report.toJson();
+        lastProfile = json;
+        return new Protocol.Json().put("profiling", false).put("profile", json).object();
+      } catch (Exception e) {
+        throw new IllegalStateException("Watch face profiling failed: " + rootMessage(e), e);
+      }
+    }
+    WatchFaceClient target = face;
+    profiling = true;
+    target.runOnWorker(
+        () -> {
+          try {
+            WatchFaceFrameCostProfiler.Report report =
+                WatchFaceFrameCostProfiler.profile(
+                    (ts, amb) -> target.renderSampleAt(ts, amb), options);
+            JSONObject json = report.toJson();
+            lastProfile = json;
+            protocol.event(
+                "watchface",
+                new Protocol.Json().put("state", "profiled").put("profile", json).object());
+          } catch (Throwable t) {
+            protocol.event(
+                "watchface",
+                new Protocol.Json()
+                    .put("state", "profileError")
+                    .put("error", rootMessage(t))
+                    .object());
+          } finally {
+            profiling = false;
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                .post(
+                    () -> {
+                      if (face == target) {
+                        requestRender();
+                      }
+                    });
+          }
+        });
+    return new Protocol.Json().put("profiling", true).object();
   }
 
   private JSONObject configureImageLoader(JSONObject c) throws JSONException {
@@ -1021,7 +1095,7 @@ final class WatchFaceHost {
 
   private void requestRender() {
     if (face == null && dwfFace == null) return;
-    if (rendering) {
+    if (rendering || profiling) {
       pendingRender = true;
       return;
     }
@@ -1058,7 +1132,7 @@ final class WatchFaceHost {
       }
     }
     refreshDuePeriodicSources(now);
-    if (rendering) return;
+    if (rendering || profiling) return;
     if (ambient && !minuteChanged) return;
     boolean clockFrozen = WatchState.current() != null && WatchState.current().isClockFrozen();
     if (face != null && face.error() == null) {
