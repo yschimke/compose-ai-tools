@@ -484,10 +484,7 @@ final class WatchFaceHost {
           try {
             WatchFaceFrameCostProfiler.Report report =
                 WatchFaceFrameCostProfiler.profile(
-                    (ts, amb) ->
-                        WatchFaceFrameCostProfiler.FrameSample.fromBitmap(
-                            target.renderBitmapAt(ts, amb)),
-                    options);
+                    (ts, amb) -> target.renderSampleAt(ts, amb), options);
             JSONObject json = report.toJson();
             lastProfile = json;
             protocol.event(

@@ -42,8 +42,14 @@ final class WatchFaceFrameCostProfiler {
     final int width;
     final int height;
     final int[] pixels;
+    /** Pure draw duration in nanoseconds, or {@code -1} when not measured separately. */
+    final long drawDurationNs;
 
     FrameSample(int width, int height, int[] pixels) {
+      this(width, height, pixels, -1L);
+    }
+
+    FrameSample(int width, int height, int[] pixels, long drawDurationNs) {
       if (width <= 0 || height <= 0) {
         throw new IllegalArgumentException("width and height must be positive");
       }
@@ -53,15 +59,20 @@ final class WatchFaceFrameCostProfiler {
       this.width = width;
       this.height = height;
       this.pixels = pixels;
+      this.drawDurationNs = drawDurationNs;
     }
 
     static FrameSample fromBitmap(Bitmap bitmap) {
+      return fromBitmap(bitmap, -1L);
+    }
+
+    static FrameSample fromBitmap(Bitmap bitmap, long drawDurationNs) {
       if (bitmap == null) return null;
       int w = bitmap.getWidth();
       int h = bitmap.getHeight();
       int[] px = new int[w * h];
       bitmap.getPixels(px, 0, w, 0, 0, w, h);
-      return new FrameSample(w, h, px);
+      return new FrameSample(w, h, px, drawDurationNs);
     }
   }
 
@@ -108,6 +119,7 @@ final class WatchFaceFrameCostProfiler {
     final int index;
     final long timeMillis;
     final long drawDurationNs;
+    final long captureDurationNs;
     final long allocatedBytes;
     final long renderNodeDraws;
     final long softwareRenderNodeFallbacks;
@@ -119,6 +131,7 @@ final class WatchFaceFrameCostProfiler {
         int index,
         long timeMillis,
         long drawDurationNs,
+        long captureDurationNs,
         long allocatedBytes,
         long renderNodeDraws,
         long softwareRenderNodeFallbacks,
@@ -128,6 +141,7 @@ final class WatchFaceFrameCostProfiler {
       this.index = index;
       this.timeMillis = timeMillis;
       this.drawDurationNs = drawDurationNs;
+      this.captureDurationNs = captureDurationNs;
       this.allocatedBytes = allocatedBytes;
       this.renderNodeDraws = renderNodeDraws;
       this.softwareRenderNodeFallbacks = softwareRenderNodeFallbacks;
@@ -141,6 +155,7 @@ final class WatchFaceFrameCostProfiler {
           .put("index", index)
           .put("timeMillis", timeMillis)
           .put("drawMs", drawDurationNs / 1_000_000.0)
+          .put("captureMs", captureDurationNs / 1_000_000.0)
           .put("allocatedBytes", allocatedBytes)
           .put("renderNodeDraws", renderNodeDraws)
           .put("softwareRenderNodeFallbacks", softwareRenderNodeFallbacks)
@@ -158,6 +173,8 @@ final class WatchFaceFrameCostProfiler {
     final boolean exceeds15FpsGuideline;
     final double avgDrawMs;
     final double maxDrawMs;
+    final double avgCaptureMs;
+    final double maxCaptureMs;
     final long avgAllocatedBytes;
     final long totalRenderNodeDraws;
     final long totalSoftwareRenderNodeFallbacks;
@@ -172,6 +189,8 @@ final class WatchFaceFrameCostProfiler {
         double effectiveFps,
         double avgDrawMs,
         double maxDrawMs,
+        double avgCaptureMs,
+        double maxCaptureMs,
         long avgAllocatedBytes,
         long totalRenderNodeDraws,
         long totalSoftwareRenderNodeFallbacks,
@@ -185,6 +204,8 @@ final class WatchFaceFrameCostProfiler {
       this.exceeds15FpsGuideline = effectiveFps > RECOMMENDED_MAX_FPS;
       this.avgDrawMs = avgDrawMs;
       this.maxDrawMs = maxDrawMs;
+      this.avgCaptureMs = avgCaptureMs;
+      this.maxCaptureMs = maxCaptureMs;
       this.avgAllocatedBytes = avgAllocatedBytes;
       this.totalRenderNodeDraws = totalRenderNodeDraws;
       this.totalSoftwareRenderNodeFallbacks = totalSoftwareRenderNodeFallbacks;
@@ -206,6 +227,8 @@ final class WatchFaceFrameCostProfiler {
           .put("exceeds15FpsGuideline", exceeds15FpsGuideline)
           .put("avgDrawMs", avgDrawMs)
           .put("maxDrawMs", maxDrawMs)
+          .put("avgCaptureMs", avgCaptureMs)
+          .put("maxCaptureMs", maxCaptureMs)
           .put("avgAllocatedBytes", avgAllocatedBytes)
           .put("totalRenderNodeDraws", totalRenderNodeDraws)
           .put("totalSoftwareRenderNodeFallbacks", totalSoftwareRenderNodeFallbacks)
@@ -295,6 +318,8 @@ final class WatchFaceFrameCostProfiler {
     FrameSample previous = null;
     long totalDrawNs = 0L;
     long maxDrawNs = 0L;
+    long totalCaptureNs = 0L;
+    long maxCaptureNs = 0L;
     long totalAlloc = 0L;
     int allocSamples = 0;
     long totalRnDraws = 0L;
@@ -311,7 +336,7 @@ final class WatchFaceFrameCostProfiler {
       long allocBefore = currentThreadAllocatedBytes();
       long t0 = System.nanoTime();
       FrameSample sample = provider.render(ts, false);
-      long durationNs = System.nanoTime() - t0;
+      long captureNs = System.nanoTime() - t0;
       long allocAfter = currentThreadAllocatedBytes();
       long rnDelta = SoftwareRenderNodes.drawCount() - rnBefore;
       long swDelta = SoftwareRenderNodes.softwareFallbackCount() - swBefore;
@@ -319,14 +344,18 @@ final class WatchFaceFrameCostProfiler {
       if (sample == null) {
         throw new IllegalStateException("Watch face returned null frame at index " + i);
       }
+      long drawNs = sample.drawDurationNs >= 0L ? sample.drawDurationNs : captureNs;
 
-      long allocDelta = (allocBefore >= 0 && allocAfter >= allocBefore) ? (allocAfter - allocBefore) : -1L;
+      long allocDelta =
+          (allocBefore >= 0 && allocAfter >= allocBefore) ? (allocAfter - allocBefore) : -1L;
       if (allocDelta >= 0) {
         totalAlloc += allocDelta;
         allocSamples++;
       }
-      totalDrawNs += durationNs;
-      if (durationNs > maxDrawNs) maxDrawNs = durationNs;
+      totalDrawNs += drawNs;
+      if (drawNs > maxDrawNs) maxDrawNs = drawNs;
+      totalCaptureNs += captureNs;
+      if (captureNs > maxCaptureNs) maxCaptureNs = captureNs;
       totalRnDraws += rnDelta;
       totalSwFallbacks += swDelta;
 
@@ -336,7 +365,9 @@ final class WatchFaceFrameCostProfiler {
       if (previous != null
           && previous.width == sample.width
           && previous.height == sample.height) {
-        Diff diff = computeDiff(previous.pixels, sample.pixels, sample.width, sample.height, options.circular);
+        Diff diff =
+            computeDiff(
+                previous.pixels, sample.pixels, sample.width, sample.height, options.circular);
         dirtyPixels = diff.dirtyPixels;
         dirtyRatio = diff.dirtyRatio;
         dirtyBoundsRatio = diff.dirtyBoundsRatio;
@@ -350,7 +381,8 @@ final class WatchFaceFrameCostProfiler {
           new FrameMetrics(
               i,
               ts,
-              durationNs,
+              drawNs,
+              captureNs,
               allocDelta,
               rnDelta,
               swDelta,
@@ -363,9 +395,12 @@ final class WatchFaceFrameCostProfiler {
     int count = metrics.size();
     double avgDrawMs = count == 0 ? 0.0 : (totalDrawNs / (double) count) / 1_000_000.0;
     double maxDrawMs = maxDrawNs / 1_000_000.0;
+    double avgCaptureMs = count == 0 ? 0.0 : (totalCaptureNs / (double) count) / 1_000_000.0;
+    double maxCaptureMs = maxCaptureNs / 1_000_000.0;
     long avgAlloc = allocSamples == 0 ? -1L : totalAlloc / allocSamples;
     double avgDirty = diffSamples == 0 ? 0.0 : Math.min(maxDirtyRatio, sumDirtyRatio / diffSamples);
-    double windowSeconds = diffSamples > 0 ? (diffSamples * options.interactiveStepMs) / 1000.0 : 0.0;
+    double windowSeconds =
+        diffSamples > 0 ? (diffSamples * options.interactiveStepMs) / 1000.0 : 0.0;
     double effectiveFps = windowSeconds > 0.0 ? changedFrames / windowSeconds : 0.0;
 
     return new InteractiveSummary(
@@ -375,6 +410,8 @@ final class WatchFaceFrameCostProfiler {
         effectiveFps,
         avgDrawMs,
         maxDrawMs,
+        avgCaptureMs,
+        maxCaptureMs,
         avgAlloc,
         totalRnDraws,
         totalSwFallbacks,
@@ -520,11 +557,25 @@ final class WatchFaceFrameCostProfiler {
     return new Diff(dirty, dirtyRatio, boundsRatio);
   }
 
+  private static final Method ALLOC_METHOD = resolveAllocatedBytesMethod();
+
+  private static Method resolveAllocatedBytesMethod() {
+    try {
+      // Look up on the exported com.sun.management.ThreadMXBean interface rather than the
+      // non-exported HotSpotThreadImpl class so JDK 17-25 succeed without --add-opens.
+      Class<?> iface = Class.forName("com.sun.management.ThreadMXBean");
+      return iface.getMethod("getCurrentThreadAllocatedBytes");
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
   private static long currentThreadAllocatedBytes() {
+    Method m = ALLOC_METHOD;
+    if (m == null) return -1L;
     try {
       Object bean = ManagementFactory.getThreadMXBean();
-      Method m = bean.getClass().getMethod("getCurrentThreadAllocatedBytes");
-      m.setAccessible(true);
+      if (!m.getDeclaringClass().isInstance(bean)) return -1L;
       Object result = m.invoke(bean);
       return result instanceof Long ? ((Long) result).longValue() : -1L;
     } catch (Throwable ignored) {

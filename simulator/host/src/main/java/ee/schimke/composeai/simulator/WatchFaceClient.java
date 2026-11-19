@@ -848,12 +848,16 @@ final class WatchFaceClient {
    * Renders one frame at {@code timeMillis} and {@code ambient} mode synchronously. Must be called
    * on the client's worker thread (live frames post to the main looper and await readback).
    */
-  Bitmap renderBitmapAt(long timeMillis, boolean ambient) throws RemoteException {
+  WatchFaceFrameCostProfiler.FrameSample renderSampleAt(long timeMillis, boolean ambient)
+      throws RemoteException {
     Long previousFixed = fixedTimeMillis;
     fixedTimeMillis = Long.valueOf(timeMillis);
     try {
       RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
-      return rendered != null ? rendered.bitmap : null;
+      return rendered != null
+          ? WatchFaceFrameCostProfiler.FrameSample.fromBitmap(
+              rendered.bitmap, rendered.drawDurationNs)
+          : null;
     } finally {
       fixedTimeMillis = previousFixed;
       SimulatorClock.setOverride(previousFixed);
@@ -863,10 +867,12 @@ final class WatchFaceClient {
   private static final class RenderedBitmap {
     final Bitmap bitmap;
     final boolean live;
+    final long drawDurationNs;
 
-    RenderedBitmap(Bitmap bitmap, boolean live) {
+    RenderedBitmap(Bitmap bitmap, boolean live, long drawDurationNs) {
       this.bitmap = bitmap;
       this.live = live;
+      this.drawDurationNs = drawDurationNs;
     }
   }
 
@@ -889,11 +895,14 @@ final class WatchFaceClient {
     }
     Bitmap liveFrame = renderLive(ambient, snapshot, styleSnapshot);
     if (liveFrame != null) {
-      return new RenderedBitmap(liveFrame, true);
+      LiveFrameSource source = live;
+      long drawNs = source != null ? source.lastDrawDurationNs() : -1L;
+      return new RenderedBitmap(liveFrame, true, drawNs);
     }
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
     Bundle bundle;
+    long drawNs;
     try {
       String descriptor = interactive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR;
       int tx =
@@ -905,7 +914,9 @@ final class WatchFaceClient {
       writeRenderParams(
           data, ambient ? DRAW_AMBIENT : DRAW_INTERACTIVE, timeMillis, snapshot, styleSnapshot);
       data.setDataPosition(0);
+      long t0 = System.nanoTime();
       instance.transact(tx, data, reply, 0);
+      drawNs = System.nanoTime() - t0;
       reply.setDataPosition(0);
       reply.readException();
       bundle = reply.readInt() != 0 ? Bundle.CREATOR.createFromParcel(reply) : null;
@@ -916,7 +927,7 @@ final class WatchFaceClient {
     if (bundle == null) {
       throw new IllegalStateException("renderWatchFaceToBitmap returned null bundle");
     }
-    return new RenderedBitmap(readImage(bundle), false);
+    return new RenderedBitmap(readImage(bundle), false, drawNs);
   }
 
   private static final long LIVE_ENGINE_WAIT_MS = 30_000;
