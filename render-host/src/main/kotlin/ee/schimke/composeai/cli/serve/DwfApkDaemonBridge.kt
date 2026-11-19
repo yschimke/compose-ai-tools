@@ -1000,6 +1000,39 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
 
   internal const val STDERR_TAIL_LINES = 40
 
+  /** The daemon's `-Xmx`, overriding [defaultMaxHeap] (`768m`, `2g`, ...). */
+  public const val MAX_HEAP_SYS_PROP: String = "composeai.watchface.apkRenderer.maxHeap"
+  public const val MAX_HEAP_ENV: String = "COMPOSE_PREVIEW_DWF_RENDERER_MAX_HEAP"
+
+  private val HEAP_SIZE = Regex("[1-9][0-9]*[kKmMgG]?")
+
+  /**
+   * The daemon's heap without an override: an eighth of the machine, between 768 MB and 2 GB, as
+   * `compose-preview launch` gives its simulator. The JVM's own default, a quarter of the machine,
+   * lets G1 grow far past the runtime's live set before it collects, and a host runs this daemon
+   * beside the UI Builder's Native pane daemon and itself.
+   */
+  internal fun defaultMaxHeap(physicalMemoryBytes: Long?): String {
+    val mb = (physicalMemoryBytes ?: 0L) / (1L shl 20) / 8
+    return "${mb.coerceIn(768L, 2048L)}m"
+  }
+
+  /**
+   * [MAX_HEAP_SYS_PROP], then [MAX_HEAP_ENV], then [defaultMaxHeap]; a malformed value is ignored.
+   */
+  internal fun daemonMaxHeap(
+    sysProp: String? = System.getProperty(MAX_HEAP_SYS_PROP),
+    env: String? = System.getenv(MAX_HEAP_ENV),
+    physicalMemoryBytes: Long? = physicalMemoryBytes(),
+  ): String =
+    listOfNotNull(sysProp, env).map(String::trim).firstOrNull { HEAP_SIZE.matches(it) }
+      ?: defaultMaxHeap(physicalMemoryBytes)
+
+  private fun physicalMemoryBytes(): Long? =
+    (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+        as? com.sun.management.OperatingSystemMXBean)
+      ?.totalMemorySize
+
   /** How long a daemon that closed stdout gets to exit and finish its stderr before we report. */
   private const val EXIT_GRACE_MILLIS = 5_000L
 
@@ -1170,6 +1203,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
         val robolectricDepsDir = resolveRobolectricDepsDir()
         val cmd = buildList {
           add(javaBinary())
+          add("-Xmx${daemonMaxHeap()}")
           add("-XX:G1PeriodicGCInterval=5000")
           add("--enable-native-access=ALL-UNNAMED")
           add("--add-opens=java.base/java.net=ALL-UNNAMED")

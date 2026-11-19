@@ -64,4 +64,22 @@ class DwfApkDaemonDeathTest {
     listOf("a", "b", "c", "d", "0123456789").forEach(tail::add)
     assertEquals(listOf("c", "d", "01234…"), tail.snapshot())
   }
+
+  @Test
+  fun `the daemon heap defaults to an eighth of the machine clamped to 768m-2g`() {
+    val gb = 1L shl 30
+    assertEquals("768m", DwfApkDaemonBridge.defaultMaxHeap(null))
+    assertEquals("768m", DwfApkDaemonBridge.defaultMaxHeap(4 * gb))
+    assertEquals("1536m", DwfApkDaemonBridge.defaultMaxHeap(12 * gb))
+    assertEquals("2048m", DwfApkDaemonBridge.defaultMaxHeap(64 * gb))
+  }
+
+  @Test
+  fun `the daemon heap override wins, system property first, and malformed values are ignored`() {
+    val gb = 1L shl 30
+    assertEquals("3g", DwfApkDaemonBridge.daemonMaxHeap("3g", "1g", 64 * gb))
+    assertEquals("1g", DwfApkDaemonBridge.daemonMaxHeap(null, "1g", 64 * gb))
+    assertEquals("1g", DwfApkDaemonBridge.daemonMaxHeap("lots", " 1g ", 64 * gb))
+    assertEquals("2048m", DwfApkDaemonBridge.daemonMaxHeap("", null, 64 * gb))
+  }
 }
