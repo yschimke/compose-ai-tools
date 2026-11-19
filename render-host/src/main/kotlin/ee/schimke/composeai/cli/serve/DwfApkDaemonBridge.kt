@@ -979,11 +979,64 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
   private fun sha256Bytes(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+  /**
+   * The last [capacity] lines a daemon wrote to stderr, so a daemon that dies can say why. Each
+   * line is cut to [maxLineLength] characters: the buffer is bounded whatever the daemon prints.
+   */
+  internal class StderrTail(
+    private val capacity: Int = STDERR_TAIL_LINES,
+    private val maxLineLength: Int = 2_000,
+  ) {
+    private val lines = ArrayDeque<String>(capacity)
+
+    @Synchronized
+    fun add(line: String) {
+      if (lines.size == capacity) lines.removeFirst()
+      lines.addLast(if (line.length > maxLineLength) line.take(maxLineLength) + "…" else line)
+    }
+
+    @Synchronized fun snapshot(): List<String> = lines.toList()
+  }
+
+  internal const val STDERR_TAIL_LINES = 40
+
+  /** How long a daemon that closed stdout gets to exit and finish its stderr before we report. */
+  private const val EXIT_GRACE_MILLIS = 5_000L
+
+  /**
+   * Why a daemon whose stdout ended is gone: its exit status (or that it has not exited yet) and
+   * the tail of its stderr. Without it the only message is "closed stdout", and the cause is on a
+   * stderr nobody kept.
+   */
+  internal fun describeDeath(cmd: String, exitStatus: Int?, stderrTail: List<String>): String =
+    buildString {
+      append("DWF APK daemon closed stdout unexpectedly while answering `")
+      append(cmd)
+      append("`: ")
+      append(
+        when {
+          exitStatus == null -> "it has not exited"
+          exitStatus > 128 ->
+            "it exited with status $exitStatus (killed by signal ${exitStatus - 128}" +
+              (if (exitStatus == 137) ", SIGKILL: often the OOM killer)" else ")")
+          else -> "it exited with status $exitStatus"
+        },
+      )
+      if (stderrTail.isEmpty()) {
+        append("; it wrote nothing to stderr")
+      } else {
+        append(". Last ${stderrTail.size} lines of its stderr:\n")
+        stderrTail.joinTo(this, "\n")
+      }
+    }
+
   internal class SimulatorDaemonProcess(
     val runtimeApk: File,
     private val process: Process,
     private val writer: BufferedWriter,
     private val reader: BufferedReader,
+    private val stderrTail: StderrTail? = null,
+    private val stderrPump: Thread? = null,
   ) : DwfSimulatorConnection {
     private val nextId = AtomicInteger(1)
     private var lastPushedApk: String? = null
@@ -1027,7 +1080,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       writer.flush()
 
       while (true) {
-        val line = reader.readLine() ?: error("DWF APK daemon closed stdout unexpectedly")
+        val line = reader.readLine() ?: died(cmd)
         val trimmed = line.trim()
         if (!trimmed.startsWith("{")) continue
         val obj =
@@ -1043,6 +1096,21 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
       }
     }
 
+    private fun died(cmd: String): Nothing {
+      val exited = process.waitFor(EXIT_GRACE_MILLIS, TimeUnit.MILLISECONDS)
+      // The pump sees stderr's end once the process has gone; the bounded join only guards a
+      // grandchild that kept the pipe open.
+      if (exited) stderrPump?.join(EXIT_GRACE_MILLIS)
+      val message =
+        describeDeath(
+          cmd,
+          if (exited) process.exitValue() else null,
+          stderrTail?.snapshot().orEmpty(),
+        )
+      System.err.println("[dwf-apk] $message")
+      error(message)
+    }
+
     override fun close() {
       runCatching {
         writer.close()
@@ -1052,6 +1120,41 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     }
 
     companion object {
+      /**
+       * Wraps a started [process] whose stderr is a pipe: each stderr line is still copied to this
+       * process's stderr, as when it was inherited, and the last [STDERR_TAIL_LINES] are kept for
+       * [describeDeath].
+       */
+      fun attach(runtimeApk: File, process: Process): SimulatorDaemonProcess {
+        val tail = StderrTail()
+        val pump =
+          Thread(
+              {
+                runCatching {
+                  process.errorStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
+                    lines.forEach { line ->
+                      tail.add(line)
+                      System.err.println(line)
+                    }
+                  }
+                }
+              },
+              "dwf-apk-daemon-stderr",
+            )
+            .apply {
+              isDaemon = true
+              start()
+            }
+        return SimulatorDaemonProcess(
+          runtimeApk,
+          process,
+          BufferedWriter(OutputStreamWriter(process.outputStream, StandardCharsets.UTF_8)),
+          BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)),
+          tail,
+          pump,
+        )
+      }
+
       fun start(
         env: Environment,
         runtimeClasses: File,
@@ -1093,12 +1196,15 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
           add(env.runtimeApk.absolutePath)
           add(runtimeClasses.absolutePath)
         }
-        val proc = ProcessBuilder(cmd).redirectError(ProcessBuilder.Redirect.INHERIT).start()
-        val writer = BufferedWriter(OutputStreamWriter(proc.outputStream, StandardCharsets.UTF_8))
-        val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-        val daemon = SimulatorDaemonProcess(env.runtimeApk, proc, writer, reader)
+        val proc = ProcessBuilder(cmd).redirectError(ProcessBuilder.Redirect.PIPE).start()
+        val daemon = attach(env.runtimeApk, proc)
         // Wait for initial `watchface status` round-trip so we know the sandbox is ready.
-        daemon.command("watchface", buildJsonObject { put("op", "status") })
+        try {
+          daemon.command("watchface", buildJsonObject { put("op", "status") })
+        } catch (e: Throwable) {
+          daemon.close()
+          throw e
+        }
         return daemon
       }
     }
