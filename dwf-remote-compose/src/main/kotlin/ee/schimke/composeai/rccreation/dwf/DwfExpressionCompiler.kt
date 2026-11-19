@@ -1331,6 +1331,13 @@ internal class DwfExpressionCompiler(
       "HOUR_1_24_Z" ->
         EvalValue.Text(v.hour1To24.toRemoteStringOptions(2, 0, TextFromFloat.PAD_PRE_ZERO))
       "HOUR_1_24_MINUTE" -> EvalValue.Num(v.hour1To24 + (v.minute / 60f))
+      // The digits a digital clock draws, one image a digit (WFF v2).
+      "HOUR_TENS_DIGIT" -> EvalValue.Num(v.hourTensDigit, isInteger = true)
+      "HOUR_UNITS_DIGIT" -> EvalValue.Num(v.hourUnitsDigit, isInteger = true)
+      "MINUTE_TENS_DIGIT" -> EvalValue.Num(v.minuteTensDigit, isInteger = true)
+      "MINUTE_UNITS_DIGIT" -> EvalValue.Num(v.minuteUnitsDigit, isInteger = true)
+      "SECOND_TENS_DIGIT" -> EvalValue.Num(v.secondTensDigit, isInteger = true)
+      "SECOND_UNITS_DIGIT" -> EvalValue.Num(v.secondUnitsDigit, isInteger = true)
       "DAY",
       "DAY_OF_MONTH",
       "DAY_1_31" -> EvalValue.Num(v.day, isInteger = true)
@@ -1424,6 +1431,19 @@ internal class DwfExpressionCompiler(
     val hour1To12: RemoteFloat by lazy { hour0To11.isEqualTo(0f.rf).select(12f.rf, hour0To11) }
     val hour1To24: RemoteFloat by lazy { hour0To23.isEqualTo(0f.rf).select(24f.rf, hour0To23) }
     val hour0To11Minute: RemoteFloat by lazy { hour0To11 + (minute / 60f) }
+
+    /**
+     * The hour as a digital clock shows it, for the `*_TENS_DIGIT` / `*_UNITS_DIGIT` sources (WFF
+     * v2): `HOUR_0_23` in 24-hour mode, else `HOUR_1_12`, as `IS_24_HOUR_MODE` says. So 12:03 is
+     * tens 1, units 2 either way, and 21:03 is 2 and 1 in 24-hour mode, 0 and 9 in 12-hour.
+     */
+    val displayHour: RemoteFloat by lazy { is24Hour.select(hour0To23, hour1To12) }
+    val hourTensDigit: RemoteFloat by lazy { floor(displayHour / 10f) }
+    val hourUnitsDigit: RemoteFloat by lazy { displayHour % 10f }
+    val minuteTensDigit: RemoteFloat by lazy { floor(minute / 10f) }
+    val minuteUnitsDigit: RemoteFloat by lazy { minute % 10f }
+    val secondTensDigit: RemoteFloat by lazy { floor(second / 10f) }
+    val secondUnitsDigit: RemoteFloat by lazy { second % 10f }
     val hour0To23Minute: RemoteFloat by lazy { hour0To23 + (minute / 60f) }
     val secondsInDay: RemoteFloat by lazy { (hour0To23 * 3600f) + (minute * 60f) + second }
     val amPmPosition: RemoteFloat by lazy {
