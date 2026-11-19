@@ -15,7 +15,7 @@ through `index.json`.
 | --- | --- | --- | --- | --- |
 | `androidx.appsearch:appsearch-local-storage` | 1.1.0 | `icing` |  |  |
 | `androidx.benchmark:benchmark-common` | 1.5.0 | `benchmarkNative` |  |  |
-| `androidx.camera:camera-core` | 1.6.2 | `image_processing_util_jni`, `surface_util_jni` |  |  |
+| `androidx.camera:camera-core` | 1.7.0 | `image_processing_util_jni`, `surface_util_jni` |  |  |
 | `androidx.datastore:datastore-core-android` | 1.3.0 | `datastore_shared_counter` |  |  |
 | `androidx.graphics:graphics-core` | 1.0.4 | `graphics-core` |  |  |
 | `androidx.graphics:graphics-path` | 1.1.0 | `androidx.graphics.path` |  | 1 builds |
