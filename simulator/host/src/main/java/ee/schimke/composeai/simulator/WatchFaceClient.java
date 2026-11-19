@@ -839,13 +839,25 @@ final class WatchFaceClient {
     post(rendered.bitmap, null, rendered.live);
   }
 
+  /** Schedules {@code task} on this client's single-threaded render worker. */
+  void runOnWorker(Runnable task) {
+    worker.execute(task);
+  }
+
   /**
    * Renders one frame at {@code timeMillis} and {@code ambient} mode synchronously. Must be called
-   * off the main thread (live frames post to the main looper and await readback).
+   * on the client's worker thread (live frames post to the main looper and await readback).
    */
   Bitmap renderBitmapAt(long timeMillis, boolean ambient) throws RemoteException {
-    RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
-    return rendered != null ? rendered.bitmap : null;
+    Long previousFixed = fixedTimeMillis;
+    fixedTimeMillis = Long.valueOf(timeMillis);
+    try {
+      RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
+      return rendered != null ? rendered.bitmap : null;
+    } finally {
+      fixedTimeMillis = previousFixed;
+      SimulatorClock.setOverride(previousFixed);
+    }
   }
 
   private static final class RenderedBitmap {
