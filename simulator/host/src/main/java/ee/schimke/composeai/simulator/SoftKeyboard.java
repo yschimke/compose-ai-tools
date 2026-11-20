@@ -184,6 +184,7 @@ final class SoftKeyboard {
   }
 
   private void hide(String reason) {
+    tappedEditor = false;
     if (view == null) return;
     ui.windows().removeViewImmediate(view);
     view = null;

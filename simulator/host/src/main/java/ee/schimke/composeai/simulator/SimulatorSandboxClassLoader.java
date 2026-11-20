@@ -53,6 +53,7 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
 
   @Override
   protected InputStream getClassBytesFromAlternateClassLoader(String classResName) {
+    if (runtimeUrl(classResName) != null) return null;
     // A class a hot swap delivered before the app loaded it comes from that swap, not the launch.
     File swapped = HotSwap.overlayFile(classResName);
     if (swapped != null) {
@@ -62,7 +63,6 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
         // Gone: fall back to the launch's copy.
       }
     }
-    if (runtimeUrl(classResName) != null) return null;
     InputStream app = super.getClassBytesFromAlternateClassLoader(classResName);
     if (app != null) return app;
     URL stub = platformStubUrl(classResName);
@@ -76,6 +76,8 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
   /** The sandbox also reads class bytes through here, where the simulator prefers the APK too. */
   @Override
   protected URL getResourceUrl(String name) {
+    URL runtime = runtimeUrl(name);
+    if (runtime != null) return runtime;
     File swapped = HotSwap.overlayFile(name);
     if (swapped != null) {
       try {
@@ -84,8 +86,6 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
         // Not expected for a file path; fall back to the launch's copy.
       }
     }
-    URL runtime = runtimeUrl(name);
-    if (runtime != null) return runtime;
     URL url = super.getResourceUrl(name);
     return url != null ? url : platformStubUrl(name);
   }

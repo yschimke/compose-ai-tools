@@ -76,7 +76,7 @@ final class BluetoothSim {
 
   private final Set<Object> seenScans = Collections.newSetFromMap(new IdentityHashMap<>());
   private final Set<Object> seenLeCallbacks = Collections.newSetFromMap(new IdentityHashMap<>());
-  private final List<BluetoothGatt> connecting = new ArrayList<>();
+  private final List<BluetoothGatt> connecting = Collections.synchronizedList(new ArrayList<>());
   private final List<EnableRequest> enableRequests = new ArrayList<>();
   private int nextRequestId = 1;
 
@@ -515,11 +515,14 @@ final class BluetoothSim {
       }
     }
     // The pre-Lollipop API.
-    ShadowBluetoothAdapter adapter = shadowAdapter();
-    for (BluetoothAdapter.LeScanCallback callback : new ArrayList<>(adapter.getLeScanCallbacks())) {
-      for (Peripheral p : advertisers) {
-        if (p.ble && p.advertisement != null) {
-          callback.onLeScan(p.device, p.spec.optInt("rssi", -60), p.advertisement);
+    if (only == null) {
+      ShadowBluetoothAdapter adapter = shadowAdapter();
+      for (BluetoothAdapter.LeScanCallback callback :
+          new ArrayList<>(adapter.getLeScanCallbacks())) {
+        for (Peripheral p : advertisers) {
+          if (p.ble && p.advertisement != null) {
+            callback.onLeScan(p.device, p.spec.optInt("rssi", -60), p.advertisement);
+          }
         }
       }
     }
@@ -546,8 +549,13 @@ final class BluetoothSim {
   // GATT
 
   private void connectPending() {
-    for (BluetoothGatt gatt : new ArrayList<>(connecting)) {
-      connecting.remove(gatt);
+    List<BluetoothGatt> pending;
+    synchronized (connecting) {
+      if (connecting.isEmpty()) return;
+      pending = new ArrayList<>(connecting);
+      connecting.clear();
+    }
+    for (BluetoothGatt gatt : pending) {
       ShadowBluetoothGatt shadow = Shadow.extract(gatt);
       if (shadow.isClosed()) continue;
       String address = gatt.getDevice().getAddress();

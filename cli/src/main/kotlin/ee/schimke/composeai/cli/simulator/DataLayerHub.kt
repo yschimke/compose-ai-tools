@@ -12,7 +12,8 @@ import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * The simulated Wearable Data Layer's hub for `android-simulator --pair`: a localhost socket each
@@ -24,7 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * app's simulator goes away (a device of several apps, `--app`, is one node with an app per
  * simulator); everything else a frame means is the simulators' business.
  */
-internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoCloseable {
+internal class DataLayerHub(private val log: (String) -> Unit = NO_LOG) : AutoCloseable {
 
   private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
   private val connections = CopyOnWriteArrayList<Connection>()
@@ -81,24 +82,27 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
           val bytes = ByteArray(length)
           input.readFully(bytes)
           if (from.node == null) {
-            from.node = helloFrom(bytes)
-            from.pkg = helloPackage(bytes)
+            val frame = parse(bytes)
+            if (frame != null && (frame["type"] as? JsonPrimitive)?.contentOrNull == "hello") {
+              from.node = (frame["from"] as? JsonPrimitive)?.contentOrNull
+              from.pkg = (frame["package"] as? JsonPrimitive)?.contentOrNull
+            }
           }
-          log(summary(bytes))
+          if (log !== NO_LOG) log(summary(bytes))
           for (to in connections) if (to !== from) to.send(bytes)
         }
       }
     } catch (_: EOFException) {
       // The simulator ended.
     } catch (e: IOException) {
-      log("connection failed: $e")
+      if (log !== NO_LOG) log("connection failed: $e")
     } finally {
       connections -= from
       runCatching { from.socket.close() }
       from.node?.let { node ->
         val pkg = from.pkg?.let { ""","package":${Json.encodeToString(it)}""" }.orEmpty()
         val bye = """{"type":"bye","from":${Json.encodeToString(node)}$pkg}""".toByteArray()
-        log("$node left")
+        if (log !== NO_LOG) log("$node left")
         for (to in connections) to.send(bye)
       }
     }
@@ -110,6 +114,8 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
   }
 
   companion object {
+    private val NO_LOG: (String) -> Unit = {}
+
     /** As the simulator side's `DataLayerLink.MAX_FRAME`. */
     const val MAX_FRAME = 64 * 1024 * 1024
 
@@ -121,21 +127,21 @@ internal class DataLayerHub(private val log: (String) -> Unit = {}) : AutoClosea
     /** The node a `hello` frame announces, or null for any other frame. */
     internal fun helloFrom(bytes: ByteArray): String? {
       val frame = parse(bytes) ?: return null
-      if (frame["type"]?.jsonPrimitive?.content != "hello") return null
-      return frame["from"]?.jsonPrimitive?.content
+      if ((frame["type"] as? JsonPrimitive)?.contentOrNull != "hello") return null
+      return (frame["from"] as? JsonPrimitive)?.contentOrNull
     }
 
     /** The app a `hello` frame announces, or null for any other frame or one with none. */
     internal fun helloPackage(bytes: ByteArray): String? {
       val frame = parse(bytes) ?: return null
-      if (frame["type"]?.jsonPrimitive?.content != "hello") return null
-      return frame["package"]?.jsonPrimitive?.content
+      if ((frame["type"] as? JsonPrimitive)?.contentOrNull != "hello") return null
+      return (frame["package"] as? JsonPrimitive)?.contentOrNull
     }
 
     /** One line about a frame, for `--verbose`: type, from → to, path. */
     internal fun summary(bytes: ByteArray): String {
       val frame = parse(bytes) ?: return "unreadable frame of ${bytes.size} bytes"
-      fun field(name: String) = frame[name]?.jsonPrimitive?.content
+      fun field(name: String) = (frame[name] as? JsonPrimitive)?.contentOrNull
       return buildString {
         append(field("type"))
         append(' ')

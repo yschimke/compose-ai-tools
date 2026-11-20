@@ -193,6 +193,7 @@ internal data class ManifestSignals(
     private const val ATTR_NAME = 0x01010003
     private const val ATTR_MIN_SDK_VERSION = 0x0101020c
     private const val ATTR_REQUIRED = 0x0101028e
+    private const val ATTR_REQUIRED_DISPLAY_CATEGORY = 0x0101066b
 
     private const val TYPE_STRING = 0x03
     private const val TYPE_INT_DEC = 0x10
@@ -268,7 +269,8 @@ internal data class ManifestSignals(
                     parsedMinSdk =
                       if (dataType == TYPE_INT_DEC || dataType == TYPE_INT_HEX) data
                       else text?.toIntOrNull()
-                  attribute == "requiredDisplayCategory" -> category = text
+                  id == ATTR_REQUIRED_DISPLAY_CATEGORY || attribute == "requiredDisplayCategory" ->
+                    category = text
                   attribute == "package" -> manifestPackage = text
                 }
               }

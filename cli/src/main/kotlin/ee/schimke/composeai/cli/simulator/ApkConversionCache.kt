@@ -76,46 +76,56 @@ internal class ApkConversionCache(
     val source = apk.absolutePath
     apkDir.mkdirs()
     var converted = false
-    RandomAccessFile(lockFile(apkDir.name), "rw").use { lockFile ->
-      lockFile.channel.lock().use {
-        File(apkDir, SOURCE_TXT).writeText(source + "\n")
-        apkDir.setLastModified(System.currentTimeMillis())
-        if (!(classesJar.isFile && summaryFile.isFile)) {
-          entryDir.mkdirs()
-          val partial = File(entryDir, "$CLASSES_JAR.partial")
-          fun clean() {
-            partial.delete()
-            indexOf(partial).delete()
-          }
-          clean()
-          val previous = previousBuild(source, converterStamp, apkDir)
-          // The previous build's entry stays put while it is read.
-          val summary =
-            use(previous?.parentFile?.parentFile).use {
-              try {
-                convert(partial, previous).trim()
-              } catch (e: Exception) {
-                clean()
-                throw e
-              }
+    lateinit var summaryText: String
+    val lockPath = lockFile(apkDir.name).canonicalPath
+    val jvmLock =
+      jvmEnsureLocks.computeIfAbsent(lockPath) { java.util.concurrent.locks.ReentrantLock() }
+    jvmLock.lock()
+    try {
+      RandomAccessFile(lockFile(apkDir.name), "rw").use { lockFile ->
+        lockFile.channel.lock().use {
+          File(apkDir, SOURCE_TXT).writeText(source + "\n")
+          apkDir.setLastModified(System.currentTimeMillis())
+          if (!(classesJar.isFile && summaryFile.isFile)) {
+            entryDir.mkdirs()
+            val partial = File(entryDir, "$CLASSES_JAR.partial")
+            fun clean() {
+              partial.delete()
+              indexOf(partial).delete()
             }
-          check(partial.isFile) { "the converter wrote no classes for $apk" }
-          val partialIndex = indexOf(partial)
-          if (partialIndex.isFile) {
-            Files.move(
-              partialIndex.toPath(),
-              indexOf(classesJar).toPath(),
-              StandardCopyOption.REPLACE_EXISTING,
-            )
+            clean()
+            val previous = previousBuild(source, converterStamp, apkDir)
+            // The previous build's entry stays put while it is read.
+            val summary =
+              use(previous?.parentFile?.parentFile).use {
+                try {
+                  convert(partial, previous).trim()
+                } catch (e: Exception) {
+                  clean()
+                  throw e
+                }
+              }
+            check(partial.isFile) { "the converter wrote no classes for $apk" }
+            val partialIndex = indexOf(partial)
+            if (partialIndex.isFile) {
+              Files.move(
+                partialIndex.toPath(),
+                indexOf(classesJar).toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+              )
+            }
+            Files.move(partial.toPath(), classesJar.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            summaryFile.writeText(summary + "\n")
+            converted = true
           }
-          Files.move(partial.toPath(), classesJar.toPath(), StandardCopyOption.REPLACE_EXISTING)
-          summaryFile.writeText(summary + "\n")
-          converted = true
+          summaryText = summaryFile.readText().trim()
         }
       }
+    } finally {
+      jvmLock.unlock()
     }
     prune(apkDir, converterStamp, source, superseded = converted)
-    return Entry(classesJar, summaryFile.readText().trim(), cached = !converted)
+    return Entry(classesJar, summaryText, cached = !converted)
   }
 
   /**
@@ -126,17 +136,37 @@ internal class ApkConversionCache(
 
   private fun use(apkDir: File?): Closeable {
     if (apkDir == null) return Closeable {}
-    val file = RandomAccessFile(inUseFile(apkDir.name), "rw")
-    val lock =
-      try {
-        file.channel.lock(0, Long.MAX_VALUE, true)
-      } catch (e: Exception) {
-        file.close()
-        throw e
+    val target = inUseFile(apkDir.name)
+    target.parentFile?.mkdirs()
+    val key = target.canonicalPath
+    synchronized(jvmInUseLocks) {
+      val existing = jvmInUseLocks[key]
+      if (existing != null) {
+        existing.refs++
+      } else {
+        val file = RandomAccessFile(target, "rw")
+        val lock =
+          try {
+            file.channel.lock(0, Long.MAX_VALUE, true)
+          } catch (e: Exception) {
+            file.close()
+            throw e
+          }
+        jvmInUseLocks[key] = InUseHold(file, lock, refs = 1)
       }
+    }
+    val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     return Closeable {
-      lock.release()
-      file.close()
+      if (!closed.compareAndSet(false, true)) return@Closeable
+      synchronized(jvmInUseLocks) {
+        val hold = jvmInUseLocks[key] ?: return@synchronized
+        hold.refs--
+        if (hold.refs <= 0) {
+          jvmInUseLocks.remove(key)
+          runCatching { hold.lock.release() }
+          runCatching { hold.file.close() }
+        }
+      }
     }
   }
 
@@ -189,9 +219,19 @@ internal class ApkConversionCache(
    * either is held, by this process or another.
    */
   private fun withExclusive(name: String, block: () -> Unit): Boolean {
+    val lockTarget = lockFile(name)
+    val inUseTarget = inUseFile(name)
+    val jvmLock =
+      jvmEnsureLocks.computeIfAbsent(lockTarget.canonicalPath) {
+        java.util.concurrent.locks.ReentrantLock()
+      }
+    if (!jvmLock.tryLock()) return false
     val held = mutableListOf<Pair<RandomAccessFile, FileLock>>()
     try {
-      for (file in listOf(lockFile(name), inUseFile(name))) {
+      synchronized(jvmInUseLocks) {
+        if (jvmInUseLocks.containsKey(inUseTarget.canonicalPath)) return false
+      }
+      for (file in listOf(lockTarget, inUseTarget)) {
         val channel = RandomAccessFile(file, "rw")
         val lock =
           try {
@@ -212,6 +252,7 @@ internal class ApkConversionCache(
         runCatching { lock.release() }
         channel.close()
       }
+      jvmLock.unlock()
     }
   }
 
@@ -228,6 +269,12 @@ internal class ApkConversionCache(
   private fun inUseFile(name: String) = File(root, "$name.inuse")
 
   companion object {
+    private class InUseHold(val file: RandomAccessFile, val lock: FileLock, var refs: Int)
+
+    private val jvmEnsureLocks =
+      java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock>()
+    private val jvmInUseLocks = HashMap<String, InUseHold>()
+
     const val CLASSES_JAR = "classes.jar"
     const val SUMMARY_JSON = "conversion.json"
     const val SOURCE_TXT = "source.txt"

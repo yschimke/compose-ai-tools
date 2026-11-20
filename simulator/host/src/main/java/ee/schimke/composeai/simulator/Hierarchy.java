@@ -98,6 +98,7 @@ final class Hierarchy {
     if (!view.isShown() || depth > MAX_DEPTH || count >= MAX_NODES) return null;
     count++;
     AccessibilityNodeInfo info = view.createAccessibilityNodeInfo();
+    if (info == null) return null;
     Node node = describe(info, view.getClass().getName());
     AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
     if (provider != null) {
@@ -232,7 +233,20 @@ final class Hierarchy {
     for (Node child : node.children) collect(child, selector, into);
   }
 
+  private static final java.util.Set<String> SELECTOR_KEYS =
+      java.util.Set.of(
+          "text", "desc", "textContains", "descContains", "resourceId", "cls", "clickable");
+
   private static boolean matches(Node node, JSONObject selector) throws JSONException {
+    if (selector.length() == 0) return false;
+    java.util.Iterator<String> keys = selector.keys();
+    while (keys.hasNext()) {
+      String key = keys.next();
+      if (!SELECTOR_KEYS.contains(key)) {
+        throw new IllegalArgumentException(
+            "unknown selector key: " + key + " (expected one of " + SELECTOR_KEYS + ")");
+      }
+    }
     if (selector.has("text") && !selector.getString("text").equals(node.text)) return false;
     if (selector.has("desc") && !selector.getString("desc").equals(node.desc)) return false;
     if (selector.has("textContains") && !contains(node.text, selector.getString("textContains"))) {
@@ -252,7 +266,7 @@ final class Hierarchy {
     if (selector.has("clickable") && selector.getBoolean("clickable") != node.has("clickable")) {
       return false;
     }
-    return selector.length() > 0;
+    return true;
   }
 
   private static boolean contains(String haystack, String needle) {

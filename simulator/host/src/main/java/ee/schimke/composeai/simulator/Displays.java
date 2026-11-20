@@ -208,6 +208,8 @@ final class Displays {
     JSONArray finished = navigator.finishOn(id);
     ShadowDisplayManager.removeDisplay(id);
     added.remove(id);
+    gestureTargets.remove(id);
+    if (focusedDisplay == id) focusedDisplay = Display.DEFAULT_DISPLAY;
     ShadowLooper.shadowMainLooper().idle();
     closeWindow(id);
     JSONObject result = new Protocol.Json().put("removed", was).put("finished", finished).object();
@@ -686,8 +688,7 @@ final class Displays {
 
   private static void deliver(Root root, MotionEvent motion) {
     motion.offsetLocation(-root.location.x, -root.location.y);
-    if (motion.isFromSource(InputDevice.SOURCE_MOUSE)
-        && motion.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+    if (generic(motion)) {
       root.view.dispatchGenericMotionEvent(motion);
     } else {
       root.view.dispatchTouchEvent(motion);

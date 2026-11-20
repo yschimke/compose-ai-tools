@@ -306,8 +306,13 @@ final class LiveFrameSource {
   }
 
   void release() {
-    ImageReader old = reader;
-    reader = null;
+    ImageReader old;
+    synchronized (lock) {
+      old = reader;
+      reader = null;
+      latest = null;
+      lock.notifyAll();
+    }
     if (old != null) old.close();
     readerThread.quitSafely();
   }

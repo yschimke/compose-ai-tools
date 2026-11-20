@@ -134,7 +134,7 @@ public final class ApkAppLoader implements Runnable {
         return application
             .getPackageManager()
             .getActivityInfo(
-                new ComponentName(application.getPackageName(), requested.trim()),
+                ComponentName.createRelative(application.getPackageName(), requested.trim()),
                 PackageManager.MATCH_DISABLED_COMPONENTS);
       } catch (PackageManager.NameNotFoundException e) {
         System.err.println("No activity " + requested + " in the manifest; starting the launcher");

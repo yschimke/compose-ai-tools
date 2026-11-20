@@ -70,7 +70,7 @@ final class Navigator {
     final ActivityController<? extends Activity> controller;
     /** The intent as the caller started it, before resolution. */
     final Intent request;
-    final Entry caller;
+    Entry caller;
     final int requestCode;
     /** The display it was launched on ({@code ActivityOptions.setLaunchDisplayId}). */
     final int displayId;
@@ -290,7 +290,15 @@ final class Navigator {
     fresh.noHistory = entry.noHistory;
     fresh.resultTo = entry.resultTo;
     List<Entry> entries = new ArrayList<>(stack);
-    entries.set(entries.indexOf(entry), fresh);
+    int idx = entries.indexOf(entry);
+    if (idx < 0) {
+      entries.add(0, fresh);
+    } else {
+      entries.set(idx, fresh);
+    }
+    for (Entry other : entries) {
+      if (other.caller == entry) other.caller = fresh;
+    }
     stack.clear();
     stack.addAll(entries);
     if (wasStopped) {
@@ -953,9 +961,8 @@ final class Navigator {
               record.intent,
               options);
       Displays.placeOn(controller.get(), record.displayId);
-      Entry caller = record.caller >= 0 ? restored.get(record.caller) : null;
       Entry entry =
-          new Entry(controller, record.request, caller, record.requestCode, record.displayId);
+          new Entry(controller, record.request, null, record.requestCode, record.displayId);
       entry.noHistory = record.noHistory;
       entry.resultTo = record.resultTo;
       if (top) {
@@ -969,6 +976,12 @@ final class Navigator {
       JSONObject event = describe(entry, top ? "resumed" : "stopped");
       markRestored(event);
       protocol.event("activity", event);
+    }
+    for (int i = 0; i < records.size(); i++) {
+      int callerIndex = records.get(i).caller;
+      if (callerIndex >= 0 && callerIndex < restored.size()) {
+        restored.get(i).caller = restored.get(callerIndex);
+      }
     }
   }
 
@@ -1676,11 +1689,15 @@ final class Navigator {
     for (Iterator<Map.Entry<ComponentName, Running>> it = services.entrySet().iterator();
         it.hasNext(); ) {
       Map.Entry<ComponentName, Running> e = it.next();
-      ShadowService shadow = Shadow.extract(e.getValue().controller.get());
+      Running running = e.getValue();
+      ShadowService shadow = Shadow.extract(running.controller.get());
       if (shadow.isStoppedBySelf()) {
-        it.remove();
-        e.getValue().controller.destroy();
-        protocol.event("service", describe(e.getKey(), e.getValue(), "destroyed"));
+        running.started = false;
+        if (running.bindings <= 0) {
+          it.remove();
+          running.controller.destroy();
+          protocol.event("service", describe(e.getKey(), running, "destroyed"));
+        }
       }
     }
   }
@@ -1837,20 +1854,26 @@ final class Navigator {
       delivered.put(
           new Protocol.Json().put("receiver", receiver.name).put("declared", "manifest").object());
     }
-    delivering = true;
+    delivering.set(Boolean.TRUE);
     try {
       app.sendBroadcast(intent);
     } finally {
-      delivering = false;
+      delivering.remove();
+      // Robolectric collects the matching receivers when the broadcast is sent and delivers on the
+      // main looper, so the one-shot registrations can go now.
+      for (BroadcastReceiver instance : oneShot) {
+        try {
+          app.unregisterReceiver(instance);
+        } catch (IllegalArgumentException ignored) {
+          // Already unregistered.
+        }
+      }
     }
-    // Robolectric collects the matching receivers when the broadcast is sent and delivers on the
-    // main looper, so the one-shot registrations can go now.
-    for (BroadcastReceiver instance : oneShot) app.unregisterReceiver(instance);
     return new Protocol.Json().put("delivered", delivered).object();
   }
 
   /** Set while {@link #broadcast} hands the intent to Robolectric's own delivery. */
-  private static boolean delivering;
+  private static final ThreadLocal<Boolean> delivering = new ThreadLocal<>();
 
   /**
    * The app's own {@code sendBroadcast}, from {@link SimulatorShadowContextImpl}: an explicit one
@@ -1861,11 +1884,14 @@ final class Navigator {
    */
   static boolean appSentBroadcast(Intent intent) {
     Navigator navigator = current;
-    if (navigator == null || delivering) return false;
+    if (navigator == null || Boolean.TRUE.equals(delivering.get())) return false;
     if (intent.getComponent() == null && intent.getPackage() == null) return false;
     boolean own = false;
     for (ResolveInfo info : navigator.app.getPackageManager().queryBroadcastReceivers(intent, 0)) {
-      if (navigator.app.getPackageName().equals(info.activityInfo.packageName)) own = true;
+      if (info.activityInfo != null
+          && navigator.app.getPackageName().equals(info.activityInfo.packageName)) {
+        own = true;
+      }
     }
     if (!own) return false;
     Intent copy = new Intent(intent);

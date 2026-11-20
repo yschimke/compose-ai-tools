@@ -57,7 +57,8 @@ final class Stillness {
 
   /** How often the screen is sampled: once per quiet period, so two equal frames prove it. */
   long pollMs() {
-    return Math.max(MIN_POLL_MS, quietMs);
+    long interval = Math.max(MIN_POLL_MS, quietMs);
+    return timeoutMs > 0 ? Math.min(interval, Math.max(MIN_POLL_MS, timeoutMs)) : interval;
   }
 
   /** Whether the screen came to rest, rather than the wait timing out. */

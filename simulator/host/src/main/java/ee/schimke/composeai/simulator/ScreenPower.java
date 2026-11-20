@@ -334,7 +334,7 @@ final class ScreenPower {
       for (AmbientClients.Client client : ready) client.enter(burnIn, lowBit);
     }
     if (WatchState.current() != null) {
-      WatchState.current().syncDisplay(target != ScreenPolicy.State.ON, burnIn, lowBit);
+      WatchState.current().syncDisplay(target == ScreenPolicy.State.AMBIENT, burnIn, lowBit);
     }
     if (wearUi != null) wearUi.screen(target);
     if (t.restartApp) {

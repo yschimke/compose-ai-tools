@@ -179,8 +179,8 @@ internal class EmulatorGrpc(
             var last: ByteArray? = null
             try {
               while (!observer.isCancelled && !device.exit.isDone) {
-                val frame = frame(request, seq)
-                if (frame != null && !frame.png.contentEquals(last)) {
+                val frame = frame(request, seq, skipIfEqual = last)
+                if (frame != null) {
                   last = frame.png
                   observer.onNext(frame.image)
                   seq++
@@ -404,7 +404,7 @@ internal class EmulatorGrpc(
   private class Frame(val png: ByteArray, val image: Image)
 
   /** One display frame in the format [request] asks for, or null when the simulator has none. */
-  private fun frame(request: ImageFormat, seq: Int): Frame? {
+  private fun frame(request: ImageFormat, seq: Int, skipIfEqual: ByteArray? = null): Frame? {
     val result =
       try {
         device
@@ -417,7 +417,9 @@ internal class EmulatorGrpc(
       } catch (_: Exception) {
         return null
       }
-    val png = Base64.getDecoder().decode(result["png"]!!.jsonPrimitive.content)
+    val encoded = (result["png"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    val png = Base64.getDecoder().decode(encoded)
+    if (skipIfEqual != null && png.contentEquals(skipIfEqual)) return null
     val original = ImageIO.read(ByteArrayInputStream(png)) ?: return null
     val image =
       if (request.width > 0 && request.height > 0)
@@ -464,9 +466,8 @@ internal class EmulatorGrpc(
         ?: return false
     RandomAccessFile(file, "rw").use { raf ->
       if (raf.length() < bytes.size) return false
-      raf.channel
-        .map(java.nio.channels.FileChannel.MapMode.READ_WRITE, 0, bytes.size.toLong())
-        .put(bytes)
+      raf.seek(0)
+      raf.write(bytes)
     }
     return true
   }

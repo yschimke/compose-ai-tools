@@ -62,34 +62,54 @@ final class SavedStates {
    * and lists as arrays, anything else as its class and {@code toString}. Compose's {@code
    * rememberSaveable} values sit under {@code androidx.lifecycle.BundlableSavedStateRegistry.key}.
    */
+  private static final int MAX_JSON_DEPTH = 32;
+
   static JSONObject toJson(Bundle state) throws JSONException {
+    return toJson(state, 0);
+  }
+
+  private static JSONObject toJson(Bundle state, int depth) throws JSONException {
     JSONObject json = new JSONObject();
-    for (String key : state.keySet()) json.put(key, value(state.get(key)));
+    if (depth >= MAX_JSON_DEPTH) return json.put("_truncated", "max depth reached");
+    for (String key : state.keySet()) json.put(key, value(state.get(key), depth + 1));
     return json;
   }
 
-  private static Object value(Object value) throws JSONException {
+  private static Object value(Object value, int depth) throws JSONException {
     if (value == null) return JSONObject.NULL;
+    if (value instanceof Double) {
+      double d = (Double) value;
+      return Double.isFinite(d) ? value : String.valueOf(d);
+    }
+    if (value instanceof Float) {
+      float f = (Float) value;
+      return Float.isFinite(f) ? value : String.valueOf(f);
+    }
     if (value instanceof Boolean || value instanceof Number || value instanceof String) {
       return value;
     }
     if (value instanceof CharSequence || value instanceof Character) return value.toString();
-    if (value instanceof Bundle) return toJson((Bundle) value);
+    if (depth >= MAX_JSON_DEPTH) {
+      return new JSONObject().put("type", value.getClass().getName()).put("truncated", true);
+    }
+    if (value instanceof Bundle) return toJson((Bundle) value, depth + 1);
     if (value instanceof Collection) {
       JSONArray array = new JSONArray();
-      for (Object item : (Collection<?>) value) array.put(value(item));
+      for (Object item : (Collection<?>) value) array.put(value(item, depth + 1));
       return array;
     }
     if (value.getClass().isArray()) {
       JSONArray array = new JSONArray();
-      for (int i = 0; i < Array.getLength(value); i++) array.put(value(Array.get(value, i)));
+      for (int i = 0; i < Array.getLength(value); i++) {
+        array.put(value(Array.get(value, i), depth + 1));
+      }
       return array;
     }
     if (value instanceof SparseArray) {
       SparseArray<?> sparse = (SparseArray<?>) value;
       JSONObject json = new JSONObject();
       for (int i = 0; i < sparse.size(); i++) {
-        json.put(String.valueOf(sparse.keyAt(i)), value(sparse.valueAt(i)));
+        json.put(String.valueOf(sparse.keyAt(i)), value(sparse.valueAt(i), depth + 1));
       }
       return json;
     }

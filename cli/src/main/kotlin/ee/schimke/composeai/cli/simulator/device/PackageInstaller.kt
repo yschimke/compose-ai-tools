@@ -74,16 +74,26 @@ internal class PackageInstaller(private val device: VirtualDevice) {
 
   private fun install(args: List<String>, stdin: InputStream, out: ShellOutput): Int {
     val options = Options.parse(args)
+    var tempFile: File? = null
     val apk =
       if (options.positional.isEmpty() || options.positional.single() == "-") {
         val size = options.size ?: return out.fail("Error: APK content must be streamed with -S")
         val file = Files.createTempFile(device.config.dir.toPath(), "stream", ".apk").toFile()
-        file.outputStream().use { copy(stdin, it, size) }
+        tempFile = file
+        val written = file.outputStream().use { copy(stdin, it, size) }
+        if (written != size) {
+          file.delete()
+          return out.failure("INSTALL_FAILED_INVALID_APK", "expected $size bytes, got $written")
+        }
         file
       } else {
         devicePath(options.positional.first()) ?: return out.failure("INSTALL_FAILED_INVALID_URI")
       }
-    return commitApks(listOf(apk), out)
+    return try {
+      commitApks(listOf(apk), out)
+    } finally {
+      tempFile?.delete()
+    }
   }
 
   private fun write(args: List<String>, stdin: InputStream, out: ShellOutput): Int {

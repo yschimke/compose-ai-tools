@@ -87,7 +87,7 @@ final class WatchState {
   private final Application app;
   private final Navigator navigator;
   private final SystemData systemData;
-  private final List<Runnable> listeners = new ArrayList<>();
+  private final List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
   // Clock
   private Long baseSimMillis;

@@ -341,7 +341,8 @@ final class PermissionModel {
       } else if (name.equals(FINE)
           && sdk >= 31
           && targetSdk >= 31
-          && !requested.contains(COARSE)) {
+          && !requested.contains(COARSE)
+          && !granted.contains(COARSE)) {
         ignore(d, "ACCESS_FINE_LOCATION must be requested with ACCESS_COARSE_LOCATION");
       } else if (dontAskAgain(name)) {
         d.how = How.DONT_ASK_AGAIN;

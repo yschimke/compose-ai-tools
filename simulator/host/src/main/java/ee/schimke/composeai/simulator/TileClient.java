@@ -159,7 +159,7 @@ final class TileClient {
       if (timeline == null) throw new IllegalStateException("the tile has no timeline");
       java.util.List<?> entries = (java.util.List<?>) call(timeline, "getTimelineEntries");
       if (entries.isEmpty()) throw new IllegalStateException("the tile's timeline is empty");
-      layout = call(entries.get(0), "getLayout");
+      layout = call(selectTimelineEntry(entries, WatchState.currentTimeMillis()), "getLayout");
       Object tileState = call(tile, "getState");
       if (tileState != null) state = tileState;
       String version = (String) call(tile, "getResourcesVersion");
@@ -173,8 +173,26 @@ final class TileClient {
     }
   }
 
+  private static Object selectTimelineEntry(java.util.List<?> entries, long nowMillis) {
+    Object fallback = entries.get(0);
+    for (Object entry : entries) {
+      try {
+        Object validity = call(entry, "getValidity");
+        if (validity == null) {
+          fallback = entry;
+          continue;
+        }
+        long start = ((Number) call(validity, "getStartMillis")).longValue();
+        long end = ((Number) call(validity, "getEndMillis")).longValue();
+        if (nowMillis >= start && nowMillis < end) return entry;
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+        // Fall back to the first entry if validity reflection is unavailable.
+      }
+    }
+    return fallback;
+  }
+
   private void requestResources(String version) throws ReflectiveOperationException {
-    resourcesVersion = version;
     Object builder =
         load(TILES + "RequestBuilders$ResourcesRequest$Builder").getConstructor().newInstance();
     call(builder, "setTileId", tileId);
@@ -184,7 +202,14 @@ final class TileClient {
     Class<?> dataType = load(TILES + "ResourcesRequestData");
     Object data = dataType.getConstructor(byte[].class, int.class).newInstance(bytes, PROTOBUF);
     Class<?> callbackType = load(TILES + "ResourcesCallback");
-    Object callback = callback(callbackType, "updateResources", this::resourcesData);
+    Object callback =
+        callback(
+            callbackType,
+            "updateResources",
+            res -> {
+              resourcesVersion = version;
+              resourcesData(res);
+            });
     Object p = provider();
     load(TILES + "TileProvider")
         .getMethod("onResourcesRequest", int.class, dataType, callbackType)

@@ -181,7 +181,7 @@ final class DeviceState {
       shadow.setProviderEnabled(provider, true);
       Location fix = new Location(provider);
       fix.setLatitude(c.getDouble("lat"));
-      fix.setLongitude(c.getDouble("lng"));
+      fix.setLongitude(c.has("lng") ? c.getDouble("lng") : c.getDouble("lon"));
       fix.setAccuracy((float) c.optDouble("accuracy", 5));
       if (c.has("altitude")) fix.setAltitude(c.getDouble("altitude"));
       if (c.has("bearing")) fix.setBearing((float) c.getDouble("bearing"));
