@@ -169,8 +169,16 @@ internal class VirtualDevice(
 
   /** `adb reboot`: the simulator starts again on what is installed. */
   fun reboot() {
-    val command = simulatorCommand(installed?.apk ?: config.systemApk)
-    lock.withLock { bootCommand(command) }
+    while (true) {
+      val snapshot = installed
+      val command = simulatorCommand(snapshot?.apk ?: config.systemApk)
+      val booted = lock.withLock {
+        if (installed != snapshot) return@withLock false
+        bootCommand(command)
+        true
+      }
+      if (booted) break
+    }
     simulator()
   }
 

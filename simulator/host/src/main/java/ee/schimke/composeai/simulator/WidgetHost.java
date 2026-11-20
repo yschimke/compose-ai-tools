@@ -765,8 +765,8 @@ final class WidgetHost {
     List<Hosted> due = new ArrayList<>();
     long now = SystemClock.uptimeMillis();
     synchronized (this) {
-      Set<ComponentName> dueProviders = new HashSet<>();
-      Set<ComponentName> initialized = new HashSet<>();
+      java.util.Set<ComponentName> dueProviders = new java.util.HashSet<>();
+      java.util.Set<ComponentName> initialized = new java.util.HashSet<>();
       for (Hosted h : widgets.values()) {
         if (!h.placed || h.info.updatePeriodMillis <= 0) continue;
         // The system clamps the period to at least 30 minutes.
