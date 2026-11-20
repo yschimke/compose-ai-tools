@@ -92,7 +92,7 @@ internal class SimulatorSupervisor(
   fun start() {
     val first = spawn(launch, first = true)
     current = first
-    if (standby) first.ready.thenRun { worker.execute { prepareSpare() } }
+    if (standby) first.ready.thenRun { runOnWorker { prepareSpare() } }
   }
 
   /** An event of the CLI's own on the control channel, such as the APK's `conversion`. */
@@ -100,7 +100,7 @@ internal class SimulatorSupervisor(
 
   /** Runs [action] in order with the commands, as the CLI's own work (a `--live` reload). */
   fun execute(action: () -> Unit) {
-    worker.execute {
+    runOnWorker {
       try {
         action()
       } catch (e: Exception) {
@@ -111,12 +111,21 @@ internal class SimulatorSupervisor(
 
   /** Runs [line], a control-channel command, after every command before it. */
   fun submit(line: String) {
-    worker.execute {
+    runOnWorker {
       try {
         dispatch(line)
       } catch (e: Exception) {
         reply(idOf(line), error = "$e")
       }
+    }
+  }
+
+  private fun runOnWorker(action: () -> Unit) {
+    if (worker.isShutdown) return
+    try {
+      worker.execute(action)
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      // Session is already closing.
     }
   }
 
@@ -138,7 +147,7 @@ internal class SimulatorSupervisor(
 
   /** Ends the session: the simulator is asked to exit (stdin closed), then ended. */
   fun close() {
-    worker.execute {
+    runOnWorker {
       dropSpare()
       current?.stop()
       finished.complete(current?.process?.exitValueOrNull() ?: 0)
@@ -148,6 +157,7 @@ internal class SimulatorSupervisor(
 
   /** Ends the simulator immediately (the launcher is going away). */
   fun destroy() {
+    worker.shutdownNow()
     current?.let { destroyTree(it.process) }
     dropSpare()
   }
@@ -475,11 +485,12 @@ internal class SimulatorSupervisor(
 
     /** One line of the simulator's log: kept for a failure's report, and shown unless held back. */
     private fun logLine(line: String) {
+      if (standby) return
       synchronized(stderrTail) {
         stderrTail.addLast(line)
         while (stderrTail.size > TAIL_LINES) stderrTail.removeFirst()
       }
-      if (!standby) log(prefix(line))
+      log(prefix(line))
     }
 
     private fun onLine(line: String) {
@@ -554,7 +565,7 @@ internal class SimulatorSupervisor(
 
     fun failPending(message: String) {
       for (id in pending.toList()) {
-        pending.remove(id)
+        if (!pending.remove(id)) continue
         emitJson(
           buildJsonObject {
             put("id", Json.parseToJsonElement(id))

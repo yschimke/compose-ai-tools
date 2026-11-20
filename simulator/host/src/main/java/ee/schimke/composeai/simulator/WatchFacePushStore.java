@@ -604,8 +604,10 @@ public final class WatchFacePushStore {
         cmd.add(cacheRoot);
         Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-        int exit = p.waitFor();
-        if (exit == 0 && !out.isEmpty()) {
+        boolean exited = p.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+        if (!exited) {
+          p.destroyForcibly();
+        } else if (p.exitValue() == 0 && !out.isEmpty()) {
           String[] lines = out.split("\\R");
           File compiledDir = new File(lines[lines.length - 1].trim());
           List<DwfWatchFaceClient.Entry> loaded = DwfWatchFaceClient.loadEntriesFromDir(compiledDir);
@@ -650,7 +652,8 @@ public final class WatchFacePushStore {
     try {
       Path dir = ensureStorageDir();
       Path temp = Files.createTempFile(dir, "push-stage-", ".apk");
-      try (InputStream in = new FileInputStream(apkFd.getFileDescriptor())) {
+      try (ParcelFileDescriptor dup = apkFd.dup();
+          InputStream in = new FileInputStream(dup.getFileDescriptor())) {
         Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
       }
       if (Files.size(temp) == 0L) {

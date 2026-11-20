@@ -1091,6 +1091,7 @@ final class DataLayer {
     synchronized (this) {
       if (listenerThread == null) {
         HandlerThread thread = new HandlerThread("WearableListenerService");
+        thread.setDaemon(true);
         thread.start();
         listenerThread = new Handler(thread.getLooper());
       }
@@ -1370,10 +1371,10 @@ final class DataLayer {
 
   JSONObject describe() {
     Protocol.Json json = new Protocol.Json();
-    json.put("node", nodeJson(localId, localName, app.getPackageName(), localCapabilities));
     JSONArray peerArray = new JSONArray();
     JSONArray itemArray = new JSONArray();
     synchronized (this) {
+      json.put("node", nodeJson(localId, localName, app.getPackageName(), localCapabilities));
       for (Peer peer : peers.values()) {
         peerArray.put(nodeJson(peer.id, peer.name, peer.packageName, peer.capabilities));
       }

@@ -14,7 +14,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * One simulator JVM, driven over its `--control stdio` channel by this process rather than by a
@@ -37,7 +36,9 @@ internal class SimulatorLink(command: List<String>, private val onLine: (String)
   init {
     Thread(
         {
-          process.inputStream.bufferedReader().useLines { lines -> for (line in lines) route(line) }
+          process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
+            for (line in lines) route(line)
+          }
           val gone = IllegalStateException("the simulator exited (${process.waitFor()})")
           ready.completeExceptionally(gone)
           pending.values.forEach { it.completeExceptionally(gone) }
@@ -62,7 +63,7 @@ internal class SimulatorLink(command: List<String>, private val onLine: (String)
       pending.remove(id)?.complete(json)
       return
     }
-    if (json?.get("event")?.jsonPrimitive?.contentOrNull == "ready") {
+    if ((json?.get("event") as? JsonPrimitive)?.contentOrNull == "ready") {
       ready.complete(json["info"] as? JsonObject ?: JsonObject(emptyMap()))
     }
     onLine(line)
@@ -79,20 +80,21 @@ internal class SimulatorLink(command: List<String>, private val onLine: (String)
     val id = ID_PREFIX + ids.incrementAndGet()
     val reply = CompletableFuture<JsonObject>()
     pending[id] = reply
-    write(
-      Json.encodeToString(
-        JsonObject.serializer(),
-        JsonObject(command + ("id" to JsonPrimitive(id))),
-      ),
-    )
     val answer =
       try {
+        write(
+          Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(command + ("id" to JsonPrimitive(id))),
+          ),
+        )
         reply.get(timeoutMs, TimeUnit.MILLISECONDS)
       } catch (e: java.util.concurrent.ExecutionException) {
         throw SimulatorError(e.cause?.message ?: "the simulator is gone")
       } catch (e: java.util.concurrent.TimeoutException) {
-        pending.remove(id)
         throw SimulatorError("the simulator did not answer ${command["cmd"]} in ${timeoutMs}ms")
+      } finally {
+        pending.remove(id)
       }
     if ((answer["ok"] as? JsonPrimitive)?.content == "true") {
       return answer["result"] as? JsonObject ?: JsonObject(emptyMap())

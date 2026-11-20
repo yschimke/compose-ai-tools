@@ -45,8 +45,9 @@ final class Stillness {
    */
   boolean frame(long nowMs, boolean present, boolean changed) {
     if (doneAtMs >= 0) return true;
-    if (!present || changed || changedAtMs < 0) changedAtMs = nowMs;
-    if (present && nowMs - changedAtMs >= quietMs) {
+    boolean reset = !present || changed || changedAtMs < 0;
+    if (reset) changedAtMs = nowMs;
+    if (present && !reset && nowMs - changedAtMs >= quietMs) {
       still = true;
       doneAtMs = nowMs;
     } else if (nowMs - startMs >= timeoutMs) {
@@ -57,7 +58,8 @@ final class Stillness {
 
   /** How often the screen is sampled: once per quiet period, so two equal frames prove it. */
   long pollMs() {
-    return Math.max(MIN_POLL_MS, quietMs);
+    long interval = Math.max(MIN_POLL_MS, quietMs);
+    return timeoutMs > 0 ? Math.min(interval, Math.max(MIN_POLL_MS, timeoutMs)) : interval;
   }
 
   /** Whether the screen came to rest, rather than the wait timing out. */

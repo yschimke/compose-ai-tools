@@ -421,12 +421,14 @@ final class WearSystemUi {
    * watch.
    */
   void screen(ScreenPolicy.State state) {
-    ambient = state != ScreenPolicy.State.ON;
+    ambient = state == ScreenPolicy.State.AMBIENT;
     watchState.syncDisplay(ambient, watchState.burnIn(), watchState.lowBit());
     if (faceView != null) faceView.ambient(ambient);
     watchFaces.ambient(ambient);
     if (ongoingChip != null) ongoingChip.setAlpha(ambient ? 0.5f : 1f);
-    if (ambient && onTop() && surface != Surface.WATCHFACE) show(Surface.WATCHFACE);
+    if (state != ScreenPolicy.State.ON && onTop() && surface != Surface.WATCHFACE) {
+      show(Surface.WATCHFACE);
+    }
   }
 
   JSONObject describe() {

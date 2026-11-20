@@ -233,10 +233,8 @@ final class Credentials {
     Object which = c.opt("requestId");
     int id = which instanceof Number ? ((Number) which).intValue() : -1;
     Request pending = null;
-    for (Iterator<Request> it = waiting.iterator(); it.hasNext(); ) {
-      Request request = it.next();
+    for (Request request : waiting) {
       if (id < 0 || request.id == id) {
-        it.remove();
         pending = request;
         break;
       }
@@ -244,24 +242,35 @@ final class Credentials {
     if (pending == null) throw new IllegalArgumentException("no credential request is waiting");
     Object answer = c.get("answer");
     if ("cancel".equals(answer)) {
+      waiting.remove(pending);
       if (pending.get != null) failGet(pending, GetCredentialException.TYPE_USER_CANCELED, "cancelled");
       else failCreate(pending, CreateCredentialException.TYPE_USER_CANCELED, "cancelled");
     } else if ("none".equals(answer)) {
+      waiting.remove(pending);
       if (pending.get != null) failGet(pending, GetCredentialException.TYPE_NO_CREDENTIAL, "none");
       else failCreate(pending, CreateCredentialException.TYPE_NO_CREATE_OPTIONS, "none");
     } else if ("save".equals(answer) && pending.create != null) {
-      if (PASSWORD.equals(pending.create.getType())) savePassword(pending);
-      else respondCreate(pending, new CreateCredentialResponse(bundle(c.optJSONObject("data"))));
+      waiting.remove(pending);
+      if (PASSWORD.equals(pending.create.getType())) {
+        savePassword(pending);
+      } else {
+        respondCreate(pending, new CreateCredentialResponse(bundle(c.optJSONObject("data"))));
+        event(pending, "answered", pending.create.getType());
+      }
     } else if (answer instanceof JSONObject && pending.get != null) {
       JSONObject object = (JSONObject) answer;
       if (object.has("password")) {
-        answerPassword(pending, object.getString("id"), object.getString("password"));
+        String userId = object.getString("id");
+        String password = object.getString("password");
+        waiting.remove(pending);
+        answerPassword(pending, userId, password);
       } else {
+        String type = object.getString("type");
+        waiting.remove(pending);
         respondGet(
             pending,
-            new GetCredentialResponse(
-                new Credential(object.getString("type"), bundle(object.optJSONObject("data")))));
-        event(pending, "answered", object.getString("type"));
+            new GetCredentialResponse(new Credential(type, bundle(object.optJSONObject("data")))));
+        event(pending, "answered", type);
       }
     } else {
       throw new IllegalArgumentException(

@@ -287,8 +287,8 @@ final class Session {
       Deferred next = deferred.poll();
       try {
         next.action.run();
-      } catch (RuntimeException e) {
-        protocol.event("error", new Protocol.Json().put("message", describe(e)).object());
+      } catch (Throwable t) {
+        protocol.event("error", new Protocol.Json().put("message", describe(t)).object());
       }
     }
     String line;
@@ -373,24 +373,28 @@ final class Session {
     later(
         still.pollMs(),
         () -> {
-          long now = SystemClock.uptimeMillis();
-          int[] pixels;
           try {
-            pixels = pixels(ui.takeScreenshot());
-          } catch (RuntimeException e) {
-            pixels = null;
-          }
-          boolean changed = previous == null || !Arrays.equals(previous, pixels);
-          if (still.frame(now, pixels != null, changed)) {
-            protocol.ok(
-                id,
-                new Protocol.Json()
-                    .put("still", still.still())
-                    .put("waitedMs", still.waitedMs(now))
-                    .put("wallMs", (System.nanoTime() - startNanos) / 1_000_000)
-                    .object());
-          } else {
-            untilStill(id, still, pixels, startNanos);
+            long now = SystemClock.uptimeMillis();
+            int[] pixels;
+            try {
+              pixels = pixels(ui.takeScreenshot());
+            } catch (RuntimeException e) {
+              pixels = null;
+            }
+            boolean changed = previous == null || !Arrays.equals(previous, pixels);
+            if (still.frame(now, pixels != null, changed)) {
+              protocol.ok(
+                  id,
+                  new Protocol.Json()
+                      .put("still", still.still())
+                      .put("waitedMs", still.waitedMs(now))
+                      .put("wallMs", (System.nanoTime() - startNanos) / 1_000_000)
+                      .object());
+            } else {
+              untilStill(id, still, pixels, startNanos);
+            }
+          } catch (Throwable t) {
+            protocol.error(id, describe(t));
           }
         });
   }
@@ -398,13 +402,17 @@ final class Session {
   /** The bitmap's pixels with its size in front, or null when nothing was on screen. */
   private static int[] pixels(Bitmap bitmap) {
     if (bitmap == null) return null;
-    int width = bitmap.getWidth();
-    int height = bitmap.getHeight();
-    int[] pixels = new int[2 + width * height];
-    pixels[0] = width;
-    pixels[1] = height;
-    bitmap.getPixels(pixels, 2, width, 0, 0, width, height);
-    return pixels;
+    try {
+      int width = bitmap.getWidth();
+      int height = bitmap.getHeight();
+      int[] pixels = new int[2 + width * height];
+      pixels[0] = width;
+      pixels[1] = height;
+      bitmap.getPixels(pixels, 2, width, 0, 0, width, height);
+      return pixels;
+    } finally {
+      bitmap.recycle();
+    }
   }
 
   private static boolean changesUi(String name) {
@@ -1080,7 +1088,10 @@ final class Session {
     int motion;
     switch (action) {
       case "down":
-        if (touchDown >= 0) inject(touch(touchDown, now, MotionEvent.ACTION_CANCEL, x, y), displayId);
+        if (touchDown >= 0) {
+          inject(touch(touchDown, now, MotionEvent.ACTION_CANCEL, x, y), displayId);
+          touchDown = -1;
+        }
         JSONObject woke = onDefaultDisplay(c) ? screen.input("tap") : null;
         if (woke != null) return woke;
         touchDown = now;

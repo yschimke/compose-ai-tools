@@ -1103,6 +1103,7 @@ public final class ApkClassConverter {
       if (described.isEmpty()) return true;
       for (String dependency : described.split(" ")) {
         int equals = dependency.lastIndexOf('=');
+        if (equals <= 0) return false;
         String type = dependency.substring(0, equals);
         if (!resolution(type).equals(dependency.substring(equals + 1))) return false;
       }
@@ -1114,6 +1115,8 @@ public final class ApkClassConverter {
       if (header == null) return "?";
       return (header.isInterface ? "I:" : "C:") + header.superName;
     }
+
+    private static final Header MISSING = new Header(null, false);
 
     ClassHierarchy(Map<String, Header> appClasses, ZipFile platform) {
       this.appClasses = appClasses;
@@ -1137,8 +1140,9 @@ public final class ApkClassConverter {
       if (first == null || second == null) return "java/lang/Object";
       if (first.isInterface || second.isInterface) return "java/lang/Object";
       Set<String> ancestors = new HashSet<>();
-      for (String type = type1; type != null; type = superName(type)) ancestors.add(type);
-      for (String type = type2; type != null; type = superName(type)) {
+      for (String type = type1; type != null && ancestors.add(type); type = superName(type)) {}
+      Set<String> seen = new HashSet<>();
+      for (String type = type2; type != null && seen.add(type); type = superName(type)) {
         if (ancestors.contains(type)) return type;
       }
       return "java/lang/Object";
@@ -1153,7 +1157,11 @@ public final class ApkClassConverter {
       if (lookups != null) lookups.add(name);
       Header app = appClasses.get(name);
       if (app != null) return app;
-      return platformClasses.computeIfAbsent(name, this::readPlatform);
+      Header cached = platformClasses.get(name);
+      if (cached != null) return cached == MISSING ? null : cached;
+      Header found = readPlatform(name);
+      platformClasses.put(name, found != null ? found : MISSING);
+      return found;
     }
 
     private Header readPlatform(String name) {

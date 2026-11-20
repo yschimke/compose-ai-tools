@@ -98,8 +98,15 @@ final class Protocol {
   }
 
   void event(String name, JSONObject body) {
-    JSONObject line = body == null ? new JSONObject() : body;
+    JSONObject line = new JSONObject();
     try {
+      if (body != null) {
+        java.util.Iterator<String> keys = body.keys();
+        while (keys.hasNext()) {
+          String key = keys.next();
+          line.put(key, body.get(key));
+        }
+      }
       line.put("event", name);
     } catch (JSONException e) {
       throw new IllegalStateException(e);

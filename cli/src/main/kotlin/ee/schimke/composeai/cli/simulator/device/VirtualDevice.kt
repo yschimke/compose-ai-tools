@@ -73,12 +73,15 @@ internal class VirtualDevice(
    * cannot be installed leaves the device empty, and why is returned; a simulator that cannot start
    * throws.
    */
-  fun start(apk: File? = null): Throwable? = lock.withLock {
+  fun start(apk: File? = null): Throwable? {
     val staged = apk?.let { runCatching { stage(it) } }
     val installedApk = staged?.getOrNull()
-    installed = installedApk
-    boot(installedApk?.apk ?: config.systemApk)
-    staged?.exceptionOrNull()
+    val command = simulatorCommand(installedApk?.apk ?: config.systemApk)
+    lock.withLock {
+      installed = installedApk
+      bootCommand(command)
+    }
+    return staged?.exceptionOrNull()
   }
 
   /** An event line of the device's own, to the control client beside the simulator's. */
@@ -115,12 +118,15 @@ internal class VirtualDevice(
   /** Installs [apk] (copied into the device first), restarting the simulator on it. */
   fun install(apk: File): Installed {
     val staged = stage(apk)
+    // Convert outside `lock` so a slow or failing dex2jar conversion neither blocks `stop()`
+    // nor tears down the currently running simulator.
+    val command = simulatorCommand(staged.apk)
     lock.withLock {
       installed?.let {
         if (it.packageName != staged.packageName) log("replacing ${it.packageName}")
       }
       installed = staged
-      boot(staged.apk)
+      bootCommand(command)
     }
     simulator()
     onLine("""{"event":"installed","package":"${staged.packageName}"}""")
@@ -147,12 +153,14 @@ internal class VirtualDevice(
 
   /** Uninstalls [packageName], back to the system UI alone; false when it is not installed. */
   fun uninstall(packageName: String): Boolean {
+    if (installed?.packageName != packageName) return false
+    val command = simulatorCommand(config.systemApk)
     lock.withLock {
       val current = installed ?: return false
       if (current.packageName != packageName) return false
       installed = null
       current.apk.parentFile.deleteRecursively()
-      boot(config.systemApk)
+      bootCommand(command)
     }
     simulator()
     onLine("""{"event":"uninstalled","package":"$packageName"}""")
@@ -161,23 +169,26 @@ internal class VirtualDevice(
 
   /** `adb reboot`: the simulator starts again on what is installed. */
   fun reboot() {
-    lock.withLock { boot(installed?.apk ?: config.systemApk) }
+    val command = simulatorCommand(installed?.apk ?: config.systemApk)
+    lock.withLock { bootCommand(command) }
     simulator()
   }
 
   /**
-   * Replaces the running simulator with one booted on [apk]. The old one is dropped from [link]
-   * before it is stopped, so only the current simulator ending ends the device.
+   * Replaces the running simulator with one booted from [command]. The old one is dropped from
+   * [link] before it is stopped, so only the current simulator ending ends the device.
    */
-  private fun boot(apk: File) {
+  private fun bootCommand(command: List<String>) {
+    if (exit.isDone) return
     val old = link
     link = null
     old?.stop()
-    val started =
-      SimulatorLink(simulatorCommand(apk)) { line -> if (!logcat.offer(line)) onLine(line) }
+    val started = SimulatorLink(command) { line -> if (!logcat.offer(line)) onLine(line) }
     link = started
     // A follower outlives the simulator an install replaces: the new one follows for it too.
-    if (logcat.active) started.ready.thenRun { followLog(started) }
+    // Run asynchronously: `ready` is completed on SimulatorLink's stdout-reader thread, so a
+    // synchronous `request()` here would deadlock waiting for a reply from the same thread.
+    if (logcat.active) started.ready.thenRunAsync { followLog(started) }
     started.onExit().thenAccept { process ->
       if (link === started) exit.complete(process.exitValue())
     }

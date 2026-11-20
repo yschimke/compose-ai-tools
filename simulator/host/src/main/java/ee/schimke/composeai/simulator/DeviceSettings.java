@@ -29,7 +29,7 @@ final class DeviceSettings {
   private static volatile Application app;
 
   /** Set while another app's change is written here, which is not sent on again. */
-  private static boolean receiving;
+  private static final ThreadLocal<Boolean> receiving = new ThreadLocal<>();
 
   /** Every change seen here, this app's and the others', by table and name. */
   private static final Map<String, Change> changes = new ConcurrentHashMap<>();
@@ -86,7 +86,7 @@ final class DeviceSettings {
    * the other apps set it too when that changes it.
    */
   static void changing(String table, String name, String value) {
-    if (receiving || name == null || !DeviceBus.enabled()) return;
+    if (Boolean.TRUE.equals(receiving.get()) || name == null || !DeviceBus.enabled()) return;
     Application self = app;
     String before = self == null ? null : read(self.getContentResolver(), table, name);
     if (self != null && Objects.equals(before, value)) return;
@@ -110,7 +110,7 @@ final class DeviceSettings {
     changes.put(key, new Change(table, name, value, time));
     if (Objects.equals(read(self.getContentResolver(), table, name), value)) return;
     ContentResolver resolver = self.getContentResolver();
-    receiving = true;
+    receiving.set(Boolean.TRUE);
     try {
       // Robolectric's put also tells the setting's observers, as the settings provider does.
       switch (table) {
@@ -127,7 +127,7 @@ final class DeviceSettings {
           break;
       }
     } finally {
-      receiving = false;
+      receiving.remove();
     }
   }
 

@@ -257,6 +257,11 @@ final class Jobs {
      * initial backoff has passed (the backoff does not grow with retries here).
      */
     private void finished(boolean reschedule) {
+      if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        new android.os.Handler(android.os.Looper.getMainLooper())
+            .post(() -> finished(reschedule));
+        return;
+      }
       if (!running.remove(info.getId())) return;
       Long retryInMs = null;
       if (reschedule && !info.isPeriodic()) {

@@ -31,8 +31,9 @@ public final class HotSwap {
   private static volatile Instrumentation instrumentation;
   private static volatile ClassLoader sandbox;
   private static volatile InstrumentationConfiguration configuration;
-  /** The last swapped reload's classes, read ahead of the launch's for classes not loaded yet. */
-  private static volatile File overlay;
+  /** Swapped class files across reloads, read ahead of the launch's for classes not loaded yet. */
+  private static final java.util.concurrent.ConcurrentHashMap<String, File> overlayFiles =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   private HotSwap() {}
 
@@ -45,18 +46,18 @@ public final class HotSwap {
   public static void register(ClassLoader loader, InstrumentationConfiguration config) {
     sandbox = loader;
     configuration = config;
+    overlayFiles.clear();
   }
 
   /**
-   * The class file the last swap delivered for {@code resourceName} ({@code com/example/Foo.class}),
+   * The class file the latest swap delivered for {@code resourceName} ({@code com/example/Foo.class}),
    * or null. A class the app had not loaded when it was swapped loads from here later, not from the
    * launch's older copy.
    */
   public static File overlayFile(String resourceName) {
-    File dir = overlay;
-    if (dir == null || !resourceName.endsWith(".class")) return null;
-    File file = new File(dir, resourceName);
-    return file.isFile() ? file : null;
+    if (!resourceName.endsWith(".class")) return null;
+    File file = overlayFiles.get(resourceName);
+    return file != null && file.isFile() ? file : null;
   }
 
   /** Why a swap was not applied; nothing changed. */
@@ -68,12 +69,12 @@ public final class HotSwap {
 
   /**
    * Redefines each of {@code classes} (internal names, {@code com/example/Foo}) that the sandbox has
-   * loaded with its class file under {@code dir}, and serves {@code dir} first from then on.
+   * loaded with its class file under {@code dir}, and serves the swapped files first from then on.
    *
    * @return how many loaded classes were redefined
    * @throws Refused when the swap cannot be applied whole; no class has changed
    */
-  public static int redefine(File dir, List<String> classes) throws Refused {
+  public static synchronized int redefine(File dir, List<String> classes) throws Refused {
     Instrumentation inst = instrumentation;
     if (inst == null) throw new Refused("the simulator was started without its agent");
     if (!inst.isRedefineClassesSupported()) throw new Refused("this JVM cannot redefine classes");
@@ -86,8 +87,10 @@ public final class HotSwap {
       if (type.getClassLoader() == loader) loaded.put(type.getName(), type);
     }
     List<ClassDefinition> definitions = new ArrayList<>();
+    Map<String, File> staged = new HashMap<>();
     for (String name : classes) {
-      File file = new File(dir, name + ".class");
+      String resourceName = name + ".class";
+      File file = new File(dir, resourceName);
       byte[] bytes;
       try {
         bytes = Files.readAllBytes(file.toPath());
@@ -99,20 +102,23 @@ public final class HotSwap {
       if (config.shouldInstrument(new ClassDetails(bytes))) {
         throw new Refused(name + " is instrumented by Robolectric");
       }
+      staged.put(resourceName, file);
       Class<?> type = loaded.get(name.replace('/', '.'));
-      if (type == null) continue; // Not loaded yet: it loads from dir.
+      if (type == null) continue; // Not loaded yet: it loads from overlayFiles.
       if (!inst.isModifiableClass(type)) throw new Refused(name + " cannot be redefined");
       definitions.add(new ClassDefinition(type, bytes));
     }
-    try {
-      inst.redefineClasses(definitions.toArray(new ClassDefinition[0]));
-    } catch (ClassNotFoundException
-        | UnmodifiableClassException
-        | UnsupportedOperationException
-        | LinkageError e) {
-      throw new Refused("the JVM refused the new classes: " + e);
+    if (!definitions.isEmpty()) {
+      try {
+        inst.redefineClasses(definitions.toArray(new ClassDefinition[0]));
+      } catch (ClassNotFoundException
+          | UnmodifiableClassException
+          | UnsupportedOperationException
+          | LinkageError e) {
+        throw new Refused("the JVM refused the new classes: " + e);
+      }
     }
-    overlay = dir;
+    overlayFiles.putAll(staged);
     return definitions.size();
   }
 }

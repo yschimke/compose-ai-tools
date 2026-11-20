@@ -53,9 +53,12 @@ final class WindowZoom {
   /** The share of the screen a display that does not fit starts at, leaving room around it. */
   static final double SCREEN_SHARE = 0.85;
 
-  private static final Map<JComponent, WindowZoom> ZOOMS = new WeakHashMap<>();
+  private static final Map<JComponent, WindowZoom> ZOOMS =
+      java.util.Collections.synchronizedMap(new WeakHashMap<>());
   private static boolean keysInstalled;
   private static volatile boolean mainInstalled;
+  private static final java.util.concurrent.atomic.AtomicBoolean mainInstallPending =
+      new java.util.concurrent.atomic.AtomicBoolean();
 
   private final JFrame frame;
   private final JComponent view;
@@ -91,15 +94,20 @@ final class WindowZoom {
    */
   static void installMain(int width, int height) {
     if (mainInstalled || GraphicsEnvironment.isHeadless()) return;
+    if (!mainInstallPending.compareAndSet(false, true)) return;
     SwingUtilities.invokeLater(
         () -> {
-          if (mainInstalled) return;
-          JPanel panel = SimulatorPanelRegistry.getActivePanel();
-          if (panel == null) return;
-          Window window = SwingUtilities.getWindowAncestor(panel);
-          if (!(window instanceof JFrame) || !window.isShowing()) return;
-          install((JFrame) window, panel, width, height);
-          mainInstalled = true;
+          try {
+            if (mainInstalled) return;
+            JPanel panel = SimulatorPanelRegistry.getActivePanel();
+            if (panel == null) return;
+            Window window = SwingUtilities.getWindowAncestor(panel);
+            if (!(window instanceof JFrame) || !window.isShowing()) return;
+            install((JFrame) window, panel, width, height);
+            mainInstalled = true;
+          } finally {
+            mainInstallPending.set(false);
+          }
         });
   }
 

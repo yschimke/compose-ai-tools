@@ -223,7 +223,7 @@ final class GatedSocketImpl extends SocketImpl {
 
   @Override
   protected void accept(SocketImpl s) throws IOException {
-    call(ACCEPT, s);
+    call(ACCEPT, s instanceof GatedSocketImpl ? ((GatedSocketImpl) s).delegate : s);
   }
 
   @Override

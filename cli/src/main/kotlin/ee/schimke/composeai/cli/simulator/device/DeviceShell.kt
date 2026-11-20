@@ -53,13 +53,11 @@ internal class ShellOutput(val stdout: OutputStream, val stderr: OutputStream) {
  */
 internal class DeviceShell(private val device: VirtualDevice) {
 
-  @Volatile private var lastExit = 0
-
   /** Runs one shell line; returns its exit code. */
   fun run(line: String, stdin: InputStream, out: ShellOutput): Int {
     val pipeline =
       try {
-        ShellSyntax.parse(line.replace("\$?", lastExit.toString()))
+        ShellSyntax.parse(line)
       } catch (e: IllegalArgumentException) {
         return out.fail("/system/bin/sh: ${e.message}")
       }
@@ -67,21 +65,26 @@ internal class DeviceShell(private val device: VirtualDevice) {
     for (step in pipeline) {
       if (step.after == ShellSyntax.Joiner.AND && exit != 0) continue
       if (step.after == ShellSyntax.Joiner.OR && exit == 0) continue
-      exit = runPipe(step, stdin, out)
-      lastExit = exit
+      exit = runPipe(step, exit, stdin, out)
     }
     return exit
   }
 
-  private fun runPipe(step: ShellSyntax.Step, stdin: InputStream, out: ShellOutput): Int {
-    val first = step.commands.first()
-    val filters = step.commands.drop(1)
+  private fun runPipe(
+    step: ShellSyntax.Step,
+    lastExit: Int,
+    stdin: InputStream,
+    out: ShellOutput,
+  ): Int {
+    val first = step.commands.first().map { it.replace("\$?", lastExit.toString()) }
+    val filters =
+      step.commands.drop(1).map { cmd -> cmd.map { it.replace("\$?", lastExit.toString()) } }
     val buffered = filters.isNotEmpty() || step.redirect != null
     val capture = ByteArrayOutputStream()
     val target =
       if (buffered) ShellOutput(capture, if (step.discardErrors) NULL else out.stderr)
       else if (step.discardErrors) ShellOutput(out.stdout, NULL) else out
-    val exit =
+    var exit =
       try {
         command(first, stdin, target)
       } catch (e: SimulatorLink.SimulatorError) {
@@ -91,8 +94,16 @@ internal class DeviceShell(private val device: VirtualDevice) {
       }
     if (!buffered) return exit
     var bytes = capture.toByteArray()
-    for (filter in filters) bytes =
-      filter(filter, bytes) ?: return out.fail("${filter.first()}: not supported in a pipe")
+    for (filter in filters) {
+      val filtered =
+        try {
+          filter(filter, bytes)
+        } catch (e: java.util.regex.PatternSyntaxException) {
+          return out.fail("${filter.first()}: invalid pattern: ${e.description}")
+        } ?: return out.fail("${filter.first()}: not supported in a pipe")
+      bytes = filtered.first
+      filtered.second?.let { exit = it }
+    }
     val redirect = step.redirect
     if (redirect == null) {
       out.write(bytes)
@@ -106,8 +117,9 @@ internal class DeviceShell(private val device: VirtualDevice) {
     return exit
   }
 
-  private fun filter(command: List<String>, input: ByteArray): ByteArray? {
+  private fun filter(command: List<String>, input: ByteArray): Pair<ByteArray, Int?>? {
     val lines = String(input).lines().let { if (it.lastOrNull() == "") it.dropLast(1) else it }
+    var exitOverride: Int? = null
     val kept =
       when (command.first()) {
         "grep" -> {
@@ -115,14 +127,18 @@ internal class DeviceShell(private val device: VirtualDevice) {
           val ignoreCase = "-i" in command
           val pattern = command.drop(1).lastOrNull { !it.startsWith("-") } ?: return null
           val regex = Regex(pattern, if (ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet())
-          lines.filter { regex.containsMatchIn(it) != invert }
+          lines
+            .filter { regex.containsMatchIn(it) != invert }
+            .also { exitOverride = if (it.isEmpty()) 1 else 0 }
         }
         "head" -> lines.take(lineCount(command))
         "tail" -> lines.takeLast(lineCount(command))
         "cat" -> lines
         else -> return null
       }
-    return if (kept.isEmpty()) ByteArray(0) else (kept.joinToString("\n") + "\n").toByteArray()
+    val outBytes =
+      if (kept.isEmpty()) ByteArray(0) else (kept.joinToString("\n") + "\n").toByteArray()
+    return outBytes to exitOverride
   }
 
   /** `head` / `tail`'s `-n N` or `-N`; ten lines without either. */
@@ -146,8 +162,13 @@ internal class DeviceShell(private val device: VirtualDevice) {
       }
       "true",
       "sync",
-      "sleep",
       "exit" -> args.firstOrNull()?.toIntOrNull()?.takeIf { name == "exit" } ?: 0
+      "sleep" -> {
+        val seconds = args.firstOrNull()?.toDoubleOrNull() ?: 0.0
+        val ms = (seconds * 1000.0).toLong().coerceIn(0L, 60_000L)
+        if (ms > 0) Thread.sleep(ms)
+        0
+      }
       "false" -> 1
       "id" -> out.line("uid=2000(shell) gid=2000(shell) groups=2000(shell) context=u:r:shell:s0")
       "whoami" -> out.line("shell")

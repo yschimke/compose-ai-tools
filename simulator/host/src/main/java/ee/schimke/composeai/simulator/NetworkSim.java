@@ -603,11 +603,14 @@ final class NetworkSim {
   // Callbacks
 
   void register(ConnectivityManager.NetworkCallback callback, NetworkRequest request, Kind kind) {
-    Registration existing = registrations.remove(callback);
-    if (existing != null) order.remove(existing);
-    Registration registration = new Registration(callback, request, kind);
-    registrations.put(callback, registration);
-    order.add(registration);
+    Registration registration;
+    synchronized (registrations) {
+      Registration existing = registrations.remove(callback);
+      if (existing != null) order.remove(existing);
+      registration = new Registration(callback, request, kind);
+      registrations.put(callback, registration);
+      order.add(registration);
+    }
     if (kind == Kind.REQUEST && request != null) {
       NetworkSpecifier specifier = request.getNetworkSpecifier();
       if (specifier != null && wifi.isPeerRequest(specifier)) wifi.peerRequested(registration);
@@ -615,20 +618,31 @@ final class NetworkSim {
   }
 
   void unregister(ConnectivityManager.NetworkCallback callback) {
-    Registration registration = registrations.remove(callback);
-    if (registration == null) return;
-    order.remove(registration);
+    Registration registration;
+    synchronized (registrations) {
+      registration = registrations.remove(callback);
+      if (registration == null) return;
+      order.remove(registration);
+    }
     wifi.released(registration);
   }
 
   Registration registration(ConnectivityManager.NetworkCallback callback) {
-    return registrations.get(callback);
+    synchronized (registrations) {
+      return registrations.get(callback);
+    }
   }
 
   /** Tells each callback what changed since it last heard; newly registered ones hear it all. */
   void sync() {
-    for (Registration r : new ArrayList<>(order)) {
-      if (!registrations.containsKey(r.callback)) continue;
+    List<Registration> snapshot;
+    synchronized (registrations) {
+      snapshot = new ArrayList<>(order);
+    }
+    for (Registration r : snapshot) {
+      synchronized (registrations) {
+        if (!registrations.containsKey(r.callback)) continue;
+      }
       List<SimNetwork> target = targets(r);
       List<Integer> ids = new ArrayList<>();
       for (SimNetwork n : target) ids.add(n.netId);

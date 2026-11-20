@@ -151,6 +151,8 @@ internal class AdbDeviceServer(
   ) {
     private val incoming = LinkedBlockingQueue<ByteArray>()
     private val window = Semaphore(1)
+    private val writeLock = Any()
+    private val clseSent = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var closed = false
 
     val input: InputStream =
@@ -190,15 +192,17 @@ internal class AdbDeviceServer(
       }
 
     fun write(data: ByteArray) {
-      var at = 0
-      while (at < data.size) {
-        val n = minOf(connection.payload, data.size - at)
-        while (!window.tryAcquire(200, TimeUnit.MILLISECONDS)) {
+      synchronized(writeLock) {
+        var at = 0
+        while (at < data.size) {
+          val n = minOf(connection.payload, data.size - at)
+          while (!window.tryAcquire(200, TimeUnit.MILLISECONDS)) {
+            if (closed) throw IOException("stream closed by host")
+          }
           if (closed) throw IOException("stream closed by host")
+          connection.send(Message(AdbWire.A_WRTE, localId, remoteId, data.copyOfRange(at, at + n)))
+          at += n
         }
-        if (closed) throw IOException("stream closed by host")
-        connection.send(Message(AdbWire.A_WRTE, localId, remoteId, data.copyOfRange(at, at + n)))
-        at += n
       }
     }
 
@@ -208,21 +212,26 @@ internal class AdbDeviceServer(
       if (data.isNotEmpty()) incoming.put(data)
     }
 
-    internal fun acknowledged(@Suppress("UNUSED_PARAMETER") remote: Int) = window.release()
+    internal fun acknowledged(remote: Int) {
+      if (remote == remoteId && window.availablePermits() == 0) window.release()
+    }
 
     internal fun closedByHost() {
       closed = true
       incoming.put(EOF)
-      window.release()
+      if (window.availablePermits() == 0) window.release()
     }
 
     /** Waits (briefly) for the last `WRTE` to be acknowledged, then closes the stream. */
     fun close() {
-      if (closed) return
-      window.tryAcquire(2, TimeUnit.SECONDS)
-      closed = true
-      incoming.put(EOF)
-      runCatching { connection.send(Message(AdbWire.A_CLSE, localId, remoteId)) }
+      if (!closed) {
+        window.tryAcquire(2, TimeUnit.SECONDS)
+        closed = true
+        incoming.put(EOF)
+      }
+      if (clseSent.compareAndSet(false, true)) {
+        runCatching { connection.send(Message(AdbWire.A_CLSE, localId, remoteId)) }
+      }
     }
   }
 

@@ -765,18 +765,22 @@ final class WidgetHost {
     List<Hosted> due = new ArrayList<>();
     long now = SystemClock.uptimeMillis();
     synchronized (this) {
+      Set<ComponentName> dueProviders = new HashSet<>();
+      Set<ComponentName> initialized = new HashSet<>();
       for (Hosted h : widgets.values()) {
         if (!h.placed || h.info.updatePeriodMillis <= 0) continue;
         // The system clamps the period to at least 30 minutes.
         long period = Math.max(h.info.updatePeriodMillis, 30 * 60 * 1000L);
         Long last = lastPeriodicUpdate.get(h.info.provider);
         if (last == null) {
-          lastPeriodicUpdate.put(h.info.provider, now);
-        } else if (now - last >= period) {
-          lastPeriodicUpdate.put(h.info.provider, now);
+          initialized.add(h.info.provider);
+        } else if (dueProviders.contains(h.info.provider) || now - last >= period) {
+          dueProviders.add(h.info.provider);
           due.add(h);
         }
       }
+      for (ComponentName provider : initialized) lastPeriodicUpdate.put(provider, now);
+      for (ComponentName provider : dueProviders) lastPeriodicUpdate.put(provider, now);
     }
     for (Hosted h : due) update(h);
   }

@@ -20,6 +20,7 @@ internal class EmulatorConsole(
 ) : AutoCloseable {
 
   private val server = ServerSocket(device.config.consolePort, 10, InetAddress.getLoopbackAddress())
+  private val clients = java.util.concurrent.CopyOnWriteArrayList<Socket>()
 
   fun start(): EmulatorConsole {
     Thread(
@@ -31,6 +32,7 @@ internal class EmulatorConsole(
               } catch (_: IOException) {
                 break
               }
+            clients += socket
             Thread({ session(socket) }, "console").apply {
               isDaemon = true
               start()
@@ -46,31 +48,39 @@ internal class EmulatorConsole(
     return this
   }
 
-  private fun session(socket: Socket) = socket.use {
-    val out = socket.getOutputStream().bufferedWriter()
-    fun send(text: String) {
-      out.write(text.replace("\n", "\r\n"))
-      out.write("\r\n")
-      out.flush()
-    }
-    send("Android Console: type 'help' for a list of commands\nOK")
-    socket.getInputStream().bufferedReader().useLines { lines ->
-      for (raw in lines) {
-        val line = raw.trim()
-        if (line.isEmpty()) continue
-        if (line == "quit" || line == "exit") return@use
-        val answer =
-          try {
-            answer(line.split(Regex("\\s+")))
-          } catch (e: Exception) {
-            "KO: ${e.message ?: e}"
+  private fun session(socket: Socket) {
+    try {
+      socket.use {
+        val out = socket.getOutputStream().bufferedWriter()
+        fun send(text: String) {
+          out.write(text.replace("\n", "\r\n"))
+          out.write("\r\n")
+          out.flush()
+        }
+        send("Android Console: type 'help' for a list of commands\nOK")
+        socket.getInputStream().bufferedReader().useLines { lines ->
+          for (raw in lines) {
+            val line = raw.trim()
+            if (line.isEmpty()) continue
+            if (line == "quit" || line == "exit") return
+            val answer =
+              try {
+                answer(line.split(Regex("\\s+")))
+              } catch (e: Exception) {
+                "KO: ${e.message ?: e}"
+              }
+            send(answer)
+            if (line == "kill") {
+              device.stop()
+              return
+            }
           }
-        send(answer)
-        if (line == "kill") {
-          device.stop()
-          return@use
         }
       }
+    } catch (_: IOException) {
+      // Client disconnected.
+    } finally {
+      clients -= socket
     }
   }
 
@@ -106,7 +116,9 @@ internal class EmulatorConsole(
       "power" ->
         when (words.getOrNull(1)) {
           "capacity" -> {
-            device.simulator().request("battery", "level" to JsonPrimitive(words[2].toInt()))
+            val level =
+              words.getOrNull(2)?.toIntOrNull() ?: return "KO: usage: power capacity <0-100>"
+            device.simulator().request("battery", "level" to JsonPrimitive(level))
             "OK"
           }
           "ac" -> {
@@ -127,5 +139,7 @@ internal class EmulatorConsole(
 
   override fun close() {
     runCatching { server.close() }
+    for (client in clients) runCatching { client.close() }
+    clients.clear()
   }
 }

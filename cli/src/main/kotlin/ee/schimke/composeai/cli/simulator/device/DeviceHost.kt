@@ -36,8 +36,14 @@ internal class DeviceHost(
         )
         .start()
     val avdDir = AvdFiles.writeAvd(config)
-    var discovery: java.io.File? = null
-    val console = EmulatorConsole(device, avdDir.absolutePath) { discovery?.absolutePath }.start()
+    val discovery = java.util.concurrent.atomic.AtomicReference<java.io.File?>(null)
+    val console =
+      try {
+        EmulatorConsole(device, avdDir.absolutePath) { discovery.get()?.absolutePath }.start()
+      } catch (e: Exception) {
+        adb.close()
+        throw e
+      }
     val token =
       Base64.getUrlEncoder()
         .withoutPadding()
@@ -49,17 +55,27 @@ internal class DeviceHost(
         device.log("gRPC: could not listen on $grpcPort: ${e.message}")
         null
       }
-    discovery = grpc?.let { AvdFiles.writeDiscovery(config, avdDir, it.port, token) }
+    discovery.set(grpc?.let { AvdFiles.writeDiscovery(config, avdDir, it.port, token) })
     val hook = Thread {
       device.stop()
-      discovery?.delete()
+      discovery.get()?.delete()
     }
     Runtime.getRuntime().addShutdownHook(hook)
 
     // Booted on the APK `android-simulator --adb app.apk` names, installed from the start: one
     // boot.
     // A simulator that cannot start throws, as before; an APK that cannot be installed is reported.
-    val installFailure = device.start(initialApk)
+    val installFailure =
+      try {
+        device.start(initialApk)
+      } catch (e: Exception) {
+        adb.close()
+        console.close()
+        grpc?.close()
+        discovery.get()?.delete()
+        runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+        throw e
+      }
     if (control) bridgeStdin()
     System.err.println(
       "compose-preview android-simulator: device ${config.serial} (${config.avdName}): adb on ${config.adbPort}, " +
@@ -104,7 +120,7 @@ internal class DeviceHost(
     adb.close()
     console.close()
     grpc?.close()
-    discovery?.delete()
+    discovery.get()?.delete()
     try {
       Runtime.getRuntime().removeShutdownHook(hook)
     } catch (_: IllegalStateException) {
@@ -120,8 +136,21 @@ internal class DeviceHost(
             for (line in lines) {
               if (line.isBlank()) continue
               runCatching { device.simulator().forward(line) }
-                .onFailure {
-                  println("""{"ok":false,"error":"${it.message?.replace("\"", "'")}"}""")
+                .onFailure { err ->
+                  val id = runCatching {
+                    (kotlinx.serialization.json.Json.parseToJsonElement(line)
+                        as? kotlinx.serialization.json.JsonObject)
+                      ?.get("id")
+                  }
+                    .getOrNull()
+                  device.event(
+                    buildJsonObject {
+                      id?.let { put("id", it) }
+                      put("ok", false)
+                      put("error", err.message ?: err.toString())
+                    }
+                      .toString(),
+                  )
                 }
             }
           }

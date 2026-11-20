@@ -134,22 +134,24 @@ final class WearPlatformServices {
       case 5:
         return "Heavy snow";
       case 6:
-        return "Mostly clear";
+        return "Rain";
       case 7:
-        return "Mostly cloudy";
-      case 8:
-        return "Partly cloudy";
-      case 9:
-        return "Rain";
-      case 10:
-        return "Rain and snow";
-      case 11:
-        return "Rain";
-      case 12:
         return "Snow";
-      case 13:
+      case 8:
+        return "Sunny";
+      case 9:
         return "Thunderstorm";
+      case 10:
+        return "Sleet";
+      case 11:
+        return "Light snow";
+      case 12:
+        return "Light rain";
+      case 13:
+        return "Mist";
       case 14:
+        return "Partly cloudy";
+      case 15:
         return "Windy";
       default:
         return "Unknown";
@@ -168,6 +170,7 @@ final class WearPlatformServices {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
         throws RemoteException {
       if (code == INTERFACE_TRANSACTION) {
@@ -181,8 +184,7 @@ final class WearPlatformServices {
             if (data.readInt() != 0) {
               android.os.Bundle bundle = data.readBundle(app.getClassLoader());
               if (bundle != null) {
-                ComponentName receiver =
-                    bundle.getParcelable("clientComponentName", ComponentName.class);
+                ComponentName receiver = bundle.getParcelable("clientComponentName");
                 if (receiver != null) {
                   registeredReceivers.add(receiver);
                   ensureWatchStateListener();
@@ -209,8 +211,7 @@ final class WearPlatformServices {
             if (data.readInt() != 0) {
               android.os.Bundle bundle = data.readBundle(app.getClassLoader());
               if (bundle != null) {
-                ComponentName receiver =
-                    bundle.getParcelable("clientComponentName", ComponentName.class);
+                ComponentName receiver = bundle.getParcelable("clientComponentName");
                 if (receiver != null) {
                   registeredReceivers.remove(receiver);
                 }

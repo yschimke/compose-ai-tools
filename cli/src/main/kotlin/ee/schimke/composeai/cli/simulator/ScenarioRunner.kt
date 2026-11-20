@@ -293,6 +293,10 @@ internal object ScenarioRunner {
               device?.let { put("device", it) }
             }
             val reply = transport.send(waitCmd)
+            if ((reply["ok"] as? JsonPrimitive)?.booleanOrNull == false) {
+              val err = (reply["error"] as? JsonPrimitive)?.contentOrNull ?: "wait failed"
+              throw IllegalStateException("wait failed: $err")
+            }
             lastCommandResult = (reply["result"] as? JsonObject) ?: reply
           }
         }
@@ -320,18 +324,31 @@ internal object ScenarioRunner {
             } else {
               latestFrame
             }
-          val statusReply =
-            transport.send(
-              buildJsonObject {
-                put("cmd", "watchface")
-                put("op", "status")
-                device?.let { put("device", it) }
-              },
-            )
+          val needsStatus =
+            expectObj.keys.any {
+              it != "frame" &&
+                !it.startsWith("frame.") &&
+                it != "last" &&
+                !it.startsWith("last.") &&
+                it != "event" &&
+                it != "events"
+            }
           val statusObj =
-            (statusReply["result"] as? JsonObject)
-              ?: statusReply.takeIf { (it["ok"] as? JsonPrimitive)?.booleanOrNull != false }
-              ?: buildJsonObject {}
+            if (needsStatus) {
+              val statusReply =
+                transport.send(
+                  buildJsonObject {
+                    put("cmd", "watchface")
+                    put("op", "status")
+                    device?.let { put("device", it) }
+                  },
+                )
+              (statusReply["result"] as? JsonObject)
+                ?: statusReply.takeIf { (it["ok"] as? JsonPrimitive)?.booleanOrNull != false }
+                ?: buildJsonObject {}
+            } else {
+              buildJsonObject {}
+            }
           assertions +=
             evaluateExpectations(
               expectObj = expectObj,

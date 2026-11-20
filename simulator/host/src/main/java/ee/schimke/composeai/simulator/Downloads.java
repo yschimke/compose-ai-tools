@@ -59,6 +59,7 @@ final class Downloads {
 
   void cycle() {
     Map<Long, DownloadManager.Request> requests = requests();
+    handled.keySet().retainAll(requests.keySet());
     if (requests.size() == handled.size()) return;
     boolean online = app.getSystemService(ConnectivityManager.class).getActiveNetwork() != null;
     for (Map.Entry<Long, DownloadManager.Request> e : requests.entrySet()) {
@@ -72,7 +73,7 @@ final class Downloads {
   private void start(long id, DownloadManager.Request request) {
     ShadowDownloadManager.ShadowRequest shadow = Shadow.extract(request);
     shadow.setStatus(DownloadManager.STATUS_RUNNING);
-    File destination = destination(shadow);
+    File destination = destination(request, shadow);
     JSONObject state =
         new Protocol.Json()
             .put("id", id)
@@ -100,15 +101,19 @@ final class Downloads {
     thread.start();
   }
 
-  private static File destination(ShadowDownloadManager.ShadowRequest shadow) {
+  private static File destination(
+      DownloadManager.Request request, ShadowDownloadManager.ShadowRequest shadow) {
     Uri uri = shadow.getDestination();
     if (uri != null && "file".equals(uri.getScheme()) && uri.getPath() != null) {
       return new File(uri.getPath());
     }
     String name = shadow.getUri() == null ? null : shadow.getUri().getLastPathSegment();
-    return new File(
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-        name == null || name.isEmpty() ? "downloadfile" : name);
+    File target =
+        new File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            name == null || name.isEmpty() ? "downloadfile" : name);
+    request.setDestinationUri(Uri.fromFile(target));
+    return target;
   }
 
   private static long fetch(ShadowDownloadManager.ShadowRequest shadow, File destination)

@@ -46,8 +46,24 @@ internal class PairedLaunch(
               if (devices.size == 1) devices.single().second
               else (deviceOf(line) ?: primary).let { supervisors[it] ?: supervisors[aliases[it]] }
             if (target == null) {
+              val json = runCatching {
+                kotlinx.serialization.json.Json.parseToJsonElement(line)
+                  as? kotlinx.serialization.json.JsonObject
+              }
+                .getOrNull()
               output(
-                """{"ok":false,"error":"no device ${deviceOf(line)}; ${supervisors.keys} are running"}""",
+                kotlinx.serialization.json
+                  .buildJsonObject {
+                    json?.get("id")?.let { put("id", it) }
+                    put("ok", kotlinx.serialization.json.JsonPrimitive(false))
+                    put(
+                      "error",
+                      kotlinx.serialization.json.JsonPrimitive(
+                        "no device ${deviceOf(line)}; ${supervisors.keys} are running",
+                      ),
+                    )
+                  }
+                  .toString(),
               )
               continue
             }

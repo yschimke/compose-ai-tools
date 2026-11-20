@@ -439,6 +439,19 @@ final class DataLayerChannels implements ChannelPipes.Events {
       out.writeString(path);
     }
 
+    public static final android.os.Parcelable.Creator<SimChannel> CREATOR =
+        new android.os.Parcelable.Creator<SimChannel>() {
+          @Override
+          public SimChannel createFromParcel(Parcel in) {
+            return new SimChannel(in.readString(), in.readString(), in.readString());
+          }
+
+          @Override
+          public SimChannel[] newArray(int size) {
+            return new SimChannel[size];
+          }
+        };
+
     @Override
     public boolean equals(Object other) {
       return other instanceof SimChannel && ((SimChannel) other).token.equals(token);
