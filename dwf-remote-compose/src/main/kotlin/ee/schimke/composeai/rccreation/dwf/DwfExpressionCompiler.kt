@@ -297,7 +297,7 @@ internal class DwfExpressionCompiler(
                 else -> TextFromFloat.PAD_PRE_NONE
               }
             val before = if (width > 0) width else 10
-            floor(arg.toFloat()).toRemoteStringOptions(before, 0, padFlag)
+            floor(arg.toFloat()).toRemoteStringOptions(before.toShort(), 0, padFlag)
           }
           'f' -> {
             val after = precision ?: 2
@@ -308,7 +308,7 @@ internal class DwfExpressionCompiler(
                 else -> TextFromFloat.PAD_PRE_NONE or TextFromFloat.PAD_AFTER_ZERO
               }
             val before = if (width > after + 1) width - after - 1 else 10
-            arg.toFloat().toRemoteStringOptions(before, after, padFlag)
+            arg.toFloat().toRemoteStringOptions(before.toShort(), after.toShort(), padFlag)
           }
           else -> arg.toRemoteString()
         }
@@ -386,7 +386,7 @@ internal class DwfExpressionCompiler(
     val v = sharedVariables
     fun pad(expr: RemoteFloat, minDigits: Int): RemoteString =
       if (minDigits >= 2) {
-        expr.toRemoteStringOptions(minDigits, 0, TextFromFloat.PAD_PRE_ZERO)
+        expr.toRemoteStringOptions(minDigits.toShort(), 0, TextFromFloat.PAD_PRE_ZERO)
       } else {
         expr.toRemoteStringOptions(10, 0, TextFromFloat.PAD_PRE_NONE)
       }
@@ -425,7 +425,11 @@ internal class DwfExpressionCompiler(
         if (count == 2) {
           v.yearShort.toRemoteStringOptions(2, 0, TextFromFloat.PAD_PRE_ZERO)
         } else {
-          v.year.toRemoteStringOptions(count.coerceAtLeast(4), 0, TextFromFloat.PAD_PRE_ZERO)
+          v.year.toRemoteStringOptions(
+            count.coerceAtLeast(4).toShort(),
+            0,
+            TextFromFloat.PAD_PRE_ZERO,
+          )
         }
       'M',
       'L' ->
@@ -1271,7 +1275,11 @@ internal class DwfExpressionCompiler(
       if (minFracZeros > 0) TextFromFloat.PAD_AFTER_ZERO else TextFromFloat.PAD_AFTER_NONE
     val before = if (minIntZeros >= 2) minIntZeros else 12
     val value = if (maxFrac == 0) round(num) else num
-    return value.toRemoteStringOptions(before, maxFrac, preFlag or postFlag or grouping)
+    return value.toRemoteStringOptions(
+      before.toShort(),
+      maxFrac.toShort(),
+      preFlag or postFlag or grouping,
+    )
   }
 
   private var referenceDepth = 0
