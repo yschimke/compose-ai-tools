@@ -45,9 +45,8 @@ final class Stillness {
    */
   boolean frame(long nowMs, boolean present, boolean changed) {
     if (doneAtMs >= 0) return true;
-    boolean reset = !present || changed || changedAtMs < 0;
-    if (reset) changedAtMs = nowMs;
-    if (present && !reset && nowMs - changedAtMs >= quietMs) {
+    if (!present || changed || changedAtMs < 0) changedAtMs = nowMs;
+    if (present && nowMs - changedAtMs >= quietMs) {
       still = true;
       doneAtMs = nowMs;
     } else if (nowMs - startMs >= timeoutMs) {
