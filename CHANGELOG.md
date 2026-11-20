@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.102.0](https://github.com/yschimke/compose-ai-tools/compare/v2.101.1...v2.102.0) (2026-11-20)
+
+
+### Features
+
+* **simulator:** add WatchFaceFrameCostProfiler for per-frame draw, animation churn, and ambient OPR/burn-in profiling ([#6658](https://github.com/yschimke/compose-ai-tools/issues/6658)) ([ff1aea7](https://github.com/yschimke/compose-ai-tools/commit/ff1aea7c299103dc458481006e697921f6a6cf15))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.28.1 ([#6664](https://github.com/yschimke/compose-ai-tools/issues/6664)) ([4c0e469](https://github.com/yschimke/compose-ai-tools/commit/4c0e469ecdf908baef616b957978f3af75e0c103))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.9.0 ([#6662](https://github.com/yschimke/compose-ai-tools/issues/6662)) ([2f76f51](https://github.com/yschimke/compose-ai-tools/commit/2f76f51758a9fc50ca97afa02c2c403b418b9528))
+* **dwf-remote-compose:** support the WFF v2 hour, minute and second digit sources ([#6655](https://github.com/yschimke/compose-ai-tools/issues/6655)) ([ee7bf76](https://github.com/yschimke/compose-ai-tools/commit/ee7bf768d01f1d313125ed5791ff747e5de5f644))
+* **simulator:** harden CLI/ADB concurrency, host lifecycle, platform emulation, and Wear state ([#6663](https://github.com/yschimke/compose-ai-tools/issues/6663)) ([fa76179](https://github.com/yschimke/compose-ai-tools/commit/fa76179e632a3fa78799cdc5f13ad7c635529380))
+* **simulator:** measure live-frame allocations on the main drawing thread ([#6660](https://github.com/yschimke/compose-ai-tools/issues/6660)) ([ca1b3ef](https://github.com/yschimke/compose-ai-tools/commit/ca1b3ef98272036447efc953893b07d1c62e60ea))
+
 ## [2.101.1](https://github.com/yschimke/compose-ai-tools/compare/v2.101.0...v2.101.1) (2026-11-19)
 
 
