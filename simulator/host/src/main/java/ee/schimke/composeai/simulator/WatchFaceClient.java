@@ -856,7 +856,7 @@ final class WatchFaceClient {
       RenderedBitmap rendered = renderBitmapInternal(timeMillis, ambient);
       return rendered != null
           ? WatchFaceFrameCostProfiler.FrameSample.fromBitmap(
-              rendered.bitmap, rendered.drawDurationNs)
+              rendered.bitmap, rendered.drawDurationNs, rendered.drawAllocatedBytes)
           : null;
     } finally {
       fixedTimeMillis = previousFixed;
@@ -868,11 +868,13 @@ final class WatchFaceClient {
     final Bitmap bitmap;
     final boolean live;
     final long drawDurationNs;
+    final long drawAllocatedBytes;
 
-    RenderedBitmap(Bitmap bitmap, boolean live, long drawDurationNs) {
+    RenderedBitmap(Bitmap bitmap, boolean live, long drawDurationNs, long drawAllocatedBytes) {
       this.bitmap = bitmap;
       this.live = live;
       this.drawDurationNs = drawDurationNs;
+      this.drawAllocatedBytes = drawAllocatedBytes;
     }
   }
 
@@ -897,12 +899,14 @@ final class WatchFaceClient {
     if (liveFrame != null) {
       LiveFrameSource source = live;
       long drawNs = source != null ? source.lastDrawDurationNs() : -1L;
-      return new RenderedBitmap(liveFrame, true, drawNs);
+      long drawAlloc = source != null ? source.lastDrawAllocatedBytes() : -1L;
+      return new RenderedBitmap(liveFrame, true, drawNs, drawAlloc);
     }
     Parcel data = Parcel.obtain();
     Parcel reply = Parcel.obtain();
     Bundle bundle;
     long drawNs;
+    long drawAlloc;
     try {
       String descriptor = interactive ? INTERACTIVE_DESCRIPTOR : HEADLESS_DESCRIPTOR;
       int tx =
@@ -914,9 +918,13 @@ final class WatchFaceClient {
       writeRenderParams(
           data, ambient ? DRAW_AMBIENT : DRAW_INTERACTIVE, timeMillis, snapshot, styleSnapshot);
       data.setDataPosition(0);
+      long allocBefore = WatchFaceFrameCostProfiler.currentThreadAllocatedBytes();
       long t0 = System.nanoTime();
       instance.transact(tx, data, reply, 0);
       drawNs = System.nanoTime() - t0;
+      long allocAfter = WatchFaceFrameCostProfiler.currentThreadAllocatedBytes();
+      drawAlloc =
+          (allocBefore >= 0 && allocAfter >= allocBefore) ? (allocAfter - allocBefore) : -1L;
       reply.setDataPosition(0);
       reply.readException();
       bundle = reply.readInt() != 0 ? Bundle.CREATOR.createFromParcel(reply) : null;
@@ -927,7 +935,7 @@ final class WatchFaceClient {
     if (bundle == null) {
       throw new IllegalStateException("renderWatchFaceToBitmap returned null bundle");
     }
-    return new RenderedBitmap(readImage(bundle), false, drawNs);
+    return new RenderedBitmap(readImage(bundle), false, drawNs, drawAlloc);
   }
 
   private static final long LIVE_ENGINE_WAIT_MS = 30_000;
