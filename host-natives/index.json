@@ -634,6 +634,68 @@
             }
           },
           "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-27",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-27/zstd-jni-1.5.7-27.jar",
+              "sha256": "5a753b039b5d55da8ac4520d4d25bf204ebaa4cfd20a759e155613c17f882561",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-27.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-27/zstd-jni-1.5.7-27.jar",
+              "sha256": "5a753b039b5d55da8ac4520d4d25bf204ebaa4cfd20a759e155613c17f882561",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-27.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-27/zstd-jni-1.5.7-27.jar",
+              "sha256": "5a753b039b5d55da8ac4520d4d25bf204ebaa4cfd20a759e155613c17f882561",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-27.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-27/zstd-jni-1.5.7-27.jar",
+              "sha256": "5a753b039b5d55da8ac4520d4d25bf204ebaa4cfd20a759e155613c17f882561",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-27.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-27/zstd-jni-1.5.7-27.jar",
+              "sha256": "5a753b039b5d55da8ac4520d4d25bf204ebaa4cfd20a759e155613c17f882561",
+              "entry": "win/amd64/libzstd-jni-1.5.7-27.dll"
+            }
+          },
+          "androidBuildIds": []
+        },
+        {
+          "version": "1.5.7-28",
+          "platforms": {
+            "linux-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-28/zstd-jni-1.5.7-28.jar",
+              "sha256": "95506ee277e830852658b65713b714262a6171121c7e45f09300eb109f44a038",
+              "entry": "linux/amd64/libzstd-jni-1.5.7-28.so"
+            },
+            "linux-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-28/zstd-jni-1.5.7-28.jar",
+              "sha256": "95506ee277e830852658b65713b714262a6171121c7e45f09300eb109f44a038",
+              "entry": "linux/aarch64/libzstd-jni-1.5.7-28.so"
+            },
+            "macos-arm64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-28/zstd-jni-1.5.7-28.jar",
+              "sha256": "95506ee277e830852658b65713b714262a6171121c7e45f09300eb109f44a038",
+              "entry": "darwin/aarch64/libzstd-jni-1.5.7-28.dylib"
+            },
+            "macos-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-28/zstd-jni-1.5.7-28.jar",
+              "sha256": "95506ee277e830852658b65713b714262a6171121c7e45f09300eb109f44a038",
+              "entry": "darwin/x86_64/libzstd-jni-1.5.7-28.dylib"
+            },
+            "windows-x86_64": {
+              "url": "https://repo1.maven.org/maven2/com/github/luben/zstd-jni/1.5.7-28/zstd-jni-1.5.7-28.jar",
+              "sha256": "95506ee277e830852658b65713b714262a6171121c7e45f09300eb109f44a038",
+              "entry": "win/amd64/libzstd-jni-1.5.7-28.dll"
+            }
+          },
+          "androidBuildIds": []
         }
       ]
     },
