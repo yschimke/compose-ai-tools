@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.28
+# syntax=docker/dockerfile:1.29
 
 # Cloud Run image for `compose-preview serve` (public mode, Desktop-only).
 #
