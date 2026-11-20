@@ -56,10 +56,19 @@ final class LiveFrameSource {
   volatile long timeoutMs = FRAME_TIMEOUT_MS;
 
   private volatile long lastDrawDurationNs = -1L;
+  private volatile long lastDrawAllocatedBytes = -1L;
 
   /** Wall-clock nanoseconds spent inside the most recent {@code onSurfaceRedrawNeeded} call. */
   long lastDrawDurationNs() {
     return lastDrawDurationNs;
+  }
+
+  /**
+   * Main-thread allocated bytes during the most recent {@code onSurfaceRedrawNeeded} call, or
+   * {@code -1} when unavailable.
+   */
+  long lastDrawAllocatedBytes() {
+    return lastDrawAllocatedBytes;
   }
 
   private ImageReader reader;
@@ -242,6 +251,7 @@ final class LiveFrameSource {
     AtomicReference<Throwable> failure = new AtomicReference<>();
     main.post(
         () -> {
+          long allocBefore = WatchFaceFrameCostProfiler.currentThreadAllocatedBytes();
           long t0 = System.nanoTime();
           try {
             engine.onSurfaceRedrawNeeded(holder);
@@ -249,6 +259,11 @@ final class LiveFrameSource {
             failure.set(t);
           } finally {
             lastDrawDurationNs = System.nanoTime() - t0;
+            long allocAfter = WatchFaceFrameCostProfiler.currentThreadAllocatedBytes();
+            lastDrawAllocatedBytes =
+                (allocBefore >= 0 && allocAfter >= allocBefore)
+                    ? (allocAfter - allocBefore)
+                    : -1L;
             drawn.countDown();
           }
         });

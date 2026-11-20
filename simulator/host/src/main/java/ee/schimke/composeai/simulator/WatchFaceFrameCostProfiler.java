@@ -44,12 +44,18 @@ final class WatchFaceFrameCostProfiler {
     final int[] pixels;
     /** Pure draw duration in nanoseconds, or {@code -1} when not measured separately. */
     final long drawDurationNs;
+    /** Pure draw allocations in bytes on the rendering thread, or {@code -1} when not measured separately. */
+    final long drawAllocatedBytes;
 
     FrameSample(int width, int height, int[] pixels) {
-      this(width, height, pixels, -1L);
+      this(width, height, pixels, -1L, -1L);
     }
 
     FrameSample(int width, int height, int[] pixels, long drawDurationNs) {
+      this(width, height, pixels, drawDurationNs, -1L);
+    }
+
+    FrameSample(int width, int height, int[] pixels, long drawDurationNs, long drawAllocatedBytes) {
       if (width <= 0 || height <= 0) {
         throw new IllegalArgumentException("width and height must be positive");
       }
@@ -60,19 +66,24 @@ final class WatchFaceFrameCostProfiler {
       this.height = height;
       this.pixels = pixels;
       this.drawDurationNs = drawDurationNs;
+      this.drawAllocatedBytes = drawAllocatedBytes;
     }
 
     static FrameSample fromBitmap(Bitmap bitmap) {
-      return fromBitmap(bitmap, -1L);
+      return fromBitmap(bitmap, -1L, -1L);
     }
 
     static FrameSample fromBitmap(Bitmap bitmap, long drawDurationNs) {
+      return fromBitmap(bitmap, drawDurationNs, -1L);
+    }
+
+    static FrameSample fromBitmap(Bitmap bitmap, long drawDurationNs, long drawAllocatedBytes) {
       if (bitmap == null) return null;
       int w = bitmap.getWidth();
       int h = bitmap.getHeight();
       int[] px = new int[w * h];
       bitmap.getPixels(px, 0, w, 0, 0, w, h);
-      return new FrameSample(w, h, px, drawDurationNs);
+      return new FrameSample(w, h, px, drawDurationNs, drawAllocatedBytes);
     }
   }
 
@@ -347,7 +358,11 @@ final class WatchFaceFrameCostProfiler {
       long drawNs = sample.drawDurationNs >= 0L ? sample.drawDurationNs : captureNs;
 
       long allocDelta =
-          (allocBefore >= 0 && allocAfter >= allocBefore) ? (allocAfter - allocBefore) : -1L;
+          sample.drawAllocatedBytes >= 0L
+              ? sample.drawAllocatedBytes
+              : ((allocBefore >= 0 && allocAfter >= allocBefore)
+                  ? (allocAfter - allocBefore)
+                  : -1L);
       if (allocDelta >= 0) {
         totalAlloc += allocDelta;
         allocSamples++;
@@ -570,7 +585,7 @@ final class WatchFaceFrameCostProfiler {
     }
   }
 
-  private static long currentThreadAllocatedBytes() {
+  static long currentThreadAllocatedBytes() {
     Method m = ALLOC_METHOD;
     if (m == null) return -1L;
     try {
