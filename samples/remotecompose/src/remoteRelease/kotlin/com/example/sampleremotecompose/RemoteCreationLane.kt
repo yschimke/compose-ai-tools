@@ -3,31 +3,29 @@
 package com.example.sampleremotecompose
 
 import androidx.compose.remote.creation.compose.action.RemoteAction
-import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.state.MutableRemoteState
+import androidx.compose.remote.creation.compose.state.RemotePaintingStyle
 import androidx.compose.remote.creation.compose.state.RemoteState
-import androidx.compose.ui.graphics.PaintingStyle
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.remote.creation.compose.state.RemoteStrokeJoin
+import androidx.compose.remote.creation.compose.text.RemoteFontWeight
 
-// The names these samples need that the pinned Remote Compose release (1.0.0-alpha23) spells
-// differently from androidx-main, for the default `release` lane. `src/remoteSnapshot` has the same
-// names for `-Pcomposeai.remoteCompose=snapshot`; `build.gradle.kts` compiles one or the other.
-// Everything in `src/main` is written in a form both lanes accept. Delete both files, and use
-// androidx-main's names directly, once the pinned release has them.
+// The names these samples need that previously differed between the pinned Remote Compose release
+// and androidx-main (`src/remoteSnapshot`). Both lanes now share the Remote* types and
+// `valueChangeAction`.
 
-/** A `RemotePaint`'s stroke style: Compose's `PaintingStyle` in alpha23. */
-internal val StrokePaintingStyle: PaintingStyle = PaintingStyle.Stroke
+/** A `RemotePaint`'s stroke style. */
+internal val StrokePaintingStyle: RemotePaintingStyle = RemotePaintingStyle.Stroke
 
-/** A `RemotePaint`'s round stroke join: Compose's `StrokeJoin` in alpha23. */
-internal val RoundStrokeJoin: StrokeJoin = StrokeJoin.Round
+/** A `RemotePaint`'s round stroke join. */
+internal val RoundStrokeJoin: RemoteStrokeJoin = RemoteStrokeJoin.Round
 
-/** `RemoteText`'s font weights: Compose's `FontWeight` in alpha23. */
-internal val MediumFontWeight: FontWeight = FontWeight.Medium
-internal val SemiBoldFontWeight: FontWeight = FontWeight.SemiBold
+/** `RemoteText`'s font weights. */
+internal val MediumFontWeight: RemoteFontWeight = RemoteFontWeight.Medium
+internal val SemiBoldFontWeight: RemoteFontWeight = RemoteFontWeight.SemiBold
 
-/** androidx-main's `valueChangeAction`: alpha23's `valueChange`, renamed. */
+/** androidx-main's `valueChangeAction`, which this package resolves before an import. */
 internal fun <T> valueChangeAction(
   remoteState: MutableRemoteState<T>,
   updatedValue: RemoteState<T>,
-): RemoteAction = valueChange(remoteState, updatedValue)
+): RemoteAction =
+  androidx.compose.remote.creation.compose.action.valueChangeAction(remoteState, updatedValue)
