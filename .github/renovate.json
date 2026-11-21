@@ -138,14 +138,14 @@
       "allowedVersions": "/^3\\.5\\./"
     },
     {
-      "description": "robolectric: skip 4.18 and snapshots. Robolectric 4.18 removes/changes `DefaultNativeRuntimeLoader.maybeCopyFonts(TempDirectory)`, breaking `:samples:design-catalog-wear-m3:composePreviewRender` and `Apply compose-preview` (`NoSuchMethodException`). Skipped from https://github.com/yschimke/compose-ai-tools/pull/6669 (mirrors yschimke/renovate-config#39, which this repo-local rule previously overrode). Remove the 4.18 exclusion once compose-preview-daemon supports Robolectric 4.18's native runtime loader; keep `-SNAPSHOT` excluded because Robolectric publishes rolling snapshots to Sonatype that the build cannot resolve.",
+      "description": "robolectric: released versions only. Robolectric publishes rolling `-SNAPSHOT` builds to Sonatype, which the build declares no repository for, and `-compat` artifacts that are not drop-in upgrades. 4.18 was skipped (#6673) because it removed `DefaultNativeRuntimeLoader.maybeCopyFonts(TempDirectory)`; compose-preview-daemon 3.28.2 handles both loader shapes (compose-preview-daemon#504), so it is allowed again. This repo-local rule overrides the shared preset's Robolectric rule (yschimke/renovate-config#39).",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "org.robolectric:robolectric"
       ],
-      "allowedVersions": "!/^(4\\.18(\\..*)?|.*-SNAPSHOT|.*-compat)$/"
+      "allowedVersions": "!/^(.*-SNAPSHOT|.*-compat)$/"
     },
     {
       "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
