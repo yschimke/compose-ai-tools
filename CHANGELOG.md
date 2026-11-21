@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.103.0](https://github.com/yschimke/compose-ai-tools/compare/v2.102.0...v2.103.0) (2026-11-21)
+
+
+### Features
+
+* add reusable compose-preview workflows and speed up apply ([#6677](https://github.com/yschimke/compose-ai-tools/issues/6677)) ([2f91b8e](https://github.com/yschimke/compose-ai-tools/commit/2f91b8e3b158d70919e9926ce46f26fd348c1319))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.github.luben:zstd-jni to v1.5.7-28 ([#6670](https://github.com/yschimke/compose-ai-tools/issues/6670)) ([11ec6b1](https://github.com/yschimke/compose-ai-tools/commit/11ec6b10ab3ae4eabb19aa9c5b873f4e1b7b7e39))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.45.0 ([#6671](https://github.com/yschimke/compose-ai-tools/issues/6671)) ([92d830c](https://github.com/yschimke/compose-ai-tools/commit/92d830c024caaaeb1f5884d9fd334d373495287f))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.28.2 ([#6676](https://github.com/yschimke/compose-ai-tools/issues/6676)) ([28f5c56](https://github.com/yschimke/compose-ai-tools/commit/28f5c565b27ac9b62f087ff69fc8c42c8d9899b1))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.10.0 ([#6674](https://github.com/yschimke/compose-ai-tools/issues/6674)) ([625bbbb](https://github.com/yschimke/compose-ai-tools/commit/625bbbb49c11c81e8a2f4fe4ab18a7c89dd87df3))
+
 ## [2.102.0](https://github.com/yschimke/compose-ai-tools/compare/v2.101.1...v2.102.0) (2026-11-20)
 
 
