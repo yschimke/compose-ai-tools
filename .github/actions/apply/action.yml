@@ -171,6 +171,13 @@ inputs:
       comment. This is presentation only: enable it when the repository has
       an issue_comment workflow that handles edits to the checked item.
     default: 'false'
+  doctor:
+    description: >
+      When to run `compose-preview doctor`: `on-failure` (default — skip on the
+      happy path to save 40–90s of Gradle startup, and run after a pipeline
+      failure to surface environment/project diagnostics), `always` (pre-flight
+      before pipelines), or `never`.
+    default: 'on-failure'
   mode:
     description: >
       Override the event-based mode selector: `auto` (default), `baseline`,
@@ -964,7 +971,7 @@ runs:
     # actionable error. A non-zero doctor surfaces as a `::warning::`
     # annotation so it's still visible in the run summary.
     - name: Run compose-preview doctor
-      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none')
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none' && inputs.doctor == 'always')
       shell: bash
       run: |
         echo "::group::compose-preview doctor"
@@ -1111,6 +1118,11 @@ runs:
         FIGMA_REFERENCES: ${{ inputs.figma-references }}
         DESIGN_MAP: ${{ inputs.design-map }}
         DESIGN_PAGES: ${{ inputs.design-pages }}
+        GH_TOKEN: ${{ github.token }}
+        COMMENT_REPO: ${{ github.repository }}
+        COMMENT_ON_EMPTY_DIFF: ${{ inputs.comment-on-empty-diff }}
+        RERUN_CHECKBOX: ${{ inputs.rerun-checkbox }}
+        PHASE: ${{ steps.resolve.outputs.phase }}
       run: |
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -1213,7 +1225,89 @@ runs:
           fi
         }
 
+        publish_compose_early() {
+          # When additional pipelines (resources, a11y, notifications) will run
+          # after compose in the same job, push PR renders and post the compose
+          # diff comment immediately so reviewers do not wait for them.
+          (
+            set -euo pipefail
+            if [ -d _pr_renders ] && [ -f _pr_renders/_push_branch ]; then
+              export MSG=$(cat _pr_renders/_push_msg)
+              export TARGET_BRANCH=$(cat _pr_renders/_push_branch)
+              export SKIP_IF_UNCHANGED=$(cat _pr_renders/_skip_if_unchanged)
+              export SHA_OUTPUT_FILE="$GITHUB_WORKSPACE/_head_sha"
+              rm -f _pr_renders/_push_msg _pr_renders/_push_branch _pr_renders/_skip_if_unchanged
+              (cd _pr_renders && bash "$ACTION_PATH/lib/push-branch.sh")
+            fi
+            if [ ! -s _previews.json ] || [ ! -d _baselines ]; then
+              exit 0
+            fi
+            BASE_REF=$(cat _base_sha 2>/dev/null || echo "")
+            [ -z "$BASE_REF" ] && BASE_REF="compose-preview/main"
+            HEAD_REF=$(cat _head_sha 2>/dev/null || echo "")
+            [ -z "$HEAD_REF" ] && HEAD_REF="$PR_HEAD_BRANCH"
+
+            AB_ARGS=()
+            if [ -n "${AB_CONFIG:-}" ] && [ -f "$AB_CONFIG" ]; then
+              AB_ARGS=(--ab-config "$AB_CONFIG")
+            fi
+            SCOPE_ARGS=()
+            if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != "full" ]; then
+              SCOPE_ARGS=(--scope-modules "$SCOPE_MODULES")
+            fi
+            RERUN_ARGS=()
+            if [ "$RERUN_CHECKBOX" = "true" ]; then
+              RERUN_ARGS=(--rerun-checkbox)
+            fi
+            SKEW_ARGS=()
+            if [ -s _baseline_skew.json ]; then
+              SKEW_ARGS=(--baseline-skew _baseline_skew.json)
+            fi
+            FIGMA_ARGS=()
+            if [ -s _figma_refs.json ]; then
+              FIGMA_ARGS=(--figma-refs _figma_refs.json)
+            fi
+
+            python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
+              --baselines _baselines/baselines.json \
+              --baseline-renders _baselines/renders \
+              --repo "$REPO" \
+              --base-ref "$BASE_REF" \
+              --head-ref "$HEAD_REF" \
+              "${AB_ARGS[@]}" \
+              "${SCOPE_ARGS[@]}" \
+              "${RERUN_ARGS[@]}" \
+              "${SKEW_ARGS[@]}" \
+              "${FIGMA_ARGS[@]}" \
+              > _comment_body.md
+
+            if [ -s _comment_body.md ]; then
+              MARKER="<!-- preview-diff -->"
+              EXISTING_ID=$(gh api \
+                "repos/${COMMENT_REPO}/issues/${PR_NUMBER}/comments" \
+                --paginate \
+                --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+                | head -1)
+              if grep -qF "No visual changes detected." _comment_body.md \
+                 && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ] \
+                 && [ -z "$EXISTING_ID" ]; then
+                echo "No preview diff and no existing comment — skipping."
+              else
+                REPO="$COMMENT_REPO" MARKER="$MARKER" BODY_FILE="_comment_body.md" \
+                  bash "$ACTION_PATH/lib/post-comment.sh"
+              fi
+              touch "$GITHUB_WORKSPACE/_compose_comment_posted"
+            fi
+          ) || echo "::warning::Early compose PR comment failed; will retry in post-pipeline steps." >&2
+        }
+
         [ "$WANT_COMPOSE" = "1" ] && run_one compose
+        if [ "$PHASE" = "all" ] && [ "$MODE" = "comment" ] && [ "$WANT_COMPOSE" = "1" ] \
+           && { [ "$WANT_RESOURCES" = "1" ] || [ "$WANT_A11Y" = "1" ] || [ "$WANT_NOTIFICATIONS" = "1" ]; }; then
+          echo "::group::Publish compose PR comment (early)"
+          publish_compose_early
+          echo "::endgroup::"
+        fi
         [ "$WANT_RESOURCES" = "1" ] && run_one resources
         [ "$WANT_A11Y" = "1" ] && run_one a11y
         [ "$WANT_NOTIFICATIONS" = "1" ] && run_one notifications
@@ -1224,6 +1318,18 @@ runs:
         # Don't fail here — the trailing "surface failures" step decides
         # after pushes + comments have run.
         exit 0
+
+    - name: Run compose-preview doctor (on failure)
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none' && inputs.doctor == 'on-failure' && (failure() || (steps.pipelines.outputs.worst != '' && steps.pipelines.outputs.worst != '0')))
+      shell: bash
+      run: |
+        echo "::group::compose-preview doctor (post-failure diagnostics)"
+        rc=0
+        compose-preview doctor || rc=$?
+        echo "::endgroup::"
+        if [ "$rc" -ne 0 ]; then
+          echo "::warning::compose-preview doctor exited $rc after a pipeline failure. See the doctor block above for remediations."
+        fi
 
     # `always()` so a render that failed partway still persists whatever it
     # fetched — the rerun does not re-download the same faces to fail the same
@@ -1615,7 +1721,7 @@ runs:
         bash "$ACTION_PATH/lib/push-branch.sh"
 
     - name: Generate compose PR comment body
-      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1')
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_compose_comment_posted') == '')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -1736,7 +1842,7 @@ runs:
           > _comment_body_resources.md
 
     - name: Post or update compose PR comment
-      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != '')
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != '' && hashFiles('_compose_comment_posted') == '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
