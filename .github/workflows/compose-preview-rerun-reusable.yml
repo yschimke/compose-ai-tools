@@ -1,0 +1,105 @@
+name: Compose Preview Rerun (reusable)
+
+# Reusable `issue_comment` (edited) handler for checking the rerun checkbox in
+# the bot's sticky `<!-- preview-diff -->` PR comment. Collapses the per-repo
+# rerun workflow into ~15 lines:
+#
+#   name: Compose Preview Rerun
+#   on:
+#     issue_comment:
+#       types: [edited]
+#   permissions: {}
+#   concurrency:
+#     group: compose-preview-rerun-${{ github.event.issue.number }}
+#     cancel-in-progress: false
+#   jobs:
+#     rerun:
+#       if: >-
+#         ${{
+#           github.event.issue.pull_request != null &&
+#           github.event.comment.user.type == 'Bot' &&
+#           startsWith(github.event.comment.body, '<!-- preview-diff -->') &&
+#           (
+#             contains(github.event.comment.body, '- [x] Re-run preview diff') ||
+#             contains(github.event.comment.body, '- [x] Run Compose Preview on this PR') ||
+#             contains(github.event.comment.body, '- [x] Re-run Compose Preview')
+#           )
+#         }}
+#       permissions:
+#         actions: write
+#         issues: write
+#         pull-requests: read
+#       uses: yschimke/compose-ai-tools/.github/workflows/compose-preview-rerun-reusable.yml@v2.x.y
+
+on:
+  workflow_call:
+    inputs:
+      workflow-file:
+        description: 'Workflow filename in the caller repository to dispatch.'
+        type: string
+        default: 'compose-preview.yml'
+      default-branch:
+        description: 'Trusted branch to dispatch workflow-file from (defaults to repository default branch).'
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  rerun:
+    name: Trigger Compose Preview from checkbox
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Authorize, reset checkbox, and dispatch Compose Preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          SENDER: ${{ github.event.sender.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          WORKFLOW_FILE: ${{ inputs.workflow-file }}
+          DEFAULT_BRANCH: ${{ inputs.default-branch || github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # Only repo maintainers (admin/maintain/write) may trigger a workflow run.
+          perm=$(gh api "repos/${REPO}/collaborators/${SENDER}/permission" --jq '.permission' 2>/dev/null || echo "none")
+          case "$perm" in
+            admin|maintain|write) ;;
+            *)
+              echo "Ignoring checkbox edit by ${SENDER} (permission=${perm})."
+              exit 0
+              ;;
+          esac
+
+          # Only dispatch for same-repository PRs so fork code never runs with write secrets.
+          head_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name // ""')
+          if [ "$head_repo" != "$REPO" ]; then
+            echo "Refusing checkbox dispatch for fork PR #${PR_NUMBER} (head_repo=${head_repo})."
+            exit 0
+          fi
+
+          # Uncheck the box immediately so the trigger is idempotent and reusable.
+          updated_body=$(python3 - <<'PY'
+          import os
+          body = os.environ["COMMENT_BODY"]
+          for label in (
+              "Re-run preview diff",
+              "Run Compose Preview on this PR",
+              "Re-run Compose Preview",
+          ):
+              body = body.replace(f"- [x] {label}", f"- [ ] {label}")
+              body = body.replace(f"- [X] {label}", f"- [ ] {label}")
+          print(body, end="")
+          PY
+          )
+          gh api -X PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -f body="$updated_body" >/dev/null
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" -f content=rocket >/dev/null || true
+
+          gh workflow run "$WORKFLOW_FILE" --repo "$REPO" --ref "$DEFAULT_BRANCH" -f "pr_number=${PR_NUMBER}"
+          echo "Dispatched ${WORKFLOW_FILE} on ${DEFAULT_BRANCH} for PR #${PR_NUMBER}."

@@ -1,0 +1,423 @@
+name: Compose Preview (reusable)
+
+# Reusable Compose @Preview diff + baseline workflow, callable from any app or
+# catalog repository. Collapses the per-repo gate, BuildFetch cache wiring,
+# JDK/Android SDK/Gradle setup, `apply` invocation, and failed-render comment
+# fallback into a single `uses:` call:
+#
+#   jobs:
+#     preview:
+#       uses: yschimke/compose-ai-tools/.github/workflows/compose-preview-reusable.yml@v2.x.y
+#       with:
+#         pr-number: ${{ inputs.pr_number }}
+#         artifact-repository: yschimke/your-app-out
+#         variant: debug
+#         catalog-key: compose-preview-plugin
+#         missing-renders: warn
+#         skip: notifications
+#         post-render-command: bash .github/scripts/check-render-errors.sh .
+#       secrets:
+#         artifacts-token: ${{ secrets.ARTIFACTS_TOKEN }}
+#         buildfetch-rw-token: ${{ github.event_name == 'push' && secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN || '' }}
+#         buildfetch-ro-token: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+#
+# Note: when called as a reusable workflow, GitHub reports the render job's
+# check name as `<caller-job-id> / Render previews (baseline or PR comment, auto-selected)`.
+# Update branch-protection / ruleset required checks accordingly when migrating.
+
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        description: 'PR number for workflow_dispatch / checkbox-triggered PR comment runs (leave empty for normal events).'
+        type: string
+        default: ''
+      artifact-repository:
+        description: 'Optional public output repository for generated compose-preview/* branches (owner/repo).'
+        type: string
+        default: ''
+      variant:
+        description: 'Android build variant to render (e.g. debug).'
+        type: string
+        default: 'debug'
+      cli-version:
+        description: 'CLI version selector passed to apply (catalog, auto, none, or explicit version).'
+        type: string
+        default: 'catalog'
+      catalog-key:
+        description: 'Version catalog key for the compose-preview Gradle plugin.'
+        type: string
+        default: 'composePreviewPlugin'
+      only:
+        description: 'Comma-separated pipeline allowlist passed to apply.'
+        type: string
+        default: ''
+      skip:
+        description: 'Comma-separated pipeline denylist passed to apply (e.g. notifications).'
+        type: string
+        default: ''
+      missing-renders:
+        description: 'Missing-render policy passed to apply (fail or warn).'
+        type: string
+        default: 'warn'
+      comment-on-empty-diff:
+        description: 'Post or update a sticky comment even when no visual changes are detected.'
+        type: boolean
+        default: true
+      rerun-checkbox:
+        description: 'Include a "- [ ] Re-run preview diff" checkbox in the sticky PR comment.'
+        type: boolean
+        default: true
+      doctor:
+        description: 'When to run compose-preview doctor (on-failure, always, never).'
+        type: string
+        default: 'on-failure'
+      timeout:
+        description: 'Per-pipeline render timeout in seconds passed to apply.'
+        type: string
+        default: ''
+      runs-on:
+        description: 'GitHub Actions runner label.'
+        type: string
+        default: 'ubuntu-latest'
+      timeout-minutes:
+        description: 'Job timeout in minutes.'
+        type: number
+        default: 45
+      java-distribution:
+        description: 'JDK distribution for actions/setup-java.'
+        type: string
+        default: 'temurin'
+      java-version:
+        description: 'JDK version(s) for actions/setup-java.'
+        type: string
+        default: '21'
+      setup-android:
+        description: 'Whether to run android-actions/setup-android.'
+        type: boolean
+        default: true
+      android-sdk-packages:
+        description: 'Space-separated Android SDK packages to install when setup-android is true.'
+        type: string
+        default: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      skip-draft-prs:
+        description: 'Skip rendering while a PR is in draft (runs on ready_for_review).'
+        type: boolean
+        default: true
+      skip-non-ui-renovate:
+        description: 'Skip Renovate PRs that only bump non-UI dependencies (posts a checkbox comment to override).'
+        type: boolean
+        default: true
+      ui-dep-regex:
+        description: 'Case-insensitive regex matching UI-affecting dependencies for Renovate filtering.'
+        type: string
+        default: 'compose|material|rc[-_]players|compose[-_]?ai|compose[-_]?preview|skiko|coil|livery|glance|horologist|wear|accompanist|robolectric|lottie|svg|agp|android[-_]?gradle|kotlin|ksp|metro|paparazzi|androidx\.(ui|core|activity|navigation|window|graphics|appcompat)'
+      pre-render-command:
+        description: 'Optional bash command to run after Gradle/BuildFetch setup and before apply (e.g. font staging or custom CLI install).'
+        type: string
+        default: ''
+      post-render-command:
+        description: 'Optional bash command to run with if: always() after apply (e.g. bash .github/scripts/check-render-errors.sh .).'
+        type: string
+        default: ''
+    secrets:
+      artifacts-token:
+        description: 'Optional token with contents:write on artifact-repository.'
+        required: false
+      buildfetch-rw-token:
+        description: 'Optional BuildFetch read/write token (caller should pass only on trusted push to main).'
+        required: false
+      buildfetch-ro-token:
+        description: 'Optional BuildFetch read-only token for PR runs.'
+        required: false
+
+permissions: {}
+
+jobs:
+  # Fast pre-check so draft PRs, non-UI path-only PRs, and non-UI Renovate bumps
+  # skip the full JDK + Android SDK + Gradle setup while still letting the
+  # required `Render previews` check report as skipped (passing).
+  gate:
+    name: Check if previews should run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Checkout for diff inspection
+        if: >-
+          ${{
+            github.event_name == 'pull_request' &&
+            !(inputs.skip-draft-prs && github.event.pull_request.draft) &&
+            !(startsWith(github.head_ref || '', 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]')
+          }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide whether to render previews
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft || false }}
+          SKIP_DRAFT: ${{ inputs.skip-draft-prs }}
+          SKIP_RENOVATE: ${{ inputs.skip-non-ui-renovate }}
+          UI_DEP_REGEX: ${{ inputs.ui-dep-regex }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr-number || '' }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login || '' }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # push to main and manual / checkbox workflow_dispatch always run.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Skip release-please PRs (version/changelog only).
+          if [[ "$HEAD_REF" == release-please--* ]] && [ "$PR_AUTHOR" = "github-actions[bot]" ]; then
+            echo "Skipping release-please PR."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Skip draft PRs; ready_for_review will trigger a render when ready.
+          if [ "$SKIP_DRAFT" = "true" ] && [ "$IS_DRAFT" = "true" ]; then
+            echo "Skipping draft PR #${PR_NUMBER}."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Fail open if git diff is unavailable.
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "Base SHA unavailable; failing open."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          decision=$(python3 - <<'PY'
+          import fnmatch, json, os, re, subprocess
+          from pathlib import Path
+
+          base_sha = os.environ["BASE_SHA"]
+          head_sha = os.environ["HEAD_SHA"]
+          pr_author = os.environ["PR_AUTHOR"]
+          head_ref = os.environ["HEAD_REF"]
+          pr_title = os.environ["PR_TITLE"]
+          skip_renovate = os.environ.get("SKIP_RENOVATE", "true") == "true"
+          ui_dep_regex = os.environ["UI_DEP_REGEX"]
+
+          files = [
+              f.strip()
+              for f in subprocess.check_output(
+                  ["git", "diff", "--name-only", "--no-renames", base_sha, head_sha],
+                  text=True,
+              ).splitlines()
+              if f.strip()
+          ]
+          if not files:
+              print("run")
+              raise SystemExit(0)
+
+          # Non-UI paths from .github/preview-scope.json plus unrelated workflows.
+          ignore_globs = []
+          scope_file = Path(".github/preview-scope.json")
+          if scope_file.is_file():
+              ignore_globs = json.loads(scope_file.read_text()).get("ignorePaths", [])
+
+          def is_ignored(path: str) -> bool:
+              if path in (".github/workflows/compose-preview.yml", ".github/preview-scope.json"):
+                  return False
+              if path.startswith(".github/workflows/") or path.startswith(".github/scripts/"):
+                  return True
+              for pat in ignore_globs:
+                  p = pat.rstrip("/")
+                  if p.endswith("/**"):
+                      prefix = p[:-3]
+                      if path == prefix or path.startswith(prefix + "/"):
+                          return True
+                  elif p.startswith("**/"):
+                      if fnmatch.fnmatch(path, p) or fnmatch.fnmatch(Path(path).name, p[3:]):
+                          return True
+                  elif fnmatch.fnmatch(path, p):
+                      return True
+              return False
+
+          if all(is_ignored(f) for f in files):
+              print("skip_paths")
+              raise SystemExit(0)
+
+          # Renovate PRs: run by default only when UI-affecting dependencies change.
+          is_renovate = pr_author == "renovate[bot]" or head_ref.startswith("renovate/")
+          dep_only_files = all(
+              f in ("gradle/libs.versions.toml", "gradle.properties", "gradle/wrapper/gradle-wrapper.properties")
+              or f.endswith(".lock")
+              or f.startswith(".github/workflows/")
+              or is_ignored(f)
+              for f in files
+          )
+          if skip_renovate and is_renovate and dep_only_files:
+              diff_text = subprocess.check_output(
+                  ["git", "diff", "-U0", base_sha, head_sha], text=True, errors="replace"
+              )
+              changed_lines = "\n".join(
+                  line for line in diff_text.splitlines()
+                  if (line.startswith("+") or line.startswith("-"))
+                  and not line.startswith("+++") and not line.startswith("---")
+              )
+              haystack = f"{head_ref}\n{pr_title}\n{changed_lines}"
+              if not re.search(ui_dep_regex, haystack, re.I):
+                  print("skip_renovate")
+                  raise SystemExit(0)
+
+          print("run")
+          PY
+          )
+
+          echo "Gate decision: ${decision}"
+          if [ "$decision" = "run" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "run=false" >> "$GITHUB_OUTPUT"
+
+          # On Renovate non-UI skips (same-repo PRs), post/update a sticky comment
+          # with a checkbox so a maintainer can trigger a render on demand.
+          if [ "$decision" = "skip_renovate" ] && [ "$HEAD_REPO" = "$REPO" ]; then
+            id=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- preview-diff -->"))) | .id' | tail -1) || true
+            body=$(printf '%s\n' \
+              "<!-- preview-diff -->" \
+              "## Preview Changes" \
+              "" \
+              "- [ ] Re-run preview diff" \
+              "" \
+              "Skipped automatically for non-UI dependency update (\`${HEAD_SHA:0:8}\`).")
+            if [ -n "${id:-}" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" >/dev/null
+            else
+              gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null
+            fi
+          fi
+
+  apply:
+    name: Render previews (baseline or PR comment, auto-selected)
+    needs: gate
+    if: ${{ !cancelled() && (needs.gate.result != 'success' || needs.gate.outputs.run != 'false') }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.pr-number != '' && format('refs/pull/{0}/head', inputs.pr-number) || '' }}
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+
+      - name: Set up Android SDK
+        if: ${{ inputs.setup-android }}
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: ${{ inputs.android-sdk-packages }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ (github.event_name == 'pull_request' || inputs.pr-number != '') && 'true' || 'false' }}
+
+      - name: Configure BuildFetch remote cache
+        env:
+          RW_TOKEN: ${{ github.event_name == 'push' && secrets.buildfetch-rw-token || '' }}
+          RO_TOKEN: ${{ secrets.buildfetch-ro-token }}
+        run: | # zizmor: ignore[github-env]
+          if [ -n "$RW_TOKEN" ]; then
+            printf 'BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN=%s\nON_CI=true\n' "$RW_TOKEN" >> "$GITHUB_ENV"
+            echo "BuildFetch remote cache: read/write (trusted push)."
+          elif [ -n "$RO_TOKEN" ]; then
+            printf 'BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN=%s\nON_CI=false\n' "$RO_TOKEN" >> "$GITHUB_ENV"
+            echo "BuildFetch remote cache: read-only."
+          else
+            echo "BuildFetch remote cache: disabled (no token provided)."
+          fi
+
+      - name: Run pre-render hook
+        if: ${{ inputs.pre-render-command != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRE_RENDER_COMMAND: ${{ inputs.pre-render-command }}
+        run: bash -euo pipefail -c "$PRE_RENDER_COMMAND"
+
+      - name: Record render start
+        run: echo "RENDER_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - id: apply
+        uses: yschimke/compose-ai-tools/.github/actions/apply@main # zizmor: ignore[unpinned-uses]
+        with:
+          mode: ${{ inputs.pr-number != '' && 'comment' || 'auto' }}
+          pr-number: ${{ inputs.pr-number }}
+          variant: ${{ inputs.variant }}
+          artifact-repository: ${{ inputs.artifact-repository }}
+          artifacts-token: ${{ secrets.artifacts-token }}
+          cli-version: ${{ inputs.cli-version }}
+          catalog-key: ${{ inputs.catalog-key }}
+          only: ${{ inputs.only }}
+          skip: ${{ inputs.skip }}
+          missing-renders: ${{ inputs.missing-renders }}
+          comment-on-empty-diff: ${{ inputs.comment-on-empty-diff }}
+          rerun-checkbox: ${{ inputs.rerun-checkbox }}
+          doctor: ${{ inputs.doctor }}
+          timeout: ${{ inputs.timeout }}
+
+      - name: Report a failed render on the PR
+        if: failure() && steps.apply.outcome == 'failure' && (github.event_name == 'pull_request' || inputs.pr-number != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr-number }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+          RERUN_CHECKBOX: ${{ inputs.rerun-checkbox }}
+        run: |
+          set -euo pipefail
+          read -r id updated < <(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- preview-diff -->"))) | [.id, .updated_at] | @tsv' | tail -1) || true
+          if [ -n "${updated:-}" ] && [[ ! "$updated" < "$RENDER_STARTED" ]]; then
+            echo "This run already updated the preview-diff comment; leaving it."
+            exit 0
+          fi
+          checkbox_line=""
+          if [ "$RERUN_CHECKBOX" = "true" ]; then
+            checkbox_line=$'\n- [ ] Re-run preview diff\n'
+          fi
+          body=$(printf '%s\n' "<!-- preview-diff -->" "## Preview Changes" "${checkbox_line}" \
+            "> [!CAUTION]" \
+            "> The preview render failed at ${SHA:0:8}, so this PR has no preview diff for that commit. See [the run]($RUN_URL).")
+          if [ -n "${id:-}" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api "repos/$REPO/issues/$PR/comments" -f body="$body" >/dev/null
+          fi
+
+      - name: Run post-render hook
+        if: ${{ always() && inputs.post-render-command != '' }}
+        env:
+          POST_RENDER_COMMAND: ${{ inputs.post-render-command }}
+        run: bash -euo pipefail -c "$POST_RENDER_COMMAND"
