@@ -138,14 +138,14 @@
       "allowedVersions": "/^3\\.5\\./"
     },
     {
-      "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository — so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
+      "description": "robolectric: skip 4.18 and snapshots. Robolectric 4.18 removes/changes `DefaultNativeRuntimeLoader.maybeCopyFonts(TempDirectory)`, breaking `:samples:design-catalog-wear-m3:composePreviewRender` and `Apply compose-preview` (`NoSuchMethodException`). Skipped from https://github.com/yschimke/compose-ai-tools/pull/6669 (mirrors yschimke/renovate-config#39, which this repo-local rule previously overrode). Remove the 4.18 exclusion once compose-preview-daemon supports Robolectric 4.18's native runtime loader; keep `-SNAPSHOT` excluded because Robolectric publishes rolling snapshots to Sonatype that the build cannot resolve.",
       "matchManagers": [
         "gradle"
       ],
       "matchDepNames": [
         "org.robolectric:robolectric"
       ],
-      "allowedVersions": "!/-SNAPSHOT$/"
+      "allowedVersions": "!/^(4\\.18(\\..*)?|.*-SNAPSHOT|.*-compat)$/"
     },
     {
       "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
