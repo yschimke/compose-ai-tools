@@ -314,8 +314,14 @@ class WffRemoteComposeTest {
   @Test
   fun `a partial in-memory tree reports only what is missing`() {
     val all = inMemory("SimpleAnalog")
-    val dropped = all.keys.first { it.startsWith("drawable") && it.endsWith(".png") }
-    val result = WffRemoteCompose.compile(xml("SimpleAnalog"), WffResourceSource.of(all - dropped))
+    val watchFaceXml = xml("SimpleAnalog")
+    val dropped =
+      all.keys.sorted().first {
+        it.startsWith("drawable") &&
+          it.endsWith(".png") &&
+          it.substringAfterLast('/').substringBeforeLast('.') in watchFaceXml
+      }
+    val result = WffRemoteCompose.compile(watchFaceXml, WffResourceSource.of(all - dropped))
     assertThat(result.isSuccess).isTrue()
     val names = result.diagnostics.filter { it.code == "MISSING_RESOURCE" }
     assertThat(names).isNotEmpty()
