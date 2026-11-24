@@ -136,6 +136,22 @@ final class SimulatorSandbox {
             String.class,
             SimulatorSandbox.class.getPackageName() + ".SimulatorShadowInstrumentation"),
         ClassParameter.from(boolean.class, false));
+    // Injected input (Espresso's touches and keys) reaches the simulator's windows.
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.hardware.input.InputManager"),
+        ClassParameter.from(
+            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowInputManager"),
+        ClassParameter.from(boolean.class, false));
+    // Activity.recreate() through Navigator, as its `recreate` command does.
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.app.Activity"),
+        ClassParameter.from(
+            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowActivity"),
+        ClassParameter.from(boolean.class, false));
     ShadowMap shadowMap = shadows.build();
     androidSandbox.replaceShadowMap(shadowMap);
     ClassHandler classHandler =

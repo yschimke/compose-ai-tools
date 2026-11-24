@@ -1993,6 +1993,76 @@ values `{"type":"long"|"float"|"double"|"bytes"|"string[]"|"stringList"|"intList
 compare against to skip real work in tests and previews: MeshCore's watch shows canned preview
 data, and never touches the Data Layer, unless it is set.
 
+## Instrumentation tests
+
+A prototype: `--instrument` runs an app's `androidTest` APK inside the simulator, beside the app,
+as `am instrument` runs it on a device or emulator, and exits 0 when every test passed.
+
+```sh
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+compose-preview android-simulator app/build/outputs/apk/debug/app-debug.apk \
+  --instrument app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+  --tests com.example.LoginTest,com.example.CartTest#checkout \
+  --test-report build/simulator-tests/TEST-simulator.xml
+```
+
+It is headless, and the app's process starts with none of its activities, as `am instrument`
+leaves it. The tests run on a thread of their own while the main thread keeps looping, which is the
+device's arrangement and not a Robolectric unit test's: `runOnMainSync`, `ActivityScenario`,
+Espresso and the Compose test rules post to the main thread and wait for it. Each test is reported
+as it finishes; `--test-report` also writes JUnit XML. `samples/android-instrumented` is the suite
+CI runs (InstrumentationRegistry, `runOnMainSync`, an Espresso click through `ActivityScenario`, and
+a Compose rule with `recreate()`): five tests in about five seconds after the simulator starts.
+
+How the pieces fit:
+
+- **Classes.** The test APK is converted and cached like the app's, and its classes go on the
+  sandbox class path after the app's, so the app's own copy of a shared library wins (AGP leaves
+  those out of the test APK anyway). Tests are found by reading the test classes with ASM, not by
+  loading them: a concrete class with `@RunWith` or a `@Test` method, outside the libraries the
+  APK bundles.
+- **Runner.** JUnit's `JUnitCore` stands in for `AndroidJUnitRunner`. `AndroidJUnit4` is pointed
+  at androidx.test's device runner (`android.junit.runner`), since left alone it picks
+  Robolectric's whenever that is on the class path, which would start a sandbox of its own. The
+  instrumentation is the one the simulator already registered with `InstrumentationRegistry`.
+- **androidx.test's device implementations.** Robolectric registers its own `ActivityInvoker`,
+  `UiController` and `ControlledLooper` through `ServiceLoader`; they drive a paused main looper
+  from the test thread, which the simulator's looping main thread refuses. The test and main
+  threads see the sandbox without those registrations, so androidx.test uses what it uses on a
+  device: activities start with `startActivity`, which `Navigator` carries out, and Espresso
+  synchronises with the main thread.
+- **The test APK's manifest.** `ActivityScenario` starts androidx.test.core's `BootstrapActivity`,
+  `EmptyActivity` and `EmptyFloatingActivity`, which a device finds in the test APK's manifest.
+  They are declared under the app's package, since one process serves both, with framework themes
+  in place of the test APK's, whose resources are not loaded.
+- **The instrumentation.** `waitForIdleSync`, `runOnMainSync` and `startActivitySync` from the
+  test thread are handed to the main thread and waited for; `startActivitySync` waits for the
+  activity to resume, as on a device.
+- **Espresso's clock.** Espresso's `UiController` loops the main queue itself, and Robolectric's
+  paused queue waits there for the simulated clock, which only the simulator's loop advances. While
+  Espresso holds the main thread that way, the clock is advanced in real time.
+
+Three simulator fixes came out of it, and apply to every launch, not only tests:
+
+- the top resumed activity of each display has window focus (`hasWindowFocus()`,
+  `onWindowFocusChanged`); Robolectric's `ActivityController.setup()` gives none;
+- an app's own `Activity.recreate()` re-creates through `Navigator`, as the `recreate` command
+  does, instead of crashing in `ActivityController.recreate()`;
+- `InputManager.injectInputEvent` (how Espresso and `Instrumentation.sendPointerSync` inject)
+  reaches the window, as `UiAutomation`'s does.
+
+Not yet:
+
+- `InstrumentationRegistry.getArguments()` is empty (no `-e` arguments), and there is no
+  orchestrator, sharding, `ClassRule`-level isolation or per-test process.
+- `getContext()` is the app's context: a test reading the test APK's own assets or resources
+  (`androidTest/assets`) does not find them.
+- `UiAutomator`, `adb shell` from a test, screenshots through `DeviceCapture`, and permissions
+  granted with `GrantPermissionRule` are untried.
+- A crash on the main thread ends the simulator, as it ends the process on a device; the run then
+  reports no summary.
+- `--instrument` is not combined with `--control`, `--pair`, `--install`, `--app` or `--project`.
+
 ## Constraints
 
 What runs: apps whose UI is Compose or Views over the framework Robolectric shadows, with their

@@ -325,6 +325,8 @@ include(":samples:remotecompose")
 include(":samples:host-natives")
 // A SurfaceView drawn with lockCanvas, for the simulator's SurfaceView surfaces (#6428).
 include(":samples:surface-view")
+// An androidTest suite run inside the simulator (`android-simulator --instrument`).
+include(":samples:android-instrumented")
 
 // The one `data/…` module still here: the shared-element transition model is consumed by the render
 // matrix, not a daemon. docs/build-scripts/SETTINGS.md#flat-data-paths

@@ -1,12 +1,20 @@
 package ee.schimke.composeai.simulator;
 
+import android.app.Activity;
 import android.app.Application;
 import android.app.Instrumentation;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
+import android.content.ComponentName;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import java.io.File;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.inject.Named;
 import org.robolectric.android.internal.AndroidTestEnvironment;
@@ -139,6 +147,130 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
 
   /** Installs the providers immediately before the application's {@code onCreate()}. */
   public static class ProvidersFirstInstrumentation extends RoboMonitoringInstrumentation {
+
+    // The simulator's main thread loops the main looper itself (PAUSED mode, driven in real time),
+    // and Robolectric lets no other thread idle it. An instrumentation test (`--instrument`) calls
+    // these from its own thread, as on a device: each is handed to the main thread and waited for,
+    // which a device's instrumentation does too.
+
+    @Override
+    public void waitForIdleSync() {
+      if (onMainThread()) super.waitForIdleSync();
+      else onMainAndWait(() -> ProvidersFirstInstrumentation.super.waitForIdleSync());
+    }
+
+    @Override
+    public void runOnMainSync(Runnable runnable) {
+      if (onMainThread()) super.runOnMainSync(runnable);
+      else onMainAndWait(() -> ProvidersFirstInstrumentation.super.runOnMainSync(runnable));
+    }
+
+    @Override
+    public Activity startActivitySync(Intent intent) {
+      if (onMainThread()) return super.startActivitySync(intent);
+      return startAndAwaitResumed(intent, null);
+    }
+
+    @Override
+    public Activity startActivitySync(Intent intent, Bundle options) {
+      if (onMainThread()) return super.startActivitySync(intent);
+      return startAndAwaitResumed(intent, options);
+    }
+
+    /**
+     * A device's {@code startActivitySync}: the start goes through the system (here {@link
+     * Navigator}, which drains {@code startActivity} on the main thread), and the caller waits for
+     * the activity to resume and the main thread to go idle. androidx.test's {@code
+     * ActivityScenario} starts every activity this way.
+     */
+    private Activity startAndAwaitResumed(Intent intent, Bundle options) {
+      Intent start = new Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      ComponentName wanted = start.getComponent();
+      Application app = (Application) getTargetContext().getApplicationContext();
+      CountDownLatch resumed = new CountDownLatch(1);
+      Activity[] found = new Activity[1];
+      Application.ActivityLifecycleCallbacks callbacks =
+          new Application.ActivityLifecycleCallbacks() {
+            @Override
+            public void onActivityResumed(Activity activity) {
+              if (found[0] != null) return;
+              if (wanted != null
+                  && !wanted.getClassName().equals(activity.getComponentName().getClassName())) {
+                return;
+              }
+              found[0] = activity;
+              resumed.countDown();
+            }
+
+            @Override
+            public void onActivityCreated(Activity activity, Bundle state) {}
+
+            @Override
+            public void onActivityStarted(Activity activity) {}
+
+            @Override
+            public void onActivityPaused(Activity activity) {}
+
+            @Override
+            public void onActivityStopped(Activity activity) {}
+
+            @Override
+            public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
+
+            @Override
+            public void onActivityDestroyed(Activity activity) {}
+          };
+      onMainAndWait(
+          () -> {
+            app.registerActivityLifecycleCallbacks(callbacks);
+            app.startActivity(start, options);
+          });
+      try {
+        if (!resumed.await(START_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+          throw new IllegalStateException(
+              "activity " + wanted + " did not resume within " + START_TIMEOUT_SECONDS + " s");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted starting " + wanted, e);
+      } finally {
+        onMainAndWait(() -> app.unregisterActivityLifecycleCallbacks(callbacks));
+      }
+      waitForIdleSync();
+      return found[0];
+    }
+
+    private static final long START_TIMEOUT_SECONDS = 45;
+
+    private static boolean onMainThread() {
+      return Looper.myLooper() == Looper.getMainLooper();
+    }
+
+    /** Runs [task] on the main thread and waits, rethrowing what it threw here. */
+    private static void onMainAndWait(Runnable task) {
+      CountDownLatch done = new CountDownLatch(1);
+      Throwable[] thrown = new Throwable[1];
+      new Handler(Looper.getMainLooper())
+          .post(
+              () -> {
+                try {
+                  task.run();
+                } catch (Throwable t) {
+                  thrown[0] = t;
+                } finally {
+                  done.countDown();
+                }
+              });
+      try {
+        done.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted waiting for the main thread", e);
+      }
+      if (thrown[0] instanceof RuntimeException e) throw e;
+      if (thrown[0] instanceof Error e) throw e;
+      if (thrown[0] != null) throw new RuntimeException(thrown[0]);
+    }
     @Override
     public void callApplicationOnCreate(Application app) {
       // A manifest parsed from an APK leaves the process name unset, where a device defaults it

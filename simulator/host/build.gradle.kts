@@ -86,6 +86,10 @@ dependencies {
 
   // `ApkClassConverter` runs in its own JVM with `lib-dex2jar/` on the classpath.
   compileOnly(libs.dex2jar.tools)
+  // `InstrumentationRun` (`--instrument`): JUnit comes from the test APK at run time, ASM from the
+  // Android daemon sidecar.
+  compileOnly(libs.junit)
+  compileOnly(libs.asm)
 
   testImplementation(libs.junit)
   // SimulatorSandbox's configuration is normally provided at runtime by the Android daemon sidecar.

@@ -98,6 +98,11 @@ final class Protocol {
   }
 
   void event(String name, JSONObject body) {
+    // An instrumentation run has no control channel; the system's errors (an activity that would
+    // not start, say) still belong in its log, as logcat has them on a device.
+    if (out == null && "error".equals(name) && InstrumentationRun.enabled()) {
+      System.err.println("simulator error: " + body);
+    }
     JSONObject line = new JSONObject();
     try {
       if (body != null) {

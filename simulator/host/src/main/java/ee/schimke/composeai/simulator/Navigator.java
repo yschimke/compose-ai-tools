@@ -323,6 +323,45 @@ final class Navigator {
 
   /** Drains what the app started or stopped since the last cycle, and reaps finished components. */
   void pump() {
+    pumpStarts();
+    syncFocus();
+  }
+
+  /**
+   * Window focus as a device's window manager gives it: each display's top activity has it while
+   * resumed, and no other activity does. Robolectric's {@code ActivityController.setup()} never
+   * calls {@code windowFocusChanged}, so without this no window ever had focus: {@code
+   * hasWindowFocus()} stayed false, {@code onWindowFocusChanged} never ran, and Espresso, which
+   * waits for its root to take focus, timed out on every view.
+   */
+  private void syncFocus() {
+    java.util.Set<Integer> seen = new java.util.HashSet<>();
+    for (Entry entry : stack) {
+      boolean top = seen.add(entry.displayId);
+      Activity activity = entry.activity();
+      boolean wanted = top && !entry.stopped && !activity.isFinishing() && resumed(activity);
+      if (activity.hasWindowFocus() == wanted) continue;
+      if (activity.getWindow() == null
+          || !activity.getWindow().getDecorView().isAttachedToWindow()) {
+        continue;
+      }
+      try {
+        entry.controller.windowFocusChanged(wanted);
+      } catch (RuntimeException e) {
+        // No view root yet (a window not drawn); the next pump tries again.
+      }
+    }
+  }
+
+  private static boolean resumed(Activity activity) {
+    try {
+      return org.robolectric.util.ReflectionHelpers.getField(activity, "mResumed");
+    } catch (RuntimeException e) {
+      return false;
+    }
+  }
+
+  private void pumpStarts() {
     Intent intent;
     while ((intent = shadowApp.getNextStartedActivity()) != null) {
       ShadowActivity.IntentForResult forResult = takeForResult(intent);
@@ -991,7 +1030,25 @@ final class Navigator {
    * ViewModel}s kept on the default display, where Robolectric's own re-creation runs.
    */
   JSONObject recreate(int displayId) {
-    Entry top = appTop(displayId);
+    return recreate(appTop(displayId));
+  }
+
+  /**
+   * {@code Activity.recreate()} called by the app (or a test's {@code ActivityScenario}), routed
+   * here by {@link SimulatorShadowActivity}: false when [activity] is not on the back stack.
+   */
+  boolean recreate(Activity activity) {
+    for (Entry entry : stack) {
+      if (entry.activity() == activity) {
+        recreate(entry);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private JSONObject recreate(Entry top) {
+    int displayId = top.displayId;
     if (displayId == Display.DEFAULT_DISPLAY) {
       // Robolectric's recreate() asks for window focus before the new window is attached, and its
       // configuration change does not: a change no manifest can declare handled
