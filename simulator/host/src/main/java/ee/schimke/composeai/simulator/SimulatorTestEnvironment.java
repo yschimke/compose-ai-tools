@@ -6,6 +6,7 @@ import android.app.Instrumentation;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -152,6 +153,29 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
     // and Robolectric lets no other thread idle it. An instrumentation test (`--instrument`) calls
     // these from its own thread, as on a device: each is handed to the main thread and waited for,
     // which a device's instrumentation does too.
+
+    private volatile Context testContext;
+
+    /**
+     * The test APK's context under {@code --instrument} ({@link TestApkContext}), else the app's,
+     * as Robolectric answers.
+     */
+    @Override
+    public Context getContext() {
+      String apk = System.getProperty(InstrumentationRun.APK_PROPERTY);
+      if (apk == null || apk.isEmpty()) return super.getContext();
+      Context context = testContext;
+      if (context == null) {
+        synchronized (this) {
+          if (testContext == null) {
+            Context created = TestApkContext.create(super.getTargetContext(), apk);
+            testContext = created != null ? created : super.getContext();
+          }
+          context = testContext;
+        }
+      }
+      return context;
+    }
 
     @Override
     public void waitForIdleSync() {
@@ -314,6 +338,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       DocumentsStore.install(app);
       WearPlatformServices.install(app);
       Navigator.registerBindableServices(app);
+      // The host's audio codecs (ffmpeg), in MediaCodecList before the app looks.
+      HostCodecs.install();
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.
       if (DataLayerLink.enabled()) {

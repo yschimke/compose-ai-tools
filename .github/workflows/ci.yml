@@ -655,6 +655,10 @@ jobs:
           --cli cli/build/install/compose-preview/bin/compose-preview
           --apk samples/host-natives/build/outputs/apk/debug/host-natives-debug.apk
           --check host-natives --java "$JAVA_HOME_21_X64" --out build/simulator-smoke
+      # The simulator's host audio codecs run on ffmpeg (docs/SIMULATOR.md, "Audio files and
+      # codecs"); without it MediaTranscodeTest is skipped rather than run.
+      - name: ffmpeg for the host codecs
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg)
       # Through the plugin's task, as an agent runs a suite: it builds both APKs and runs the CLI.
       - name: Instrumentation tests in the simulator
         run: >-

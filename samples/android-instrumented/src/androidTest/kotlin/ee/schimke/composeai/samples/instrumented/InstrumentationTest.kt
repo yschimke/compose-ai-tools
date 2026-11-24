@@ -15,6 +15,14 @@ class InstrumentationTest {
   }
 
   @Test
+  fun testContextReadsItsOwnAssets() {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    assertEquals("ee.schimke.composeai.samples.instrumented.test", context.packageName)
+    val text = context.assets.open("fixture.txt").bufferedReader().use { it.readText() }
+    assertEquals("from the test APK\n", text)
+  }
+
+  @Test
   fun runOnMainSyncReachesTheMainThread() {
     var onMain = false
     InstrumentationRegistry.getInstrumentation().runOnMainSync {
