@@ -338,6 +338,8 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       DocumentsStore.install(app);
       WearPlatformServices.install(app);
       Navigator.registerBindableServices(app);
+      // The host's audio codecs (ffmpeg), in MediaCodecList before the app looks.
+      HostCodecs.install();
       // DataLayer names Play services types: an unpaired app may not have them, so it is never
       // even loaded unless the launch is paired.
       if (DataLayerLink.enabled()) {

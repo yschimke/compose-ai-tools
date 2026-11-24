@@ -2067,9 +2067,13 @@ How the pieces fit:
 
 - **Classes.** The test APK is converted and cached like the app's, and its classes go on the
   sandbox class path after the app's, so the app's own copy of a shared library wins (AGP leaves
-  those out of the test APK anyway). Tests are found by reading the test classes with ASM, not by
-  loading them: a concrete class with `@RunWith` or a `@Test` method, outside the libraries the
-  APK bundles.
+  those out of the test APK anyway). The test APK is converted against the app's classes: test
+  code calls into the app, a Kotlin interface's `$default` methods among its calls, and only the
+  app's classes say such an owner is an interface. Tests are found by reading the test classes
+  with ASM, not by loading them.
+- **Two contexts.** `getTargetContext()` is the app's. `getContext()` is the test APK's, as on a
+  device: its assets and resources (`androidTest/assets`, `androidTest/res`) and the test package
+  name, over the app's files and services, since one process serves both.
 - **Runner.** JUnit's `JUnitCore` stands in for `AndroidJUnitRunner`. `AndroidJUnit4` is pointed
   at androidx.test's device runner (`android.junit.runner`), since left alone it picks
   Robolectric's whenever that is on the class path, which would start a sandbox of its own. The
@@ -2091,26 +2095,51 @@ How the pieces fit:
   paused queue waits there for the simulated clock, which only the simulator's loop advances. While
   Espresso holds the main thread that way, the clock is advanced in real time.
 
-Three simulator fixes came out of it, and apply to every launch, not only tests:
+The simulator fixes that came out of it apply to every launch, not only tests:
 
 - the top resumed activity of each display has window focus (`hasWindowFocus()`,
   `onWindowFocusChanged`); Robolectric's `ActivityController.setup()` gives none;
 - an app's own `Activity.recreate()` re-creates through `Navigator`, as the `recreate` command
   does, instead of crashing in `ActivityController.recreate()`;
 - `InputManager.injectInputEvent` (how Espresso and `Instrumentation.sendPointerSync` inject)
-  reaches the window, as `UiAutomation`'s does.
+  reaches the window, as `UiAutomation`'s does;
+- audio: `MediaExtractor` reads real files and an MP3 decoder and AAC encoder are in
+  `MediaCodecList` ([Audio files and codecs](#audio-files-and-codecs)).
+
+Cadence's own suite (13 tests: launch, notifications, Media3 transcoding with chapter splits, a
+storage tree URI) passes at `--sdk 36` (its notification tests assume API 36).
 
 Not yet:
 
 - `InstrumentationRegistry.getArguments()` is empty (no `-e` arguments), and there is no
   orchestrator, sharding, `ClassRule`-level isolation or per-test process.
-- `getContext()` is the app's context: a test reading the test APK's own assets or resources
-  (`androidTest/assets`) does not find them.
 - `UiAutomator`, `adb shell` from a test, screenshots through `DeviceCapture`, and permissions
   granted with `GrantPermissionRule` are untried.
 - A crash on the main thread ends the simulator, as it ends the process on a device; the run then
   reports no summary.
 - `--instrument` is not combined with `--control`, `--pair`, `--install`, `--app` or `--project`.
+
+## Audio files and codecs
+
+Robolectric's `MediaExtractor` knows only tracks a test registered, and it has no codecs at all, so
+an app that reads a file it downloaded, or transcodes one, failed. The simulator answers both:
+
+- **`MediaExtractor`** reads a path or `file:` URI that is an MP3, WAV, or MP4 / M4A (not
+  fragmented): each track's format (`mime`, sample rate, channels, `durationUs`, `csd-0` for AAC,
+  width and height for video) and its samples (`readSampleData`, `advance`, `getSampleTime`,
+  `getSampleFlags`, `seekTo`). Anything else falls back to Robolectric's registered tracks.
+- **Codecs.** `c2.simulator.mp3.decoder` (`audio/mpeg` to PCM) and `c2.simulator.aac.encoder`
+  (PCM to `audio/mp4a-latm`, AAC-LC) are in `MediaCodecList`, so Media3's `Transformer` (and an
+  app's own `MediaCodec`) finds them. They run in synchronous mode on the host's `ffmpeg`, one
+  process per codec instance, with real output: what the codec makes comes back as it makes it,
+  not one output per input as Robolectric's own fake codecs do. `ffmpeg` is
+  `-Dcomposeai.simulator.ffmpeg` or `COMPOSE_PREVIEW_FFMPEG` if set (`none` turns the codecs off),
+  else the first on `PATH`; without one, no codec is listed and media work fails as it did before.
+  `ffmpeg` runs on the host's own loader (`LD_LIBRARY_PATH` dropped), not the simulator JVM's.
+
+Not yet: video codecs, other audio codecs (an AAC decoder, Opus, FLAC), asynchronous
+(`setCallback`) codecs, `MediaMuxer` (Media3 writes MP4 with its own muxer), and playback through
+`AudioTrack` to the host's speakers.
 
 ## Constraints
 

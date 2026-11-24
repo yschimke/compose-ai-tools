@@ -1121,6 +1121,32 @@ public final class ApkClassConverter {
     ClassHierarchy(Map<String, Header> appClasses, ZipFile platform) {
       this.appClasses = appClasses;
       this.platform = platform;
+      this.context = openContext();
+    }
+
+    /**
+     * {@value #CONTEXT_PROPERTY}: jars of classes this APK's code runs beside, looked up after the
+     * APK's own and before the platform's. A test APK is converted with its app's classes here:
+     * its calls into the app's interfaces' static and default methods (Kotlin's {@code $default}
+     * on an interface) are interface calls only the app's classes can tell.
+     */
+    static final String CONTEXT_PROPERTY = "composeai.simulator.converter.context";
+
+    private final List<ZipFile> context;
+
+    private static List<ZipFile> openContext() {
+      String jars = System.getProperty(CONTEXT_PROPERTY);
+      if (jars == null || jars.isEmpty()) return List.of();
+      List<ZipFile> open = new ArrayList<>();
+      for (String jar : jars.split(java.io.File.pathSeparator)) {
+        if (jar.isEmpty()) continue;
+        try {
+          open.add(new ZipFile(jar));
+        } catch (IOException e) {
+          System.err.println("ApkClassConverter: cannot open context jar " + jar + ": " + e);
+        }
+      }
+      return open;
     }
 
     boolean isInterface(String name) {
@@ -1166,6 +1192,15 @@ public final class ApkClassConverter {
 
     private Header readPlatform(String name) {
       String resource = name + ".class";
+      for (ZipFile jar : context) {
+        ZipEntry entry = jar.getEntry(resource);
+        if (entry == null) continue;
+        try (InputStream stream = jar.getInputStream(entry)) {
+          return Header.of(new ClassReader(stream));
+        } catch (IOException e) {
+          // Unreadable: try the next jar, then the platform.
+        }
+      }
       try {
         ZipEntry entry = platform.getEntry(resource);
         // `.class` resources of the JDK's named modules are not encapsulated.

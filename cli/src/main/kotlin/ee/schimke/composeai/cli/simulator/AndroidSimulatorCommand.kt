@@ -236,16 +236,24 @@ internal class AndroidSimulatorCommand(
       exitProcess(exit)
     }
     val locked = ConcurrentHashMap.newKeySet<String>()
-    fun conversionOf(apk: File): Conversion {
+    /**
+     * [apk] converted, cached by content. With [context] (the app a test APK runs against), the
+     * app's classes answer the converter's type lookups too, and the cache entry is the pair's.
+     */
+    fun conversionOf(apk: File, context: Conversion? = null): Conversion {
       val start = System.nanoTime()
+      val entryStamp =
+        if (context == null) stamp
+        else "$stamp-with-${ApkConversionCache.sha256(context.apk).take(16)}"
+      val contextJars = listOfNotNull(context?.entry?.classesJar)
       val entry =
-        cache.ensure(apk, stamp) { out, previous ->
+        cache.ensure(apk, entryStamp) { out, previous ->
           System.err.println(
             "compose-preview android-simulator: converting ${apk.name} (once per APK" +
               (if (previous != null) "; reusing the unchanged classes of its previous build)"
               else ")"),
           )
-          convert(java, converterJars, apk, out, androidJar, previous)
+          convert(java, converterJars, apk, out, androidJar, previous, contextJars)
         }
       // Once per entry: a second lock on the same file from this process throws
       // (OverlappingFileLockException), as an update to an APK already running would.
@@ -261,8 +269,17 @@ internal class AndroidSimulatorCommand(
       return conversion
     }
     fun classesOf(apk: File): File = conversionOf(apk).entry.classesJar
-    // The test APK's classes go on the sandbox's class path after the app's, as `--jar`s do.
-    val instrumentClasses = instrumentApk?.let(::classesOf)
+    // The test APK's classes go on the sandbox's class path after the app's, as `--jar`s do. They
+    // are converted against the app's: test code calls into the app (its interfaces' static and
+    // default methods among them), and the converter must see those types to call them correctly.
+    if (instrumentApk != null && apk == null) {
+      fail(
+        "--instrument runs a test APK against an app: android-simulator <app.apk> --instrument <test.apk>",
+      )
+    }
+    val instrumentClasses = instrumentApk?.let {
+      conversionOf(it, context = conversionOf(apk!!)).entry.classesJar
+    }
     val pair =
       args
         .flagValue("--pair")
@@ -1179,11 +1196,21 @@ internal class AndroidSimulatorCommand(
     out: File,
     androidJar: File,
     previous: File?,
+    context: List<File> = emptyList(),
   ): String {
     for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
       val process =
         ProcessBuilder(
-            converterCommand(java.binary, converterJars, apk, out, androidJar, heap, previous),
+            converterCommand(
+              java.binary,
+              converterJars,
+              apk,
+              out,
+              androidJar,
+              heap,
+              previous,
+              context,
+            ),
           )
           .redirectError(ProcessBuilder.Redirect.INHERIT)
           .start()
@@ -1325,6 +1352,11 @@ internal class AndroidSimulatorCommand(
 
     const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
 
+    /**
+     * Jars whose classes the converter looks types up in after the APK's own (`ApkClassConverter`).
+     */
+    const val CONVERTER_CONTEXT_PROPERTY = "composeai.simulator.converter.context"
+
     /** The name `:simulator-host`'s jar starts with in `lib-simulator/`. */
     const val SIMULATOR_HOST_JAR = "simulator-host"
 
@@ -1399,10 +1431,16 @@ internal class AndroidSimulatorCommand(
       androidJar: File,
       heap: String,
       previous: File? = null,
+      context: List<File> = emptyList(),
     ): List<String> =
       listOfNotNull(
         java.path,
         "-Xmx$heap",
+        context
+          .takeIf { it.isNotEmpty() }
+          ?.let { jars ->
+            "-D$CONVERTER_CONTEXT_PROPERTY=" + jars.joinToString(File.pathSeparator) { it.path }
+          },
         // A single-threaded batch job: the serial collector's footprint is the smallest, and it
         // spends no threads on concurrent marking.
         "-XX:+UseSerialGC",
