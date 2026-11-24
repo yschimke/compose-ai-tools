@@ -387,7 +387,7 @@ jobs:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
           BASH_DEFAULT_TIMEOUT_MS: '1200000'
           BASH_MAX_TIMEOUT_MS: '2400000'
-        uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
+        uses: anthropics/claude-code-action@cc98b3ae241b0fcfb6a42a2690751afffecb4452 # v1.0.278
         with:
           # Exactly one credential, chosen by the gate: the subscription token,
           # or the API key (billed to the API organization's credits).
@@ -432,7 +432,7 @@ jobs:
       - name: Audit with Codex
         if: env.AGENT == 'codex'
         timeout-minutes: 45
-        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+        uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           # Held by the action's local proxy and passed on stdin, so Codex
           # itself never sees the key.
