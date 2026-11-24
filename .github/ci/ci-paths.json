@@ -91,6 +91,7 @@
       "simulator/**",
       "cli/**",
       "samples/surface-view/**",
+      "samples/android-instrumented/**",
       "samples/host-natives/**",
       "host-natives/index.json",
       ".github/scripts/simulator_smoke.py"

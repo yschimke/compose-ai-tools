@@ -613,6 +613,8 @@ jobs:
   #   - samples/host-natives: every library host-natives/index.json serves loads and works, from
   #     the index on main, downloaded the way a user's launch downloads it.
   # Both also check the control channel's stdout carries only JSON (#6443).
+  #   - samples/android-instrumented: its androidTest APK runs in the simulator beside the app
+  #     (`android-simulator --instrument`): InstrumentationRegistry, Espresso and Compose rules.
   simulator-smoke:
     name: Simulator smoke
     needs: changes
@@ -635,7 +637,11 @@ jobs:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build the CLI and the sample APKs
-        run: ./gradlew :cli:installDist :samples:surface-view:assembleDebug :samples:host-natives:assembleDebug
+        run: >-
+          ./gradlew :cli:installDist :samples:surface-view:assembleDebug
+          :samples:host-natives:assembleDebug
+          :samples:android-instrumented:assembleDebug
+          :samples:android-instrumented:assembleDebugAndroidTest
       - name: SurfaceView sample
         run: >-
           python3 .github/scripts/simulator_smoke.py
@@ -648,6 +654,13 @@ jobs:
           --cli cli/build/install/compose-preview/bin/compose-preview
           --apk samples/host-natives/build/outputs/apk/debug/host-natives-debug.apk
           --check host-natives --java "$JAVA_HOME_21_X64" --out build/simulator-smoke
+      - name: Instrumentation tests in the simulator
+        run: >-
+          cli/build/install/compose-preview/bin/compose-preview android-simulator
+          samples/android-instrumented/build/outputs/apk/debug/android-instrumented-debug.apk
+          --instrument samples/android-instrumented/build/outputs/apk/androidTest/debug/android-instrumented-debug-androidTest.apk
+          --form-factor phone --java "$JAVA_HOME_21_X64"
+          --test-report build/simulator-smoke/instrumentation/TEST-simulator.xml
       - name: Upload the screenshot and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

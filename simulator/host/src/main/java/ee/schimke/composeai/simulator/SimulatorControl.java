@@ -26,6 +26,8 @@ public final class SimulatorControl implements RemoteControl {
   public void connect(UiAutomation uiAutomation, Looper looper) {
     session = new Session(RuntimeEnvironment.getApplication(), uiAutomation, Protocol.create());
     session.start();
+    // `--instrument`: the test APK's tests, on a thread of their own while this one loops.
+    if (InstrumentationRun.enabled()) InstrumentationRun.start(RuntimeEnvironment.getApplication());
   }
 
   @Override

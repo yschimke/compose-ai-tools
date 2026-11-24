@@ -86,6 +86,21 @@ internal class AndroidSimulatorCommand(
             .absoluteFile
         }
     if (adb && scenarioFile != null) fail("--adb and --scenario are not combined")
+    // `--instrument <test.apk>`: the instrumentation APK's tests, in the app's simulator, then
+    // exit.
+    val instrumentApk =
+      args
+        .flagValue("--instrument")
+        ?.let { File(it).absoluteFile }
+        ?.also { if (!it.isFile) fail("no such --instrument APK: $it") }
+    if (instrumentApk != null) {
+      val clash =
+        listOf("--control", "--scenario", "--adb", "--project", "--pair", "--install", "--app")
+          .filter { flag -> args.any { it == flag } }
+      if (clash.isNotEmpty()) {
+        fail("--instrument runs one app's tests and exits; drop ${clash.joinToString(", ")}")
+      }
+    }
     val control = args.flagValue("--control") ?: if (scenarioFile != null) "stdio" else null
     if (control != null && control != "stdio") fail("--control supports only `stdio`")
     if (adb && args.flagValue("--project") != null) {
@@ -246,6 +261,8 @@ internal class AndroidSimulatorCommand(
       return conversion
     }
     fun classesOf(apk: File): File = conversionOf(apk).entry.classesJar
+    // The test APK's classes go on the sandbox's class path after the app's, as `--jar`s do.
+    val instrumentClasses = instrumentApk?.let(::classesOf)
     val pair =
       args
         .flagValue("--pair")
@@ -342,8 +359,12 @@ internal class AndroidSimulatorCommand(
       )
     }
 
-    val headless = "--headless" in args || scenarioFile != null || GraphicsEnvironment.isHeadless()
-    if (headless && control == null && !adb) {
+    val headless =
+      "--headless" in args ||
+        scenarioFile != null ||
+        instrumentApk != null ||
+        GraphicsEnvironment.isHeadless()
+    if (headless && control == null && !adb && instrumentApk == null) {
       System.err.println(
         "compose-preview android-simulator: no display, so no window; pass --control stdio to drive the app " +
           "headless.",
@@ -412,8 +433,12 @@ internal class AndroidSimulatorCommand(
             detected.isWatchFacePushClient ||
             args.flagValuesAll("--widget").isNotEmpty() ||
             args.flagValuesAll("--tile").isNotEmpty(),
+        // As `am instrument`, which starts the app's process but none of its activities.
         noLaunch =
-          hostApk == null || adb || (watchface != null && formFactor == ApkFormFactor.WEAR),
+          hostApk == null ||
+            adb ||
+            instrumentApk != null ||
+            (watchface != null && formFactor == ApkFormFactor.WEAR),
         widgets = args.flagValuesAll("--widget"),
         tiles = args.flagValuesAll("--tile"),
         watchface = watchface,
@@ -421,9 +446,17 @@ internal class AndroidSimulatorCommand(
         jvmOptions =
           System.getenv(JVM_OPTIONS_ENV)?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() }
             ?: emptyList(),
-        properties = themeFromWatchfaceProp + dwfPushCompilerProps,
+        properties =
+          themeFromWatchfaceProp +
+            dwfPushCompilerProps +
+            instrumentProperties(
+              instrumentApk,
+              instrumentClasses,
+              args.flagValue("--tests"),
+              args.flagValue("--test-report"),
+            ),
       )
-    val extraJars = args.flagValuesAll("--jar").map { File(it) }
+    val extraJars = args.flagValuesAll("--jar").map { File(it) } + listOfNotNull(instrumentClasses)
     val robolectricProperties = offline.ifEmpty {
       provisionAndroidAll(robolectricJars, options.sdk)
     }
@@ -1209,6 +1242,20 @@ internal class AndroidSimulatorCommand(
     }
 
   /** `--project`: the app's Gradle build, for `reload` and `--live`. */
+  /** `InstrumentationRun`'s properties, when [testApk] is given. */
+  private fun instrumentProperties(
+    testApk: File?,
+    testClasses: File?,
+    tests: String?,
+    report: String?,
+  ): Map<String, String> = buildMap {
+    if (testApk == null || testClasses == null) return@buildMap
+    put("composeai.simulator.instrument", testClasses.path)
+    put("composeai.simulator.instrument.apk", testApk.path)
+    tests?.let { put("composeai.simulator.instrument.tests", it) }
+    report?.let { put("composeai.simulator.instrument.report", File(it).absolutePath) }
+  }
+
   private fun liveReload(): LiveReload? {
     val project = args.flagValue("--project")?.let { File(it).absoluteFile } ?: return null
     if (!File(project, "settings.gradle.kts").isFile && !File(project, "settings.gradle").isFile) {
@@ -1669,6 +1716,13 @@ internal class AndroidSimulatorCommand(
         --scenario <file>     Run a declarative JSON/YAML scenario over the simulator control
                               channel, write snapshots + report.json, and exit 0/2.
         --report-dir <dir>    Output directory for --scenario snapshots and report.json.
+        --instrument <test.apk>
+                              Run an instrumentation APK's tests (assembleDebugAndroidTest)
+                              against the app, inside the simulator, then exit 0 when all
+                              pass. A prototype: AndroidJUnit4 runs on androidx.test's
+                              device runner, on a thread of its own, the main thread looping.
+        --tests <list>        With --instrument: Class or Class#method, comma-separated.
+        --test-report <file>  With --instrument: also write a JUnit XML report.
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
                               of the machine's memory, 768m to 2g, for each of a pair).
