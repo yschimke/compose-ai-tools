@@ -72,19 +72,9 @@ SURFACES: list[dict] = [
             ),
         },
     },
-    {
-        "name": "Spatial scene schema",
-        "patterns": ["schema/spatial-scene.schema.json"],
-        "why": "The Kotlin, C++ and TypeScript mirrors are generated from this one file.",
-        "consumers": {
-            EXT: (
-                "holds the TypeScript mirror at `src/webview/shared/spatialScene.ts`, and "
-                "**no gate covers it** — `--check` here compares only the Kotlin and C++ "
-                "mirrors, because this repository cannot write into that one. Regenerate it "
-                "there with `gen-spatial-scene.mjs --emit-typescript`."
-            ),
-        },
-    },
+    # "Spatial scene schema" (`schema/spatial-scene.schema.json`) was here too, until the schema
+    # and its generators moved to compose-preview-daemon (#5336) and the stale copy here was
+    # removed. The notice for it belongs to that repository.
     {
         "name": "Preview selector fixtures",
         "patterns": ["docs/serve/preview-selector-fixtures.json"],

@@ -28,15 +28,13 @@ Part of the report-history epic (#1866); this directory is sub-issue #1867.
 | [`render-trace.schema.json`](render-trace.schema.json) | `render/trace` | 1 | `RenderTraceDataProduct` |
 | [`history-diff-regions.schema.json`](history-diff-regions.schema.json) | `history/diff/regions` | 1 | `HistoryDiffPayload` |
 
-[`spatial-scene.schema.json`](spatial-scene.schema.json) is excluded from the
-report-schema validator below. Both `spatial-scene.schema.json` and
-`xr-render-service.schema.json` (along with their `gen-spatial-scene.mjs` and
-`gen-xr-render-service.mjs` codegen scripts) now live canonically in
+The XR codegen schemas (`spatial-scene.schema.json` and
+`xr-render-service.schema.json`, along with their `gen-spatial-scene.mjs` and
+`gen-xr-render-service.mjs` scripts) now live in
 [`yschimke/compose-preview-daemon`](https://github.com/yschimke/compose-preview-daemon),
 where [`yschimke/compose-preview-xr`](https://github.com/yschimke/compose-preview-xr)'s
 `contract-drift` workflow checks its generated C++ and Python mirrors against
-them. This repository keeps `spatial-scene.schema.json` only while the
-`consumer-contract-notice` surface map still references it.
+them.
 
 ## Versioning & the bump policy
 
