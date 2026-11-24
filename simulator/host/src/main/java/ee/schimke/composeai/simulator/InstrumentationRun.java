@@ -310,22 +310,34 @@ public final class InstrumentationRun {
       System.err.println("INSTRUMENTATION_FAILED: no such test " + String.join(", ", missing));
       return 1;
     }
-    if (selection.hasMethods()) request = request.filterWith(selection.filter());
     JUnitCore core = new JUnitCore();
     Reporter reporter = new Reporter();
     core.addListener(reporter);
-    Result result = core.run(request);
+    // One request per class, each filtered only by its own `Class#method` selectors: a suite named
+    // whole keeps every test under it, whatever classes those belong to.
+    int runCount = 0;
+    int failures = 0;
+    int ignored = 0;
+    long millis = 0;
+    for (Class<?> type : classes) {
+      Request one = Request.aClass(type);
+      Filter filter = selection.filterFor(type.getName());
+      if (filter != null) one = one.filterWith(filter);
+      Result result = core.run(one);
+      runCount += result.getRunCount();
+      failures += result.getFailureCount();
+      ignored += result.getIgnoreCount();
+      millis += result.getRunTime();
+    }
     String report = System.getProperty(REPORT_PROPERTY);
-    if (report != null && !report.isEmpty()) reporter.writeXml(Path.of(report), result);
-    if (result.wasSuccessful()) {
-      System.err.println("\nOK (" + result.getRunCount() + " tests)");
+    if (report != null && !report.isEmpty()) {
+      reporter.writeXml(Path.of(report), failures, ignored, millis);
+    }
+    if (failures == 0) {
+      System.err.println("\nOK (" + runCount + " tests)");
       return 0;
     }
-    System.err.println(
-        "\nFAILURES!!!\nTests run: "
-            + result.getRunCount()
-            + ",  Failures: "
-            + result.getFailureCount());
+    System.err.println("\nFAILURES!!!\nTests run: " + runCount + ",  Failures: " + failures);
     return 1;
   }
 
@@ -460,19 +472,6 @@ public final class InstrumentationRun {
       return !methods.isEmpty();
     }
 
-    /** A whole class named, or one of its methods. */
-    boolean includes(String className, String method) {
-      if (classes.isEmpty()) return true;
-      if (!classes.contains(className)) return false;
-      boolean anyMethodOfClass = false;
-      for (String m : methods) {
-        if (m.startsWith(className + "#")) anyMethodOfClass = true;
-      }
-      return !anyMethodOfClass
-          || method == null
-          || methods.contains(className + "#" + baseMethod(method));
-    }
-
     /**
      * The {@code Class#method} selectors that name no test under [suite]: each one asked for must
      * run, or the run fails rather than pass on less than it was asked. A parameterised test
@@ -501,7 +500,17 @@ public final class InstrumentationRun {
       for (Description child : description.getChildren()) collect(child, into);
     }
 
-    Filter filter() {
+    /**
+     * The filter for class [className]'s request: null when it was named whole (or nothing was
+     * named), so every test under it runs; otherwise only its selected methods, every parameter of
+     * a parameterised one included.
+     */
+    Filter filterFor(String className) {
+      Set<String> wanted = new java.util.HashSet<>();
+      for (String m : methods) {
+        if (m.startsWith(className + "#")) wanted.add(m.substring(className.length() + 1));
+      }
+      if (wanted.isEmpty()) return null;
       return new Filter() {
         @Override
         public boolean shouldRun(Description description) {
@@ -511,12 +520,13 @@ public final class InstrumentationRun {
             }
             return description.getChildren().isEmpty();
           }
-          return includes(description.getClassName(), description.getMethodName());
+          String method = description.getMethodName();
+          return method != null && wanted.contains(baseMethod(method));
         }
 
         @Override
         public String describe() {
-          return "tests " + methods;
+          return className + " " + wanted;
         }
       };
     }
@@ -584,7 +594,7 @@ public final class InstrumentationRun {
       cases.add(ignored);
     }
 
-    void writeXml(Path file, Result result) throws IOException {
+    void writeXml(Path file, int failures, int ignored, long millis) throws IOException {
       if (file.getParent() != null) Files.createDirectories(file.getParent());
       StringWriter xml = new StringWriter();
       xml.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -592,11 +602,11 @@ public final class InstrumentationRun {
           "<testsuite name=\"simulator-instrumentation\" tests=\""
               + cases.size()
               + "\" failures=\""
-              + result.getFailureCount()
+              + failures
               + "\" skipped=\""
-              + result.getIgnoreCount()
+              + ignored
               + "\" time=\""
-              + result.getRunTime() / 1000.0
+              + millis / 1000.0
               + "\">\n");
       for (Case c : cases) {
         xml.write(

@@ -2,6 +2,7 @@ package ee.schimke.composeai.simulator;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -69,9 +70,9 @@ public class InstrumentationRunTest {
     assertTrue(selection.includesClass("a.Whole"));
     assertTrue(selection.includesClass("a.Part"));
     assertFalse(selection.includesClass("a.Other"));
-    assertTrue(selection.includes("a.Whole", "anything"));
-    assertTrue(selection.includes("a.Part", "one"));
-    assertFalse(selection.includes("a.Part", "two"));
+    assertNull(selection.filterFor("a.Whole"));
+    assertTrue(selection.filterFor("a.Part").shouldRun(test("a.Part", "one")));
+    assertFalse(selection.filterFor("a.Part").shouldRun(test("a.Part", "two")));
   }
 
   @Test
@@ -81,9 +82,9 @@ public class InstrumentationRunTest {
     suite.addChild(Description.createTestDescription("a.Part", "one"));
     suite.addChild(Description.createTestDescription("a.Part", "two"));
 
-    assertTrue(selection.filter().shouldRun(suite));
-    assertTrue(selection.filter().shouldRun(Description.createTestDescription("a.Part", "one")));
-    assertFalse(selection.filter().shouldRun(Description.createTestDescription("a.Part", "two")));
+    assertTrue(selection.filterFor("a.Part").shouldRun(suite));
+    assertTrue(selection.filterFor("a.Part").shouldRun(Description.createTestDescription("a.Part", "one")));
+    assertFalse(selection.filterFor("a.Part").shouldRun(Description.createTestDescription("a.Part", "two")));
   }
 
   @Test
@@ -103,9 +104,9 @@ public class InstrumentationRunTest {
   public void selectedParameterisedMethodRunsEveryParameter() {
     InstrumentationRun.Selection selection = InstrumentationRun.Selection.parse("a.Param#each");
 
-    assertTrue(selection.filter().shouldRun(Description.createTestDescription("a.Param", "each[0]")));
-    assertTrue(selection.filter().shouldRun(Description.createTestDescription("a.Param", "each[1]")));
-    assertFalse(selection.filter().shouldRun(Description.createTestDescription("a.Param", "other[0]")));
+    assertTrue(selection.filterFor("a.Param").shouldRun(test("a.Param", "each[0]")));
+    assertTrue(selection.filterFor("a.Param").shouldRun(test("a.Param", "each[1]")));
+    assertFalse(selection.filterFor("a.Param").shouldRun(test("a.Param", "other[0]")));
   }
 
   @Test
@@ -118,6 +119,21 @@ public class InstrumentationRunTest {
         android.R.style.Theme_DeviceDefault_Light_NoActionBar,
         InstrumentationRun.frameworkTheme(
             "androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity"));
+  }
+
+  @Test
+  public void wholeSuiteKeepsItsTestsBesideAMethodSelector() {
+    InstrumentationRun.Selection selection =
+        InstrumentationRun.Selection.parse("a.AllTests,a.OtherTest#one");
+
+    // The suite's request is unfiltered, so tests of other classes under it all run.
+    assertNull(selection.filterFor("a.AllTests"));
+    assertTrue(selection.filterFor("a.OtherTest").shouldRun(test("a.OtherTest", "one")));
+    assertFalse(selection.filterFor("a.OtherTest").shouldRun(test("a.OtherTest", "two")));
+  }
+
+  private static Description test(String className, String method) {
+    return Description.createTestDescription(className, method);
   }
 
   private static void copyClass(Class<?> type, JarOutputStream out) throws IOException {
