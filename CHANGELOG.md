@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.104.0](https://github.com/yschimke/compose-ai-tools/compare/v2.103.1...v2.104.0) (2026-11-24)
+
+
+### Features
+
+* run androidTest APKs in the simulator (prototype) ([#6700](https://github.com/yschimke/compose-ai-tools/issues/6700)) ([5bd2a7d](https://github.com/yschimke/compose-ai-tools/commit/5bd2a7dac4c2910d7b0d0a1436f3c00f728fe60b))
+* simulatorDebugAndroidTest runs androidTest suites in the simulator from Gradle ([#6702](https://github.com/yschimke/compose-ai-tools/issues/6702)) ([460c325](https://github.com/yschimke/compose-ai-tools/commit/460c32512a8e072def077aa98aef9a0ce98e2f10))
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.29.1 ([#6697](https://github.com/yschimke/compose-ai-tools/issues/6697)) ([facc279](https://github.com/yschimke/compose-ai-tools/commit/facc27919004be7345d9ae09f9bc7f023b45ccc9))
+* **discovery:** keep a container sticker's target when its name singles the container out ([#6701](https://github.com/yschimke/compose-ai-tools/issues/6701)) ([1fc9933](https://github.com/yschimke/compose-ai-tools/commit/1fc9933f8547f473e2231deaf32961ccb9aa8678))
+
 ## [2.103.1](https://github.com/yschimke/compose-ai-tools/compare/v2.103.0...v2.103.1) (2026-11-24)
 
 
