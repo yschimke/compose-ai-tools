@@ -77,16 +77,6 @@ val composePreviewBta =
     isCanBeConsumed = false
   }
 
-// `:usage-source-psi`, the Kotlin parser behind the usage cleaner, loaded alongside `lib-bta/` and
-// likewise kept off the CLI's classpath. Staged to `lib-usage-psi/` (or
-// `-Dcomposeai.cli.libUsagePsiDir`). Only this module's jar: the frontend is `compileOnly` and
-// rides in `lib-bta/`.
-val composePreviewUsagePsi =
-  configurations.create("composePreviewUsagePsi") {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-  }
-
 // `compose-preview launch`: Robolectric's `simulator` jar and `:simulator-host` (the control plugin
 // and APK converter), staged to `lib-simulator/`. Non-transitive on the simulator side: Robolectric
 // itself and its native runtime come from the Android daemon sidecar at launch, at the same pin.
@@ -129,7 +119,6 @@ dependencies {
     "composePreviewBta",
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
-  add("composePreviewUsagePsi", project(":usage-source-psi"))
   add("composePreviewSimulator", project(":simulator-host"))
   addProvider<MinimalExternalModuleDependency, ExternalModuleDependency>(
     "composePreviewSimulator",
@@ -233,7 +222,7 @@ dependencies {
   implementation(project(":remotecompose-json"))
 
   // The MCP server isn't on this classpath either: `mcp serve` execs the `compose-preview-mcp`
-  // binary from compose-preview-server. `mcp install` / `mcp doctor` stay here as offline
+  // binary from compose-preview-mcp. `mcp install` / `mcp doctor` stay here as offline
   // behaviour. Used directly by `DaemonSmokeCheck` (spawn port + subprocess factory).
   implementation(libs.composeai.daemon.client)
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
@@ -375,7 +364,6 @@ distributions {
     contents {
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
-      into("lib-usage-psi") { from(composePreviewUsagePsi) }
       into("lib-simulator") { from(composePreviewSimulator) }
       into("lib-dex2jar") { from(composePreviewDex2jar) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
@@ -421,12 +409,6 @@ tasks.withType<Test>().configureEach {
   // `lib-bta/`). Via a `CommandLineArgumentProvider` to keep the configuration cache valid.
   val btaJars = composePreviewBta.incoming.files
   inputs.files(btaJars).withPropertyName("libBtaJars").withNormalizer(ClasspathNormalizer::class)
-  // And `:usage-source-psi`, so `PlaygroundSourceCleaner`'s parsed path is covered.
-  val usagePsiJars = composePreviewUsagePsi.incoming.files
-  inputs
-    .files(usagePsiJars)
-    .withPropertyName("libUsagePsiJars")
-    .withNormalizer(ClasspathNormalizer::class)
   val robolectricJars = robolectricProbe.incoming.files
   inputs
     .files(robolectricJars)
@@ -438,8 +420,6 @@ tasks.withType<Test>().configureEach {
         "-Dcomposeai.test.robolectricJars=" +
           robolectricJars.joinToString(File.pathSeparator) { it.absolutePath },
         "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath },
-        "-Dcomposeai.usagePsi.jars=" +
-          (usagePsiJars + btaJars).joinToString(File.pathSeparator) { it.absolutePath },
       )
     },
   )

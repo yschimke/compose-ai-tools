@@ -202,14 +202,11 @@ ever runs `render`, and would have made the install story span two repositories.
 fetched, and how the two version lines relate:
 [`docs/VERSIONING.md` § 8.1](../VERSIONING.md#81-the-preview-server-is-on-its-own-train).
 
-One edge survives, deliberately, and this task cannot see it. `compose-preview-serve` is still a
-`testImplementation` of `:cli`: two tests drive the CLI's own HTTP clients against a real
-`ServeHttpServer` to catch the two repositories' independently-declared wire types drifting apart,
-and five of those cases approve or deny a grant by reaching into the server's store, which is only
-possible in-process. A stub would make them pass while testing nothing they exist for — the point is
-checking the halves against *each other*, not each against its own idea of the other. The gate reads
-`runtimeClasspath`, so it does not fail on that, and should not: the claim it enforces is about what
-ships.
+The last test-only edge is gone too: `compose-preview-serve` used to remain as a
+`testImplementation` of `:cli` so wire-compatibility tests could drive the CLI's HTTP clients
+against an in-process `ServeHttpServer`, until `compose-preview-server#794` removed it. Those tests
+now launch the published server distribution via `ServeDistributionHarness`, so `:cli` has no
+compile, runtime, or test dependency on `compose-preview-serve` at all.
 
 Two limits worth stating rather than discovering later. The task covers projects with a
 `runtimeClasspath`, so Android modules — which resolve per-variant classpaths — are not checked;

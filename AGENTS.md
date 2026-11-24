@@ -115,9 +115,8 @@ CI's `format` job runs `./gradlew ktfmtCheckAll` and it is a hard gate —
 `ktfmtCheck` aborts on the first unformatted file. Before each commit touching
 `*.kt` / `*.kts`, run `./gradlew ktfmtFormat` (or
 `./gradlew :<module>:ktfmtFormatMain :<module>:ktfmtFormatTest` for the touched
-modules) and stage the result. For the serve-web TypeScript, run
-`npm --prefix cli/serve-web run format`. The round-trip through CI costs more
-than running the formatter locally.
+modules) and stage the result. The round-trip through CI costs more than running
+the formatter locally.
 
 <!-- invariant: pr-state-recheck -->
 ### Re-check PR state immediately before **every** push

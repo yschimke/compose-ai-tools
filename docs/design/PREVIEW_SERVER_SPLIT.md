@@ -31,11 +31,12 @@ lived in.
 
 **The Ktor floor is gone, and `serve` is a launcher.** `ServeCommand` execs the published
 `compose-preview-server` binary rather than linking `ServeRunner`, and names no
-`ee.schimke.composeai.cli.serve` type; `compose-preview-serve` remains only as a test dependency, so
-the server is absent from the production classpath entirely. That removes the forward edge of the
-dependency cycle compose-preview-server#180 described. `browse`, `design` and `ui` reach it the same
-way — `BrowseCommand` runs `ServeCommand(args, browseProject = true)` — so they are launcher
-callers, not server consumers.
+`ee.schimke.composeai.cli.serve` type; `compose-preview-serve` is absent from `:cli` altogether
+(the remaining test dependency was removed in `compose-preview-server#794`, and wire-compatibility
+tests now launch the published server distribution via `ServeDistributionHarness`). That removes the
+forward edge of the dependency cycle compose-preview-server#180 described. `browse`, `design` and
+`ui` reach it the same way — `BrowseCommand` runs `ServeCommand(args, browseProject = true)` — so
+they are launcher callers, not server consumers.
 
 ## The one durable lesson
 
