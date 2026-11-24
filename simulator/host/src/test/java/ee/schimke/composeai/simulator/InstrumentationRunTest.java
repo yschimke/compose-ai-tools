@@ -87,6 +87,19 @@ public class InstrumentationRunTest {
   }
 
   @Test
+  public void reportsSelectedMethodsThatNameNoTest() {
+    InstrumentationRun.Selection selection =
+        InstrumentationRun.Selection.parse("a.Part#one,a.Part#typo,a.Param#each");
+    Description suite = Description.createSuiteDescription("all");
+    Description part = Description.createSuiteDescription("a.Part");
+    part.addChild(Description.createTestDescription("a.Part", "one"));
+    suite.addChild(part);
+    suite.addChild(Description.createTestDescription("a.Param", "each[0]"));
+
+    assertEquals(List.of("a.Part#typo"), selection.missingMethods(suite));
+  }
+
+  @Test
   public void floatingTestActivitiesKeepFloating() {
     assertEquals(
         android.R.style.Theme_DeviceDefault_Light_Dialog,

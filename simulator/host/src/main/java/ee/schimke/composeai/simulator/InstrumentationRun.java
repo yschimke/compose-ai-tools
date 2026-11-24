@@ -282,10 +282,22 @@ public final class InstrumentationRun {
       System.setProperty("android.junit.runner", DEVICE_RUNNER);
     }
     Selection selection = Selection.parse(System.getProperty(TESTS_PROPERTY));
-    List<String> names = testClasses(new File(System.getProperty(PROPERTY)));
     List<Class<?>> classes = new ArrayList<>();
-    for (String name : names) {
-      if (selection.includesClass(name)) classes.add(Class.forName(name, false, sandbox));
+    if (selection.classes.isEmpty()) {
+      for (String name : testClasses(new File(System.getProperty(PROPERTY)))) {
+        classes.add(Class.forName(name, false, sandbox));
+      }
+    } else {
+      // Named classes are loaded by name, not looked for: discovery passes over the libraries a
+      // test APK bundles by package, and an app's tests may share one (com.google.…).
+      for (String name : selection.classes) {
+        try {
+          classes.add(Class.forName(name, false, sandbox));
+        } catch (ClassNotFoundException e) {
+          System.err.println("INSTRUMENTATION_FAILED: no test class " + name);
+          return 1;
+        }
+      }
     }
     System.err.println("instrument: " + classes.size() + " test class(es)");
     if (classes.isEmpty()) {
@@ -293,6 +305,11 @@ public final class InstrumentationRun {
       return 1;
     }
     Request request = Request.classes(classes.toArray(new Class<?>[0]));
+    List<String> missing = selection.missingMethods(request.getRunner().getDescription());
+    if (!missing.isEmpty()) {
+      System.err.println("INSTRUMENTATION_FAILED: no such test " + String.join(", ", missing));
+      return 1;
+    }
     if (selection.hasMethods()) request = request.filterWith(selection.filter());
     JUnitCore core = new JUnitCore();
     Reporter reporter = new Reporter();
@@ -452,6 +469,31 @@ public final class InstrumentationRun {
         if (m.startsWith(className + "#")) anyMethodOfClass = true;
       }
       return !anyMethodOfClass || method == null || methods.contains(className + "#" + method);
+    }
+
+    /**
+     * The {@code Class#method} selectors that name no test under [suite]: each one asked for must
+     * run, or the run fails rather than pass on less than it was asked. A parameterised test
+     * matches by its method name ({@code method[0]}).
+     */
+    List<String> missingMethods(Description suite) {
+      Set<String> present = new java.util.HashSet<>();
+      collect(suite, present);
+      List<String> missing = new ArrayList<>();
+      for (String method : methods) {
+        if (!present.contains(method)) missing.add(method);
+      }
+      return missing;
+    }
+
+    private static void collect(Description description, Set<String> into) {
+      if (description.isTest() && description.getMethodName() != null) {
+        String method = description.getMethodName();
+        int bracket = method.indexOf('[');
+        if (bracket > 0) method = method.substring(0, bracket);
+        into.add(description.getClassName() + "#" + method);
+      }
+      for (Description child : description.getChildren()) collect(child, into);
     }
 
     Filter filter() {
