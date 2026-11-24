@@ -4450,6 +4450,121 @@ class DiscoveryFunctionalTest {
     assertThat(target.parameters.map { it.name }).containsExactly("month")
   }
 
+  /**
+   * A sticker for a container: `Sticker { Surface { Column { Heading(); Tile(); Icon() } } }`,
+   * every lambda non-capturing. The walk counts all five project composables, and the survivor
+   * penalty that leaves sank the container — the one the preview is named for — below the emit
+   * threshold, so it had no target and dropped out of the component record
+   * (homeassistant-remotecompose's `HaCardSurfaceSticker`, after its catalog went multiplatform).
+   */
+  @Test
+  fun `a sticker named for a container keeps the container as its target`() {
+    val projectDir = createCmpTestProject(kotlinVersion = "2.4.10", composeVersion = "1.11.1")
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "Sticker.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun Sticker(content: @Composable () -> Unit) {
+            content()
+        }
+        """
+          .trimIndent(),
+      )
+
+    File(srcDir, "Components.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun CardSurface(content: @Composable () -> Unit) {
+            Box { content() }
+        }
+
+        @Composable
+        fun CardHeading(title: String) {
+            Text(title)
+        }
+
+        @Composable
+        fun CardTile(name: String) {
+            Text(name)
+        }
+
+        @Composable
+        fun CardIcon(icon: String) {
+            Text(icon)
+        }
+        """
+          .trimIndent(),
+      )
+
+    File(srcDir, "CatalogPreviews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Column
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Preview
+        @Composable
+        fun CardSurfaceSticker() = Sticker {
+            CardSurface {
+                Column {
+                    CardHeading("Kitchen")
+                    CardTile("Ceiling")
+                    CardIcon("light")
+                }
+            }
+        }
+
+        @Preview
+        @Composable
+        fun KitchenSticker() = Sticker {
+            CardSurface {
+                Column {
+                    CardHeading("Kitchen")
+                    CardTile("Ceiling")
+                    CardIcon("light")
+                }
+            }
+        }
+        """
+          .trimIndent(),
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText(),
+      )
+    val target =
+      manifest.previews.single { it.functionName == "CardSurfaceSticker" }.targets.single()
+    assertThat(target.functionName).isEqualTo("CardSurface")
+    assertThat(target.signals).contains(TargetSignal.NAME_MATCH)
+    // Named for none of them, the same body is still too ambiguous to name a target.
+    assertThat(manifest.previews.single { it.functionName == "KitchenSticker" }.targets).isEmpty()
+  }
+
   @Test
   fun `composePreviewDiscover emits no target when preview body is purely framework`() {
     // A preview that only calls AndroidX Compose primitives (no project-local composable) gets no

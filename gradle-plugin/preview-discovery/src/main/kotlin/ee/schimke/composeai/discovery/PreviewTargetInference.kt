@@ -382,7 +382,9 @@ object PreviewTargetInference {
     }
 
     val (winner, best) = scored.maxByOrNull { it.second.score } ?: return emptyList()
-    if (best.score < MIN_EMIT_SCORE) return emptyList()
+    if (best.score < MIN_EMIT_SCORE && !nameSettlesIt(best, scored.map { it.second })) {
+      return emptyList()
+    }
 
     val confidence =
       when {
@@ -415,6 +417,18 @@ object PreviewTargetInference {
       ),
     )
   }
+
+  /**
+   * Whether [best] is the target despite scoring under [MIN_EMIT_SCORE]: the preview is named for
+   * it, and no other candidate is. The survivor penalty is the same for every candidate, so it
+   * never reorders them; it only says how ambiguous the body is. A sticker for a container
+   * (`SurfaceSticker { Surface { Column { Heading(); Tile() } } }`) has the container's whole
+   * content as survivors, and the penalty alone used to cost the container its target, and with it
+   * its place in the component record. A name that puts one candidate strictly ahead of the rest is
+   * not ambiguous; a body named for none of them, or a tie, still emits nothing.
+   */
+  private fun nameSettlesIt(best: ScoredCandidate, all: List<ScoredCandidate>): Boolean =
+    TargetSignal.NAME_MATCH in best.signals && all.all { it === best || it.score < best.score }
 
   private const val MIN_EMIT_SCORE = 1
   private const val MEDIUM_THRESHOLD = 2
