@@ -50,19 +50,19 @@ class Reporting(unittest.TestCase):
         self.assertIn("compose-preview-vscode", body)
 
     def test_report_carries_the_sticky_marker_first(self):
-        body = mod.report(mod.affected(["schema/spatial-scene.schema.json"]))
+        body = mod.report(mod.affected(["docs/serve/preview-selector-fixtures.json"]))
         self.assertTrue(body.startswith("<!-- consumer-contract-notice -->"))
 
     def test_report_says_it_does_not_block(self):
         # The whole design rests on this; if the wording is lost, a reader will
         # reasonably assume the notice is a gate and wait for it to go green.
-        body = mod.report(mod.affected(["schema/spatial-scene.schema.json"]))
+        body = mod.report(mod.affected(["docs/serve/preview-selector-fixtures.json"]))
         self.assertIn("blocks the merge", body)
 
     def test_one_change_can_hit_several_surfaces(self):
         hits = mod.affected([
             "gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/launch/Builder.kt",
-            "schema/spatial-scene.schema.json",
+            "docs/serve/preview-selector-fixtures.json",
         ])
         self.assertEqual(len(hits), 2)
 

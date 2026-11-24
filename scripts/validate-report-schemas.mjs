@@ -119,7 +119,6 @@ function check(value, schema, label, results) {
 const schemas = []; // { file, kind, schema, example }
 for (const file of readdirSync(schemaDir)) {
   if (!file.endsWith(".schema.json")) continue;
-  if (file === "spatial-scene.schema.json") continue; // own codegen test
   const schema = JSON.parse(readFileSync(join(schemaDir, file), "utf8"));
   const meta = schema["x-composeai"] ?? {};
   schemas.push({ file, kind: meta.kind, schema, example: meta.example });
