@@ -193,6 +193,87 @@ public class InstrumentationRunTest {
     assertTrue(report, report.contains("tests=\"3\" failures=\"0\" skipped=\"2\""));
   }
 
+  /** Fixture: counts how often its @Parameters factory runs. */
+  @org.junit.runner.RunWith(org.junit.runners.Parameterized.class)
+  public static class CountedParameters {
+    static int factoryCalls;
+
+    @org.junit.runners.Parameterized.Parameters
+    public static List<Object[]> cases() {
+      factoryCalls++;
+      return List.of(new Object[] {1}, new Object[] {2});
+    }
+
+    public CountedParameters(int value) {}
+
+    @Test
+    public void each() {}
+  }
+
+  @Test
+  public void parameterFactoryRunsOncePerClass() throws Exception {
+    CountedParameters.factoryCalls = 0;
+    String previous = System.getProperty(InstrumentationRun.TESTS_PROPERTY);
+    System.setProperty(
+        InstrumentationRun.TESTS_PROPERTY, CountedParameters.class.getName() + "#each");
+    try {
+      assertEquals(0, InstrumentationRun.run(getClass().getClassLoader()));
+    } finally {
+      if (previous == null) System.clearProperty(InstrumentationRun.TESTS_PROPERTY);
+      else System.setProperty(InstrumentationRun.TESTS_PROPERTY, previous);
+      System.clearProperty("android.junit.runner");
+    }
+    assertEquals(1, CountedParameters.factoryCalls);
+  }
+
+  @Test
+  public void jsonReportCarriesEachCaseAndItsFailure() throws IOException {
+    InstrumentationRun.Reporter reporter = new InstrumentationRun.Reporter();
+    Description passes = test("a.Part", "passes");
+    Description fails = test("a.Part", "fails");
+    Description skips = test("a.Part", "skips");
+    reporter.testStarted(passes);
+    reporter.testFinished(passes);
+    reporter.testStarted(fails);
+    reporter.testFailure(
+        new org.junit.runner.notification.Failure(fails, new AssertionError("said \"no\"\nthen")));
+    reporter.testFinished(fails);
+    reporter.testStarted(skips);
+    reporter.testAssumptionFailure(
+        new org.junit.runner.notification.Failure(skips, new org.junit.AssumptionViolatedException("x")));
+    reporter.testFinished(skips);
+
+    File json = Files.createTempFile("report", ".json").toFile();
+    json.deleteOnExit();
+    reporter.writeJson(json.toPath(), 12);
+    String report = Files.readString(json.toPath());
+
+    assertTrue(
+        report,
+        report.startsWith(
+            "{\"tests\":3,\"passed\":1,\"failed\":1,\"skipped\":1,\"durationMs\":12,"));
+    assertTrue(report, report.contains("\"method\":\"fails\",\"status\":\"failed\""));
+    assertTrue(report, report.contains("\"message\":\"said \\\"no\\\"\\nthen\""));
+    assertTrue(report, report.contains("\"method\":\"skips\",\"status\":\"skipped\""));
+  }
+
+  @Test
+  public void aRunThatCannotStartSaysWhyInItsJson() throws IOException {
+    File json = Files.createTempFile("report", ".json").toFile();
+    json.deleteOnExit();
+    String previous = System.getProperty(InstrumentationRun.JSON_PROPERTY);
+    System.setProperty(InstrumentationRun.JSON_PROPERTY, json.getAbsolutePath());
+    try {
+      InstrumentationRun.failed("no test class a.Missing");
+    } finally {
+      if (previous == null) System.clearProperty(InstrumentationRun.JSON_PROPERTY);
+      else System.setProperty(InstrumentationRun.JSON_PROPERTY, previous);
+    }
+    String report = Files.readString(json.toPath());
+    assertTrue(report, report.contains("\"tests\":0,"));
+    assertTrue(report, report.contains("\"error\":\"no test class a.Missing\""));
+  }
+
   private static Description test(String className, String method) {
     return Description.createTestDescription(className, method);
   }

@@ -73,6 +73,9 @@ public final class InstrumentationRun {
   /** A JUnit XML report to write. */
   static final String REPORT_PROPERTY = "composeai.simulator.instrument.report";
 
+  /** A JSON report to write: each case's outcome, for agents and the Gradle task. */
+  static final String JSON_PROPERTY = "composeai.simulator.instrument.json";
+
   static final String DEVICE_RUNNER =
       "androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner";
 
@@ -162,7 +165,7 @@ public final class InstrumentationRun {
                 return;
               }
               if (!runner.isAlive()) return;
-              System.err.println("INSTRUMENTATION_FAILED: timed out after " + seconds + " s");
+              failed("timed out after " + seconds + " s");
               for (var entry : Thread.getAllStackTraces().entrySet()) {
                 System.err.println("\n\"" + entry.getKey().getName() + "\"");
                 for (StackTraceElement frame : entry.getValue()) {
@@ -268,12 +271,34 @@ public final class InstrumentationRun {
     try {
       exit = run(sandbox);
     } catch (Throwable t) {
-      System.err.println("INSTRUMENTATION_FAILED: " + t);
+      failed(String.valueOf(t));
       t.printStackTrace();
       exit = 2;
     }
     System.err.flush();
     System.exit(exit);
+  }
+
+  /**
+   * A run that could not get its tests going (or finish them): said on stderr as {@code am
+   * instrument} says it, and, when {@value #JSON_PROPERTY} names a file, in the JSON report's
+   * {@code error}, so an agent reading only the report still learns why there are no results.
+   */
+  static void failed(String reason) {
+    System.err.println("INSTRUMENTATION_FAILED: " + reason);
+    String json = System.getProperty(JSON_PROPERTY);
+    if (json == null || json.isEmpty()) return;
+    try {
+      Path file = Path.of(json);
+      if (file.getParent() != null) Files.createDirectories(file.getParent());
+      Files.writeString(
+          file,
+          "{\"tests\":0,\"passed\":0,\"failed\":0,\"skipped\":0,\"error\":"
+              + Reporter.jsonString(reason)
+              + ",\"cases\":[]}\n");
+    } catch (IOException | RuntimeException e) {
+      System.err.println("instrument: cannot write " + json + ": " + e);
+    }
   }
 
   static int run(ClassLoader sandbox) throws Exception {
@@ -294,20 +319,28 @@ public final class InstrumentationRun {
         try {
           classes.add(Class.forName(name, false, sandbox));
         } catch (ClassNotFoundException e) {
-          System.err.println("INSTRUMENTATION_FAILED: no test class " + name);
+          failed("no test class " + name);
           return 1;
         }
       }
     }
     System.err.println("instrument: " + classes.size() + " test class(es)");
     if (classes.isEmpty()) {
-      System.err.println("INSTRUMENTATION_FAILED: no tests found");
+      failed("no tests found");
       return 1;
     }
-    Request request = Request.classes(classes.toArray(new Class<?>[0]));
-    List<String> missing = selection.missingMethods(request.getRunner().getDescription());
+    // Each class's runner is built once, then validated, filtered and run: building one calls a
+    // parameterised class's @Parameters factory, which must not run twice or see other cases.
+    List<org.junit.runner.Runner> runners = new ArrayList<>();
+    Description all = Description.createSuiteDescription("selected");
+    for (Class<?> type : classes) {
+      org.junit.runner.Runner runner = Request.aClass(type).getRunner();
+      runners.add(runner);
+      all.addChild(runner.getDescription());
+    }
+    List<String> missing = selection.missingMethods(all);
     if (!missing.isEmpty()) {
-      System.err.println("INSTRUMENTATION_FAILED: no such test " + String.join(", ", missing));
+      failed("no such test " + String.join(", ", missing));
       return 1;
     }
     JUnitCore core = new JUnitCore();
@@ -318,9 +351,9 @@ public final class InstrumentationRun {
     int runCount = 0;
     int failures = 0;
     long millis = 0;
-    for (Class<?> type : classes) {
-      Request one = Request.aClass(type);
-      Filter filter = selection.filterFor(type.getName());
+    for (int i = 0; i < classes.size(); i++) {
+      Request one = Request.runner(runners.get(i));
+      Filter filter = selection.filterFor(classes.get(i).getName());
       if (filter != null) one = one.filterWith(filter);
       Result result = core.run(one);
       runCount += result.getRunCount();
@@ -331,6 +364,8 @@ public final class InstrumentationRun {
     if (report != null && !report.isEmpty()) {
       reporter.writeXml(Path.of(report), millis);
     }
+    String json = System.getProperty(JSON_PROPERTY);
+    if (json != null && !json.isEmpty()) reporter.writeJson(Path.of(json), millis);
     int skipped = reporter.skipped();
     if (failures == 0) {
       System.err.println(
@@ -699,6 +734,62 @@ public final class InstrumentationRun {
       try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
         out.write(xml.toString());
       }
+    }
+
+    /**
+     * The results as one JSON object: totals, then each case's class, method, status ({@code
+     * passed}, {@code failed} or {@code skipped}), duration and, for a failure, its message and
+     * stack trace. Written by hand: {@code org.json} here is the framework's, and this runs
+     * after the last test whatever state the app is in.
+     */
+    void writeJson(Path file, long millis) throws IOException {
+      if (file.getParent() != null) Files.createDirectories(file.getParent());
+      StringBuilder json = new StringBuilder();
+      int failed = failures();
+      int skipped = skipped();
+      json.append("{\"tests\":").append(cases.size())
+          .append(",\"passed\":").append(cases.size() - failed - skipped)
+          .append(",\"failed\":").append(failed)
+          .append(",\"skipped\":").append(skipped)
+          .append(",\"durationMs\":").append(millis)
+          .append(",\"cases\":[");
+      for (int i = 0; i < cases.size(); i++) {
+        Case c = cases.get(i);
+        if (i > 0) json.append(',');
+        String status = c.failure != null ? "failed" : c.ignored ? "skipped" : "passed";
+        json.append("{\"class\":").append(jsonString(c.description.getClassName()))
+            .append(",\"method\":").append(jsonString(c.description.getMethodName()))
+            .append(",\"status\":\"").append(status).append('"')
+            .append(",\"durationMs\":").append(c.nanos / 1_000_000);
+        if (c.failure != null) {
+          json.append(",\"message\":").append(jsonString(c.failure.getMessage()))
+              .append(",\"trace\":").append(jsonString(c.failure.getTrace()));
+        }
+        json.append('}');
+      }
+      json.append("]}\n");
+      try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+        out.write(json.toString());
+      }
+    }
+
+    static String jsonString(String text) {
+      if (text == null) return "null";
+      StringBuilder out = new StringBuilder(text.length() + 2).append('"');
+      for (char ch : text.toCharArray()) {
+        switch (ch) {
+          case '"' -> out.append("\\\"");
+          case '\\' -> out.append("\\\\");
+          case '\n' -> out.append("\\n");
+          case '\r' -> out.append("\\r");
+          case '\t' -> out.append("\\t");
+          default -> {
+            if (ch < 0x20) out.append(String.format("\\u%04x", (int) ch));
+            else out.append(ch);
+          }
+        }
+      }
+      return out.append('"').toString();
     }
 
     private static String escape(String text) {

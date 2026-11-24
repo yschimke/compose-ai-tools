@@ -1995,24 +1995,73 @@ data, and never touches the Data Layer, unless it is set.
 
 ## Instrumentation tests
 
-A prototype: `--instrument` runs an app's `androidTest` APK inside the simulator, beside the app,
-as `am instrument` runs it on a device or emulator, and exits 0 when every test passed.
+A prototype: an app's `androidTest` suite runs inside the simulator, beside the app, as
+`am instrument` runs it on a device or emulator — `connectedDebugAndroidTest` with no device.
+
+### From Gradle (the way to hand it to an agent)
+
+The preview plugin registers `simulator<Variant>AndroidTest` in every application module, for each
+variant with an `androidTest` component (`debug` by default). It does not need the module to have
+previews, and nothing depends on it, so it runs only when asked for:
+
+```sh
+./gradlew :app:simulatorDebugAndroidTest
+./gradlew :app:simulatorDebugAndroidTest --tests com.example.LoginTest --tests 'com.example.CartTest#checkout'
+```
+
+It builds the app and test APKs and runs `compose-preview android-simulator --instrument` on them.
+Like the connected task it is never up to date, and it fails the build when a test fails, naming
+each failed test. The results land beside AGP's connected ones:
+
+- `build/outputs/androidTest-results/simulator/<variant>/TEST-simulator.xml`: JUnit XML;
+- `build/outputs/androidTest-results/simulator/<variant>/results.json`: the same for agents.
+
+```json
+{"tests":3,"passed":2,"failed":1,"skipped":0,"durationMs":5210,"cases":[
+  {"class":"com.example.CartTest","method":"checkout","status":"failed","durationMs":840,
+   "message":"expected:<2> but was:<1>","trace":"java.lang.AssertionError: …"}, …]}
+```
+
+A run that cannot start its tests (no such class, a crash before the first test) writes
+`{"tests":0,…,"error":"…"}` instead, so the report alone says why there are no results.
+
+Gradle properties:
+
+| Property | Default |
+| --- | --- |
+| `composePreview.cli` | `COMPOSE_PREVIEW_CLI`, else `compose-preview` on `PATH` |
+| `composePreview.simulatorJava` | a JDK 21 toolchain Gradle knows; else the CLI looks for one |
+| `composePreview.simulatorSdk` | the CLI's default Android SDK level |
+
+### From the CLI
 
 ```sh
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
 compose-preview android-simulator app/build/outputs/apk/debug/app-debug.apk \
   --instrument app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
   --tests com.example.LoginTest,com.example.CartTest#checkout \
-  --test-report build/simulator-tests/TEST-simulator.xml
+  --test-report build/simulator-tests/TEST-simulator.xml \
+  --test-json build/simulator-tests/results.json
 ```
 
-It is headless, and the app's process starts with none of its activities, as `am instrument`
-leaves it. The tests run on a thread of their own while the main thread keeps looping, which is the
-device's arrangement and not a Robolectric unit test's: `runOnMainSync`, `ActivityScenario`,
-Espresso and the Compose test rules post to the main thread and wait for it. Each test is reported
-as it finishes; `--test-report` also writes JUnit XML. `samples/android-instrumented` is the suite
-CI runs (InstrumentationRegistry, `runOnMainSync`, an Espresso click through `ActivityScenario`, and
-a Compose rule with `recreate()`): five tests in about five seconds after the simulator starts.
+It exits 0 when every test passed. It is headless, and the app's process starts with none of its
+activities, as `am instrument` leaves it. The tests run on a thread of their own while the main
+thread keeps looping, which is the device's arrangement and not a Robolectric unit test's:
+`runOnMainSync`, `ActivityScenario`, Espresso and the Compose test rules post to the main thread and
+wait for it. Each test is reported on stderr as it finishes (`SKIPPED` for a failed assumption).
+
+`--tests` takes classes and `Class#method`s. Every selector must match, or the run fails before
+any test starts. A class named whole runs all of its tests, a suite included; a parameterised
+method runs every parameter. Without `--tests`, discovery finds concrete classes with `@RunWith`, a
+`@Test` method or a JUnit 3 `TestCase` superclass (inherited ones included). It leaves out suites,
+whose member classes are found on their own, and the libraries the test APK bundles (`androidx.`,
+`com.google.`, `kotlin.` and the like): name such a class with `--tests` to run it.
+
+`samples/android-instrumented` is the suite CI runs through `simulatorDebugAndroidTest`
+(InstrumentationRegistry, `runOnMainSync`, an Espresso click through `ActivityScenario`, and a
+Compose rule with `recreate()`). From warm caches the whole task takes about 17 s on four cores:
+about 6 s in the CLI before the simulator starts, 6 s for the simulator to boot to the app, and 5
+s for the five tests.
 
 How the pieces fit:
 

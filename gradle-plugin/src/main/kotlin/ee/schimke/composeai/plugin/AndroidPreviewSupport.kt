@@ -5,6 +5,7 @@ import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.HasAndroidTest
 import com.android.build.api.variant.HasUnitTest
 import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
@@ -25,6 +26,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaLauncher
 import org.gradle.jvm.toolchain.JavaToolchainService
 
@@ -633,6 +635,15 @@ internal object AndroidPreviewSupport {
     // Idempotent via `maybeCreate`.
     ComposePreviewTasks.setupBtaConfigurationsFor(project, extension)
 
+    // `simulator<Variant>AndroidTest`, for every app variant with an androidTest component:
+    // independent of the preview tasks below, which register for one variant and only when the
+    // module declares a @Preview dependency.
+    if (project.plugins.hasPlugin("com.android.application")) {
+      androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+        if (extension.enabled.get()) registerSimulatorAndroidTest(project, variant)
+      }
+    }
+
     // Register render tasks once, for the selected variant, inside onVariants (reading
     // `bootClasspath` earlier crashes AGP). KMP-Android publishes one variant named after its main
     // source set (`androidMain`), so it's taken as-is unless named exactly.
@@ -811,6 +822,54 @@ internal object AndroidPreviewSupport {
    *
    * One-directional: `demoDebug` never matches a flavorless `debug`.
    */
+  /**
+   * [SimulatorAndroidTestTask] for [variant], when it has an `androidTest` component (AGP creates
+   * one for the `testBuildType` only, `debug` by default).
+   */
+  private fun registerSimulatorAndroidTest(project: Project, variant: Variant) {
+    val androidTest = (variant as? HasAndroidTest)?.androidTest ?: return
+    val appApk = variant.artifacts.get(SingleArtifact.APK)
+    val testApk = androidTest.artifacts.get(SingleArtifact.APK)
+    val providers = project.providers
+    val toolchains = project.extensions.findByType(JavaToolchainService::class.java)
+    // A JDK 21 toolchain when Gradle knows one; otherwise the CLI looks for its own
+    // (COMPOSE_PREVIEW_SIMULATOR_JAVA, its own JVM, JAVA_HOME).
+    val toolchainJava = toolchains?.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    project.tasks.register(
+      SimulatorAndroidTestTask.name(variant.name),
+      SimulatorAndroidTestTask::class.java,
+    ) {
+      group = SimulatorAndroidTestTask.GROUP
+      description =
+        "Runs the ${variant.name} androidTest suite in the Robolectric simulator, with no device."
+      appApkDir.set(appApk)
+      testApkDir.set(testApk)
+      cliExecutable.set(
+        providers
+          .gradleProperty("composePreview.cli")
+          .orElse(providers.environmentVariable("COMPOSE_PREVIEW_CLI"))
+          .orElse("compose-preview"),
+      )
+      javaHome.set(
+        providers
+          .gradleProperty("composePreview.simulatorJava")
+          .orElse(
+            providers.provider {
+              try {
+                toolchainJava?.get()?.metadata?.installationPath?.asFile?.absolutePath
+              } catch (e: Exception) {
+                null
+              }
+            },
+          ),
+      )
+      sdk.set(providers.gradleProperty("composePreview.simulatorSdk").map { it.toInt() })
+      resultsDir.set(
+        project.layout.buildDirectory.dir("outputs/androidTest-results/simulator/${variant.name}"),
+      )
+    }
+  }
+
   internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
     if (variantName == target) return true
     if (target.isEmpty()) return false

@@ -613,8 +613,9 @@ jobs:
   #   - samples/host-natives: every library host-natives/index.json serves loads and works, from
   #     the index on main, downloaded the way a user's launch downloads it.
   # Both also check the control channel's stdout carries only JSON (#6443).
-  #   - samples/android-instrumented: its androidTest APK runs in the simulator beside the app
-  #     (`android-simulator --instrument`): InstrumentationRegistry, Espresso and Compose rules.
+  #   - samples/android-instrumented: its androidTest suite runs in the simulator beside the app
+  #     (`simulatorDebugAndroidTest`, the plugin's task over `android-simulator --instrument`):
+  #     InstrumentationRegistry, Espresso and Compose rules.
   simulator-smoke:
     name: Simulator smoke
     needs: changes
@@ -654,13 +655,18 @@ jobs:
           --cli cli/build/install/compose-preview/bin/compose-preview
           --apk samples/host-natives/build/outputs/apk/debug/host-natives-debug.apk
           --check host-natives --java "$JAVA_HOME_21_X64" --out build/simulator-smoke
+      # Through the plugin's task, as an agent runs a suite: it builds both APKs and runs the CLI.
       - name: Instrumentation tests in the simulator
         run: >-
-          cli/build/install/compose-preview/bin/compose-preview android-simulator
-          samples/android-instrumented/build/outputs/apk/debug/android-instrumented-debug.apk
-          --instrument samples/android-instrumented/build/outputs/apk/androidTest/debug/android-instrumented-debug-androidTest.apk
-          --form-factor phone --java "$JAVA_HOME_21_X64"
-          --test-report build/simulator-smoke/instrumentation/TEST-simulator.xml
+          ./gradlew :samples:android-instrumented:simulatorDebugAndroidTest
+          -PcomposePreview.cli="$PWD/cli/build/install/compose-preview/bin/compose-preview"
+          -PcomposePreview.simulatorJava="$JAVA_HOME_21_X64"
+      - name: Keep the instrumentation results
+        if: always()
+        run: >-
+          mkdir -p build/simulator-smoke/instrumentation &&
+          cp -r samples/android-instrumented/build/outputs/androidTest-results/simulator/.
+          build/simulator-smoke/instrumentation/ || true
       - name: Upload the screenshot and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

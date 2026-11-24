@@ -242,6 +242,7 @@ internal object CliFlags {
       "--instrument",
       "--tests",
       "--test-report",
+      "--test-json",
       "--serial",
       "--fingerprint",
       "--network",
