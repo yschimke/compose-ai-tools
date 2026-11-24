@@ -21,7 +21,7 @@ import org.json.JSONObject;
  *       and service lifecycle, uncaught exceptions).
  * </ul>
  */
-final class Protocol {
+public final class Protocol {
 
   /** {@code stdio} turns the control channel on; anything else leaves only the window. */
   static final String CONTROL_PROPERTY = "composeai.simulator.control";
@@ -132,10 +132,10 @@ final class Protocol {
   }
 
   /** {@link JSONObject} with unchecked puts, since every key here is a non-null literal. */
-  static final class Json {
+  public static final class Json {
     private final JSONObject object = new JSONObject();
 
-    Json put(String key, Object value) {
+    public Json put(String key, Object value) {
       try {
         object.put(key, value == null ? JSONObject.NULL : value);
       } catch (JSONException e) {
@@ -144,7 +144,7 @@ final class Protocol {
       return this;
     }
 
-    JSONObject object() {
+    public JSONObject object() {
       return object;
     }
   }

@@ -18,7 +18,7 @@ import java.util.Locale;
  * exist. Plain JVM code, no Android or Play services types: tested on the JVM, and readable outside
  * the sandbox.
  */
-final class PlayServices {
+public final class PlayServices {
 
   /** The launch's state ({@code launch --play-services}); installed when unset. */
   static final String PROPERTY = "composeai.simulator.playServices";
@@ -45,15 +45,15 @@ final class PlayServices {
   static final String STORE_VERSION_NAME = "47.3.13-31 [0] [PR] 812345678";
 
   // ConnectionResult codes.
-  static final int SUCCESS = 0;
-  static final int SERVICE_MISSING = 1;
+  public static final int SUCCESS = 0;
+  public static final int SERVICE_MISSING = 1;
   static final int SERVICE_VERSION_UPDATE_REQUIRED = 2;
   static final int SERVICE_DISABLED = 3;
   static final int SERVICE_INVALID = 9;
-  static final int API_UNAVAILABLE = 16;
+  public static final int API_UNAVAILABLE = 16;
 
   /** What the device's Play services are, and the {@code ConnectionResult} each reports. */
-  enum State {
+  public enum State {
     /** Installed, enabled and current: {@code SUCCESS}. */
     INSTALLED("installed", SUCCESS),
     /** Not installed (a device without Google services): {@code SERVICE_MISSING}. */
@@ -104,7 +104,7 @@ final class PlayServices {
   }
 
   /** Changes the state for every check from now on (the {@code playServices} command). */
-  static void set(State next) {
+  public static void set(State next) {
     state = next;
   }
 
@@ -112,14 +112,14 @@ final class PlayServices {
    * {@code isGooglePlayServicesAvailable(context, minApkVersion)}: as Play services' own check
    * compares versions, by their first digits (a version code's last three are the build variant).
    */
-  static int status(int minApkVersion) {
+  public static int status(int minApkVersion) {
     State current = state;
     if (current != State.INSTALLED) return current.status;
     return minApkVersion / 1000 > VERSION_CODE / 1000 ? SERVICE_VERSION_UPDATE_REQUIRED : SUCCESS;
   }
 
   /** {@code getApkVersion}: the installed version code, 0 with none installed. */
-  static int apkVersion() {
+  public static int apkVersion() {
     switch (state) {
       case NONE:
         return 0;
@@ -156,7 +156,7 @@ final class PlayServices {
    * {@code SUCCESS}; otherwise success for an API the simulator implements ([simulated]) and
    * {@code API_UNAVAILABLE} for any other, which no service here could connect.
    */
-  static int apiStatus(boolean simulated) {
+  public static int apiStatus(boolean simulated) {
     int status = status(0);
     if (status != SUCCESS) return status;
     return simulated ? SUCCESS : API_UNAVAILABLE;

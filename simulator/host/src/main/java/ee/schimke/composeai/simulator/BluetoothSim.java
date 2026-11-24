@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowBluetoothGatt;
 import android.app.Activity;
 import android.app.Application;
 import android.app.PendingIntent;
@@ -53,7 +54,7 @@ import org.robolectric.shadows.ShadowBluetoothLeScanner;
  * <p>Robolectric's adapter keeps state but sends nothing; this class compares it every cycle, so an
  * app that calls {@code enable()} or {@code startDiscovery()} itself hears the broadcasts too.
  */
-final class BluetoothSim {
+public final class BluetoothSim {
 
   private static BluetoothSim current;
 
@@ -111,7 +112,7 @@ final class BluetoothSim {
     onBeforeAirplane = true;
   }
 
-  static BluetoothSim current() {
+  public static BluetoothSim current() {
     return current;
   }
 
@@ -119,7 +120,7 @@ final class BluetoothSim {
    * The devices in range, with their names and advertised service UUIDs: what a companion-device
    * chooser would list ({@link SimulatorShadowCompanionDeviceManager}).
    */
-  List<CompanionDevices.Device> inRange() {
+  public List<CompanionDevices.Device> inRange() {
     List<CompanionDevices.Device> result = new ArrayList<>();
     for (Map.Entry<String, Peripheral> e : peripherals.entrySet()) {
       JSONObject spec = e.getValue().spec;
@@ -740,7 +741,7 @@ final class BluetoothSim {
   }
 
   /** From {@link SimulatorShadowBluetoothGatt}: something the app did to a peripheral. */
-  static void gattEvent(BluetoothGatt gatt, String op, Object uuid, byte[] value) {
+  public static void gattEvent(BluetoothGatt gatt, String op, Object uuid, byte[] value) {
     BluetoothSim sim = current;
     if (sim == null) return;
     sim.event(

@@ -32,7 +32,7 @@ import org.robolectric.RuntimeEnvironment;
  * snippets, suggestions, blobs and visibility settings are not simulated: a call to one fails with
  * {@code UnsupportedOperationException}.
  */
-final class AppSearchSessions {
+public final class AppSearchSessions {
 
   private static final class Database {
     final Map<String, Object> schemas = new LinkedHashMap<>();
@@ -43,7 +43,7 @@ final class AppSearchSessions {
   private static final Map<String, Database> databases = new ConcurrentHashMap<>();
 
   /** A session on database [name] of [storage] ({@code local} or {@code platform}). */
-  static ListenableFuture<Object> open(String storage, Object searchContext) {
+  public static ListenableFuture<Object> open(String storage, Object searchContext) {
     try {
       String name = (String) call(searchContext, "getDatabaseName");
       ClassLoader loader = searchContext.getClass().getClassLoader();

@@ -36,7 +36,7 @@ import org.json.JSONObject;
  * injects a fake complication parcel/entry) and gives its data to the face's slot, or, when the
  * face is not one of the app's, draws it on the built-in face.
  */
-final class WatchFaceHost {
+public final class WatchFaceHost {
 
   interface Display {
     /** The app's face drew [frame]; null puts the built-in face back. */
@@ -276,7 +276,7 @@ final class WatchFaceHost {
    * refreshes matching active slots locally and across {@link DeviceBus}.
    */
   @SuppressWarnings("deprecation")
-  static boolean interceptComplicationUpdateBroadcast(Intent intent) {
+  public static boolean interceptComplicationUpdateBroadcast(Intent intent) {
     if (intent == null) return false;
     String action = intent.getAction();
     if (!ACTION_REQUEST_UPDATE.equals(action) && !ACTION_REQUEST_UPDATE_ALL.equals(action)) {

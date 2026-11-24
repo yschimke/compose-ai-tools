@@ -80,7 +80,7 @@ import org.robolectric.RuntimeEnvironment;
  * <p>Enabled by {@link #HUB_PROPERTY}, which the CLI sets for both simulators of {@code launch
  * --pair}; without it the app keeps Robolectric's behavior (no Play services).
  */
-final class DataLayer {
+public final class DataLayer {
 
   static final String HUB_PROPERTY = DataLayerLink.HUB_PROPERTY;
   static final String NODE_PROPERTY = DataLayerLink.NODE_PROPERTY;
@@ -146,7 +146,7 @@ final class DataLayer {
   }
 
   /** The node, connecting it on first use. */
-  static DataLayer get() {
+  public static DataLayer get() {
     DataLayer node = instance;
     return node != null ? node : get(RuntimeEnvironment.getApplication());
   }
@@ -376,23 +376,23 @@ final class DataLayer {
     return tasks.failure(error);
   }
 
-  Object dataClient(Context context) {
+  public Object dataClient(Context context) {
     return new DataLayerClients.Data(context, this);
   }
 
-  Object messageClient(Context context) {
+  public Object messageClient(Context context) {
     return new DataLayerClients.Messages(context, this);
   }
 
-  Object nodeClient(Context context) {
+  public Object nodeClient(Context context) {
     return new DataLayerClients.Nodes(context, this);
   }
 
-  Object capabilityClient(Context context) {
+  public Object capabilityClient(Context context) {
     return new DataLayerClients.Capabilities(context, this);
   }
 
-  Object channelClient(Context context) {
+  public Object channelClient(Context context) {
     return new DataLayerClients.Channels(context, this);
   }
 

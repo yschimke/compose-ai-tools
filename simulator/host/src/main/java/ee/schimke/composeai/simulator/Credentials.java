@@ -36,7 +36,7 @@ import org.json.JSONObject;
  * {"type","data"}}, the data a provider would return, e.g. a passkey's {@code
  * androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON}), {@code none} or {@code cancel}.
  */
-final class Credentials {
+public final class Credentials {
 
   static final String PASSWORD = "android.credentials.TYPE_PASSWORD_CREDENTIAL";
   static final String KEY_ID = "androidx.credentials.BUNDLE_KEY_ID";
@@ -67,7 +67,7 @@ final class Credentials {
     }
   }
 
-  static synchronized void get(
+  public static synchronized void get(
       GetCredentialRequest request,
       android.os.CancellationSignal signal,
       Executor executor,
@@ -92,7 +92,7 @@ final class Credentials {
     }
   }
 
-  static synchronized void create(
+  public static synchronized void create(
       CreateCredentialRequest request,
       android.os.CancellationSignal signal,
       Executor executor,

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAlarmManager;
 import android.Manifest;
 import android.app.AlarmManager;
 import android.app.Application;

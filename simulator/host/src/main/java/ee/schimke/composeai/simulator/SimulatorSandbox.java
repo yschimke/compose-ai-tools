@@ -1,5 +1,34 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.ShadowDisplayControlLock;
+import ee.schimke.composeai.simulator.shadows.ShadowDisplayOffloadManager;
+import ee.schimke.composeai.simulator.shadows.ShadowGoogleApiAvailability;
+import ee.schimke.composeai.simulator.shadows.ShadowGooglePlayServicesUtilLight;
+import ee.schimke.composeai.simulator.shadows.ShadowLocalStorage;
+import ee.schimke.composeai.simulator.shadows.ShadowPlatformStorage;
+import ee.schimke.composeai.simulator.shadows.ShadowWearHapticFeedbackConstants;
+import ee.schimke.composeai.simulator.shadows.ShadowWearable;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowActivityClient;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAlarmManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppFunctionManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppWidgetHostView;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppWidgetManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowBluetoothGatt;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowCompanionDeviceManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowConnectivityManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowContentResolver;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowContextImpl;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowCredentialManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowJobScheduler;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowPackageManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowRemoteViewsAdapter;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowResources;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowResultReceiver;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSettings;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowTelephonyManager;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextToSpeech;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowWifiManager;
 import com.google.common.collect.ImmutableList;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +62,7 @@ import org.robolectric.util.inject.Injector;
  * Application.onCreate()} as on a device. Upstream's builder offers no way to bind it; keep the
  * rest in step with the Robolectric pin.
  */
-final class SimulatorSandbox {
+public final class SimulatorSandbox {
 
   static AndroidSandbox build(List<Path> extraJars, int sdkVersion) {
     JarCollection jarCollection = new JarCollection(extraJars);
@@ -126,7 +155,7 @@ final class SimulatorSandbox {
         "addShadowClass",
         ClassParameter.from(String.class, "android.app.UiAutomation"),
         ClassParameter.from(
-            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowUiAutomation"),
+            String.class, SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowUiAutomation"),
         ClassParameter.from(boolean.class, false));
     ReflectionHelpers.callInstanceMethod(
         shadows,
@@ -134,7 +163,7 @@ final class SimulatorSandbox {
         ClassParameter.from(String.class, "android.app.Instrumentation"),
         ClassParameter.from(
             String.class,
-            SimulatorSandbox.class.getPackageName() + ".SimulatorShadowInstrumentation"),
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowInstrumentation"),
         ClassParameter.from(boolean.class, false));
     // Injected input (Espresso's touches and keys) reaches the simulator's windows.
     ReflectionHelpers.callInstanceMethod(
@@ -142,7 +171,7 @@ final class SimulatorSandbox {
         "addShadowClass",
         ClassParameter.from(String.class, "android.hardware.input.InputManager"),
         ClassParameter.from(
-            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowInputManager"),
+            String.class, SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowInputManager"),
         ClassParameter.from(boolean.class, false));
     // MediaCodecs backed by the host's ffmpeg (HostCodecs), beside Robolectric's.
     ReflectionHelpers.callInstanceMethod(
@@ -150,7 +179,7 @@ final class SimulatorSandbox {
         "addShadowClass",
         ClassParameter.from(String.class, "android.media.MediaCodec"),
         ClassParameter.from(
-            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowMediaCodec"),
+            String.class, SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowMediaCodec"),
         ClassParameter.from(boolean.class, false));
     // MediaExtractor over real files (MP3, WAV, MP4), not only tracks a test registered.
     ReflectionHelpers.callInstanceMethod(
@@ -159,7 +188,7 @@ final class SimulatorSandbox {
         ClassParameter.from(String.class, "android.media.MediaExtractor"),
         ClassParameter.from(
             String.class,
-            SimulatorSandbox.class.getPackageName() + ".SimulatorShadowMediaExtractor"),
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowMediaExtractor"),
         ClassParameter.from(boolean.class, false));
     // Activity.recreate() through Navigator, as its `recreate` command does.
     ReflectionHelpers.callInstanceMethod(
@@ -167,7 +196,7 @@ final class SimulatorSandbox {
         "addShadowClass",
         ClassParameter.from(String.class, "android.app.Activity"),
         ClassParameter.from(
-            String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowActivity"),
+            String.class, SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowActivity"),
         ClassParameter.from(boolean.class, false));
     ShadowMap shadowMap = shadows.build();
     androidSandbox.replaceShadowMap(shadowMap);

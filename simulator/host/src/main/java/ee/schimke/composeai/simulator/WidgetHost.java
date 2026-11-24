@@ -52,13 +52,13 @@ import org.xmlpull.v1.XmlPullParser;
  * <p>The app calls {@code AppWidgetManager} from any thread, as it may on a device; state is
  * guarded by this object and view work is handed to the main thread.
  */
-final class WidgetHost {
+public final class WidgetHost {
 
   /** {@code --widget} providers to place at launch, separated by {@code ;}. */
   static final String WIDGETS_PROPERTY = "composeai.simulator.widgets";
 
   /** The session's host, for {@link SimulatorShadowAppWidgetManager}; null before it starts. */
-  static volatile WidgetHost current;
+  public static volatile WidgetHost current;
 
   /** A widget the host has bound: placed on the home screen, or still being configured. */
   static final class Hosted {
@@ -132,7 +132,7 @@ final class WidgetHost {
     this.home = home;
   }
 
-  boolean hasHome() {
+  public boolean hasHome() {
     return home != null;
   }
 
@@ -228,7 +228,7 @@ final class WidgetHost {
    * android.appwidget.provider} metadata, each parsed as {@code AppWidgetService} parses it (sizes
    * in pixels of the default display).
    */
-  synchronized List<AppWidgetProviderInfo> providers() {
+  public synchronized List<AppWidgetProviderInfo> providers() {
     if (providers != null) return providers;
     providers = new ArrayList<>();
     PackageManager pm = app.getPackageManager();
@@ -795,7 +795,7 @@ final class WidgetHost {
   // ---------------------------------------------------------------------------------------------
   // The AppWidgetManager side, called by SimulatorShadowAppWidgetManager on any thread
 
-  synchronized int[] idsOf(ComponentName provider) {
+  public synchronized int[] idsOf(ComponentName provider) {
     List<Integer> ids = new ArrayList<>();
     for (Hosted h : widgets.values()) if (h.info.provider.equals(provider)) ids.add(h.id);
     int[] array = new int[ids.size()];
@@ -803,18 +803,18 @@ final class WidgetHost {
     return array;
   }
 
-  synchronized AppWidgetProviderInfo infoOf(int id) {
+  public synchronized AppWidgetProviderInfo infoOf(int id) {
     Hosted h = widgets.get(id);
     return h == null ? null : h.info;
   }
 
-  synchronized Bundle optionsOf(int id) {
+  public synchronized Bundle optionsOf(int id) {
     Hosted h = widgets.get(id);
     return h == null ? Bundle.EMPTY : new Bundle(h.options);
   }
 
   /** The app changed a widget's options itself: stored, and the provider told, as on a device. */
-  void appUpdatedOptions(int id, Bundle options) {
+  public void appUpdatedOptions(int id, Bundle options) {
     Hosted hosted;
     synchronized (this) {
       hosted = widgets.get(id);
@@ -831,7 +831,7 @@ final class WidgetHost {
   }
 
   /** {@code updateAppWidget}: [views] replace what widget [id] shows. */
-  void appUpdated(int id, RemoteViews views, boolean partial) {
+  public void appUpdated(int id, RemoteViews views, boolean partial) {
     Hosted hosted;
     int count;
     synchronized (this) {
@@ -862,12 +862,12 @@ final class WidgetHost {
   }
 
   /** {@code updateAppWidget(ComponentName, …)}: every widget of the provider. */
-  void appUpdated(ComponentName provider, RemoteViews views) {
+  public void appUpdated(ComponentName provider, RemoteViews views) {
     for (int id : idsOf(provider)) appUpdated(id, views, false);
   }
 
   /** {@code notifyAppWidgetViewDataChanged}: the collection [viewId] in widget [id] reloads. */
-  void appDataChanged(int id, int viewId) {
+  public void appDataChanged(int id, int viewId) {
     Hosted hosted;
     synchronized (this) {
       hosted = widgets.get(id);
@@ -890,7 +890,7 @@ final class WidgetHost {
    * agent answers with {@code widget pin} (or by tapping it). Returns whether the request was
    * taken, false when one is already waiting.
    */
-  boolean appRequestedPin(ComponentName provider, Bundle extras, PendingIntent callback) {
+  public boolean appRequestedPin(ComponentName provider, Bundle extras, PendingIntent callback) {
     if (home == null) return false;
     AppWidgetProviderInfo info;
     try {
@@ -953,12 +953,12 @@ final class WidgetHost {
         .object();
   }
 
-  synchronized void setGeneratedPreview(ComponentName provider, RemoteViews preview) {
+  public synchronized void setGeneratedPreview(ComponentName provider, RemoteViews preview) {
     if (preview == null) generatedPreviews.remove(provider);
     else generatedPreviews.put(provider, preview);
   }
 
-  synchronized RemoteViews generatedPreview(ComponentName provider) {
+  public synchronized RemoteViews generatedPreview(ComponentName provider) {
     return generatedPreviews.get(provider);
   }
 

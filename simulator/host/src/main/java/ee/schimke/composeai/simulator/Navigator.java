@@ -58,7 +58,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  *
  * <p>All of it runs on the main thread, inside the sandbox.
  */
-final class Navigator {
+public final class Navigator {
 
   /** One activity on the back stack. */
   /** Where an activity started for another app sends its result (see {@link Entry#resultTo}). */
@@ -195,7 +195,7 @@ final class Navigator {
   }
 
   /** The session's navigator, for the simulator's own system UI. */
-  static Navigator current() {
+  public static Navigator current() {
     return current;
   }
 
@@ -1037,7 +1037,7 @@ final class Navigator {
    * {@code Activity.recreate()} called by the app (or a test's {@code ActivityScenario}), routed
    * here by {@link SimulatorShadowActivity}: false when [activity] is not on the back stack.
    */
-  boolean recreate(Activity activity) {
+  public boolean recreate(Activity activity) {
     for (Entry entry : stack) {
       if (entry.activity() == activity) {
         recreate(entry);
@@ -1508,7 +1508,7 @@ final class Navigator {
    * intent, from {@link SimulatorShadowContextImpl} as the app binds; a device resolves an explicit
    * bind by its component alone. Also remembers the bind, which Robolectric logs as a start.
    */
-  static void prepareBind(Intent intent) {
+  public static void prepareBind(Intent intent) {
     Application app = RuntimeEnvironment.getApplication();
     if (app == null) return;
     // Another package's service the simulator stands in for (WearCompanion): Robolectric answers
@@ -1677,7 +1677,7 @@ final class Navigator {
    * and returns what its {@code onBind} returned: a launcher showing a widget's collection talks to
    * the {@code RemoteViewsService}'s factory in-process through it.
    */
-  IBinder bindForHost(Intent intent) {
+  public IBinder bindForHost(Intent intent) {
     ComponentName component = resolveService(intent);
     Running running = runningOrCreate(component, intent);
     IBinder binder = running.controller.get().onBind(intent);
@@ -1717,7 +1717,7 @@ final class Navigator {
    * {@link DataLayer} to deliver a Wearable event to; null before the session's navigator exists.
    * Main thread only.
    */
-  static Service serviceFor(ComponentName component) {
+  public static Service serviceFor(ComponentName component) {
     Navigator navigator = current;
     if (navigator == null) return null;
     boolean created = !navigator.services.containsKey(component);
@@ -1798,7 +1798,7 @@ final class Navigator {
   private final Map<ComponentName, Long> foregroundDeadlines = new LinkedHashMap<>();
 
   /** From {@link SimulatorShadowContextImpl}: the app called {@code startForegroundService}. */
-  static void expectForeground(Intent intent) {
+  public static void expectForeground(Intent intent) {
     foregroundStarts.add(
         new Object[] {
           new Intent(intent), android.os.SystemClock.uptimeMillis() + FOREGROUND_DEADLINE_MS
@@ -1939,7 +1939,7 @@ final class Navigator {
    * return false and keep Robolectric's delivery, to runtime receivers alone, which is also what
    * a device does with an implicit broadcast and a manifest receiver since API 26.
    */
-  static boolean appSentBroadcast(Intent intent) {
+  public static boolean appSentBroadcast(Intent intent) {
     Navigator navigator = current;
     if (navigator == null || Boolean.TRUE.equals(delivering.get())) return false;
     if (intent.getComponent() == null && intent.getPackage() == null) return false;

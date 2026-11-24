@@ -25,7 +25,7 @@ import org.json.JSONObject;
  * receiving app's main thread through the handler registered for its {@code op}, which replies
  * when it has an answer, now or later.
  */
-final class DeviceBus {
+public final class DeviceBus {
 
   /** The localhost port of the CLI's hub; set only for a launch of several apps. */
   static final String BUS_PROPERTY = "composeai.simulator.device.bus";
@@ -63,7 +63,7 @@ final class DeviceBus {
     }
   }
 
-  static boolean enabled() {
+  public static boolean enabled() {
     return System.getProperty(BUS_PROPERTY) != null;
   }
 
@@ -109,7 +109,7 @@ final class DeviceBus {
    * Sends [op] to the app [to]; the future completes with the reply's body, or fails when that
    * app is not on the bus or leaves before answering.
    */
-  static CompletableFuture<JSONObject> request(String to, String op, JSONObject body) {
+  public static CompletableFuture<JSONObject> request(String to, String op, JSONObject body) {
     Waiting pending = new Waiting(to);
     if (link == null) {
       pending.future.completeExceptionally(new IllegalStateException("no device bus"));

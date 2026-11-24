@@ -17,7 +17,7 @@ import java.util.function.Consumer;
  * simulators; {@link DataLayer} says what a frame means. No Play services types here, so the link
  * is plain JVM code that never touches the app's classes.
  */
-final class DataLayerLink {
+public final class DataLayerLink {
 
   /** The localhost port of the CLI's hub; set only for a paired launch. */
   static final String HUB_PROPERTY = "composeai.simulator.datalayer.hub";
@@ -40,7 +40,7 @@ final class DataLayerLink {
    * rather than on {@link DataLayer}, which names the app's Play services classes and so cannot be
    * loaded outside the sandbox ({@link SimulatorSandbox} asks).
    */
-  static boolean enabled() {
+  public static boolean enabled() {
     return System.getProperty(HUB_PROPERTY) != null || agent();
   }
 

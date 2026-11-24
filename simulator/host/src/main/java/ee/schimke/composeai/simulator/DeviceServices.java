@@ -41,7 +41,7 @@ import org.json.JSONObject;
  * <p>The caller waits up to ten seconds for each answer; a service whose app is gone fails its
  * calls with {@link DeadObjectException}.
  */
-final class DeviceServices {
+public final class DeviceServices {
 
   private static final String START = "serviceStart";
   private static final String STOP = "serviceStop";
@@ -85,7 +85,7 @@ final class DeviceServices {
   // The calling app
 
   /** The other app of the device whose service [service] names, or null. */
-  static String ownerOf(Intent service) {
+  public static String ownerOf(Intent service) {
     if (app == null || !DeviceBus.enabled() || service == null) return null;
     ComponentName component = service.getComponent();
     String pkg = component != null ? component.getPackageName() : service.getPackage();
@@ -125,7 +125,7 @@ final class DeviceServices {
   }
 
   /** {@code startService} / {@code startForegroundService} of another app's service. */
-  static ComponentName start(Intent service, boolean foreground) {
+  public static ComponentName start(Intent service, boolean foreground) {
     checkAccess(service, "start");
     JSONObject answer =
         ask(
@@ -140,7 +140,7 @@ final class DeviceServices {
   }
 
   /** {@code stopService} of another app's service. */
-  static boolean stop(Intent service) {
+  public static boolean stop(Intent service) {
     checkAccess(service, "stop");
     JSONObject answer =
         ask(ownerOf(service), STOP, new Protocol.Json().put("intent", Parcels.encode(service)).object());
@@ -152,7 +152,7 @@ final class DeviceServices {
    * [connection] hears of it on [executor] (the main thread when null) once the owning app has
    * bound it.
    */
-  static boolean bind(
+  public static boolean bind(
       Intent service, ServiceConnection connection, int flags, Executor executor) {
     checkAccess(service, "bind to");
     String owner = ownerOf(service);
@@ -187,7 +187,7 @@ final class DeviceServices {
   }
 
   /** {@code unbindService}: true when [connection] was bound to another app's service. */
-  static boolean unbind(ServiceConnection connection) {
+  public static boolean unbind(ServiceConnection connection) {
     Binding binding = outgoing.remove(connection);
     if (binding == null) return false;
     DeviceBus.request(binding.owner, UNBIND, new Protocol.Json().put("id", binding.id).object());

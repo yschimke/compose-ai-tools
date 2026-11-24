@@ -36,16 +36,16 @@ import org.json.JSONObject;
  *
  * Nothing here names Play services, so the shadow works whether or not the app has it.
  */
-final class CompanionDevices {
+public final class CompanionDevices {
 
   static final String DEVICE_PROFILE_WATCH = "android.app.role.COMPANION_DEVICE_WATCH";
 
   /** One association, as {@code AssociationInfo} reports it. */
-  static final class Association {
-    final int id;
-    final String address;
-    final String displayName;
-    final String profile;
+  public static final class Association {
+    public final int id;
+    public final String address;
+    public final String displayName;
+    public final String profile;
     /** The data-layer node it was seeded from, or null. */
     final String nodeId;
 
@@ -69,8 +69,8 @@ final class CompanionDevices {
   }
 
   /** A device the chooser would list. */
-  static final class Candidate {
-    final String address;
+  public static final class Candidate {
+    public final String address;
     final String name;
     final String nodeId;
 
@@ -96,19 +96,19 @@ final class CompanionDevices {
    * each optional. A filter the simulator cannot evaluate (a Wi-Fi one, or a BLE one with raw-data,
    * service-data or manufacturer-data predicates) is {@link #NONE}, which matches no device.
    */
-  static final class Filter {
+  public static final class Filter {
     /** Which devices a filter applies to. */
     enum Medium {
       CLASSIC,
       BLE
     }
 
-    static final Filter NONE = new Filter(null, null, null, new ArrayList<>(), new ArrayList<>());
+    public static final Filter NONE = new Filter(null, null, null, new ArrayList<>(), new ArrayList<>());
 
     /** The medium, or null for {@link #NONE}. */
     final Medium medium;
 
-    final String address;
+    public final String address;
     final Pattern name;
     final List<UUID> serviceUuids;
     /** Per service UUID, the bits that must match, or null for all of them. */
@@ -122,13 +122,13 @@ final class CompanionDevices {
       this.masks = masks;
     }
 
-    static Filter classic(String address, Pattern name, List<UUID> serviceUuids) {
+    public static Filter classic(String address, Pattern name, List<UUID> serviceUuids) {
       List<UUID> masks = new ArrayList<>();
       for (int i = 0; i < serviceUuids.size(); i++) masks.add(null);
       return new Filter(Medium.CLASSIC, address, name, serviceUuids, masks);
     }
 
-    static Filter ble(String address, Pattern name, UUID serviceUuid, UUID mask) {
+    public static Filter ble(String address, Pattern name, UUID serviceUuid, UUID mask) {
       List<UUID> uuids = new ArrayList<>();
       List<UUID> masks = new ArrayList<>();
       if (serviceUuid != null) {
@@ -167,11 +167,11 @@ final class CompanionDevices {
   }
 
   /** A Bluetooth device in range, as {@link BluetoothSim} reports it. */
-  static final class Device {
-    final String address;
+  public static final class Device {
+    public final String address;
     final String name;
     /** Whether it is a BLE peripheral (advertising), rather than a classic device. */
-    final boolean ble;
+    public final boolean ble;
     /** Its service UUIDs, canonical: a short {@code 180D} as {@code 0000180d-…-00805f9b34fb}. */
     final List<UUID> serviceUuids = new ArrayList<>();
 
@@ -191,8 +191,8 @@ final class CompanionDevices {
 
   /** An {@code associate()} the chooser has not answered. */
   static final class Request {
-    final int id;
-    final String profile;
+    public final int id;
+    public final String profile;
     final List<Candidate> candidates;
     /** Called once: with the chosen candidate, or null when the user rejected. */
     final Consumer<Candidate> answer;
@@ -237,15 +237,15 @@ final class CompanionDevices {
     peers.remove(nodeId);
   }
 
-  static synchronized List<Association> associations() {
+  public static synchronized List<Association> associations() {
     return new ArrayList<>(associations.values());
   }
 
-  static synchronized boolean remove(int id) {
+  public static synchronized boolean remove(int id) {
     return associations.remove(id) != null;
   }
 
-  static synchronized boolean removeAddress(String address) {
+  public static synchronized boolean removeAddress(String address) {
     return associations.values().removeIf(a -> a.address.equalsIgnoreCase(address));
   }
 
@@ -254,7 +254,7 @@ final class CompanionDevices {
    * request's device filters (empty: any device); [bluetooth] the Bluetooth devices in range, of
    * which the chooser lists those matching any filter, as the system's does.
    */
-  static void associate(
+  public static void associate(
       String profile, List<Filter> filters, List<Device> bluetooth, Consumer<Candidate> answer) {
     boolean filtered = !filters.isEmpty();
     List<Candidate> candidates = new ArrayList<>();
@@ -309,7 +309,7 @@ final class CompanionDevices {
   }
 
   /** The association [answer] created for [address], for the shadow's callback. */
-  static synchronized Association find(String address) {
+  public static synchronized Association find(String address) {
     for (Association a : associations.values()) {
       if (a.address.equalsIgnoreCase(address)) return a;
     }

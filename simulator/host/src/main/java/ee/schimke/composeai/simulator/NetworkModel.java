@@ -13,7 +13,7 @@ import java.util.Locale;
  * takes cellular away; either radio can be switched back on while it lasts, and turning it off
  * restores what was on before. Ethernet is wired, and stays.
  */
-final class NetworkModel {
+public final class NetworkModel {
 
   /** What the device is connected through, when its radios let it. */
   enum Mode {
@@ -63,7 +63,7 @@ final class NetworkModel {
   boolean wifiRadio = true;
 
   /** Mobile data, the user's switch. */
-  boolean data = true;
+  public boolean data = true;
 
   /** Whether the Wi-Fi radio is associated with an access point. */
   boolean wifiConnected = true;

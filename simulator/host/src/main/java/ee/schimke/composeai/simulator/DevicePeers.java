@@ -19,7 +19,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  * getPackageInfo}, {@code queryIntentServices} and package visibility find them as on a device.
  * Their code runs in their own simulators; this one only knows their manifests.
  */
-final class DevicePeers {
+public final class DevicePeers {
 
   /** The packages installed, in launch order. */
   private static final List<String> packages = new ArrayList<>();
@@ -74,7 +74,7 @@ final class DevicePeers {
     }
   }
 
-  static boolean isPeer(String packageName) {
+  public static boolean isPeer(String packageName) {
     return packages.contains(packageName);
   }
 

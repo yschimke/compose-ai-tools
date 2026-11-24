@@ -50,7 +50,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  * <p>Each app that gets one reports a {@code broadcast} event naming the sender. An ordered
  * broadcast with no receiver in another app keeps Robolectric's own delivery.
  */
-final class DeviceBroadcasts {
+public final class DeviceBroadcasts {
 
   private static final String EVENT = "intent";
   private static final String ORDERED_TARGETS = "orderedTargets";
@@ -136,7 +136,7 @@ final class DeviceBroadcasts {
    * other apps. True when it names another app, which then has it alone, so it is not delivered
    * here.
    */
-  static boolean send(Intent intent, String receiverPermission) {
+  public static boolean send(Intent intent, String receiverPermission) {
     if (!crosses(intent)) return false;
     grant(intent);
     DeviceBus.broadcast(
@@ -150,7 +150,7 @@ final class DeviceBroadcasts {
   }
 
   /** The app's {@code sendStickyBroadcast} of [intent]: every other app keeps it too. */
-  static void sendSticky(Intent intent) {
+  public static void sendSticky(Intent intent) {
     if (!crosses(intent) || target(intent) != null) return;
     DeviceBus.broadcast(
         EVENT,
@@ -162,7 +162,7 @@ final class DeviceBroadcasts {
    * chain runs here, on the main thread, every app's receivers in priority order, and true is
    * returned; false leaves it to Robolectric's own delivery.
    */
-  static boolean sendOrdered(
+  public static boolean sendOrdered(
       Intent intent,
       String receiverPermission,
       BroadcastReceiver resultReceiver,
