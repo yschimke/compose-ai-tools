@@ -226,6 +226,37 @@ public class InstrumentationRunTest {
     assertEquals(1, CountedParameters.factoryCalls);
   }
 
+  @Test
+  public void jsonReportCarriesEachCaseAndItsFailure() throws IOException {
+    InstrumentationRun.Reporter reporter = new InstrumentationRun.Reporter();
+    Description passes = test("a.Part", "passes");
+    Description fails = test("a.Part", "fails");
+    Description skips = test("a.Part", "skips");
+    reporter.testStarted(passes);
+    reporter.testFinished(passes);
+    reporter.testStarted(fails);
+    reporter.testFailure(
+        new org.junit.runner.notification.Failure(fails, new AssertionError("said \"no\"\nthen")));
+    reporter.testFinished(fails);
+    reporter.testStarted(skips);
+    reporter.testAssumptionFailure(
+        new org.junit.runner.notification.Failure(skips, new org.junit.AssumptionViolatedException("x")));
+    reporter.testFinished(skips);
+
+    File json = Files.createTempFile("report", ".json").toFile();
+    json.deleteOnExit();
+    reporter.writeJson(json.toPath(), 12);
+    String report = Files.readString(json.toPath());
+
+    assertTrue(
+        report,
+        report.startsWith(
+            "{\"tests\":3,\"passed\":1,\"failed\":1,\"skipped\":1,\"durationMs\":12,"));
+    assertTrue(report, report.contains("\"method\":\"fails\",\"status\":\"failed\""));
+    assertTrue(report, report.contains("\"message\":\"said \\\"no\\\"\\nthen\""));
+    assertTrue(report, report.contains("\"method\":\"skips\",\"status\":\"skipped\""));
+  }
+
   private static Description test(String className, String method) {
     return Description.createTestDescription(className, method);
   }

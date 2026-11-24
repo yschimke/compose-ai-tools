@@ -454,6 +454,7 @@ internal class AndroidSimulatorCommand(
               instrumentClasses,
               args.flagValue("--tests"),
               args.flagValue("--test-report"),
+              args.flagValue("--test-json"),
             ),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) } + listOfNotNull(instrumentClasses)
@@ -1241,21 +1242,23 @@ internal class AndroidSimulatorCommand(
       )
     }
 
-  /** `--project`: the app's Gradle build, for `reload` and `--live`. */
   /** `InstrumentationRun`'s properties, when [testApk] is given. */
   private fun instrumentProperties(
     testApk: File?,
     testClasses: File?,
     tests: String?,
     report: String?,
+    json: String?,
   ): Map<String, String> = buildMap {
     if (testApk == null || testClasses == null) return@buildMap
     put("composeai.simulator.instrument", testClasses.path)
     put("composeai.simulator.instrument.apk", testApk.path)
     tests?.let { put("composeai.simulator.instrument.tests", it) }
     report?.let { put("composeai.simulator.instrument.report", File(it).absolutePath) }
+    json?.let { put("composeai.simulator.instrument.json", File(it).absolutePath) }
   }
 
+  /** `--project`: the app's Gradle build, for `reload` and `--live`. */
   private fun liveReload(): LiveReload? {
     val project = args.flagValue("--project")?.let { File(it).absoluteFile } ?: return null
     if (!File(project, "settings.gradle.kts").isFile && !File(project, "settings.gradle").isFile) {
@@ -1723,6 +1726,8 @@ internal class AndroidSimulatorCommand(
                               device runner, on a thread of its own, the main thread looping.
         --tests <list>        With --instrument: Class or Class#method, comma-separated.
         --test-report <file>  With --instrument: also write a JUnit XML report.
+        --test-json <file>    With --instrument: also write the results as JSON (each test's
+                              class, method, status, duration and failure; for agents).
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
                               of the machine's memory, 768m to 2g, for each of a pair).

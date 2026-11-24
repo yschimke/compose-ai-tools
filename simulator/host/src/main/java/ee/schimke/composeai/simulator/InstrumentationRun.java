@@ -73,6 +73,9 @@ public final class InstrumentationRun {
   /** A JUnit XML report to write. */
   static final String REPORT_PROPERTY = "composeai.simulator.instrument.report";
 
+  /** A JSON report to write: each case's outcome, for agents and the Gradle task. */
+  static final String JSON_PROPERTY = "composeai.simulator.instrument.json";
+
   static final String DEVICE_RUNNER =
       "androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner";
 
@@ -339,6 +342,8 @@ public final class InstrumentationRun {
     if (report != null && !report.isEmpty()) {
       reporter.writeXml(Path.of(report), millis);
     }
+    String json = System.getProperty(JSON_PROPERTY);
+    if (json != null && !json.isEmpty()) reporter.writeJson(Path.of(json), millis);
     int skipped = reporter.skipped();
     if (failures == 0) {
       System.err.println(
@@ -707,6 +712,62 @@ public final class InstrumentationRun {
       try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
         out.write(xml.toString());
       }
+    }
+
+    /**
+     * The results as one JSON object: totals, then each case's class, method, status ({@code
+     * passed}, {@code failed} or {@code skipped}), duration and, for a failure, its message and
+     * stack trace. Written by hand: {@code org.json} here is the framework's, and this runs
+     * after the last test whatever state the app is in.
+     */
+    void writeJson(Path file, long millis) throws IOException {
+      if (file.getParent() != null) Files.createDirectories(file.getParent());
+      StringBuilder json = new StringBuilder();
+      int failed = failures();
+      int skipped = skipped();
+      json.append("{\"tests\":").append(cases.size())
+          .append(",\"passed\":").append(cases.size() - failed - skipped)
+          .append(",\"failed\":").append(failed)
+          .append(",\"skipped\":").append(skipped)
+          .append(",\"durationMs\":").append(millis)
+          .append(",\"cases\":[");
+      for (int i = 0; i < cases.size(); i++) {
+        Case c = cases.get(i);
+        if (i > 0) json.append(',');
+        String status = c.failure != null ? "failed" : c.ignored ? "skipped" : "passed";
+        json.append("{\"class\":").append(jsonString(c.description.getClassName()))
+            .append(",\"method\":").append(jsonString(c.description.getMethodName()))
+            .append(",\"status\":\"").append(status).append('"')
+            .append(",\"durationMs\":").append(c.nanos / 1_000_000);
+        if (c.failure != null) {
+          json.append(",\"message\":").append(jsonString(c.failure.getMessage()))
+              .append(",\"trace\":").append(jsonString(c.failure.getTrace()));
+        }
+        json.append('}');
+      }
+      json.append("]}\n");
+      try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+        out.write(json.toString());
+      }
+    }
+
+    static String jsonString(String text) {
+      if (text == null) return "null";
+      StringBuilder out = new StringBuilder(text.length() + 2).append('"');
+      for (char ch : text.toCharArray()) {
+        switch (ch) {
+          case '"' -> out.append("\\\"");
+          case '\\' -> out.append("\\\\");
+          case '\n' -> out.append("\\n");
+          case '\r' -> out.append("\\r");
+          case '\t' -> out.append("\\t");
+          default -> {
+            if (ch < 0x20) out.append(String.format("\\u%04x", (int) ch));
+            else out.append(ch);
+          }
+        }
+      }
+      return out.append('"').toString();
     }
 
     private static String escape(String text) {

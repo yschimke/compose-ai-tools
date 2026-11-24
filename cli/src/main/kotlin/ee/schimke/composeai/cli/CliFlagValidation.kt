@@ -242,6 +242,7 @@ internal object CliFlagValidation {
       "--instrument",
       "--tests",
       "--test-report",
+      "--test-json",
       "--qualifiers",
       "--device",
       "--display",
