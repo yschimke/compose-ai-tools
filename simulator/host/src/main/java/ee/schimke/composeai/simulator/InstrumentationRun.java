@@ -165,7 +165,7 @@ public final class InstrumentationRun {
                 return;
               }
               if (!runner.isAlive()) return;
-              System.err.println("INSTRUMENTATION_FAILED: timed out after " + seconds + " s");
+              failed("timed out after " + seconds + " s");
               for (var entry : Thread.getAllStackTraces().entrySet()) {
                 System.err.println("\n\"" + entry.getKey().getName() + "\"");
                 for (StackTraceElement frame : entry.getValue()) {
@@ -271,12 +271,34 @@ public final class InstrumentationRun {
     try {
       exit = run(sandbox);
     } catch (Throwable t) {
-      System.err.println("INSTRUMENTATION_FAILED: " + t);
+      failed(String.valueOf(t));
       t.printStackTrace();
       exit = 2;
     }
     System.err.flush();
     System.exit(exit);
+  }
+
+  /**
+   * A run that could not get its tests going (or finish them): said on stderr as {@code am
+   * instrument} says it, and, when {@value #JSON_PROPERTY} names a file, in the JSON report's
+   * {@code error}, so an agent reading only the report still learns why there are no results.
+   */
+  static void failed(String reason) {
+    System.err.println("INSTRUMENTATION_FAILED: " + reason);
+    String json = System.getProperty(JSON_PROPERTY);
+    if (json == null || json.isEmpty()) return;
+    try {
+      Path file = Path.of(json);
+      if (file.getParent() != null) Files.createDirectories(file.getParent());
+      Files.writeString(
+          file,
+          "{\"tests\":0,\"passed\":0,\"failed\":0,\"skipped\":0,\"error\":"
+              + Reporter.jsonString(reason)
+              + ",\"cases\":[]}\n");
+    } catch (IOException | RuntimeException e) {
+      System.err.println("instrument: cannot write " + json + ": " + e);
+    }
   }
 
   static int run(ClassLoader sandbox) throws Exception {
@@ -297,14 +319,14 @@ public final class InstrumentationRun {
         try {
           classes.add(Class.forName(name, false, sandbox));
         } catch (ClassNotFoundException e) {
-          System.err.println("INSTRUMENTATION_FAILED: no test class " + name);
+          failed("no test class " + name);
           return 1;
         }
       }
     }
     System.err.println("instrument: " + classes.size() + " test class(es)");
     if (classes.isEmpty()) {
-      System.err.println("INSTRUMENTATION_FAILED: no tests found");
+      failed("no tests found");
       return 1;
     }
     // Each class's runner is built once, then validated, filtered and run: building one calls a
@@ -318,7 +340,7 @@ public final class InstrumentationRun {
     }
     List<String> missing = selection.missingMethods(all);
     if (!missing.isEmpty()) {
-      System.err.println("INSTRUMENTATION_FAILED: no such test " + String.join(", ", missing));
+      failed("no such test " + String.join(", ", missing));
       return 1;
     }
     JUnitCore core = new JUnitCore();

@@ -257,6 +257,23 @@ public class InstrumentationRunTest {
     assertTrue(report, report.contains("\"method\":\"skips\",\"status\":\"skipped\""));
   }
 
+  @Test
+  public void aRunThatCannotStartSaysWhyInItsJson() throws IOException {
+    File json = Files.createTempFile("report", ".json").toFile();
+    json.deleteOnExit();
+    String previous = System.getProperty(InstrumentationRun.JSON_PROPERTY);
+    System.setProperty(InstrumentationRun.JSON_PROPERTY, json.getAbsolutePath());
+    try {
+      InstrumentationRun.failed("no test class a.Missing");
+    } finally {
+      if (previous == null) System.clearProperty(InstrumentationRun.JSON_PROPERTY);
+      else System.setProperty(InstrumentationRun.JSON_PROPERTY, previous);
+    }
+    String report = Files.readString(json.toPath());
+    assertTrue(report, report.contains("\"tests\":0,"));
+    assertTrue(report, report.contains("\"error\":\"no test class a.Missing\""));
+  }
+
   private static Description test(String className, String method) {
     return Description.createTestDescription(className, method);
   }
