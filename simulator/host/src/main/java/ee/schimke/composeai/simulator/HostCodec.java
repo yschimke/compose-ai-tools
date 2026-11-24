@@ -60,6 +60,8 @@ final class HostCodec {
 
   void configure(MediaFormat format) {
     inputFormat = format;
+    // A new session (stop, configure, start) reports its format again, as a device's codec does.
+    formatReported = false;
     sampleRate = format.containsKey(MediaFormat.KEY_SAMPLE_RATE)
         ? format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         : 44_100;

@@ -193,23 +193,7 @@ public class SimulatorShadowMediaExtractor extends ShadowMediaExtractor {
   /** The sync sample time a seek to [timeUs] lands on, in the first selected track. */
   private long syncTime(long timeUs, int mode) {
     if (selected.isEmpty()) return timeUs;
-    List<MediaFiles.Sample> samples = tracks.get(selected.first()).samples;
-    long before = 0;
-    Long after = null;
-    for (MediaFiles.Sample s : samples) {
-      if (!s.sync()) continue;
-      if (s.timeUs() <= timeUs) before = s.timeUs();
-      else {
-        after = s.timeUs();
-        break;
-      }
-    }
-    return switch (mode) {
-      case MediaExtractor.SEEK_TO_NEXT_SYNC -> after != null ? after : before;
-      case MediaExtractor.SEEK_TO_CLOSEST_SYNC ->
-          after != null && after - timeUs < timeUs - before ? after : before;
-      default -> before;
-    };
+    return MediaFiles.syncTime(tracks.get(selected.first()).samples, timeUs, mode);
   }
 
   @Implementation

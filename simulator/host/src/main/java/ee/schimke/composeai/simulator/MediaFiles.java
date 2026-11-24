@@ -35,6 +35,38 @@ final class MediaFiles {
   /** A sample: where it is in the file, its presentation time and whether it is a sync sample. */
   record Sample(long offset, int size, long timeUs, boolean sync) {}
 
+  /** {@code MediaExtractor.SEEK_TO_PREVIOUS_SYNC}, {@code NEXT_SYNC}, {@code CLOSEST_SYNC}. */
+  static final int SEEK_PREVIOUS = 0;
+  static final int SEEK_NEXT = 1;
+  static final int SEEK_CLOSEST = 2;
+
+  /**
+   * The time of the sync sample a seek to [timeUs] lands on, as {@code MediaExtractor.seekTo}: at
+   * or before it ({@link #SEEK_PREVIOUS}), at or after it ({@link #SEEK_NEXT}), or the nearer of
+   * the two ({@link #SEEK_CLOSEST}, the earlier on a tie). A sync sample exactly at [timeUs] is
+   * both. With none on one side, the other; with none at all, [timeUs].
+   */
+  static long syncTime(List<Sample> samples, long timeUs, int mode) {
+    Long before = null;
+    Long after = null;
+    for (Sample s : samples) {
+      if (!s.sync()) continue;
+      if (s.timeUs() <= timeUs) before = s.timeUs();
+      if (s.timeUs() >= timeUs) {
+        after = s.timeUs();
+        break;
+      }
+    }
+    if (before == null && after == null) return timeUs;
+    if (before == null) return after;
+    if (after == null) return before;
+    return switch (mode) {
+      case SEEK_NEXT -> after;
+      case SEEK_CLOSEST -> after - timeUs < timeUs - before ? after : before;
+      default -> before;
+    };
+  }
+
   /** The tracks of [file], or null when it is not a container this reads. */
   static List<Track> read(Path file) throws IOException {
     long length = Files.size(file);

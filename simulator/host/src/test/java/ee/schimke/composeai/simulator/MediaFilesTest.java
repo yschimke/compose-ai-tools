@@ -90,6 +90,27 @@ public class MediaFilesTest {
   }
 
   @Test
+  public void seekingToASyncSampleLandsOnItInEveryMode() {
+    List<MediaFiles.Sample> samples =
+        List.of(
+            new MediaFiles.Sample(0, 1, 0, true),
+            new MediaFiles.Sample(1, 1, 500, false),
+            new MediaFiles.Sample(2, 1, 1_000, true),
+            new MediaFiles.Sample(3, 1, 2_000, true));
+    for (int mode : new int[] {MediaFiles.SEEK_PREVIOUS, MediaFiles.SEEK_NEXT, MediaFiles.SEEK_CLOSEST}) {
+      assertEquals(0L, MediaFiles.syncTime(samples, 0, mode));
+      assertEquals(1_000L, MediaFiles.syncTime(samples, 1_000, mode));
+    }
+    // Between sync samples: before, after, or the nearer.
+    assertEquals(1_000L, MediaFiles.syncTime(samples, 1_400, MediaFiles.SEEK_PREVIOUS));
+    assertEquals(2_000L, MediaFiles.syncTime(samples, 1_400, MediaFiles.SEEK_NEXT));
+    assertEquals(1_000L, MediaFiles.syncTime(samples, 1_400, MediaFiles.SEEK_CLOSEST));
+    assertEquals(2_000L, MediaFiles.syncTime(samples, 1_600, MediaFiles.SEEK_CLOSEST));
+    // Past the last one, every mode has only the last.
+    assertEquals(2_000L, MediaFiles.syncTime(samples, 9_000, MediaFiles.SEEK_NEXT));
+  }
+
+  @Test
   public void otherFilesAreNotRead() throws IOException {
     File file = File.createTempFile("not-media", ".bin");
     file.deleteOnExit();
