@@ -32,6 +32,16 @@ public class InstrumentationRunTest {
   /** Concrete, its only tests inherited from [AbstractBase]: it runs them. */
   public static class InheritsTests extends AbstractBase {}
 
+  /** JUnit 3: no annotations at all. */
+  public static class LegacyCase extends junit.framework.TestCase {
+    public void testSomething() {}
+  }
+
+  /** A suite of [InheritsTests]: left to --tests, or that test would run twice. */
+  @org.junit.runner.RunWith(org.junit.runners.Suite.class)
+  @org.junit.runners.Suite.SuiteClasses(InheritsTests.class)
+  public static class AllTests {}
+
   @Test
   public void findsConcreteClassesWithTestMethodsOnly() throws IOException {
     File jar = Files.createTempFile("tests", ".jar").toFile();
@@ -41,7 +51,9 @@ public class InstrumentationRunTest {
               InstrumentationRunTest.class,
               Helper.class,
               AbstractBase.class,
-              InheritsTests.class)) {
+              InheritsTests.class,
+              LegacyCase.class,
+              AllTests.class)) {
         copyClass(type, out);
       }
       // A library the test APK bundles is never scanned, whatever it declares.
@@ -50,7 +62,10 @@ public class InstrumentationRunTest {
     }
 
     assertEquals(
-        List.of(InstrumentationRunTest.class.getName(), InheritsTests.class.getName()),
+        List.of(
+            InstrumentationRunTest.class.getName(),
+            InheritsTests.class.getName(),
+            LegacyCase.class.getName()),
         InstrumentationRun.testClasses(jar));
   }
 

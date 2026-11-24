@@ -365,7 +365,11 @@ public final class InstrumentationRun {
     }
     List<String> sorted = new ArrayList<>();
     for (TestClassScan scan : scans.values()) {
-      if (scan.concrete && inheritsTests(scan, scans)) sorted.add(scan.name.replace('/', '.'));
+      // A suite is left out: its member classes are found on their own, and running both would
+      // run every member test twice. Name a suite with --tests to run it as one.
+      if (scan.concrete && !isSuite(scan, scans) && inheritsTests(scan, scans)) {
+        sorted.add(scan.name.replace('/', '.'));
+      }
     }
     sorted.sort(null);
     return sorted;
@@ -381,6 +385,24 @@ public final class InstrumentationRun {
     Set<String> seen = new java.util.HashSet<>();
     for (TestClassScan at = scan; at != null && seen.add(at.name); at = scans.get(at.superName)) {
       if (at.runWith || at.testMethod) return true;
+      // JUnit 3: a TestCase subclass, which has neither annotation. TestCase itself is JUnit's,
+      // so it is not among the scanned classes: it is recognised by name.
+      if (JUNIT3_TEST_CASE.equals(at.superName)) return true;
+    }
+    return false;
+  }
+
+  static final String JUNIT3_TEST_CASE = "junit/framework/TestCase";
+
+  /** JUnit's runners that only group other classes. */
+  static final Set<String> SUITE_RUNNERS =
+      Set.of("org/junit/runners/Suite", "org/junit/experimental/categories/Categories");
+
+  /** Whether [scan], or the nearest superclass in the jar with a {@code @RunWith}, is a suite. */
+  private static boolean isSuite(TestClassScan scan, java.util.Map<String, TestClassScan> scans) {
+    Set<String> seen = new java.util.HashSet<>();
+    for (TestClassScan at = scan; at != null && seen.add(at.name); at = scans.get(at.superName)) {
+      if (at.runWith) return at.runner != null && SUITE_RUNNERS.contains(at.runner);
     }
     return false;
   }
@@ -402,6 +424,8 @@ public final class InstrumentationRun {
     String superName;
     boolean concrete;
     boolean runWith;
+    /** The {@code @RunWith} runner's internal name, when there is one. */
+    String runner;
     boolean testMethod;
 
     TestClassScan() {
@@ -425,8 +449,16 @@ public final class InstrumentationRun {
 
     @Override
     public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
-      if ("Lorg/junit/runner/RunWith;".equals(descriptor)) runWith = true;
-      return null;
+      if (!"Lorg/junit/runner/RunWith;".equals(descriptor)) return null;
+      runWith = true;
+      return new AnnotationVisitor(Opcodes.ASM9) {
+        @Override
+        public void visit(String name, Object value) {
+          if ("value".equals(name) && value instanceof org.objectweb.asm.Type type) {
+            runner = type.getInternalName();
+          }
+        }
+      };
     }
 
     @Override
