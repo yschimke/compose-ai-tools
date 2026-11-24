@@ -193,6 +193,39 @@ public class InstrumentationRunTest {
     assertTrue(report, report.contains("tests=\"3\" failures=\"0\" skipped=\"2\""));
   }
 
+  /** Fixture: counts how often its @Parameters factory runs. */
+  @org.junit.runner.RunWith(org.junit.runners.Parameterized.class)
+  public static class CountedParameters {
+    static int factoryCalls;
+
+    @org.junit.runners.Parameterized.Parameters
+    public static List<Object[]> cases() {
+      factoryCalls++;
+      return List.of(new Object[] {1}, new Object[] {2});
+    }
+
+    public CountedParameters(int value) {}
+
+    @Test
+    public void each() {}
+  }
+
+  @Test
+  public void parameterFactoryRunsOncePerClass() throws Exception {
+    CountedParameters.factoryCalls = 0;
+    String previous = System.getProperty(InstrumentationRun.TESTS_PROPERTY);
+    System.setProperty(
+        InstrumentationRun.TESTS_PROPERTY, CountedParameters.class.getName() + "#each");
+    try {
+      assertEquals(0, InstrumentationRun.run(getClass().getClassLoader()));
+    } finally {
+      if (previous == null) System.clearProperty(InstrumentationRun.TESTS_PROPERTY);
+      else System.setProperty(InstrumentationRun.TESTS_PROPERTY, previous);
+      System.clearProperty("android.junit.runner");
+    }
+    assertEquals(1, CountedParameters.factoryCalls);
+  }
+
   private static Description test(String className, String method) {
     return Description.createTestDescription(className, method);
   }

@@ -304,8 +304,16 @@ public final class InstrumentationRun {
       System.err.println("INSTRUMENTATION_FAILED: no tests found");
       return 1;
     }
-    Request request = Request.classes(classes.toArray(new Class<?>[0]));
-    List<String> missing = selection.missingMethods(request.getRunner().getDescription());
+    // Each class's runner is built once, then validated, filtered and run: building one calls a
+    // parameterised class's @Parameters factory, which must not run twice or see other cases.
+    List<org.junit.runner.Runner> runners = new ArrayList<>();
+    Description all = Description.createSuiteDescription("selected");
+    for (Class<?> type : classes) {
+      org.junit.runner.Runner runner = Request.aClass(type).getRunner();
+      runners.add(runner);
+      all.addChild(runner.getDescription());
+    }
+    List<String> missing = selection.missingMethods(all);
     if (!missing.isEmpty()) {
       System.err.println("INSTRUMENTATION_FAILED: no such test " + String.join(", ", missing));
       return 1;
@@ -318,9 +326,9 @@ public final class InstrumentationRun {
     int runCount = 0;
     int failures = 0;
     long millis = 0;
-    for (Class<?> type : classes) {
-      Request one = Request.aClass(type);
-      Filter filter = selection.filterFor(type.getName());
+    for (int i = 0; i < classes.size(); i++) {
+      Request one = Request.runner(runners.get(i));
+      Filter filter = selection.filterFor(classes.get(i).getName());
       if (filter != null) one = one.filterWith(filter);
       Result result = core.run(one);
       runCount += result.getRunCount();
