@@ -144,6 +144,15 @@ final class SimulatorSandbox {
         ClassParameter.from(
             String.class, SimulatorSandbox.class.getPackageName() + ".SimulatorShadowInputManager"),
         ClassParameter.from(boolean.class, false));
+    // MediaExtractor over real files (MP3, WAV, MP4), not only tracks a test registered.
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.media.MediaExtractor"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".SimulatorShadowMediaExtractor"),
+        ClassParameter.from(boolean.class, false));
     // Activity.recreate() through Navigator, as its `recreate` command does.
     ReflectionHelpers.callInstanceMethod(
         shadows,
