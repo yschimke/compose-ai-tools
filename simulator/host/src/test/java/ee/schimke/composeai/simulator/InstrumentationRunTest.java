@@ -132,6 +132,52 @@ public class InstrumentationRunTest {
     assertFalse(selection.filterFor("a.OtherTest").shouldRun(test("a.OtherTest", "two")));
   }
 
+  @Test
+  public void wholeClassBesideOneOfItsMethodsRunsUnfiltered() {
+    InstrumentationRun.Selection selection = InstrumentationRun.Selection.parse("a.Part,a.Part#one");
+
+    assertNull(selection.filterFor("a.Part"));
+  }
+
+  /** Fixture: one test skipped by an assumption, one passing. */
+  public static class AssumingCase {
+    @Test
+    public void skipped() {
+      org.junit.Assume.assumeTrue(false);
+    }
+
+    @Test
+    public void passes() {}
+  }
+
+  /** Fixture: the whole class skipped in @BeforeClass. */
+  public static class AssumingClass {
+    @org.junit.BeforeClass
+    public static void notHere() {
+      org.junit.Assume.assumeTrue(false);
+    }
+
+    @Test
+    public void never() {}
+  }
+
+  @Test
+  public void assumptionFailuresAreReportedAsSkipped() throws IOException {
+    InstrumentationRun.Reporter reporter = new InstrumentationRun.Reporter();
+    org.junit.runner.JUnitCore core = new org.junit.runner.JUnitCore();
+    core.addListener(reporter);
+    core.run(AssumingCase.class);
+    core.run(AssumingClass.class);
+
+    assertEquals(0, reporter.failures());
+    assertEquals(2, reporter.skipped());
+    File xml = Files.createTempFile("report", ".xml").toFile();
+    xml.deleteOnExit();
+    reporter.writeXml(xml.toPath(), 0);
+    String report = Files.readString(xml.toPath());
+    assertTrue(report, report.contains("tests=\"3\" failures=\"0\" skipped=\"2\""));
+  }
+
   private static Description test(String className, String method) {
     return Description.createTestDescription(className, method);
   }

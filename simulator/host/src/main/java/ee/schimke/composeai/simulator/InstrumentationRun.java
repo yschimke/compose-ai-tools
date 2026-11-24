@@ -317,7 +317,6 @@ public final class InstrumentationRun {
     // whole keeps every test under it, whatever classes those belong to.
     int runCount = 0;
     int failures = 0;
-    int ignored = 0;
     long millis = 0;
     for (Class<?> type : classes) {
       Request one = Request.aClass(type);
@@ -326,15 +325,16 @@ public final class InstrumentationRun {
       Result result = core.run(one);
       runCount += result.getRunCount();
       failures += result.getFailureCount();
-      ignored += result.getIgnoreCount();
       millis += result.getRunTime();
     }
     String report = System.getProperty(REPORT_PROPERTY);
     if (report != null && !report.isEmpty()) {
-      reporter.writeXml(Path.of(report), failures, ignored, millis);
+      reporter.writeXml(Path.of(report), millis);
     }
+    int skipped = reporter.skipped();
     if (failures == 0) {
-      System.err.println("\nOK (" + runCount + " tests)");
+      System.err.println(
+          "\nOK (" + runCount + " tests" + (skipped > 0 ? ", " + skipped + " skipped" : "") + ")");
       return 0;
     }
     System.err.println("\nFAILURES!!!\nTests run: " + runCount + ",  Failures: " + failures);
@@ -446,6 +446,8 @@ public final class InstrumentationRun {
   static final class Selection {
     final Set<String> classes = new LinkedHashSet<>();
     final Set<String> methods = new LinkedHashSet<>();
+    /** Classes named on their own, not only through one of their methods: every test runs. */
+    final Set<String> wholeClasses = new LinkedHashSet<>();
 
     static Selection parse(String spec) {
       Selection selection = new Selection();
@@ -456,6 +458,7 @@ public final class InstrumentationRun {
         int hash = test.indexOf('#');
         if (hash < 0) {
           selection.classes.add(test);
+          selection.wholeClasses.add(test);
         } else {
           selection.classes.add(test.substring(0, hash));
           selection.methods.add(test);
@@ -506,6 +509,7 @@ public final class InstrumentationRun {
      * a parameterised one included.
      */
     Filter filterFor(String className) {
+      if (wholeClasses.contains(className)) return null;
       Set<String> wanted = new java.util.HashSet<>();
       for (String m : methods) {
         if (m.startsWith(className + "#")) wanted.add(m.substring(className.length() + 1));
@@ -563,7 +567,7 @@ public final class InstrumentationRun {
       System.err.println(
           "instrument: "
               + description.getDisplayName()
-              + (current.failure == null ? " PASSED" : " FAILED")
+              + (current.failure != null ? " FAILED" : current.ignored ? " SKIPPED" : " PASSED")
               + " ("
               + current.nanos / 1_000_000
               + " ms)");
@@ -584,7 +588,31 @@ public final class InstrumentationRun {
 
     @Override
     public void testAssumptionFailure(Failure failure) {
-      if (current != null) current.ignored = true;
+      Case target = current;
+      if (target == null) {
+        // An assumption failing in @BeforeClass skips the whole class: its own case.
+        target = new Case(failure.getDescription());
+        cases.add(target);
+        System.err.println("instrument: " + failure.getTestHeader() + " SKIPPED");
+      }
+      target.ignored = true;
+    }
+
+    /** Cases that failed, from what was recorded rather than JUnit's counts. */
+    int failures() {
+      int n = 0;
+      for (Case c : cases) if (c.failure != null) n++;
+      return n;
+    }
+
+    /**
+     * Cases skipped: {@code @Ignore}d and assumption failures both, which JUnit's {@code
+     * getIgnoreCount()} does not add up (it leaves assumption failures out).
+     */
+    int skipped() {
+      int n = 0;
+      for (Case c : cases) if (c.ignored && c.failure == null) n++;
+      return n;
     }
 
     @Override
@@ -594,7 +622,9 @@ public final class InstrumentationRun {
       cases.add(ignored);
     }
 
-    void writeXml(Path file, int failures, int ignored, long millis) throws IOException {
+    void writeXml(Path file, long millis) throws IOException {
+      int failures = failures();
+      int ignored = skipped();
       if (file.getParent() != null) Files.createDirectories(file.getParent());
       StringWriter xml = new StringWriter();
       xml.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
