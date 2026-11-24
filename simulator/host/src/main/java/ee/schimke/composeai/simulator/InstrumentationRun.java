@@ -468,7 +468,9 @@ public final class InstrumentationRun {
       for (String m : methods) {
         if (m.startsWith(className + "#")) anyMethodOfClass = true;
       }
-      return !anyMethodOfClass || method == null || methods.contains(className + "#" + method);
+      return !anyMethodOfClass
+          || method == null
+          || methods.contains(className + "#" + baseMethod(method));
     }
 
     /**
@@ -486,12 +488,15 @@ public final class InstrumentationRun {
       return missing;
     }
 
+    /** A parameterised test's method name without its parameters: {@code each[0]} is {@code each}. */
+    static String baseMethod(String method) {
+      int bracket = method.indexOf('[');
+      return bracket > 0 ? method.substring(0, bracket) : method;
+    }
+
     private static void collect(Description description, Set<String> into) {
       if (description.isTest() && description.getMethodName() != null) {
-        String method = description.getMethodName();
-        int bracket = method.indexOf('[');
-        if (bracket > 0) method = method.substring(0, bracket);
-        into.add(description.getClassName() + "#" + method);
+        into.add(description.getClassName() + "#" + baseMethod(description.getMethodName()));
       }
       for (Description child : description.getChildren()) collect(child, into);
     }

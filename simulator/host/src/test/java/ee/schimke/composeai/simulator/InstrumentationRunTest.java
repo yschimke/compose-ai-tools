@@ -100,6 +100,15 @@ public class InstrumentationRunTest {
   }
 
   @Test
+  public void selectedParameterisedMethodRunsEveryParameter() {
+    InstrumentationRun.Selection selection = InstrumentationRun.Selection.parse("a.Param#each");
+
+    assertTrue(selection.filter().shouldRun(Description.createTestDescription("a.Param", "each[0]")));
+    assertTrue(selection.filter().shouldRun(Description.createTestDescription("a.Param", "each[1]")));
+    assertFalse(selection.filter().shouldRun(Description.createTestDescription("a.Param", "other[0]")));
+  }
+
+  @Test
   public void floatingTestActivitiesKeepFloating() {
     assertEquals(
         android.R.style.Theme_DeviceDefault_Light_Dialog,
