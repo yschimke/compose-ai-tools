@@ -28,32 +28,15 @@ Part of the report-history epic (#1866); this directory is sub-issue #1867.
 | [`render-trace.schema.json`](render-trace.schema.json) | `render/trace` | 1 | `RenderTraceDataProduct` |
 | [`history-diff-regions.schema.json`](history-diff-regions.schema.json) | `history/diff/regions` | 1 | `HistoryDiffPayload` |
 
-Two schemas here are **codegen source-of-truth** rather than data-product
-payloads. Both are validated by their own generator's `--check` and excluded
-from the validator below:
-
-| schema | generates | mirrors |
-| --- | --- | --- |
-| [`spatial-scene.schema.json`](spatial-scene.schema.json) | `scripts/codegen/gen-spatial-scene.mjs` | Kotlin (`:preview-data-api`) here; C++ in compose-preview-xr |
-| [`xr-render-service.schema.json`](xr-render-service.schema.json) | `scripts/codegen/gen-xr-render-service.mjs` | Kotlin (`:renderer-xr-client`) here; C++ and Python in compose-preview-xr |
-
-They describe the two halves of one boundary: the scene is *what to draw*, the
-render service is *how to ask*. They version independently — the compositor is
-provisioned at a pinned version that deliberately lags this repository (the
-`xr-composite` pin in `gradle/libs.versions.toml`), so its client and server are
-routinely built from different commits, and a change to one contract must not
-force a bump of the other.
-
-The C++ and Python mirrors live in
-[`yschimke/compose-preview-xr`](https://github.com/yschimke/compose-preview-xr)
-with the compositor that compiles them, so `--check` here can only prove the
-Kotlin half. Both generators keep an `--emit-cpp` / `--emit-python` mode that
-writes the other mirrors to stdout, and compose-preview-xr's `contract drift`
-workflow checks this repository out at the SHA in its `upstream-pin.txt`, runs
-these same generators, and diffs the result against what it has committed.
-Using the generator rather than a vendored fork of it is the point: a forked
-generator is a third thing that can drift. **So do not remove or rename those
-flags** — a repository you cannot see calls them.
+[`spatial-scene.schema.json`](spatial-scene.schema.json) is excluded from the
+report-schema validator below. Both `spatial-scene.schema.json` and
+`xr-render-service.schema.json` (along with their `gen-spatial-scene.mjs` and
+`gen-xr-render-service.mjs` codegen scripts) now live canonically in
+[`yschimke/compose-preview-daemon`](https://github.com/yschimke/compose-preview-daemon),
+where [`yschimke/compose-preview-xr`](https://github.com/yschimke/compose-preview-xr)'s
+`contract-drift` workflow checks its generated C++ and Python mirrors against
+them. This repository keeps `spatial-scene.schema.json` only while the
+`consumer-contract-notice` surface map still references it.
 
 ## Versioning & the bump policy
 
