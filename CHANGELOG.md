@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.103.1](https://github.com/yschimke/compose-ai-tools/compare/v2.103.0...v2.103.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.46.0 ([#6686](https://github.com/yschimke/compose-ai-tools/issues/6686)) ([26a4f97](https://github.com/yschimke/compose-ai-tools/commit/26a4f97bfa86283812e2d1cf1fbc24da9f1c85ab))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-daemon-bom to v3.29.0 ([#6685](https://github.com/yschimke/compose-ai-tools/issues/6685)) ([62e9554](https://github.com/yschimke/compose-ai-tools/commit/62e9554cfc0b74455e0b5efff84dd112a48758b3))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.11.0 ([#6682](https://github.com/yschimke/compose-ai-tools/issues/6682)) ([755c55a](https://github.com/yschimke/compose-ai-tools/commit/755c55a2f5aab244c42136d67727223158c8c8a2))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.12.0 ([#6684](https://github.com/yschimke/compose-ai-tools/issues/6684)) ([0a2a2fa](https://github.com/yschimke/compose-ai-tools/commit/0a2a2fa1841618c04d1a78085924242779ec0131))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v3.12.1 ([#6688](https://github.com/yschimke/compose-ai-tools/issues/6688)) ([aa0be89](https://github.com/yschimke/compose-ai-tools/commit/aa0be891454e2c8ba80b3eaaa9def1c3db33bbd7))
+* **deps:** update metro to v1.6.0 ([#6690](https://github.com/yschimke/compose-ai-tools/issues/6690)) ([072d0a7](https://github.com/yschimke/compose-ai-tools/commit/072d0a7b05dd43a0824d059c69b549ea80c8a40b))
+
 ## [2.103.0](https://github.com/yschimke/compose-ai-tools/compare/v2.102.0...v2.103.0) (2026-11-21)
 
 
