@@ -318,7 +318,7 @@ public final class InstrumentationRun {
    * Espresso and the rest, which need not be touched.
    */
   static List<String> testClasses(File jar) throws IOException {
-    Set<String> found = new LinkedHashSet<>();
+    java.util.Map<String, TestClassScan> scans = new java.util.HashMap<>();
     try (JarFile file = new JarFile(jar)) {
       Enumeration<JarEntry> entries = file.entries();
       while (entries.hasMoreElements()) {
@@ -330,13 +330,30 @@ public final class InstrumentationRun {
           new ClassReader(in)
               .accept(
                   scan, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-          if (scan.isTest()) found.add(scan.name.replace('/', '.'));
+          scans.put(scan.name, scan);
         }
       }
     }
-    List<String> sorted = new ArrayList<>(found);
+    List<String> sorted = new ArrayList<>();
+    for (TestClassScan scan : scans.values()) {
+      if (scan.concrete && inheritsTests(scan, scans)) sorted.add(scan.name.replace('/', '.'));
+    }
     sorted.sort(null);
     return sorted;
+  }
+
+  /**
+   * Whether [scan] or a superclass in the same jar has a {@code @Test} method or {@code @RunWith}
+   * (which is {@code @Inherited}): a concrete class whose tests all come from an abstract base still
+   * runs them, as JUnit runs it.
+   */
+  private static boolean inheritsTests(
+      TestClassScan scan, java.util.Map<String, TestClassScan> scans) {
+    Set<String> seen = new java.util.HashSet<>();
+    for (TestClassScan at = scan; at != null && seen.add(at.name); at = scans.get(at.superName)) {
+      if (at.runWith || at.testMethod) return true;
+    }
+    return false;
   }
 
   /** Libraries a test APK bundles: never the suite's own tests. */
@@ -353,16 +370,13 @@ public final class InstrumentationRun {
 
   static final class TestClassScan extends ClassVisitor {
     String name;
+    String superName;
     boolean concrete;
     boolean runWith;
     boolean testMethod;
 
     TestClassScan() {
       super(Opcodes.ASM9);
-    }
-
-    boolean isTest() {
-      return concrete && (runWith || testMethod);
     }
 
     @Override
@@ -374,6 +388,7 @@ public final class InstrumentationRun {
         String superName,
         String[] interfaces) {
       this.name = name;
+      this.superName = superName;
       concrete =
           (access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE)) == 0
               && (access & Opcodes.ACC_PUBLIC) != 0;

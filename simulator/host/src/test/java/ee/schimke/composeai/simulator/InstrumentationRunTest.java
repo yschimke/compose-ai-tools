@@ -28,12 +28,19 @@ public class InstrumentationRunTest {
     public void inherited() {}
   }
 
+  /** Concrete, its only tests inherited from [AbstractBase]: it runs them. */
+  public static class InheritsTests extends AbstractBase {}
+
   @Test
   public void findsConcreteClassesWithTestMethodsOnly() throws IOException {
     File jar = Files.createTempFile("tests", ".jar").toFile();
     jar.deleteOnExit();
     try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar.toPath()))) {
-      for (Class<?> type : List.of(InstrumentationRunTest.class, Helper.class, AbstractBase.class)) {
+      for (Class<?> type : List.of(
+              InstrumentationRunTest.class,
+              Helper.class,
+              AbstractBase.class,
+              InheritsTests.class)) {
         copyClass(type, out);
       }
       // A library the test APK bundles is never scanned, whatever it declares.
@@ -42,7 +49,8 @@ public class InstrumentationRunTest {
     }
 
     assertEquals(
-        List.of(InstrumentationRunTest.class.getName()), InstrumentationRun.testClasses(jar));
+        List.of(InstrumentationRunTest.class.getName(), InheritsTests.class.getName()),
+        InstrumentationRun.testClasses(jar));
   }
 
   @Test
