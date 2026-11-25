@@ -119,6 +119,7 @@ abstract class SimulatorAndroidTestTask : DefaultTask() {
           add("--shards")
           add(it.toString())
         }
+      if (pool.getOrElse(false)) add("--pool")
       val selected = tests.getOrElse(emptyList()).filter { it.isNotBlank() }
       if (selected.isNotEmpty()) {
         add("--tests")

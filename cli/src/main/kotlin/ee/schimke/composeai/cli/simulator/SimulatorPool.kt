@@ -52,6 +52,9 @@ internal object SimulatorPool {
   const val MAX_COMMANDS = 2
   const val MAX_STANDBYS = 4
 
+  /** How often a quiet run's client is checked for, by a heartbeat line. */
+  private const val HEARTBEAT_SECONDS = 1L
+
   /** `:simulator-host`'s `Standby.PROPERTY`. */
   private const val STANDBY_PROPERTY = "composeai.simulator.standby"
 
@@ -305,13 +308,17 @@ internal object SimulatorPool {
         stdin.flush()
         stdin.close()
         while (true) {
-          val line = standby.lines.take()
+          val line = standby.lines.poll(HEARTBEAT_SECONDS, TimeUnit.SECONDS)
           if (line == Standby.EOF) break
-          writer.println(buildJsonObject { put("line", line) })
+          // A quiet second gets a heartbeat, which the client ignores, so a client that went away
+          // is noticed while the tests print nothing.
+          writer.println(
+            if (line == null) "{}" else buildJsonObject { put("line", line) }.toString(),
+          )
           // The run's client went away (Ctrl-C, a killed Gradle build): so does its simulator. A
           // reader can't watch for that: a channel's streams share its blocking lock, so a read
           // waiting there would hold up every write.
-          if (writer.checkError()) {
+          if (writer.checkError() && standby.process.isAlive) {
             log("run ${standby.process.pid()}: the client went away; stopping it")
             destroyTree(standby.process)
           }
