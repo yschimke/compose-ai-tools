@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
 import android.app.Activity;
 import android.app.Application;
 import android.content.res.Configuration;
@@ -72,7 +73,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  *
  * <p>Runs on the main thread, inside the sandbox, except where noted.
  */
-final class Displays {
+public final class Displays {
 
   /** {@code Display.TYPE_*}, hidden. */
   private static final int TYPE_INTERNAL = 1;
@@ -539,7 +540,7 @@ final class Displays {
    * A picture of display [id]: each visible window on it drawn where it sits, bottom-most first,
    * on a bitmap the display's size. On the main thread, or handed to it.
    */
-  static Bitmap capture(int id) throws Exception {
+  public static Bitmap capture(int id) throws Exception {
     if (!ShadowView.useRealGraphics()) return null;
     if (Looper.myLooper() != Looper.getMainLooper()) {
       FutureTask<Bitmap> task = new FutureTask<>(() -> capture(id));
@@ -605,7 +606,7 @@ final class Displays {
    * whole screen: a touch to the top-most touchable window under it (or a touch-modal one), a key
    * to the top-most focusable window.
    */
-  static boolean inject(InputEvent event, int id) {
+  public static boolean inject(InputEvent event, int id) {
     if (Looper.myLooper() != Looper.getMainLooper()) {
       new Handler(Looper.getMainLooper()).post(() -> inject(event, id));
       return true;
@@ -700,7 +701,7 @@ final class Displays {
    * Where an event from Robolectric's own window goes: its mouse is over the default display, and
    * its keys follow whichever simulator window has focus.
    */
-  static int routeOf(InputEvent event) {
+  public static int routeOf(InputEvent event) {
     return event instanceof KeyEvent ? focusedDisplay : Display.DEFAULT_DISPLAY;
   }
 

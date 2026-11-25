@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowPackageManager;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

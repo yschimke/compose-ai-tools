@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowActivityClient;
 import android.app.Activity;
 import android.app.PictureInPictureParams;
 import android.content.Context;

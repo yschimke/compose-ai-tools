@@ -363,7 +363,7 @@ public final class ApkClassConverter {
     String entryName;
     byte[] bytes;
     boolean withoutDebugInfo;
-    final List<String> failures = new ArrayList<>();
+    public final List<String> failures = new ArrayList<>();
     /** {@code fromDesc|targetDesc|initDesc} triples rewritten for R8 constructor inlining. */
     final Set<String> inlinedInits = new LinkedHashSet<>();
   }

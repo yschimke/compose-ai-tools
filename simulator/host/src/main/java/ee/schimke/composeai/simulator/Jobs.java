@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowJobScheduler;
 import android.app.Application;
 import android.app.Service;
 import android.app.job.JobInfo;

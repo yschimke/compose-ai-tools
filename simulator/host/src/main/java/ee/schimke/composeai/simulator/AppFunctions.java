@@ -33,7 +33,7 @@ import org.xmlpull.v1.XmlPullParser;
  * type (string, long, double, boolean, nested object, or arrays of one of them), and the result
  * back. Execution needs {@code --sdk 36}: the platform type is API 36.
  */
-final class AppFunctions {
+public final class AppFunctions {
 
   static final String SERVICE_ACTION = "android.app.appfunctions.AppFunctionService";
   static final String[] METADATA_ASSETS = {"app_functions_v2.xml", "app_functions.xml"};
@@ -42,7 +42,7 @@ final class AppFunctions {
   static final String CALLER = "com.android.shell";
 
   /** The {@link DeviceBus} op another app's {@code executeAppFunction} sends. */
-  static final String BUS_OP = "appFunction.execute";
+  public static final String BUS_OP = "appFunction.execute";
 
   /**
    * Runs the functions other apps on the device call ({@link SimulatorShadowAppFunctionManager}):
@@ -75,7 +75,7 @@ final class AppFunctions {
   }
 
   /** The {@code AppFunctionService} of [pkg], which must be the app's own. */
-  static ComponentName service(Application app, String pkg) {
+  public static ComponentName service(Application app, String pkg) {
     Intent intent = new Intent(SERVICE_ACTION).setPackage(pkg);
     for (ResolveInfo info : app.getPackageManager().queryIntentServices(intent, 0)) {
       if (info.serviceInfo != null) {
@@ -86,7 +86,7 @@ final class AppFunctions {
   }
 
   /** Whether the app's manifest asks for [permission]. */
-  static boolean declares(Application app, String permission) {
+  public static boolean declares(Application app, String permission) {
     try {
       String[] requested =
           app.getPackageManager()
@@ -99,7 +99,7 @@ final class AppFunctions {
   }
 
   /** A result as {@link Api36} reports one, for an error the system raises itself. */
-  static JSONObject failure(int code, String message) {
+  public static JSONObject failure(int code, String message) {
     return new Protocol.Json()
         .put("error", new Protocol.Json().put("code", code).put("message", message).object())
         .object();
@@ -220,12 +220,12 @@ final class AppFunctions {
   }
 
   /** The API 36 types, loaded only on a level that has them. */
-  static final class Api36 {
-    interface Result {
+  public static final class Api36 {
+    public interface Result {
       void accept(JSONObject result);
     }
 
-    static void execute(
+    public static void execute(
         Service service,
         String pkg,
         String function,
@@ -275,7 +275,7 @@ final class AppFunctions {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    static android.app.appsearch.GenericDocument document(JSONObject json) throws JSONException {
+    public static android.app.appsearch.GenericDocument document(JSONObject json) throws JSONException {
       android.app.appsearch.GenericDocument.Builder builder =
           new android.app.appsearch.GenericDocument.Builder("", "", "");
       for (Iterator<String> keys = json.keys(); keys.hasNext(); ) {
@@ -314,7 +314,7 @@ final class AppFunctions {
     }
 
     /** [doc]'s properties as JSON: one value as itself, several as an array. */
-    static JSONObject json(android.app.appsearch.GenericDocument doc) {
+    public static JSONObject json(android.app.appsearch.GenericDocument doc) {
       JSONObject out = new JSONObject();
       if (doc == null) return out;
       for (String name : doc.getPropertyNames()) {

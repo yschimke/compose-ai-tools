@@ -56,19 +56,19 @@ import org.robolectric.shadows.ShadowTelephonyManager;
  *
  * <p>One instance, created before the application's {@code onCreate()}. Runs on the main thread.
  */
-final class NetworkSim {
+public final class NetworkSim {
 
   private static NetworkSim instance;
 
   /** A network the device has: its {@link Network} handle stays the same while it stays up. */
-  static final class SimNetwork {
+  public static final class SimNetwork {
     final Transport transport;
     final String key;
-    final Network network;
+    public final Network network;
     final int netId;
-    NetworkCapabilities caps;
-    LinkProperties link;
-    NetworkInfo info;
+    public NetworkCapabilities caps;
+    public LinkProperties link;
+    public NetworkInfo info;
 
     /** Bumped whenever the capabilities change, so callbacks hear {@code onCapabilitiesChanged}. */
     int generation;
@@ -81,7 +81,7 @@ final class NetworkSim {
     }
   }
 
-  enum Kind {
+  public enum Kind {
     DEFAULT,
     LISTEN,
     REQUEST
@@ -107,7 +107,7 @@ final class NetworkSim {
   }
 
   private final Application app;
-  final NetworkModel model = new NetworkModel();
+  public final NetworkModel model = new NetworkModel();
 
   /** {@code lte}, {@code 5g}, {@code 3g} or {@code 2g}. */
   private String cellular = "lte";
@@ -155,7 +155,7 @@ final class NetworkSim {
   }
 
   /** The instance; created on first use if {@link #connect} has not run (a test, say). */
-  static NetworkSim get() {
+  public static NetworkSim get() {
     if (instance == null) connect(org.robolectric.RuntimeEnvironment.getApplication());
     return instance;
   }
@@ -169,7 +169,7 @@ final class NetworkSim {
     this.bluetooth = bluetooth;
   }
 
-  WifiSim wifi() {
+  public WifiSim wifi() {
     return wifi;
   }
 
@@ -563,24 +563,24 @@ final class NetworkSim {
   }
 
   /** {@code TelephonyManager.getDataNetworkType()}: the generation while on mobile data. */
-  int dataNetworkType() {
+  public int dataNetworkType() {
     SimNetwork def = defaultNetwork();
     boolean onCellular = def != null && def.transport == Transport.CELLULAR;
     return onCellular ? networkType() : TelephonyManager.NETWORK_TYPE_UNKNOWN;
   }
 
   /** The radio's network type, data or not; unknown in airplane mode. */
-  int radioNetworkType() {
+  public int radioNetworkType() {
     return model.airplane ? TelephonyManager.NETWORK_TYPE_UNKNOWN : networkType();
   }
 
-  int dataState() {
+  public int dataState() {
     return dataNetworkType() != TelephonyManager.NETWORK_TYPE_UNKNOWN
         ? TelephonyManager.DATA_CONNECTED
         : TelephonyManager.DATA_DISCONNECTED;
   }
 
-  int serviceState() {
+  public int serviceState() {
     return model.airplane ? ServiceState.STATE_POWER_OFF : ServiceState.STATE_IN_SERVICE;
   }
 
@@ -602,7 +602,7 @@ final class NetworkSim {
   // ---------------------------------------------------------------------------------------------
   // Callbacks
 
-  void register(ConnectivityManager.NetworkCallback callback, NetworkRequest request, Kind kind) {
+  public void register(ConnectivityManager.NetworkCallback callback, NetworkRequest request, Kind kind) {
     Registration registration;
     synchronized (registrations) {
       Registration existing = registrations.remove(callback);
@@ -617,7 +617,7 @@ final class NetworkSim {
     }
   }
 
-  void unregister(ConnectivityManager.NetworkCallback callback) {
+  public void unregister(ConnectivityManager.NetworkCallback callback) {
     Registration registration;
     synchronized (registrations) {
       registration = registrations.remove(callback);
@@ -698,7 +698,7 @@ final class NetworkSim {
   }
 
   /** A copy, as each callback gets its own; the copy constructor is hidden. */
-  static LinkProperties copy(LinkProperties link) {
+  public static LinkProperties copy(LinkProperties link) {
     try {
       return LinkProperties.class.getConstructor(LinkProperties.class).newInstance(link);
     } catch (ReflectiveOperationException e) {
@@ -730,29 +730,29 @@ final class NetworkSim {
   // ---------------------------------------------------------------------------------------------
   // Queries, for SimulatorShadowConnectivityManager
 
-  SimNetwork defaultNetwork() {
+  public SimNetwork defaultNetwork() {
     return networks.isEmpty() ? null : networks.get(networks.size() - 1);
   }
 
   /** The device's networks, and the local-only ones granted to Wi-Fi requests. */
-  List<SimNetwork> all() {
+  public List<SimNetwork> all() {
     List<SimNetwork> all = new ArrayList<>(networks);
     for (Registration r : order) if (r.peer != null) all.add(r.peer);
     return all;
   }
 
-  SimNetwork find(Network network) {
+  public SimNetwork find(Network network) {
     if (network == null) return null;
     for (SimNetwork n : all()) if (n.network.equals(network)) return n;
     return null;
   }
 
-  SimNetwork byLegacyType(int type) {
+  public SimNetwork byLegacyType(int type) {
     for (SimNetwork n : networks) if (n.info.getType() == type) return n;
     return null;
   }
 
-  boolean isActiveNetworkMetered() {
+  public boolean isActiveNetworkMetered() {
     SimNetwork def = defaultNetwork();
     return def != null && !def.caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
   }

@@ -41,7 +41,7 @@ import org.robolectric.shadows.ShadowWifiInfo;
  * <p>Whether Wi-Fi is up is {@link NetworkModel}'s; {@link NetworkSim} calls {@link #refresh} after
  * each change.
  */
-final class WifiSim {
+public final class WifiSim {
 
   private final Application app;
   private final NetworkSim network;
@@ -90,7 +90,7 @@ final class WifiSim {
     return ssid;
   }
 
-  boolean enabled() {
+  public boolean enabled() {
     return network.model.wifiRadio;
   }
 
@@ -162,12 +162,12 @@ final class WifiSim {
   }
 
   /** What {@code getConnectionInfo()} returns now. */
-  WifiInfo currentInfo() {
+  public WifiInfo currentInfo() {
     return connected() ? connectionInfo() : disconnectedInfo();
   }
 
   /** {@code startScan()}: with the radio on, results are announced on the main looper. */
-  boolean startScan() {
+  public boolean startScan() {
     if (!enabled()) return false;
     event("wifiScan", new Protocol.Json().put("by", "app").object());
     new android.os.Handler(android.os.Looper.getMainLooper())
@@ -183,7 +183,7 @@ final class WifiSim {
    * The app's own {@code setWifiEnabled}: refused for an app targeting Android 10 or later, as a
    * device refuses it; obeyed for an older one.
    */
-  boolean appSetEnabled(boolean on) {
+  public boolean appSetEnabled(boolean on) {
     if (app.getApplicationInfo().targetSdkVersion >= 29) return false;
     network.model.wifiRadio = on;
     network.apply(true);
@@ -191,7 +191,7 @@ final class WifiSim {
   }
 
   /** The scan results the app sees: none with the radio off. */
-  List<ScanResult> scanResults() {
+  public List<ScanResult> scanResults() {
     if (!enabled()) return new ArrayList<>();
     List<ScanResult> results = new ArrayList<>();
     boolean hasCurrent = false;
@@ -530,7 +530,7 @@ final class WifiSim {
   }
 
   /** From {@link SimulatorShadowWifiManager}: the app's {@code addNetworkSuggestions}. */
-  void suggested(List<android.net.wifi.WifiNetworkSuggestion> suggestions) {
+  public void suggested(List<android.net.wifi.WifiNetworkSuggestion> suggestions) {
     List<android.net.wifi.WifiNetworkSuggestion> all = new ArrayList<>();
     if (lastSuggestions != null) all.addAll(lastSuggestions);
     all.addAll(suggestions);
@@ -538,7 +538,7 @@ final class WifiSim {
     event("wifiSuggestions", new Protocol.Json().put("ssids", suggestions()).object());
   }
 
-  List<android.net.wifi.WifiNetworkSuggestion> suggestionList() {
+  public List<android.net.wifi.WifiNetworkSuggestion> suggestionList() {
     return lastSuggestions == null ? new ArrayList<>() : new ArrayList<>(lastSuggestions);
   }
 

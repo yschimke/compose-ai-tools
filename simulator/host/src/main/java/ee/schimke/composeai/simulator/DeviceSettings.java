@@ -21,7 +21,7 @@ import org.json.JSONObject;
  * or {@code Application.onCreate}), go out when it joins, and the apps already there answer with
  * theirs, so an app that joins later catches up.
  */
-final class DeviceSettings {
+public final class DeviceSettings {
 
   private static final String EVENT = "setting";
   private static final String SYNC = "settingsSync";
@@ -85,7 +85,7 @@ final class DeviceSettings {
    * [table]'s ({@code system}, {@code secure}, {@code global}) [name] is being set to [value] here:
    * the other apps set it too when that changes it.
    */
-  static void changing(String table, String name, String value) {
+  public static void changing(String table, String name, String value) {
     if (Boolean.TRUE.equals(receiving.get()) || name == null || !DeviceBus.enabled()) return;
     Application self = app;
     String before = self == null ? null : read(self.getContentResolver(), table, name);

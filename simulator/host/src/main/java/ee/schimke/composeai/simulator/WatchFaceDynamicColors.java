@@ -20,7 +20,7 @@ import org.json.JSONObject;
  * OS Tiles ({@code protolayout-material3}), Glance Wear widgets, and Wear Compose Material 3 apps
  * re-theme dynamically from the watch face.
  */
-final class WatchFaceDynamicColors {
+public final class WatchFaceDynamicColors {
 
   static final String PROPERTY = "composeai.simulator.themeFromWatchface";
   private static final String DYNAMIC_COLOR_SETTING = "dynamic_color_theme_enabled";
@@ -111,7 +111,7 @@ final class WatchFaceDynamicColors {
 
   private WatchFaceDynamicColors() {}
 
-  static Integer lookup(int resourceId) {
+  public static Integer lookup(int resourceId) {
     return activeResourceColors.get(Integer.valueOf(resourceId));
   }
 

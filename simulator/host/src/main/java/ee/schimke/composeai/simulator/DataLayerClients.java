@@ -37,7 +37,7 @@ import java.util.Set;
  *
  * <p>Compiled against {@code gmsStubs}; nothing here may be loaded outside the sandbox.
  */
-final class DataLayerClients {
+public final class DataLayerClients {
 
   static final class Data extends DataClient {
     private final DataLayer node;
@@ -529,7 +529,7 @@ final class DataLayerClients {
   }
 
   /** Whether [api] is one of the simulator's clients, which are always available. */
-  static boolean simulated(Object api) {
+  public static boolean simulated(Object api) {
     return api instanceof Data
         || api instanceof Messages
         || api instanceof Nodes

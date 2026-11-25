@@ -1,5 +1,6 @@
 package ee.schimke.composeai.simulator;
 
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextToSpeech;
 import android.app.Activity;
 import android.app.Application;
 import android.app.KeyguardManager;

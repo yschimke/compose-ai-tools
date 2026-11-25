@@ -33,7 +33,7 @@ import org.robolectric.shadows.ShadowApplication;
  * ShadowApplication#setComponentNameAndServiceForBindServiceForIntent}, scoped to each service's
  * own bind intent so unrelated binds keep Robolectric's default (null) binder.
  */
-final class WearPlatformServices {
+public final class WearPlatformServices {
 
   private static final String WEATHER_PROVIDER_PACKAGE = "com.google.android.wearable.dwf.weather";
   private static final String WEATHER_PROVIDER_CLASS =
@@ -106,7 +106,7 @@ final class WearPlatformServices {
    * The intent Robolectric matches a bind against: any bind addressed to the weather provider's
    * package, whatever action or extras it carries, resolves to its one registered component.
    */
-  static Intent canonicalBindIntent(Intent intent) {
+  public static Intent canonicalBindIntent(Intent intent) {
     ComponentName component = intent.getComponent();
     String pkg = component != null ? component.getPackageName() : intent.getPackage();
     if (WEATHER_PROVIDER_PACKAGE.equals(pkg)) {

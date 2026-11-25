@@ -53,7 +53,7 @@ import org.robolectric.shadows.ShadowContentResolver;
  * ({@code notifyChange} on its own authority) reaches the other apps' {@code ContentObserver}s. A
  * call waits up to ten seconds for its answer.
  */
-final class DeviceProviders {
+public final class DeviceProviders {
 
   private static final String OP = "provider";
   private static final String NOTIFY = "notifyChange";
@@ -113,7 +113,7 @@ final class DeviceProviders {
   }
 
   /** {@code grantUriPermission}: [pkg] may open [uri], one of this app's, as [flags] allow. */
-  static void grant(String pkg, Uri uri, int flags) {
+  public static void grant(String pkg, Uri uri, int flags) {
     if ((flags & GRANT_FLAGS) == 0) return;
     ProviderInfo provider = ownProvider(uri);
     if (provider == null || !grantable(provider, uri)) return;
@@ -124,7 +124,7 @@ final class DeviceProviders {
    * {@code revokeUriPermission}: the modes [flags] names are taken back from every app, for [uri]
    * and the URIs under it; a grant of a URI above it keeps them.
    */
-  static void revoke(Uri uri, int flags) {
+  public static void revoke(Uri uri, int flags) {
     int modes =
         flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     for (Grant grant : grants) {
@@ -300,7 +300,7 @@ final class DeviceProviders {
    * This app's {@code notifyChange} of [uris]: the device's other apps' observers hear of the
    * changes to this app's own providers.
    */
-  static void notified(java.util.Collection<Uri> uris, int flags) {
+  public static void notified(java.util.Collection<Uri> uris, int flags) {
     if (receivingNotify || self == null || !DeviceBus.enabled()) return;
     JSONArray own = new JSONArray();
     for (Uri uri : uris) if (own(uri)) own.put(uri.toString());

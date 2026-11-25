@@ -37,7 +37,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  * answer {@code PackageManager.getProperty("com.google.wear.watchface.format.version", pkg)} and
  * {@code WatchFaceSlot.getMetaDataValues(key)}.
  */
-final class WffWatchFaces {
+public final class WffWatchFaces {
 
   static final String PROPERTY = "composeai.simulator.wffApks";
   static final String FORMAT_VERSION_PROPERTY = "com.google.wear.watchface.format.version";
@@ -382,7 +382,7 @@ final class WffWatchFaces {
     return installedPackages.contains(packageName);
   }
 
-  static synchronized Object findProperty(
+  public static synchronized Object findProperty(
       String packageName, String className, String propertyName) {
     if (packageName == null || propertyName == null) return null;
     Spec spec = properties.get(key(packageName, className == null ? "" : className, propertyName));
