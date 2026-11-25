@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -362,14 +363,13 @@ public final class InstrumentationRun {
     for (int i = 0; i < classes.size(); i++) {
       Request one = Request.runner(runners.get(i));
       Filter filter = selection.filterFor(classes.get(i).getName());
-      if (shard != null) {
-        // A class with none of this shard's tests is left out rather than filtered to nothing,
-        // which JUnit reports as a failure ("No tests found matching").
-        Filter mine = shard.and(filter);
-        if (!runsAny(runners.get(i).getDescription(), mine)) continue;
-        filter = mine;
-      }
-      if (filter != null) one = one.filterWith(filter);
+      Filter device = DeviceFilter.forThisDevice();
+      filter = filter == null ? device : filter.intersect(device);
+      if (shard != null) filter = shard.and(filter);
+      // A class with none of its tests left is left out rather than filtered to nothing, which
+      // JUnit reports as a failure ("No tests found matching").
+      if (!runsAny(runners.get(i).getDescription(), filter)) continue;
+      one = one.filterWith(filter);
       Result result = core.run(one);
       runCount += result.getRunCount();
       failures += result.getFailureCount();
@@ -524,6 +524,100 @@ public final class InstrumentationRun {
           return null;
         }
       };
+    }
+  }
+
+  /**
+   * The tests this device runs, as AndroidJUnitRunner filters them before any starts: those whose
+   * {@code @SdkSuppress} (on the method, else the class) admits the simulated API level or its
+   * code name, and none marked {@code @RequiresDevice}, a physical device's. The annotations are
+   * matched by name: they are the test APK's own classes.
+   */
+  static final class DeviceFilter extends Filter {
+    static final String SDK_SUPPRESS = "androidx.test.filters.SdkSuppress";
+    static final String REQUIRES_DEVICE = "androidx.test.filters.RequiresDevice";
+
+    private final int sdk;
+    private final String codeName;
+
+    DeviceFilter(int sdk, String codeName) {
+      this.sdk = sdk;
+      this.codeName = codeName;
+    }
+
+    /** The simulated device's level; one that admits every test where there is no framework. */
+    static DeviceFilter forThisDevice() {
+      try {
+        return new DeviceFilter(
+            android.os.Build.VERSION.SDK_INT, android.os.Build.VERSION.CODENAME);
+      } catch (LinkageError e) {
+        return new DeviceFilter(UNKNOWN, null);
+      }
+    }
+
+    private static final int UNKNOWN = -1;
+
+    @Override
+    public boolean shouldRun(Description description) {
+      if (!description.isTest()) {
+        for (Description child : description.getChildren()) {
+          if (shouldRun(child)) return true;
+        }
+        return description.getChildren().isEmpty();
+      }
+      if (sdk == UNKNOWN) return true;
+      Class<?> type = description.getTestClass();
+      if (named(description.getAnnotations(), REQUIRES_DEVICE) != null) return false;
+      if (type != null && named(Arrays.asList(type.getAnnotations()), REQUIRES_DEVICE) != null) {
+        return false;
+      }
+      java.lang.annotation.Annotation suppress = named(description.getAnnotations(), SDK_SUPPRESS);
+      if (suppress == null && type != null) {
+        suppress = named(Arrays.asList(type.getAnnotations()), SDK_SUPPRESS);
+      }
+      return suppress == null || admits(suppress);
+    }
+
+    /** As androidx.test's {@code SdkSuppressFilter}: the range, less excluded levels, or the code name. */
+    boolean admits(java.lang.annotation.Annotation suppress) {
+      int min = intValue(suppress, "minSdkVersion", 1);
+      int max = intValue(suppress, "maxSdkVersion", Integer.MAX_VALUE);
+      boolean excluded = false;
+      Object excludedSdks = value(suppress, "excludedSdks");
+      if (excludedSdks instanceof int[] levels) {
+        for (int level : levels) excluded |= level == sdk;
+      }
+      if (sdk >= min && sdk <= max && !excluded) return true;
+      Object name = value(suppress, "codeName");
+      return name != null && name.equals(codeName);
+    }
+
+    private static java.lang.annotation.Annotation named(
+        java.util.Collection<java.lang.annotation.Annotation> annotations, String name) {
+      for (java.lang.annotation.Annotation a : annotations) {
+        if (a.annotationType().getName().equals(name)) return a;
+      }
+      return null;
+    }
+
+    private static int intValue(java.lang.annotation.Annotation a, String name, int otherwise) {
+      Object v = value(a, name);
+      return v instanceof Integer i ? i : otherwise;
+    }
+
+    private static Object value(java.lang.annotation.Annotation a, String name) {
+      try {
+        java.lang.reflect.Method m = a.annotationType().getMethod(name);
+        m.setAccessible(true);
+        return m.invoke(a);
+      } catch (ReflectiveOperationException | RuntimeException e) {
+        return null;
+      }
+    }
+
+    @Override
+    public String describe() {
+      return "SdkSuppress / RequiresDevice at API " + sdk;
     }
   }
 

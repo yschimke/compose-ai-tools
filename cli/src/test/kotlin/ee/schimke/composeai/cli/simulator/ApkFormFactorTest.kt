@@ -45,7 +45,7 @@ class ApkFormFactorTest {
   }
 
   @Test
-  fun `a projected activity makes a glimmer app, and an xr feature an xr app`() {
+  fun `a projected activity makes a glimmer app, and a required xr feature an xr app`() {
     val projected =
       ManifestSignals.read(
         manifest(
@@ -62,11 +62,23 @@ class ApkFormFactorTest {
         manifest(
           Element(
             "uses-feature",
-            mapOf("name" to "android.software.xr.api.spatial", "required" to false),
+            mapOf("name" to "android.software.xr.api.spatial"),
           ),
         ),
       )
     assertEquals(ApkFormFactor.XR, ApkFormFactor.classify(spatial, emptySequence()))
+
+    // Optional: a phone app with a spatial mode, which a phone runs as a phone.
+    val optional =
+      ManifestSignals.read(
+        manifest(
+          Element(
+            "uses-feature",
+            mapOf("name" to "android.software.xr.api.spatial", "required" to false),
+          ),
+        ),
+      )
+    assertEquals(ApkFormFactor.PHONE, ApkFormFactor.classify(optional, emptySequence()))
   }
 
   @Test
@@ -113,16 +125,21 @@ class ApkFormFactorTest {
   }
 
   @Test
-  fun `code that uses glimmer or xr compose decides when the manifest does not`() {
+  fun `code that uses glimmer decides when the manifest does not, xr compose alone does not`() {
     fun dex(type: String) = sequenceOf("dex\n035\u0000...$type...".toByteArray())
     val none = ManifestSignals()
     assertEquals(
       ApkFormFactor.GLIMMER,
       ApkFormFactor.classify(none, dex("Landroidx/xr/glimmer/Card;")),
     )
+    // A phone app with an optional spatial mode: a phone, until its manifest says XR.
     assertEquals(
-      ApkFormFactor.XR,
+      ApkFormFactor.PHONE,
       ApkFormFactor.classify(none, dex("Landroidx/xr/compose/spatial/SubspaceKt;")),
+    )
+    assertEquals(
+      ApkFormFactor.PHONE,
+      ApkFormFactor.classify(none, dex("Landroidx/xr/scenecore/Entity;")),
     )
     assertEquals(
       ApkFormFactor.PHONE,
