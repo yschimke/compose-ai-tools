@@ -401,3 +401,14 @@ controls; expand brings it back resumed; its own button enters again (`enterPict
 `samples/android`'s screens follow the system's dark theme (`SampleTheme`, and `Theme.Sample` with
 a `values-night` variant for the window). Over `--control stdio --headless`: Home and Now Playing,
 then `qualifiers +night` (Now Playing recreated dark), a new `MainActivity`, and `ChatActivity`.
+
+## The widget resize frame
+
+![Before: the frame drawn 36 px above the widget, one corner handle. After: on the widget, with right and bottom edge handles](widget-resize-frame-before-after.png)
+
+Home Assistant RemoteCompose's debug APK with `--launcher --form-factor phone --control stdio
+--headless`: `home`, `widget` `add` (its provider, at 0,0), `longPress` on `sim:id/widget`, then
+`screenshot`, cropped. Left, the CLI before the fix: the frame placed by the grid's cell rectangle,
+which ignores the status bar the grid sits below. Right, after: placed where the widget's view is,
+with Launcher3's right and bottom edge handles beside the corner. UiAutomator's resize drags in
+that app's `WidgetPreparationTest` start on the widget's edge, which the old frame missed.
