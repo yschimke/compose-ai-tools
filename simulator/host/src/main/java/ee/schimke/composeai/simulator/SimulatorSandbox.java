@@ -2,12 +2,12 @@ package ee.schimke.composeai.simulator;
 
 import ee.schimke.composeai.simulator.shadows.ShadowDisplayControlLock;
 import ee.schimke.composeai.simulator.shadows.ShadowDisplayOffloadManager;
-import ee.schimke.composeai.simulator.shadows.ShadowGoogleApiAvailability;
-import ee.schimke.composeai.simulator.shadows.ShadowGooglePlayServicesUtilLight;
+import ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleApiAvailability;
+import ee.schimke.composeai.simulator.shadows.gms.ShadowGooglePlayServicesUtilLight;
 import ee.schimke.composeai.simulator.shadows.ShadowLocalStorage;
 import ee.schimke.composeai.simulator.shadows.ShadowPlatformStorage;
 import ee.schimke.composeai.simulator.shadows.ShadowWearHapticFeedbackConstants;
-import ee.schimke.composeai.simulator.shadows.ShadowWearable;
+import ee.schimke.composeai.simulator.shadows.gms.ShadowWearable;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowActivityClient;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAlarmManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppFunctionManager;

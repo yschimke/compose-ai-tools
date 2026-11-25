@@ -1,4 +1,4 @@
-package ee.schimke.composeai.simulator.shadows;
+package ee.schimke.composeai.simulator.shadows.gms;
 
 import ee.schimke.composeai.simulator.PlayServices;
 import android.content.Context;

@@ -9,9 +9,9 @@ import java.util.Locale;
  * --play-services none|outdated|disabled|invalid} (and the {@code playServices} command) make it
  * missing or broken instead, for an app's error paths.
  *
- * <p>Only availability: {@link ShadowGooglePlayServicesUtilLight} answers the status and APK
+ * <p>Only availability: {@link ee.schimke.composeai.simulator.shadows.gms.ShadowGooglePlayServicesUtilLight} answers the status and APK
  * version every {@code GoogleApiAvailability} / {@code GooglePlayServicesUtil} check comes down
- * to, {@link ShadowGoogleApiAvailability} answers {@code checkApiAvailability}, and {@link
+ * to, {@link ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleApiAvailability} answers {@code checkApiAvailability}, and {@link
  * PlayServicesPackages} are what {@code PackageManager} shows. No Play services API itself is here: under
  * {@code --pair} or {@code --data-layer agent} the Wearable Data Layer is ({@link DataLayer}), and
  * every other API is reported unavailable rather than left to fail binding a service that does not

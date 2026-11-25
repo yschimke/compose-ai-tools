@@ -55,7 +55,7 @@ import org.robolectric.RuntimeEnvironment;
  * This simulator's node of a simulated Wearable Data Layer: what Play services' wearable service
  * does on a device, for one app, with the other simulator of the pair as the only peer.
  *
- * <p>The app's {@code Wearable.getXClient} calls reach here through {@link ShadowWearable}, and the
+ * <p>The app's {@code Wearable.getXClient} calls reach here through {@link ee.schimke.composeai.simulator.shadows.gms.ShadowWearable}, and the
  * clients ({@link DataLayerClients}) keep their state here: this node's data items and the peers',
  * the listeners the app added, its local capabilities and the ones each peer announced. Frames go
  * to the peer over a {@link DataLayerLink} to the CLI's hub:

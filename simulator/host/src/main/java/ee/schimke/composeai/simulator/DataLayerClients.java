@@ -29,7 +29,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The five Wearable clients {@link ShadowWearable} hands the app, each a subclass of Play services'
+ * The five Wearable clients {@link ee.schimke.composeai.simulator.shadows.gms.ShadowWearable} hands the app, each a subclass of Play services'
  * own abstract client (the app's copy, from its APK) answering from {@link DataLayer}, plus the
  * small value types they return. No task is complete when the app gets it: each completes on the
  * main looper ({@link DeferredTasks}), on its next turn, or for {@code sendRequest} and {@code
