@@ -2032,6 +2032,7 @@ Gradle properties:
 | `composePreview.cli` | `COMPOSE_PREVIEW_CLI`, else `compose-preview` on `PATH` |
 | `composePreview.simulatorJava` | a JDK 21 toolchain Gradle knows; else the CLI looks for one |
 | `composePreview.simulatorSdk` | the CLI's default Android SDK level |
+| `composePreview.simulatorShards` | 1: every test in one simulator ([Sharding](#sharding)) |
 
 ### From the CLI
 
@@ -2059,9 +2060,33 @@ whose member classes are found on their own, and the libraries the test APK bund
 
 `samples/android-instrumented` is the suite CI runs through `simulatorDebugAndroidTest`
 (InstrumentationRegistry, `runOnMainSync`, an Espresso click through `ActivityScenario`, and a
-Compose rule with `recreate()`). From warm caches the whole task takes about 17 s on four cores:
-about 6 s in the CLI before the simulator starts, 6 s for the simulator to boot to the app, and 5
-s for the five tests.
+Compose rule with `recreate()`). From warm caches the CLI run takes about 9 s on four cores:
+under a second in the CLI before the simulator starts, then the simulator's boot to the app and the
+tests. The CLI used to spend several seconds there (3.4 s for Cadence's 104 MB APK) hashing the
+APKs and scanning their dex for the form factor on every launch; those facts are now remembered
+under `<cache>/simulator/facts/`, keyed by path and checked against each file's size, modification
+time and inode, so only a rebuilt APK is read again.
+
+### Sharding
+
+`--shards N` (Gradle: `-PcomposePreview.simulatorShards=N`) runs one suite across N simulators at
+once, as AndroidJUnitRunner's `-e numShards` does: each test belongs to the shard its display
+name's hash picks, so every selected test runs exactly once. The shards' output is interleaved on
+stderr behind `[i/N]`. Their reports are merged into the one `--test-json` (with `"shards": N` and
+the wall time as `durationMs`) and `--test-report`. The run fails when any test fails or any shard
+ends without a report, which the merged `error` names.
+
+Each shard boots the app on its own, and a boot is mostly CPU, so sharding pays only once the
+tests outlast a boot. Measured on four cores, from warm caches:
+
+| Suite | 1 simulator | Sharded |
+| --- | --- | --- |
+| `samples/android-instrumented` (8 tests, 6 s of tests) | 9.1 s | 11.7 s (2) |
+| Cadence (13 tests, 4 s of tests) | 9.5 s | 15.9 s (3) |
+| Confetti (8 Compose UI tests, 35 s of tests) | 50 s | 42 s (2) |
+
+Shards run in separate JVMs, so nothing in memory is shared between tests of different shards; a
+suite whose tests depend on each other's order should stay in one.
 
 How the pieces fit:
 
@@ -2100,7 +2125,9 @@ The simulator fixes that came out of it apply to every launch, not only tests:
 - the top resumed activity of each display has window focus (`hasWindowFocus()`,
   `onWindowFocusChanged`); Robolectric's `ActivityController.setup()` gives none;
 - an app's own `Activity.recreate()` re-creates through `Navigator`, as the `recreate` command
-  does, instead of crashing in `ActivityController.recreate()`;
+  does, instead of crashing in `ActivityController.recreate()`; an activity the app's
+  `AppComponentFactory` constructs (Hilt, Koin, Metro) is built through that factory again, with its
+  non-configuration instances (ViewModels) kept;
 - `InputManager.injectInputEvent` (how Espresso and `Instrumentation.sendPointerSync` inject)
   reaches the window, as `UiAutomation`'s does;
 - audio: `MediaExtractor` reads real files and an MP3 decoder and AAC encoder are in
@@ -2112,7 +2139,7 @@ storage tree URI) passes at `--sdk 36` (its notification tests assume API 36).
 Not yet:
 
 - `InstrumentationRegistry.getArguments()` is empty (no `-e` arguments), and there is no
-  orchestrator, sharding, `ClassRule`-level isolation or per-test process.
+  orchestrator, `ClassRule`-level isolation or per-test process.
 - `UiAutomator`, `adb shell` from a test, screenshots through `DeviceCapture`, and permissions
   granted with `GrantPermissionRule` are untried.
 - A crash on the main thread ends the simulator, as it ends the process on a device; the run then

@@ -243,6 +243,7 @@ internal object CliFlags {
       "--tests",
       "--test-report",
       "--test-json",
+      "--shards",
       "--serial",
       "--fingerprint",
       "--network",
