@@ -515,6 +515,39 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void anInnerEnumMarkedFinalAndAbstractLoads() throws Exception {
+    // MarkerBlock's ClosingAction in org.jetbrains:markdown, as R8 and dex2jar leave it.
+    org.objectweb.asm.ClassWriter outer = new org.objectweb.asm.ClassWriter(0);
+    outer.visit(
+        org.objectweb.asm.Opcodes.V1_8,
+        org.objectweb.asm.Opcodes.ACC_PUBLIC | org.objectweb.asm.Opcodes.ACC_INTERFACE
+            | org.objectweb.asm.Opcodes.ACC_ABSTRACT,
+        "p/MarkerBlock",
+        null,
+        "java/lang/Object",
+        null);
+    outer.visitInnerClass("p/MarkerBlock$ClosingAction", "p/MarkerBlock", "ClosingAction", 0x4419);
+    outer.visitEnd();
+    byte[] bytes = outer.toByteArray();
+
+    byte[] fixed = ApkClassConverter.rewrite(bytes, hierarchy(bytes), new ApkClassConverter.Summary());
+
+    int[] flags = {-1};
+    new org.objectweb.asm.ClassReader(fixed)
+        .accept(
+            new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+              @Override
+              public void visitInnerClass(String name, String outerName, String inner, int access) {
+                flags[0] = access;
+              }
+            },
+            0);
+    assertEquals(0x4409, flags[0]);
+    assertEquals(0x0401, ApkClassConverter.legalClassAccess(0x0411));
+    assertEquals(0x0011, ApkClassConverter.legalClassAccess(0x0011));
+  }
+
+  @Test
   public void onlyTheAndroidxTestClassesTheSimulatorCarriesAreItsOwn() throws Exception {
     Path jar = Files.createTempFile("provided", ".jar");
     try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {

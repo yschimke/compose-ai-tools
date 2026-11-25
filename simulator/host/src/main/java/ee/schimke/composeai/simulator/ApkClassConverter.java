@@ -843,6 +843,21 @@ public final class ApkClassConverter {
     return rewritten;
   }
 
+  /**
+   * [access] as the JVM accepts a class's: never both {@code final} and {@code abstract}. R8 can
+   * leave an enum whose constants have bodies (an abstract class, its constants subclasses) with
+   * its {@code InnerClass} annotation saying {@code final}, which dex2jar combines with the class's
+   * own {@code abstract} into 0x4419, and the JVM refuses to load the enclosing class ({@code
+   * ClassFormatError: Illegal class modifiers}). ART never checks; the class is abstract, so
+   * {@code final} goes.
+   */
+  static int legalClassAccess(int access) {
+    if ((access & Opcodes.ACC_ABSTRACT) != 0 && (access & Opcodes.ACC_FINAL) != 0) {
+      return access & ~Opcodes.ACC_FINAL;
+    }
+    return access;
+  }
+
   private static boolean isIntZero(Value value) {
     return value.vt == Value.VT.CONSTANT && Integer.valueOf(0).equals(((Constant) value).value);
   }
@@ -1005,7 +1020,17 @@ public final class ApkClassConverter {
             this.superInternalName = superName;
             // Frames need class file version 50+; dex2jar may write older.
             super.visit(
-                Math.max(version, Opcodes.V1_8), access, name, signature, superName, interfaces);
+                Math.max(version, Opcodes.V1_8),
+                legalClassAccess(access),
+                name,
+                signature,
+                superName,
+                interfaces);
+          }
+
+          @Override
+          public void visitInnerClass(String name, String outerName, String innerName, int access) {
+            super.visitInnerClass(name, outerName, innerName, legalClassAccess(access));
           }
 
           @Override

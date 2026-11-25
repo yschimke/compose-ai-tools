@@ -347,4 +347,76 @@ public class InstrumentationRunTest {
     }
     throw new AssertionError("parsed " + spec);
   }
+
+  public static class Suppressed {
+    @Test
+    @androidx.test.filters.SdkSuppress(minSdkVersion = 37)
+    public void from37() {}
+
+    @Test
+    @androidx.test.filters.SdkSuppress(maxSdkVersion = 35)
+    public void upTo35() {}
+
+    @Test
+    @androidx.test.filters.SdkSuppress(minSdkVersion = 30, excludedSdks = {36})
+    public void not36() {}
+
+    @Test
+    @androidx.test.filters.SdkSuppress(minSdkVersion = 99, codeName = "Baklava")
+    public void onBaklava() {}
+
+    @Test
+    @androidx.test.filters.RequiresDevice
+    public void onHardware() {}
+
+    @Test
+    public void always() {}
+  }
+
+  @androidx.test.filters.SdkSuppress(minSdkVersion = 40)
+  public static class SuppressedClass {
+    @Test
+    public void inherits() {}
+
+    @Test
+    @androidx.test.filters.SdkSuppress(minSdkVersion = 21)
+    public void methodWins() {}
+  }
+
+  @Test
+  public void sdkSuppressAndRequiresDeviceFilterAsAndroidJUnitRunnerDoes() {
+    InstrumentationRun.DeviceFilter at36 = new InstrumentationRun.DeviceFilter(36, "REL");
+    List<String> ran = new java.util.ArrayList<>();
+    for (Description test : Description.createSuiteDescription(Suppressed.class).getChildren()) {
+      if (at36.shouldRun(test)) ran.add(test.getMethodName());
+    }
+    org.junit.runner.Runner runner =
+        org.junit.runner.Request.aClass(Suppressed.class).getRunner();
+    ran.clear();
+    for (Description test : runner.getDescription().getChildren()) {
+      if (at36.shouldRun(test)) ran.add(test.getMethodName());
+    }
+    assertEquals(List.of("always"), sorted(ran));
+
+    InstrumentationRun.DeviceFilter baklava = new InstrumentationRun.DeviceFilter(36, "Baklava");
+    ran.clear();
+    for (Description test : runner.getDescription().getChildren()) {
+      if (baklava.shouldRun(test)) ran.add(test.getMethodName());
+    }
+    assertEquals(List.of("always", "onBaklava"), sorted(ran));
+
+    org.junit.runner.Runner classLevel =
+        org.junit.runner.Request.aClass(SuppressedClass.class).getRunner();
+    ran.clear();
+    for (Description test : classLevel.getDescription().getChildren()) {
+      if (at36.shouldRun(test)) ran.add(test.getMethodName());
+    }
+    assertEquals(List.of("methodWins"), ran);
+  }
+
+  private static List<String> sorted(List<String> names) {
+    List<String> copy = new java.util.ArrayList<>(names);
+    java.util.Collections.sort(copy);
+    return copy;
+  }
 }

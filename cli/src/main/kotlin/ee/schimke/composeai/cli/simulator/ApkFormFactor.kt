@@ -15,8 +15,11 @@ import java.util.zip.ZipFile
  *   `required` not `false`, as Play and the Wear launcher read it.
  * - **Glimmer**: an activity with `android:requiredDisplayCategory` of `xr_projected` (projected
  *   onto the glasses' display), or code that references `androidx.xr.glimmer`.
- * - **XR**: a `<uses-feature android:name="android.software.xr.api.*">`, or code that references
- *   Jetpack XR's spatial UI (`androidx.xr.compose`, `androidx.xr.scenecore`).
+ * - **XR**: a required `<uses-feature android:name="android.software.xr.api.*">`; one marked
+ *   `required="false"` is a phone app's optional spatial mode, and stays a phone. Code that
+ *   references Jetpack XR's spatial UI (`androidx.xr.compose`, `androidx.xr.scenecore`) alone is
+ *   not enough: a phone app adds it for an optional spatial mode and runs on phones (Home Assistant
+ *   RemoteCompose's does), where its tests expect a phone's status bar and keyboard.
  */
 internal enum class ApkFormFactor(
   /** The `--form-factor` spelling and the `composeai.simulator.formFactor` value. */
@@ -83,7 +86,7 @@ internal enum class ApkFormFactor(
      * cannot be read.
      */
     fun inspect(apk: File): Detected =
-      decode(FileFacts.remember(apk, "form-factor-1") { encode(inspectNow(apk)) })
+      decode(FileFacts.remember(apk, "form-factor-3") { encode(inspectNow(apk)) })
         ?: inspectNow(apk)
 
     /** [Detected] as one line of `key=value` pairs, for [FileFacts]. */
@@ -151,28 +154,25 @@ internal enum class ApkFormFactor(
         return WEAR
       }
       if (signals.projectedActivities.isNotEmpty()) return GLIMMER
-      val xrFeature = signals.features.any { it.startsWith(XR_FEATURE_PREFIX) }
+      // Required only: `required="false"` is Android XR's differentiated app, a phone app with an
+      // optional spatial mode, which a phone installs and runs as a phone.
+      val xrFeature = signals.requiredFeatures.any { it.startsWith(XR_FEATURE_PREFIX) }
       var glimmer = false
-      var spatial = false
-      // One pass per dex for the packages' shared prefix, then which of them follows it.
+      // One pass per dex for the packages' shared prefix, then whether Glimmer follows it.
       for (bytes in dex) {
         var at = indexOf(bytes, XR_PREFIX, 0)
         while (at >= 0) {
-          val after = at + XR_PREFIX.size
-          if (startsWith(bytes, after, GLIMMER_SUFFIX)) glimmer = true
-          else if (
-            startsWith(bytes, after, COMPOSE_SUFFIX) || startsWith(bytes, after, SCENECORE_SUFFIX)
-          ) {
-            spatial = true
+          if (startsWith(bytes, at + XR_PREFIX.size, GLIMMER_SUFFIX)) {
+            glimmer = true
+            break
           }
-          if (glimmer) break
-          at = indexOf(bytes, XR_PREFIX, after)
+          at = indexOf(bytes, XR_PREFIX, at + XR_PREFIX.size)
         }
         if (glimmer) break
       }
       return when {
         glimmer -> GLIMMER
-        xrFeature || spatial -> XR
+        xrFeature -> XR
         else -> PHONE
       }
     }
@@ -185,8 +185,6 @@ internal enum class ApkFormFactor(
     val XR_PROJECTED = setOf("android.hardware.display.category.XR_PROJECTED", "xr_projected")
     private val XR_PREFIX = "Landroidx/xr/".toByteArray()
     private val GLIMMER_SUFFIX = "glimmer/".toByteArray()
-    private val COMPOSE_SUFFIX = "compose/".toByteArray()
-    private val SCENECORE_SUFFIX = "scenecore/".toByteArray()
 
     private fun startsWith(haystack: ByteArray, at: Int, prefix: ByteArray): Boolean {
       if (at + prefix.size > haystack.size) return false
