@@ -47,7 +47,7 @@ import org.robolectric.RuntimeEnvironment;
  *
  * <p>The command set is documented in {@code docs/SIMULATOR.md}.
  */
-final class Session {
+public final class Session {
 
   static final long DEFAULT_SETTLE_MS = 250;
 
@@ -107,7 +107,39 @@ final class Session {
     }
   }
 
+  /** The running session, for keys injected around the control channel ({@link #systemKey}). */
+  private static volatile Session current;
+
+  /**
+   * A key injected through {@code UiAutomation} (UiAutomator's {@code pressBack}, {@code
+   * pressHome}), routed as the system routes it: HOME to the home screen, Back to the shade, the
+   * home screen's sheets or the focused window's {@code OnBackInvokedCallback} before any key
+   * reaches a view, as the {@code key} command does. True when it was taken: its down is
+   * delivered here (as the whole key, down and up) and its up dropped. On the main thread.
+   */
+  public static boolean systemKey(android.view.KeyEvent event, int displayId) {
+    Session session = current;
+    int code = event.getKeyCode();
+    if (session == null
+        || (code != android.view.KeyEvent.KEYCODE_BACK
+            && code != android.view.KeyEvent.KEYCODE_HOME)) {
+      return false;
+    }
+    if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+      if (event.getRepeatCount() == 0) {
+        try {
+          session.key(code, false, displayId);
+        } catch (JSONException e) {
+          throw new IllegalStateException(e);
+        }
+      }
+      return true;
+    }
+    return event.getAction() == android.view.KeyEvent.ACTION_UP;
+  }
+
   Session(Application app, UiAutomation ui, Protocol protocol) {
+    current = this;
     this.app = app;
     this.ui = ui;
     this.protocol = protocol;

@@ -875,7 +875,7 @@ and sends the success callback with `EXTRA_APPWIDGET_ID` filled in, `"reject"` d
 `hierarchy`, `find` and `tap` see the home screen's views, each with a `sim:id/…` resource id:
 `icon`, `shortcut_icon`, `drawer_handle`, `drawer`, `drawer_icon`, `shortcuts`, `shortcut`,
 `shortcut_widgets`, `home_menu`, `home_widgets`, `widget` (its description names the widget, id
-and span), `widget_resize`, `widget_resize_handle`, `widget_remove`, `widget_reconfigure`,
+and span), `widget_resize`, `widget_resize_handle` (the corner; `widget_resize_right` and `widget_resize_bottom` drag one edge, as Launcher3's edge handles do), `widget_remove`, `widget_reconfigure`,
 `picker`, `picker_preview`, `pin_sheet`, `pin_accept`, `pin_reject`. A widget's own views appear
 under its `widget`, with their text, so `{"cmd":"tap","text":"+1"}` taps a widget's button.
 
@@ -2047,7 +2047,11 @@ compose-preview android-simulator app/build/outputs/apk/debug/app-debug.apk \
 ```
 
 It exits 0 when every test passed. It is headless, and the app's process starts with none of its
-activities, as `am instrument` leaves it. The tests run on a thread of their own while the main
+activities, as `am instrument` leaves it; on a phone the home screen is up behind it (as
+`--launcher`), as a device's launcher is, for tests that press HOME or pin and resize widgets. The
+display is the phone default, 360×640 dp: a suite written against a Pixel-sized emulator may need
+`--device phone` (411×891 dp) or `--qualifiers w411dp-h914dp-xxhdpi`, since Compose leaves what is
+scrolled off screen out of the accessibility tree UiAutomator searches. The tests run on a thread of their own while the main
 thread keeps looping, which is the device's arrangement and not a Robolectric unit test's:
 `runOnMainSync`, `ActivityScenario`, Espresso and the Compose test rules post to the main thread and
 wait for it. Each test is reported on stderr as it finishes (`SKIPPED` for a failed assumption).
@@ -2152,6 +2156,17 @@ How the pieces fit:
 - **Espresso's clock.** Espresso's `UiController` loops the main queue itself, and Robolectric's
   paused queue waits there for the simulated clock, which only the simulator's loop advances. While
   Espresso holds the main thread that way, the clock is advanced in real time.
+- **UiAutomator.** The test APK's `androidx.test.uiautomator` classes are its own: the converter
+  drops only the androidx.test classes the simulator itself carries (core, monitor, runner, rules,
+  espresso), read from its jars. `UiDevice` searches the window in front in the simulator's back
+  stack (a dialog, a bottom sheet, the home screen brought forward by a widget pin request), read
+  on the main thread; `waitForIdle`, which UiAutomator calls before every search, waits for the
+  windows to stop drawing (150 ms quiet, 1.5 s at most), so a sheet's items are not tapped while
+  they slide in. `pressBack` and `pressHome` go where the `key` command sends them: Back to the
+  shade, the home screen's sheets (it cancels a widget pin request) or the app's
+  `OnBackInvokedCallback`.
+- **Screenshots from the test thread.** `PixelCopy.request`, which Compose's `captureToImage()`
+  calls, copies on the main thread while the test's thread waits.
 
 The simulator fixes that came out of it apply to every launch, not only tests:
 
@@ -2164,17 +2179,37 @@ The simulator fixes that came out of it apply to every launch, not only tests:
 - `InputManager.injectInputEvent` (how Espresso and `Instrumentation.sendPointerSync` inject)
   reaches the window, as `UiAutomation`'s does;
 - audio: `MediaExtractor` reads real files and an MP3 decoder and AAC encoder are in
-  `MediaCodecList` ([Audio files and codecs](#audio-files-and-codecs)).
+  `MediaCodecList` ([Audio files and codecs](#audio-files-and-codecs));
+- the simulated clock keeps up with real time. Robolectric's loop advanced it by the time it spent
+  waiting, not the time it spent running tasks and drawing, so a busy UI fell three to four times
+  behind, while other threads (a test's waits, network timeouts, a long press held for real) count
+  real time;
+- `SystemClock.sleep` off the main thread sleeps, as on a device, instead of jumping the clock:
+  UiAutomator's long press is a down, a sleep and an up;
+- the home screen's resize frame sits on the widget (it was drawn without the status bar's
+  offset), with Launcher3's edge handles, and stays on the widget after each resize
+  ([before and after](design/evidence/simulator-launch/widget-resize-frame-before-after.png)); and an app
+  that asked to pin a widget from the front comes back once the request is answered, as a device's
+  launcher shows its confirmation as a dialog over the app.
 
 Cadence's own suite (13 tests: launch, notifications, Media3 transcoding with chapter splits, a
-storage tree URI) passes at `--sdk 36` (its notification tests assume API 36).
+storage tree URI) passes at `--sdk 36` (its notification tests assume API 36). Home Assistant
+RemoteCompose's app suite, which drives the launcher with UiAutomator (long-press menus, widget
+pinning with cancel and confirm, resize handles) and captures Compose screenshots, passes 38 of its
+48 tests at `--sdk 36 --qualifiers w411dp-h914dp-xxhdpi`, every UiAutomator and `captureToImage`
+test among them. Of the rest, two are skipped by the suite itself; the others are `@SdkSuppress`
+(not honoured yet), status-bar insets, widget binding, a frame-commit callback, a converter bug
+with enums whose constants have bodies, and three tests that pass alone but not after the rest of
+the suite (two IME tests and a preview comparison).
 
 Not yet:
 
 - `InstrumentationRegistry.getArguments()` is empty (no `-e` arguments), and there is no
   orchestrator, `ClassRule`-level isolation or per-test process.
-- `UiAutomator`, `adb shell` from a test, screenshots through `DeviceCapture`, and permissions
-  granted with `GrantPermissionRule` are untried.
+- `UiDevice.executeShellCommand` and `adb shell` from a test, screenshots through
+  `DeviceCapture`, and permissions granted with `GrantPermissionRule` are untried. UiAutomator
+  searches only the active window (multi-window search needs `AccessibilityWindowInfo`s the
+  simulator does not provide).
 - A crash on the main thread ends the simulator, as it ends the process on a device; the run then
   reports no summary.
 - `--instrument` is not combined with `--control`, `--pair`, `--install`, `--app` or `--project`.

@@ -515,6 +515,23 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void onlyTheAndroidxTestClassesTheSimulatorCarriesAreItsOwn() throws Exception {
+    Path jar = Files.createTempFile("provided", ".jar");
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+      for (String name :
+          List.of("androidx/test/core/app/ActivityScenario.class", "androidx/test/R.txt")) {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.closeEntry();
+      }
+    }
+    Set<String> provided = ApkClassConverter.ProvidedTestClasses.read(jar.toString());
+    assertEquals(Set.of("androidx/test/core/app/ActivityScenario.class"), provided);
+    // uiautomator is not among the simulator's: a test APK's copy is the only one there is.
+    assertFalse(provided.contains("androidx/test/uiautomator/UiDevice.class"));
+    assertEquals(null, ApkClassConverter.ProvidedTestClasses.read(""));
+  }
+
+  @Test
   public void sharedLibraryCopiesTheSimulatorProvidesAreDropped() {
     ClassLoader host = ApkClassConverter.class.getClassLoader();
     // The Wear OS library's ambient controller and the Wear SDK's ambient service and version.

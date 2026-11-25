@@ -457,6 +457,26 @@ public final class Displays {
   }
 
   /**
+   * The active window on display [id], as an accessibility service sees it: the top-most visible
+   * focusable window of the activities and dialogs showing, in the simulator's back-stack order
+   * (Robolectric's own choice ignores which activity {@link Navigator} keeps in front). Null when
+   * none shows.
+   */
+  public static View activeWindow(int id) {
+    for (Root root : roots(id, hidden())) {
+      if (root.focusable() && root.visible() && root.view.isShown()) return root.view;
+    }
+    return null;
+  }
+
+  /** The windows showing on display [id], top-most first. On the main thread. */
+  public static List<View> windows(int id) {
+    List<View> views = new ArrayList<>();
+    for (Root root : roots(id, hidden())) views.add(root.view);
+    return views;
+  }
+
+  /**
    * The {@code OnBackInvokedCallback} a device's {@code ViewRootImpl} would hand Back to on display
    * [id]: the focused window's top callback, when that window opted in to the callback API (API 33+
    * with {@code android:enableOnBackInvokedCallback}, or by default from targetSdk 36). Null when

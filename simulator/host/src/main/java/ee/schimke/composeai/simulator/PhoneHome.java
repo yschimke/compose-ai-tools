@@ -78,8 +78,14 @@ public class PhoneHome extends Activity {
 
   @Override
   public void onBackPressed() {
-    // The home screen is the bottom of the stack: Back only closes what is open over it.
-    if (home.overlay() != null && !"pin".equals(home.overlay())) home.closeOverlay();
+    // The home screen is the bottom of the stack: Back only closes what is open over it. The pin
+    // sheet is the launcher's confirmation dialog, which Back dismisses as a cancel: the app's
+    // request is refused, as a device's launcher refuses it.
+    if ("pin".equals(home.overlay())) {
+      home.widgets.answerPin(false);
+      return;
+    }
+    if (home.overlay() != null) home.closeOverlay();
   }
 
   @Override
@@ -401,8 +407,23 @@ public class PhoneHome extends Activity {
     home.setOverlay("resize");
     overlay.removeAllViews();
     resizing = w;
+    // Just after a resize the home screen is rebuilt and the widget not laid out again yet: the
+    // frame waits for that layout, so it goes where the widget now is.
+    View view = w.view;
+    if (view != null && (!view.isAttachedToWindow() || view.isLayoutRequested())) {
+      android.view.ViewTreeObserver observer = view.getViewTreeObserver();
+      observer.addOnGlobalLayoutListener(
+          new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+              view.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+              if (resizing == w && "resize".equals(home.overlay())) showResizeFrame(w);
+            }
+          });
+      return;
+    }
     FrameLayout scrim = dismissingScrim();
-    int[] rect = home.grid().rect(w.cellX, w.cellY, w.spanX, w.spanY);
+    int[] rect = frameRect(w);
     FrameLayout frame = new FrameLayout(this);
     GradientDrawable border = new GradientDrawable();
     border.setStroke(dp(2), Color.WHITE);
@@ -416,19 +437,19 @@ public class PhoneHome extends Activity {
     flp.leftMargin = rect[0];
     flp.topMargin = rect[1];
     scrim.addView(frame, flp);
-    View handle = new View(this);
-    GradientDrawable dot = new GradientDrawable();
-    dot.setShape(GradientDrawable.OVAL);
-    dot.setColor(Color.WHITE);
-    handle.setBackground(dot);
-    handle.setContentDescription("Resize");
-    simId(handle, "widget_resize_handle");
-    int size = dp(20);
-    FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(size, size);
-    hlp.leftMargin = rect[2] - size / 2;
-    hlp.topMargin = rect[3] - size / 2;
-    handle.setOnTouchListener(new ResizeDrag(w));
-    scrim.addView(handle, hlp);
+    // Launcher3's handles: one mid-way along each edge it can grow, which drags that edge alone,
+    // and the corner, which drags both.
+    int midX = (rect[0] + rect[2]) / 2;
+    int midY = (rect[1] + rect[3]) / 2;
+    scrim.addView(
+        resizeHandle("widget_resize_handle", "Resize", new ResizeDrag(w, true, true)),
+        handleAt(rect[2], rect[3]));
+    scrim.addView(
+        resizeHandle("widget_resize_right", "Resize width", new ResizeDrag(w, true, false)),
+        handleAt(rect[2], midY));
+    scrim.addView(
+        resizeHandle("widget_resize_bottom", "Resize height", new ResizeDrag(w, false, true)),
+        handleAt(midX, rect[3]));
     LinearLayout actions = new LinearLayout(this);
     TextView remove = button(this, "Remove", false);
     simId(remove, "widget_remove");
@@ -452,14 +473,65 @@ public class PhoneHome extends Activity {
     overlay.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
   }
 
-  /** Dragging the resize handle: the span follows the drag, in whole cells, when let go. */
+  /**
+   * The widget's bounds in the overlay's coordinates, where its frame and handles go: its cells'
+   * rectangle, placed where its view is (the grid sits below the status bar, the overlay does
+   * not); the rectangle alone while the view is not laid out.
+   */
+  private int[] frameRect(WidgetHost.Hosted w) {
+    int[] rect = home.grid().rect(w.cellX, w.cellY, w.spanX, w.spanY);
+    View view = w.view;
+    if (view == null || !view.isAttachedToWindow() || view.getWidth() == 0 || overlay == null) {
+      return rect;
+    }
+    int[] at = new int[2];
+    int[] origin = new int[2];
+    view.getLocationInWindow(at);
+    overlay.getLocationInWindow(origin);
+    // The grid's rectangle, moved by where the grid actually sits: right after a resize the view
+    // still has its old size, while its top-left cell (and so the offset) stays put.
+    int dx = at[0] - origin[0] - rect[0];
+    int dy = at[1] - origin[1] - rect[1];
+    return new int[] {rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy};
+  }
+
+  /** A resize handle: a white dot, taking [drag]'s touches. */
+  private View resizeHandle(String id, String description, ResizeDrag drag) {
+    View handle = new View(this);
+    GradientDrawable dot = new GradientDrawable();
+    dot.setShape(GradientDrawable.OVAL);
+    dot.setColor(Color.WHITE);
+    handle.setBackground(dot);
+    handle.setContentDescription(description);
+    simId(handle, id);
+    handle.setOnTouchListener(drag);
+    return handle;
+  }
+
+  /** A handle's place, centred on ([x], [y]). */
+  private FrameLayout.LayoutParams handleAt(int x, int y) {
+    int size = dp(20);
+    FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size);
+    lp.leftMargin = x - size / 2;
+    lp.topMargin = y - size / 2;
+    return lp;
+  }
+
+  /**
+   * Dragging a resize handle: the span follows the drag, in whole cells, when let go; along the
+   * axes the handle drags (an edge's one, the corner's both).
+   */
   private final class ResizeDrag implements View.OnTouchListener {
     private final WidgetHost.Hosted w;
+    private final boolean horizontal;
+    private final boolean vertical;
     private float downX;
     private float downY;
 
-    ResizeDrag(WidgetHost.Hosted w) {
+    ResizeDrag(WidgetHost.Hosted w, boolean horizontal, boolean vertical) {
       this.w = w;
+      this.horizontal = horizontal;
+      this.vertical = vertical;
     }
 
     @Override
@@ -470,16 +542,20 @@ public class PhoneHome extends Activity {
           downY = e.getRawY();
           return true;
         case MotionEvent.ACTION_MOVE:
-          v.setTranslationX(e.getRawX() - downX);
-          v.setTranslationY(e.getRawY() - downY);
+          if (horizontal) v.setTranslationX(e.getRawX() - downX);
+          if (vertical) v.setTranslationY(e.getRawY() - downY);
           return true;
         case MotionEvent.ACTION_UP:
           {
             float step =
                 (LauncherGrid.CELL_DP + LauncherGrid.GAP_DP)
                     * getResources().getDisplayMetrics().density;
-            int sx = Math.max(1, w.spanX + Math.round((e.getRawX() - downX) / step));
-            int sy = Math.max(1, w.spanY + Math.round((e.getRawY() - downY) / step));
+            int sx =
+                horizontal
+                    ? Math.max(1, w.spanX + Math.round((e.getRawX() - downX) / step))
+                    : w.spanX;
+            int sy =
+                vertical ? Math.max(1, w.spanY + Math.round((e.getRawY() - downY) / step)) : w.spanY;
             int[] min = home.widgets.minSpan(w.info);
             int[] max = home.widgets.maxSpan(w.info);
             sx = Math.max(min[0], Math.min(max[0], sx));

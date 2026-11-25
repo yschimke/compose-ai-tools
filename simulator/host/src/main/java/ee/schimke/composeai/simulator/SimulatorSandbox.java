@@ -165,6 +165,24 @@ public final class SimulatorSandbox {
             String.class,
             SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowInstrumentation"),
         ClassParameter.from(boolean.class, false));
+    // PixelCopy (Compose's captureToImage) from a test's own thread, copied on the main thread.
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.view.PixelCopy"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowPixelCopy"),
+        ClassParameter.from(boolean.class, false));
+    // SystemClock.sleep off the main thread sleeps, as on a device (UiAutomator's long press).
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.os.SystemClock"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowSystemClock"),
+        ClassParameter.from(boolean.class, false));
     // Injected input (Espresso's touches and keys) reaches the simulator's windows.
     ReflectionHelpers.callInstanceMethod(
         shadows,
