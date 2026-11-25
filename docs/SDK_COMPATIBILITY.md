@@ -122,3 +122,18 @@ moves to JDK 21), update both:
 
 The nightly job's aggregator step fails outright if any cell's outcome drifts from the
 `expect:` field — that's the signal to revisit this page.
+
+## Enforced published client-compatibility floors
+
+Dependencies whose upgrade would raise the minimum runtime or binary surface
+required of downstream consumers are constrained in `.github/renovate.json` and
+enforced on every `check` run by Gradle (`checkClientCompatibilityFloor` and
+`tapmoc`):
+
+| Surface / Dependency | Enforced floor | Gradle check | Why it cannot drift unattended |
+| --- | --- | --- | --- |
+| JVM bytecode (`classgraph`, all published runtime JARs) | Java 17 (class file `<= 61`) | `checkClientCompatibilityFloor` | ClassGraph 6+ (Java 25 / class file 69) and newer JVM deps fail on JDK 17 consumers with `UnsupportedClassVersionError`. |
+| Kotlin language/API floor (`kotlinCoreLibraries`) | Kotlin `2.0.21` | `tapmoc` (`checkDependencies`) | Keeps published artifacts linkable by consumers on Kotlin 2.0.x / Gradle 8.x. |
+| Android Compose (`androidx.compose.{ui,foundation,runtime}`) | `1.9.x` (`compose-bom-compat` `2025.11.x`) | `checkClientCompatibilityFloor` | Published Android runtimes compile `compileOnly` against Compose 1.9.5 so consumers on 1.9+ do not hit `NoSuchMethodError`. |
+| `org.slf4j:slf4j-nop` (`:gradle-preview-driver`) | Exact match with `slf4j-api` | `checkClientCompatibilityFloor` | `gradle-tooling-api` declares a strict `slf4j-api` constraint; bumping `slf4j-nop` ahead of it breaks resolution. |
+| Cloud Run base image (`eclipse-temurin`) | Java `17.x` | `gradle/gradle-daemon-jvm.properties` | Matches the repo's Gradle daemon JVM toolchain for source builds inside `deploy/cloudrun/Dockerfile`. |

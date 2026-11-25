@@ -21,7 +21,7 @@ kotlin {
   // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.
   android {
     namespace = "com.example.cmpshared"
-    compileSdk = 36
+    compileSdk = 37
     minSdk = 24
 
     compilations.configureEach {
@@ -45,7 +45,7 @@ kotlin {
       // The JetBrains-relocated `ui-tooling-preview` ships
       // `androidx.compose.ui.tooling.preview.Preview`, the FQN discovery scans for; CMP's bundled
       // accessor uses an `org.jetbrains` FQN instead.
-      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.12.2")
       // The compose-preview annotations, consumed from `commonMain` — the KMP scenario the
       // multiplatform `preview-annotations` artifact exists for (mirrors meshcore's
       // `:meshcore-components`, whose tokens live in shared code). Exercised by `SharedTokens.kt`.

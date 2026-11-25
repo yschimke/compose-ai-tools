@@ -24,7 +24,7 @@ plugins {
 kotlin {
   android {
     namespace = "com.example.previewsourceshared"
-    compileSdk = 36
+    compileSdk = 37
     minSdk = 24
 
     compilations.configureEach {
@@ -44,7 +44,7 @@ kotlin {
       // The JetBrains-relocated androidx artifact, which ships
       // `androidx.compose.ui.tooling.preview.Preview` on every target — the FQN discovery scans
       // for. See the same note in `:samples:cmp-shared`.
-      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.12.2")
       // `@file:CatalogGroup`, from `commonMain` — the multiplatform half of `preview-annotations`.
       implementation(libs.composeai.preview.annotations)
     }

@@ -27,7 +27,7 @@ kotlin {
   // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.
   android {
     namespace = "com.example.cmpandroidrobolectric"
-    compileSdk = 36
+    compileSdk = 37
     minSdk = 24
 
     // The host-test compilation the Robolectric lane renders on; only the consumer can add it (AGP
@@ -52,7 +52,7 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.runtime)
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
-      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.12.2")
 
       // The shared preview-source module; its `android` variant is selected here, so Robolectric
       // renders Android-flavoured Compose from the same source.
