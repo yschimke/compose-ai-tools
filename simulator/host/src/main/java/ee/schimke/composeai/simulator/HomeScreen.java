@@ -419,10 +419,26 @@ final class HomeScreen {
     setOverlay("shortcuts");
   }
 
+  /** Whether the app was in front when it asked to pin: it comes back once that is answered. */
+  private boolean pinOverApp;
+
   /** The app asked to pin a widget: the home screen comes forward with the confirm sheet. */
   void showPinRequest(android.appwidget.AppWidgetProviderInfo info) {
+    Navigator.Entry top = navigator.top(Display.DEFAULT_DISPLAY);
+    pinOverApp = top != null && !top.system;
     showHome();
     setOverlay("pin");
+  }
+
+  /**
+   * The pin request was answered, either way: an app that asked from the front comes back, as a
+   * device's launcher shows its confirmation as a dialog over the app and the app is in front again
+   * once it closes.
+   */
+  void pinAnswered() {
+    if (!pinOverApp) return;
+    pinOverApp = false;
+    navigator.bringAppForward();
   }
 
   // ---------------------------------------------------------------------------------------------

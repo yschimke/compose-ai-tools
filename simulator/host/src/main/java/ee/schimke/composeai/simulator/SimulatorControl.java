@@ -32,7 +32,53 @@ public final class SimulatorControl implements RemoteControl {
 
   @Override
   public void onCycle(long uptimeNanos) {
+    clock.keepUp(uptimeNanos);
     if (session != null) session.cycle();
+  }
+
+  private final WallClock clock = new WallClock();
+
+  /**
+   * Keeps the simulated clock up with real time. Robolectric's simulator loop advances it by the
+   * time it spent waiting for the next task, not the time it spent running tasks and drawing, so a
+   * busy main thread fell behind: three to four times slower while a Compose UI animated. Every
+   * other thread measures real time (an instrumentation test's waits, a UiAutomator long press, an
+   * app's network timeouts) while the app's own timers ({@code postDelayed}, {@code delay}, a
+   * long-press timeout) run on the simulated clock; a long press then ended before the app's own
+   * timeout had passed. Each cycle makes up what the last one lost; a clock already ahead (a
+   * {@code SystemClock.sleep} on the main thread) is left as it is.
+   */
+  static final class WallClock {
+    private final java.util.function.LongSupplier wallNanos;
+    private final java.util.function.LongConsumer advance;
+    private boolean started;
+    private long lastWall;
+    private long lastUptime;
+
+    WallClock() {
+      this(
+          System::nanoTime,
+          nanos -> org.robolectric.shadows.ShadowSystemClock.advanceBy(Duration.ofNanos(nanos)));
+    }
+
+    WallClock(java.util.function.LongSupplier wallNanos, java.util.function.LongConsumer advance) {
+      this.wallNanos = wallNanos;
+      this.advance = advance;
+    }
+
+    void keepUp(long uptimeNanos) {
+      long wall = wallNanos.getAsLong();
+      if (started) {
+        long behind = (wall - lastWall) - (uptimeNanos - lastUptime);
+        if (behind > 0) {
+          advance.accept(behind);
+          uptimeNanos += behind;
+        }
+      }
+      started = true;
+      lastWall = wall;
+      lastUptime = uptimeNanos;
+    }
   }
 
   @Override

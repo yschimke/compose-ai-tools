@@ -856,6 +856,38 @@ public final class ApkClassConverter {
   };
 
   /**
+   * {@value #PROVIDED_PROPERTY}: the jars of the androidx.test classes the simulator runs tests
+   * with. Only an APK's copies of those are dropped; the androidx.test classes a test APK brings
+   * that the simulator lacks (uiautomator, espresso-contrib, test services) stay its own. Unset,
+   * every androidx.test class is taken as the simulator's.
+   */
+  static final String PROVIDED_PROPERTY = "composeai.simulator.converter.provided";
+
+  /** The class entries of {@value #PROVIDED_PROPERTY}'s jars, read once; null when unset. */
+  static final class ProvidedTestClasses {
+    static final Set<String> NAMES = read(System.getProperty(PROVIDED_PROPERTY));
+
+    static Set<String> read(String jars) {
+      if (jars == null || jars.isEmpty()) return null;
+      Set<String> names = new HashSet<>();
+      for (String jar : jars.split(java.io.File.pathSeparator)) {
+        if (jar.isEmpty()) continue;
+        try (ZipFile zip = new ZipFile(jar)) {
+          zip.stream()
+              .map(java.util.zip.ZipEntry::getName)
+              .filter(n -> n.startsWith("androidx/test/") && n.endsWith(".class"))
+              .forEach(names::add);
+        } catch (IOException e) {
+          System.err.println("compose-preview: cannot read " + jar + ": " + e);
+        }
+      }
+      return names;
+    }
+
+    private ProvidedTestClasses() {}
+  }
+
+  /**
    * Whether [entryName] is a class the simulator itself supplies: either one of the {@link
    * #SHARED_LIBRARY_PACKAGES} present on [host], or a leaked {@code androidx.test} class (the
    * simulator's Robolectric sidecar carries the full {@code androidx.test:core}, {@code monitor},
@@ -865,7 +897,10 @@ public final class ApkClassConverter {
    */
   static boolean providedBySimulator(String entryName, ClassLoader host) {
     if (!entryName.endsWith(".class")) return false;
-    if (entryName.startsWith("androidx/test/")) return true;
+    if (entryName.startsWith("androidx/test/")) {
+      Set<String> provided = ProvidedTestClasses.NAMES;
+      return provided == null || provided.contains(entryName);
+    }
     for (String prefix : SHARED_LIBRARY_PACKAGES) {
       if (entryName.startsWith(prefix)) return host != null && host.getResource(entryName) != null;
     }

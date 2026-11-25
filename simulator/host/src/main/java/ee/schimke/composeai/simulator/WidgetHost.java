@@ -936,6 +936,7 @@ public final class WidgetHost {
               .put("state", "pinRejected")
               .put("provider", request.info.provider.getClassName())
               .object());
+      home.pinAnswered();
       return new Protocol.Json().put("accepted", false).object();
     }
     JSONObject added = add(request.info, null, null, null, null, false);
@@ -946,6 +947,7 @@ public final class WidgetHost {
       if (request.extras != null) fill.putExtras(request.extras);
       callback = PendingIntents.send(request.callback, fill, navigator);
     }
+    home.pinAnswered();
     return new Protocol.Json()
         .put("accepted", true)
         .put("widget", added)

@@ -240,8 +240,12 @@ internal class AndroidSimulatorCommand(
     }
 
     val converterJars = listOf(hostJar) + dex2jarJars
+    // The sidecar's androidx.test jars: their classes are the simulator's, and the converter
+    // drops an APK's copies of those (and only those) so they cannot shadow them. A test APK's
+    // androidx.test classes the simulator lacks (uiautomator, espresso-contrib) stay its own.
+    val providedTestJars = robolectricJars.filter(::carriesAndroidxTest)
     val cache = ApkConversionCache(composeAiCacheDir("simulator"))
-    val stamp = ApkConversionCache.converterStamp(converterJars, androidJar)
+    val stamp = ApkConversionCache.converterStamp(converterJars + providedTestJars, androidJar)
     // The in-use locks on the cache entries the simulators run from. Kept reachable, and closed
     // only once every simulator has exited ([finish]): a lock whose channel were collected would be
     // released, and another launch could prune the jar from under a running simulator. An update or
@@ -269,7 +273,16 @@ internal class AndroidSimulatorCommand(
               (if (previous != null) "; reusing the unchanged classes of its previous build)"
               else ")"),
           )
-          convert(java, converterJars, apk, out, androidJar, previous, contextJars)
+          convert(
+            java,
+            converterJars,
+            apk,
+            out,
+            androidJar,
+            previous,
+            contextJars,
+            providedTestJars,
+          )
         }
       // Once per entry: a second lock on the same file from this process throws
       // (OverlappingFileLockException), as an update to an APK already running would.
@@ -461,6 +474,9 @@ internal class AndroidSimulatorCommand(
           hostApk == null ||
             adb ||
             "--launcher" in args ||
+            // A phone under `am instrument` has its launcher running: tests press HOME, and pin
+            // and resize widgets on it.
+            (instrumentApk != null && formFactor != ApkFormFactor.WEAR) ||
             (watchface != null && formFactor == ApkFormFactor.WEAR) ||
             hasDwf ||
             detected.isWatchFacePushClient ||
@@ -1231,6 +1247,7 @@ internal class AndroidSimulatorCommand(
     androidJar: File,
     previous: File?,
     context: List<File> = emptyList(),
+    provided: List<File> = emptyList(),
   ): String {
     for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
       val process =
@@ -1244,6 +1261,7 @@ internal class AndroidSimulatorCommand(
               heap,
               previous,
               context,
+              provided,
             ),
           )
           .redirectError(ProcessBuilder.Redirect.INHERIT)
@@ -1434,6 +1452,23 @@ internal class AndroidSimulatorCommand(
      */
     const val CONVERTER_CONTEXT_PROPERTY = "composeai.simulator.converter.context"
 
+    /** `:simulator-host`'s `ApkClassConverter.PROVIDED_PROPERTY`. */
+    const val CONVERTER_PROVIDED_PROPERTY = "composeai.simulator.converter.provided"
+
+    /** Whether [jar] has androidx.test classes; remembered per jar ([FileFacts]). */
+    fun carriesAndroidxTest(jar: File): Boolean =
+      FileFacts.remember(jar, "androidx-test-1") {
+        runCatching {
+            java.util.zip.ZipFile(jar).use { zip ->
+              zip.entries().asSequence().any {
+                it.name.startsWith("androidx/test/") && it.name.endsWith(".class")
+              }
+            }
+          }
+          .getOrDefault(false)
+          .toString()
+      } == "true"
+
     /** The name `:simulator-host`'s jar starts with in `lib-simulator/`. */
     const val SIMULATOR_HOST_JAR = "simulator-host"
 
@@ -1515,6 +1550,7 @@ internal class AndroidSimulatorCommand(
       heap: String,
       previous: File? = null,
       context: List<File> = emptyList(),
+      provided: List<File> = emptyList(),
     ): List<String> =
       listOfNotNull(
         java.path,
@@ -1523,6 +1559,11 @@ internal class AndroidSimulatorCommand(
           .takeIf { it.isNotEmpty() }
           ?.let { jars ->
             "-D$CONVERTER_CONTEXT_PROPERTY=" + jars.joinToString(File.pathSeparator) { it.path }
+          },
+        provided
+          .takeIf { it.isNotEmpty() }
+          ?.let { jars ->
+            "-D$CONVERTER_PROVIDED_PROPERTY=" + jars.joinToString(File.pathSeparator) { it.path }
           },
         // A single-threaded batch job: the serial collector's footprint is the smallest, and it
         // spends no threads on concurrent marking.
