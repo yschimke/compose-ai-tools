@@ -52,6 +52,37 @@ public class SimulatorShadowUiAutomation extends ShadowUiAutomation {
     return Displays.inject(event, display);
   }
 
+  /**
+   * A shell command from the test, as {@code adb shell} would run it, its output in the descriptor
+   * returned. {@code am wait-for-broadcast-idle} (with any {@code --flush-broadcast-loopers}, and a
+   * leading {@code timeout <duration>}) waits for the main thread to have delivered what was sent
+   * before it, where the simulator delivers every broadcast, and prints what the activity manager
+   * prints. Anything else runs through the simulator's adb shell translation ({@code shell}
+   * command), its result written as JSON.
+   */
+  @Implementation
+  protected android.os.ParcelFileDescriptor executeShellCommand(String command) {
+    String line = command.trim().replaceFirst("^timeout\\s+\\S+\\s+", "");
+    String output;
+    if (line.startsWith("am wait-for-broadcast-idle")) {
+      // Twice: a broadcast's receiver may send another, which the first pass queued behind it.
+      MainThread.get(() -> null);
+      MainThread.get(() -> null);
+      output = "All broadcast queues are idle!\n";
+    } else {
+      output = MainThread.get(() -> Session.shell(line));
+    }
+    try {
+      java.io.File file = java.io.File.createTempFile("shell", ".out");
+      file.deleteOnExit();
+      java.nio.file.Files.writeString(file.toPath(), output);
+      return android.os.ParcelFileDescriptor.open(
+          file, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   @Implementation
   @Override
   protected boolean setRotation(int rotation) {

@@ -138,18 +138,23 @@ public class SimulatorShadowAppWidgetManager extends ShadowAppWidgetManager {
     else host.appUpdatedOptions(appWidgetId, options);
   }
 
-  /** Apps do not bind ids themselves; a launcher does, and only the simulator's binds here. */
+  /**
+   * Binds an id the app allocated from an {@code AppWidgetHost} of its own ({@link
+   * WidgetHost#bindForApp}); the home screen's ids are the simulator launcher's to bind.
+   */
   @Implementation
   @Override
   protected boolean bindAppWidgetIdIfAllowed(int appWidgetId, ComponentName provider) {
-    return host() == null && super.bindAppWidgetIdIfAllowed(appWidgetId, provider);
+    return bindAppWidgetIdIfAllowed(appWidgetId, provider, null);
   }
 
   @Implementation
   @Override
   protected boolean bindAppWidgetIdIfAllowed(
       int appWidgetId, ComponentName provider, Bundle options) {
-    return host() == null && super.bindAppWidgetIdIfAllowed(appWidgetId, provider, options);
+    WidgetHost host = host();
+    if (host == null) return super.bindAppWidgetIdIfAllowed(appWidgetId, provider, options);
+    return host.isAppHosted(appWidgetId) && host.bindForApp(appWidgetId, provider, options);
   }
 
   @Implementation(minSdk = Build.VERSION_CODES.O)
