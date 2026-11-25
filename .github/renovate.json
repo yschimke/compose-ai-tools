@@ -93,29 +93,6 @@
       "allowedVersions": "/^2025\\.11\\./"
     },
     {
-      "description": "compose-multiplatform: pin to the 1.11.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers, and the ref is also a CEILING on every catalog the serve host renders live (docs/RENDERER_COMPATIBILITY.md). 1.12.0 needs a coordinated move, not a minor/patch bump: its `androidx.compose.*` AARs declare `minCompileSdk = 37` (the repo default is 36), skiko 0.150.1 deletes the mutating `org.jetbrains.skia.Path` API our `conicTo` seams call, and `compose-multiplatform-material3` + `compottie` have to move with it. See gradle/libs.versions.toml — raising the floor is a manual decision. `matchCurrentValue` scopes this to the refs that are actually on 1.11.x; the explicit `ui-tooling-preview:1.10.3` coords in the cmp samples are held on their own line by the rule below.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchPackageNames": [
-        "org.jetbrains.compose",
-        "org.jetbrains.compose{/,}**"
-      ],
-      "matchCurrentValue": "/^1\\.11\\./",
-      "allowedVersions": "/^1\\.11\\./"
-    },
-    {
-      "description": "org.jetbrains.compose.ui:ui-tooling-preview (explicit coords in `samples/cmp-shared` and `samples/cmp-android-only`): pin to the 1.10.x line. These two modules declare the JetBrains-relocated androidx artifact by hand — it ships `androidx.compose.ui.tooling.preview.Preview` on every target, which is the FQN `DiscoverPreviewsTask` scans for, whereas the CMP-bundled `compose.components.uiToolingPreview` republishes the annotation under `org.jetbrains.compose.ui.tooling.preview` and discovery does not recognise it. The explicit coords were renamed in the 1.10 line and are not reliably published to every mirror above it, so they deliberately do NOT track `compose-multiplatform`. Held here because the rule above is scoped by `matchCurrentValue` to the 1.11.x refs and no longer covers them; without this the generic minor/patch group would drift these to a line the preview-discovery contract has not been validated against. See each module's build.gradle.kts.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "org.jetbrains.compose.ui:ui-tooling-preview"
-      ],
-      "matchCurrentValue": "/^1\\.10\\./",
-      "allowedVersions": "/^1\\.10\\./"
-    },
-    {
       "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor — bump this pin in lockstep then.",
       "matchManagers": [
         "gradle"
@@ -125,27 +102,6 @@
       ],
       "matchCurrentValue": "/^2\\.0\\.17$/",
       "allowedVersions": "/^2\\.0\\.17$/"
-    },
-    {
-      "description": "coil3: pin to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 — the Compose line this repo deliberately does not sit on (see the compose-multiplatform rule above). coil3 is `compileOnly` in `:renderer-android` but `testImplementation` for that module's own unit tests, so the upgrade lands on a test classpath compiled against `compose-bom-compat` and `FigmaSvgRasterizedTextFieldRenderTest` fails with `AbstractMethodError` (#4503). 3.5.0 resolves foundation 1.11.2 and is green. Bump in lockstep with the Compose floor, not on its own.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchPackageNames": [
-        "io.coil-kt.coil3:{/,}**"
-      ],
-      "matchCurrentValue": "/^3\\.5\\./",
-      "allowedVersions": "/^3\\.5\\./"
-    },
-    {
-      "description": "robolectric: released versions only. Robolectric publishes rolling `-SNAPSHOT` builds to Sonatype, which the build declares no repository for, and `-compat` artifacts that are not drop-in upgrades. 4.18 was skipped (#6673) because it removed `DefaultNativeRuntimeLoader.maybeCopyFonts(TempDirectory)`; compose-preview-daemon 3.28.2 handles both loader shapes (compose-preview-daemon#504), so it is allowed again. This repo-local rule overrides the shared preset's Robolectric rule (yschimke/renovate-config#39).",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchDepNames": [
-        "org.robolectric:robolectric"
-      ],
-      "allowedVersions": "!/^(.*-SNAPSHOT|.*-compat)$/"
     },
     {
       "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from Google Maven on released alpha coordinates, and the three groups only work together when built against the same `remote-creation*` — `remote-material3` and `androidx.glance.wear:*` name that version in their POMs. Renovate updates one dependency at a time, so an automated bump of any one group produces exactly the skew that has taken CI red before (a `NoClassDefFoundError` inside `RemoteButtonImpl` at render time, a wear pin that did not exist yet). Bump the three refs in gradle/libs.versions.toml as one set after checking the POMs, and re-verify a render, not just a compile.",
@@ -158,14 +114,6 @@
         "/^androidx\\.glance\\.wear($|[.:])/"
       ],
       "enabled": false
-    },
-    {
-      "description": "Gradle wrapper: hold at 9.7.0. Under 9.7.1 a second build invocation in one session can leave `:samples:cmp` without the renamed preview render: the `interactive-e-g` shard times out after discovery publishes the new id while duplicate save/refresh work repeatedly cancels `composePreviewCompile` (main run 32704936546). The test now serializes that edit through the production save queue, but the wrapper stays pinned until 9.7.1 is independently proven across the full E2E suite; do not turn a test-driver repair into an unverified build-tool upgrade.",
-      "matchManagers": [
-        "gradle-wrapper"
-      ],
-      "matchCurrentValue": "/^9\\.7\\.0$/",
-      "allowedVersions": "/^9\\.7\\.0$/"
     },
     {
       "description": "The export-driver pin tracks THIS repository's releases, and its whole purpose is to reach external callers promptly — a downstream repo running last release's driver is the failure #4107 was filed for. So it opts out of the 7-day soak that suits third-party dependencies: the tag it moves to is one this repo just cut and just tested. The shared preset automerges this minor update after every branch check is green. The commit type is pinned to `chore(ci)` deliberately: a squash merge uses the PR title as the headline and release-please cuts a patch release for `fix:`, so a `fix:`-titled bump would make every release propose another release, whose publish opens another bump. The hand-written bumps this lineage replaces were all titled `fix(ci):`, and each of them cut a release of its own.",

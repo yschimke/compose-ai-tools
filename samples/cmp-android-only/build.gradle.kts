@@ -20,7 +20,7 @@ kotlin {
   // AGP 9 / KMP renamed the `androidLibrary { }` DSL block to `android { }`.
   android {
     namespace = "com.example.cmpandroidonly"
-    compileSdk = 36
+    compileSdk = 37
     minSdk = 24
 
     // The KMP-Android library plugin keeps android resource processing OFF by default. Material3
@@ -46,7 +46,7 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.runtime)
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
-      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.10.3")
+      implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.12.2")
     }
 
     // This regression fixture intentionally has no test compilation. KMP creates commonTest by

@@ -71,33 +71,11 @@ compose-bom-stable = "2026.09.00"
 # Renovate is constrained to the 2025.11.x line in `.github/renovate.json` —
 # raising the supported-Compose-minimum is a manual decision.
 compose-bom-compat = "2025.11.01"
-# The desktop/Skiko floor for `renderer-desktop`, `daemon-desktop`, `bundle-viewer` and the CMP
-# player. This version is also a CEILING CONSTRAINT ON EVERY CATALOG THE SERVE HOST RENDERS LIVE:
-# it must be >= the newest `compose-multiplatform` of any catalog served from this host. A catalog
-# that upgrades ahead of the host pairs its newer `org.jetbrains.skia.*` bindings with the sidecar's
-# older `libskiko` and every live render dies with `UnsatisfiedLinkError` — silently, at
-# regeneration time, with baked PNGs still serving fine. That is issue #3447: m3-catalog moved to
-# CMP 1.11.1 (skiko 0.144.6, which introduced `org.jetbrains.skia.PathBuilder`) while the host was
-# on 1.10.3 (skiko 0.9.37.4, whose native exports no `PathBuilder_*` symbol at all). Bumping this
-# ref is therefore a SERVE-HOST RELEASE concern, not just a build-hygiene one — see
-# `docs/RENDERER_COMPATIBILITY.md`.
-#
-# HELD AT 1.11.1 — 1.12.0 is not a minor/patch bump this ref can take on its own (#4503):
-#   * `androidx.compose.*:1.12.0` AAR metadata declares `minCompileSdk = 37`, so every Android
-#     module on the conventions default (`compileSdk = 36`) fails `checkAarMetadata` — the bump is
-#     a repo-wide platform move, not a version-ref edit.
-#   * skiko 0.150.1 (what 1.12.0 resolves) REMOVES the mutating `org.jetbrains.skia.Path` API that
-#     m144 had only deprecated at `DeprecationLevel.ERROR`. `Path.conicTo` is gone, which breaks
-#     `PathConic.{jvm,wasm,ios}.kt` and the vendored `FloatsToPath.kt`; the replacement
-#     (`PathBuilder`) is build-then-`snapshot()`, so those seams have to be restructured.
-#   * `compose-multiplatform-material3` (1.11.0-alpha07) and `compottie` (built against foundation
-#     1.11.0) move in lockstep with this ref — see their comments below.
-# The Renovate rule for `org.jetbrains.compose**` in `.github/renovate.json` now tracks the 1.11.x
-# line so the group stops re-proposing this; moving to 1.12 is a deliberate, coordinated change.
-compose-multiplatform = "1.11.1"
-# Consumer runtime used by renderer forward-compatibility tests. Keep this on the newest CMP line
-# that catalogs are expected to adopt; it intentionally does not affect production compilation.
-compose-multiplatform-forward = "1.12.0-rc01"
+# The desktop/Skiko floor for `bundle-viewer`, `dwf-remote-compose`, and `rc-render-jvm`.
+# Kept aligned with `compose-preview-daemon`'s CMP 1.12 floor.
+compose-multiplatform = "1.12.2"
+# Consumer runtime used by forward-compatibility tests.
+compose-multiplatform-forward = "1.13.0-rc01"
 # The Compose M3 design catalog (`:samples:design-catalog-m3`) pins material3
 # FORWARD of `compose-bom-stable` (which carries 1.4.0) solely for the Material 3
 # **inset focus ring** APIs — `LocalRippleThemeConfiguration` +
@@ -341,15 +319,6 @@ jmdns = "3.6.5"
 # against both and pick at runtime. Versions here only bound what the renderer *compiles* against —
 # the consumer's own coil is what runs, and the builder APIs we touch are stable across each major.
 coil2 = "2.7.0"
-# coil3: pinned to the 3.5.x line. 3.6.0 depends on `org.jetbrains.compose.foundation:
-# foundation-android:1.12.0`, which resolves `androidx.compose.foundation`/`ui` 1.12.0 — the same
-# Compose line held out of this repo for `compose-multiplatform` (#4527). coil3 is `compileOnly` in
-# `:renderer-android` but `testImplementation` for its own unit tests, so that upgrade lands
-# directly on a test classpath whose code is compiled against `compose-bom-compat`, and
-# `FigmaSvgRasterizedTextFieldRenderTest` dies with `AbstractMethodError` inside the Compose test
-# rule. 3.5.0 stops at foundation 1.11.2 and is green. Bump this when the repo's Compose floor
-# moves to 1.12, not before; the pin lives in `.github/renovate.json`.
-coil3 = "3.5.0"
 
 # The wire contracts, now published from yschimke/compose-preview-contracts rather than built
 # here. This repository consumes them; it no longer owns these coordinates. A change to a contract
@@ -699,8 +668,6 @@ jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 # `:samples:android` fixture renders a real `AsyncImage`; the renderer itself only needs the
 # `ImageLoader` / `EventListener` surface from the base artifact, which `coil-compose` brings in.
 coil2-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil2" }
-coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
-coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 # `compose-preview launch`: Robolectric's own simulator (window, input, `RemoteControl` plugin API)
 # and the pieces `:simulator-host` compiles against. Always at the Robolectric pin, since the

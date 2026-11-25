@@ -45,6 +45,7 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
 
     registerLayerBoundaryCheck(project)
     registerHttpServerFloorCheck(project)
+    registerClientCompatibilityFloorCheck(project)
     applyDaemonBom(project)
     applyContractsBom(project)
   }
@@ -163,6 +164,95 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
         }
 
       project.tasks.named("check") { dependsOn(task) }
+    }
+  }
+
+  private fun resolvedModuleVersions(configuration: org.gradle.api.artifacts.Configuration) =
+    configuration.incoming.resolutionResult.rootComponent.map {
+      configuration.incoming.resolutionResult.allComponents
+        .mapNotNull { component ->
+          (component.id as? ModuleComponentIdentifier)?.let {
+            "${configuration.name}\t${it.group}:${it.module}\t${it.version}"
+          }
+        }
+    }
+
+  /**
+   * Enforces published client-compatibility floors (Java 17 bytecode floor, Android Compose compat
+   * floor, and slf4j-nop lockstep with gradle-tooling-api) on every published module.
+   */
+  private fun registerClientCompatibilityFloorCheck(project: Project) {
+    project.plugins.withId("composeai.maven-publishing") {
+      val floorCheck =
+        project.tasks.register<CheckClientCompatibilityFloor>("checkClientCompatibilityFloor") {
+          description =
+            "Fails if published production classpaths exceed Java 17 bytecode or client version floors."
+          group = "verification"
+          maxJavaMajor.set(17)
+          resolvedVersions.convention(emptyList())
+          versionCeilings.set(
+            listOf(
+              ClientCompatibilityFloor.Ceiling(
+                "io.github.classgraph:classgraph",
+                5,
+                999,
+                "ClassGraph 6 requires Java 25",
+              )
+            ).map { it.encode() }
+          )
+          lockstepPairs.set(
+            if (project.path == ":gradle-preview-driver") {
+              listOf(
+                ClientCompatibilityFloor.LockstepPair(
+                  "org.slf4j:slf4j-nop",
+                  "org.slf4j:slf4j-api",
+                  "slf4j-nop must match gradle-tooling-api's strict slf4j-api constraint",
+                )
+              ).map { it.encode() }
+            } else {
+              emptyList()
+            }
+          )
+        }
+
+      project.plugins.withId("com.android.library") {
+        // `:wear-preview-runtime` intentionally compiles `compileOnly` against wear-compose 1.7+
+        // and `compose-bom-stable` (compileSdk 37).
+        if (project.path != ":wear-preview-runtime") {
+          floorCheck.configure {
+            versionCeilings.addAll(
+              listOf(
+                ClientCompatibilityFloor.Ceiling(
+                  "androidx.compose:compose-bom",
+                  2025,
+                  11,
+                  "Android published modules compile against compose-bom-compat (2025.11.x / Compose 1.9.x)",
+                ),
+              ).map { it.encode() }
+            )
+          }
+        }
+      }
+
+      project.configurations.configureEach {
+        if (!isCanBeResolved) return@configureEach
+        if (ClientCompatibilityFloor.isProductionRuntimeClasspath(name)) {
+          val versions = resolvedModuleVersions(this)
+          floorCheck.configure {
+            resolvedVersions.addAll(versions)
+            if (name == "runtimeClasspath" || name == "jvmRuntimeClasspath") {
+              runtimeClasspath.from(this@configureEach)
+            }
+          }
+        } else if (ClientCompatibilityFloor.isProductionCompileClasspath(name)) {
+          val versions = resolvedModuleVersions(this)
+          floorCheck.configure { resolvedVersions.addAll(versions) }
+        }
+      }
+
+      project.plugins.withId("base") {
+        project.tasks.named("check") { dependsOn(floorCheck) }
+      }
     }
   }
 }
