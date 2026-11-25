@@ -76,6 +76,13 @@ public final class InstrumentationRun {
   /** A JSON report to write: each case's outcome, for agents and the Gradle task. */
   static final String JSON_PROPERTY = "composeai.simulator.instrument.json";
 
+  /**
+   * {@code index/count}: this simulator runs only its share of the tests, as AndroidJUnitRunner's
+   * {@code -e shardIndex -e numShards} do. A test belongs to the shard its display name's hash
+   * picks, so N simulators given the same tests split them between them with none run twice.
+   */
+  static final String SHARD_PROPERTY = "composeai.simulator.instrument.shard";
+
   static final String DEVICE_RUNNER =
       "androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner";
 
@@ -343,6 +350,7 @@ public final class InstrumentationRun {
       failed("no such test " + String.join(", ", missing));
       return 1;
     }
+    Shard shard = Shard.parse(System.getProperty(SHARD_PROPERTY));
     JUnitCore core = new JUnitCore();
     Reporter reporter = new Reporter();
     core.addListener(reporter);
@@ -354,11 +362,21 @@ public final class InstrumentationRun {
     for (int i = 0; i < classes.size(); i++) {
       Request one = Request.runner(runners.get(i));
       Filter filter = selection.filterFor(classes.get(i).getName());
+      if (shard != null) {
+        // A class with none of this shard's tests is left out rather than filtered to nothing,
+        // which JUnit reports as a failure ("No tests found matching").
+        Filter mine = shard.and(filter);
+        if (!runsAny(runners.get(i).getDescription(), mine)) continue;
+        filter = mine;
+      }
       if (filter != null) one = one.filterWith(filter);
       Result result = core.run(one);
       runCount += result.getRunCount();
       failures += result.getFailureCount();
       millis += result.getRunTime();
+    }
+    if (shard != null) {
+      System.err.println("instrument: shard " + shard + ": " + runCount + " test(s)");
     }
     String report = System.getProperty(REPORT_PROPERTY);
     if (report != null && !report.isEmpty()) {
@@ -506,6 +524,68 @@ public final class InstrumentationRun {
           return null;
         }
       };
+    }
+  }
+
+  /** Whether [filter] keeps any test under [description]. */
+  static boolean runsAny(Description description, Filter filter) {
+    if (description.isTest()) return filter.shouldRun(description);
+    for (Description child : description.getChildren()) {
+      if (runsAny(child, filter)) return true;
+    }
+    return false;
+  }
+
+  /** {@value #SHARD_PROPERTY}: which of N simulators this is, and so which tests are its. */
+  static final class Shard extends Filter {
+    final int index;
+    final int count;
+
+    Shard(int index, int count) {
+      if (count < 1 || index < 0 || index >= count) {
+        throw new IllegalArgumentException("shard " + index + "/" + count);
+      }
+      this.index = index;
+      this.count = count;
+    }
+
+    /** {@code index/count}, or null for no sharding. */
+    static Shard parse(String spec) {
+      if (spec == null || spec.isBlank()) return null;
+      int slash = spec.indexOf('/');
+      if (slash < 0) throw new IllegalArgumentException(SHARD_PROPERTY + " takes index/count");
+      return new Shard(
+          Integer.parseInt(spec.substring(0, slash).trim()),
+          Integer.parseInt(spec.substring(slash + 1).trim()));
+    }
+
+    /** The shard a test belongs to: by its display name, stable across JVMs and runs. */
+    static int of(Description test, int count) {
+      return Math.floorMod(test.getDisplayName().hashCode(), count);
+    }
+
+    @Override
+    public boolean shouldRun(Description description) {
+      if (description.isTest()) return of(description, count) == index;
+      for (Description child : description.getChildren()) {
+        if (shouldRun(child)) return true;
+      }
+      return false;
+    }
+
+    /** This shard's tests that [other] (null: every test) also keeps. */
+    Filter and(Filter other) {
+      return other == null ? this : intersect(other);
+    }
+
+    @Override
+    public String describe() {
+      return "shard " + this;
+    }
+
+    @Override
+    public String toString() {
+      return index + "/" + count;
     }
   }
 

@@ -864,6 +864,8 @@ internal object AndroidPreviewSupport {
           ),
       )
       sdk.set(providers.gradleProperty("composePreview.simulatorSdk").map { it.toInt() })
+      shards.set(providers.gradleProperty("composePreview.simulatorShards").map { it.toInt() })
+      pool.set(providers.gradleProperty("composePreview.simulatorPool").map { it.toBoolean() })
       resultsDir.set(
         project.layout.buildDirectory.dir("outputs/androidTest-results/simulator/${variant.name}"),
       )

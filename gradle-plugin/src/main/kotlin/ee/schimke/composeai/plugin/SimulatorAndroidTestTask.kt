@@ -54,6 +54,18 @@ abstract class SimulatorAndroidTestTask : DefaultTask() {
   /** The simulator's Android SDK level, `--sdk`; unset uses the CLI's default. */
   @get:Input @get:Optional abstract val sdk: Property<Int>
 
+  /**
+   * Simulators to split the tests across, `--shards`; unset or 1 runs them in one. Each shard boots
+   * the app on its own, so this pays off once a suite's tests outlast that boot.
+   */
+  @get:Input @get:Optional abstract val shards: Property<Int>
+
+  /**
+   * Run in a simulator the CLI's background pool started ahead of the run, `--pool`, leaving one
+   * started for the next: start-up drops out of every run after the first.
+   */
+  @get:Input @get:Optional abstract val pool: Property<Boolean>
+
   @get:Input
   @get:Optional
   @get:Option(
@@ -101,6 +113,13 @@ abstract class SimulatorAndroidTestTask : DefaultTask() {
         add("--sdk")
         add(it.toString())
       }
+      shards.orNull
+        ?.takeIf { it > 1 }
+        ?.let {
+          add("--shards")
+          add(it.toString())
+        }
+      if (pool.getOrElse(false)) add("--pool")
       val selected = tests.getOrElse(emptyList()).filter { it.isNotBlank() }
       if (selected.isNotEmpty()) {
         add("--tests")

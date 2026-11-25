@@ -9,7 +9,7 @@ import org.robolectric.annotation.Implements;
 /**
  * androidx.appsearch's {@code LocalStorage}, whose Icing engine is a native library the simulator
  * cannot load: its sessions are {@link AppSearchSessions}' in-memory ones. Like {@link
- * ShadowGooglePlayServicesUtilLight} it shadows a class of the app's, instrumented by {@link
+ * ee.schimke.composeai.simulator.shadows.gms.ShadowGooglePlayServicesUtilLight} it shadows a class of the app's, instrumented by {@link
  * SimulatorSandbox}; an app without androidx.appsearch never loads it.
  */
 @Implements(className = ShadowLocalStorage.LOCAL_STORAGE, isInAndroidSdk = false)

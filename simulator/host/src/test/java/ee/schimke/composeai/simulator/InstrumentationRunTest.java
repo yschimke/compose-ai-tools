@@ -286,4 +286,65 @@ public class InstrumentationRunTest {
     }
     out.closeEntry();
   }
+
+  @Test
+  public void shardsSplitEveryTestOnceBetweenThem() {
+    Description suite = Description.createSuiteDescription("all");
+    for (int c = 0; c < 7; c++) {
+      Description type = Description.createSuiteDescription("com.example.Test" + c);
+      for (int m = 0; m < 9; m++) {
+        type.addChild(Description.createTestDescription("com.example.Test" + c, "case" + m));
+      }
+      suite.addChild(type);
+    }
+    int count = 3;
+    int seen = 0;
+    for (Description type : suite.getChildren()) {
+      for (Description test : type.getChildren()) {
+        int owners = 0;
+        for (int i = 0; i < count; i++) {
+          if (new InstrumentationRun.Shard(i, count).shouldRun(test)) owners++;
+        }
+        assertEquals(test.getDisplayName(), 1, owners);
+        seen++;
+      }
+    }
+    assertEquals(63, seen);
+    for (int i = 0; i < count; i++) {
+      assertTrue(InstrumentationRun.runsAny(suite, new InstrumentationRun.Shard(i, count)));
+    }
+  }
+
+  @Test
+  public void aShardParsesIndexOverCount() {
+    assertNull(InstrumentationRun.Shard.parse(null));
+    assertNull(InstrumentationRun.Shard.parse(" "));
+    InstrumentationRun.Shard shard = InstrumentationRun.Shard.parse("1/4");
+    assertEquals(1, shard.index);
+    assertEquals(4, shard.count);
+    assertThrowsIllegal("4/4");
+    assertThrowsIllegal("3");
+  }
+
+  @Test
+  public void aShardAndASelectionKeepOnlyTheirCommonTests() {
+    Description type = Description.createSuiteDescription("com.example.Only");
+    Description a = Description.createTestDescription("com.example.Only", "a");
+    type.addChild(a);
+    int owner = InstrumentationRun.Shard.of(a, 2);
+    InstrumentationRun.Selection none = InstrumentationRun.Selection.parse("com.example.Only#b");
+    InstrumentationRun.Shard mine = new InstrumentationRun.Shard(owner, 2);
+    assertTrue(InstrumentationRun.runsAny(type, mine.and(null)));
+    assertFalse(InstrumentationRun.runsAny(type, mine.and(none.filterFor("com.example.Only"))));
+    assertFalse(InstrumentationRun.runsAny(type, new InstrumentationRun.Shard(1 - owner, 2)));
+  }
+
+  private static void assertThrowsIllegal(String spec) {
+    try {
+      InstrumentationRun.Shard.parse(spec);
+    } catch (IllegalArgumentException expected) {
+      return;
+    }
+    throw new AssertionError("parsed " + spec);
+  }
 }

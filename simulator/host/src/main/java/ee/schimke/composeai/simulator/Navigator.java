@@ -264,13 +264,32 @@ public final class Navigator {
 
   /** Destroys [entry]'s activity and creates it again in its place, from its saved state. */
   private void relaunch(Entry entry) {
+    relaunch(entry, false);
+  }
+
+  /**
+   * [entry] destroyed and created again from its state, through the app's {@code
+   * AppComponentFactory}. With [keepNonConfiguration], as a configuration change on a device: the
+   * old activity is changing configurations while it is destroyed, and what it retains ({@code
+   * ViewModel}s, {@code onRetainNonConfigurationInstance}) is handed to the new one.
+   */
+  private void relaunch(Entry entry, boolean keepNonConfiguration) {
     Bundle state = new Bundle();
     boolean wasStopped = entry.stopped;
     if (!wasStopped) entry.controller.pause();
     entry.controller.saveInstanceState(state);
     if (!wasStopped) entry.controller.stop();
-    entry.controller.destroy();
     Activity old = entry.activity();
+    Object retained = null;
+    if (keepNonConfiguration) {
+      try {
+        ReflectionHelpers.setField(Activity.class, old, "mChangingConfigurations", true);
+        retained = ReflectionHelpers.callInstanceMethod(old, "retainNonConfigurationInstances");
+      } catch (RuntimeException e) {
+        retained = null;
+      }
+    }
+    entry.controller.destroy();
     Bundle options =
         android.app.ActivityOptions.makeBasic().setLaunchDisplayId(entry.displayId).toBundle();
     Intent launch = old.getIntent();
@@ -284,6 +303,10 @@ public final class Navigator {
             launch,
             options);
     Displays.placeOn(controller.get(), entry.displayId);
+    if (retained != null) {
+      ReflectionHelpers.setField(
+          Activity.class, controller.get(), "mLastNonConfigurationInstances", retained);
+    }
     controller.setup(state);
     Entry fresh =
         new Entry(controller, entry.request, entry.caller, entry.requestCode, entry.displayId);
@@ -1049,6 +1072,14 @@ public final class Navigator {
 
   private JSONObject recreate(Entry top) {
     int displayId = top.displayId;
+    // Robolectric re-creates through the activity's no-argument constructor, past the app's
+    // factory: an activity the factory constructs (Metro, constructor injection) cannot be made that
+    // way, so an app with a factory re-creates through it, keeping what a configuration change
+    // keeps.
+    if (displayId == Display.DEFAULT_DISPLAY && factory().getClass() != AppComponentFactory.class) {
+      relaunch(top, true);
+      return describe(top(displayId), "recreated");
+    }
     if (displayId == Display.DEFAULT_DISPLAY) {
       // Robolectric's recreate() asks for window focus before the new window is attached, and its
       // configuration change does not: a change no manifest can declare handled

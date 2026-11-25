@@ -56,6 +56,13 @@ internal class AndroidSimulatorCommand(
 ) {
 
   fun run() {
+    if ("--pool-stop" in args) {
+      System.err.println(
+        if (SimulatorPool.stop()) "compose-preview: stopped the simulator pool"
+        else "compose-preview: no simulator pool is running",
+      )
+      exitProcess(0)
+    }
     // `android-simulator dwf-runtime …`: the simulator's one setup verb, also flat as
     // `dwf-runtime`.
     if (args.firstOrNull() == "dwf-runtime") {
@@ -101,6 +108,15 @@ internal class AndroidSimulatorCommand(
         fail("--instrument runs one app's tests and exits; drop ${clash.joinToString(", ")}")
       }
     }
+    val shards =
+      args.flagValue("--shards")?.let {
+        it.toIntOrNull()?.takeIf { n -> n in 1..MAX_SHARDS }
+          ?: fail("--shards takes a count from 1 to $MAX_SHARDS")
+      } ?: 1
+    if (shards > 1 && instrumentApk == null) fail("--shards splits an --instrument run; add one")
+    // `--pool`: the run takes a simulator the pool started ahead of it (SimulatorPool).
+    val pool = "--pool" in args || System.getenv(POOL_ENV) == "1"
+    if ("--pool" in args && instrumentApk == null) fail("--pool runs --instrument tests; add one")
     val control = args.flagValue("--control") ?: if (scenarioFile != null) "stdio" else null
     if (control != null && control != "stdio") fail("--control supports only `stdio`")
     if (adb && args.flagValue("--project") != null) {
@@ -244,7 +260,7 @@ internal class AndroidSimulatorCommand(
       val start = System.nanoTime()
       val entryStamp =
         if (context == null) stamp
-        else "$stamp-with-${ApkConversionCache.sha256(context.apk).take(16)}"
+        else "$stamp-with-${ApkConversionCache.rememberedSha256(context.apk).take(16)}"
       val contextJars = listOfNotNull(context?.entry?.classesJar)
       val entry =
         cache.ensure(apk, entryStamp) { out, previous ->
@@ -955,6 +971,24 @@ internal class AndroidSimulatorCommand(
       finish(exit)
     }
 
+    if (instrumentApk != null && (shards > 1 || pool)) {
+      finish(
+        runShards(
+          shards,
+          args.flagValue("--test-json"),
+          args.flagValue("--test-report"),
+          verbose,
+          pool,
+        ) { index, dir ->
+          commandFor(
+            SimulatorSupervisor.Launch(effectiveHostApk, listOf(classes)),
+            options.copy(
+              properties = InstrumentationShards.properties(options.properties, index, shards, dir),
+            ),
+          )
+        },
+      )
+    }
     if (control == null && live == null && scenarioFile == null) {
       // A window only: nothing to supervise, so the simulator has the terminal to itself.
       val command =
@@ -1269,6 +1303,49 @@ internal class AndroidSimulatorCommand(
       )
     }
 
+  /**
+   * `--shards N`: [count] simulators, each running its share of the tests, at once; their reports
+   * merged into [json] and [report]. Returns 0 when every test of every shard passed.
+   */
+  private fun runShards(
+    count: Int,
+    json: String?,
+    report: String?,
+    verbose: Boolean,
+    pool: Boolean,
+    command: (index: Int, dir: File) -> List<String>,
+  ): Int {
+    val dir = java.nio.file.Files.createTempDirectory("compose-preview-shards").toFile()
+    try {
+      val commands = (0 until count).map { command(it, dir) }
+      if (verbose) {
+        commands.forEach {
+          System.err.println("compose-preview android-simulator: ${it.joinToString(" ")}")
+        }
+      }
+      val start = System.nanoTime()
+      val exits = InstrumentationShards.run(commands, out = System.err::println, pool = pool)
+      val millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+      val merged =
+        InstrumentationShards.merge(
+          (0 until count).map { InstrumentationShards.shardJson(dir, it) },
+          exits,
+          millis,
+        )
+      json?.let { File(it).absoluteFile.apply { parentFile?.mkdirs() }.writeText("$merged\n") }
+      report?.let {
+        File(it)
+          .absoluteFile
+          .apply { parentFile?.mkdirs() }
+          .writeText(InstrumentationShards.xml(merged))
+      }
+      System.err.println("\n" + InstrumentationShards.summary(merged, exits))
+      return if (InstrumentationShards.passed(merged, exits)) 0 else 1
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
   /** `InstrumentationRun`'s properties, when [testApk] is given. */
   private fun instrumentProperties(
     testApk: File?,
@@ -1362,6 +1439,12 @@ internal class AndroidSimulatorCommand(
 
     /** How long a reload waits for the simulator to redefine and recompose before restarting. */
     const val HOT_SWAP_TIMEOUT_MS = 30_000L
+
+    /** The most simulators one `--shards` run starts: each is a JVM of up to 2 GB. */
+    const val MAX_SHARDS = 16
+
+    /** `1`: every `--instrument` run uses the pool, as `--pool` does. */
+    const val POOL_ENV = "COMPOSE_PREVIEW_SIMULATOR_POOL"
     const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
 
     /**
@@ -1766,6 +1849,11 @@ internal class AndroidSimulatorCommand(
         --test-report <file>  With --instrument: also write a JUnit XML report.
         --test-json <file>    With --instrument: also write the results as JSON (each test's
                               class, method, status, duration and failure; for agents).
+        --shards <n>          With --instrument: split the tests across n simulators run at
+                              once (as AndroidJUnitRunner's numShards), merging their reports.
+        --pool                With --instrument: run in a simulator a background pool started
+                              ahead of the run, and leave one started for the next
+                              ($POOL_ENV=1 does the same). --pool-stop ends the pool.
         --font-scale <f>      Font scale (default 1.0).
         --max-heap <size>     Each simulator JVM's maximum heap, e.g. 2g (default: an eighth
                               of the machine's memory, 768m to 2g, for each of a pair).
