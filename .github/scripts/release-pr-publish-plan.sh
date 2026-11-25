@@ -43,7 +43,9 @@ else
   fi
   ref="$(gh api "repos/${REPO}/pulls/${number}" --jq '.head.ref')"
   git fetch --quiet --no-tags origin "${ref}" || { echo "::warning::could not fetch ${ref}"; exit 0; }
-  head="FETCH_HEAD"
+  # The commit itself, not `FETCH_HEAD`: the tag fetch below rewrites `FETCH_HEAD`, and would
+  # leave this planning the default branch instead of the release PR.
+  head="$(git rev-parse FETCH_HEAD)"
 fi
 
 # The plan diffs against release tags and reads the build from the working tree, so it runs in a
