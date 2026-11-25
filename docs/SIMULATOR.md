@@ -2101,7 +2101,10 @@ in `<cache>/simulator/pool/` (its log is `pool.log` there). The pool keeps stand
 launched with the run's own command plus `composeai.simulator.standby`, which stop just before the
 app's `AppComponentFactory` creates the application, before any of the app's code has run. A run
 takes a standby launched with the same command, less what one run of a suite changes (`--tests`,
-the shard, the report paths): those go to it in its go line. The pool relays its output and exit
+the shard, the report paths), from the same working directory and with the same values of the
+environment variables the simulator reads (`PATH`, `COMPOSE_PREVIEW_*`, the Java and library
+paths): the run's own values go to it in its go line. `--pool-stop` ends runs under way as well as
+the standbys. The pool relays its output and exit
 code, and only once the run has ended starts the next standby, so that boot does not compete with
 the tests. With `--shards N` it keeps N.
 

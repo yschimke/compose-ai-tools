@@ -43,4 +43,28 @@ class SimulatorPoolTest {
       SimulatorPool.split(command("b.B#two")).first,
     )
   }
+
+  @Test
+  fun `a standby is matched on the context the simulator reads, not the whole environment`() {
+    val command = listOf("java", "Main")
+    val dir = java.io.File("/work")
+    val base = mapOf("PATH" to "/usr/bin", "GRADLE_BUILD_ID" to "1")
+
+    assertEquals(
+      SimulatorPool.identity(command, dir, base),
+      SimulatorPool.identity(command, dir, base + ("GRADLE_BUILD_ID" to "2")),
+    )
+    kotlin.test.assertNotEquals(
+      SimulatorPool.identity(command, dir, base),
+      SimulatorPool.identity(command, dir, base + ("PATH" to "/opt/ffmpeg/bin:/usr/bin")),
+    )
+    kotlin.test.assertNotEquals(
+      SimulatorPool.identity(command, dir, base),
+      SimulatorPool.identity(command, dir, base + ("COMPOSE_PREVIEW_FFMPEG" to "/x/ffmpeg")),
+    )
+    kotlin.test.assertNotEquals(
+      SimulatorPool.identity(command, dir, base),
+      SimulatorPool.identity(command, java.io.File("/other"), base),
+    )
+  }
 }

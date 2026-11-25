@@ -71,6 +71,40 @@ internal object SimulatorPool {
 
   fun dir(): File = File(composeAiCacheDir("simulator"), "pool")
 
+  /**
+   * The environment variables a simulator reads, or a JVM or the native libraries it loads do: part
+   * of a standby's identity, with the working directory, so a run is never handed one started for
+   * another context (another `PATH` finds another ffmpeg). The rest of a client's environment
+   * varies from build to build (Gradle's own variables among it) without changing what the
+   * simulator does.
+   */
+  private val CONTEXT_ENV =
+    setOf(
+      "PATH",
+      "HOME",
+      "TMPDIR",
+      "TZ",
+      "LANG",
+      "LC_ALL",
+      "JAVA_HOME",
+      "JAVA_TOOL_OPTIONS",
+      "_JAVA_OPTIONS",
+      "JDK_JAVA_OPTIONS",
+      "LD_LIBRARY_PATH",
+      "DYLD_LIBRARY_PATH",
+      "ANDROID_HOME",
+      "ANDROID_SDK_ROOT",
+    )
+
+  /** [command] with the context it runs in: what a standby must match to be handed a run. */
+  fun identity(command: List<String>, cwd: File?, env: Map<String, String>): List<String> =
+    command +
+      "cwd=${cwd?.absolutePath}" +
+      env
+        .filterKeys { it in CONTEXT_ENV || it.startsWith("COMPOSE_PREVIEW_") }
+        .toSortedMap()
+        .map { (k, v) -> "env:$k=$v" }
+
   private fun socketFile(dir: File) = File(dir, "pool.sock")
 
   /**
@@ -214,6 +248,10 @@ internal object SimulatorPool {
 
   class Server(private val dir: File) {
     private val standbys = mutableListOf<Standby>()
+    /** Set once the pool is stopping: no standby starts after it. */
+    @Volatile private var stopping = false
+    /** The standbys handed to a run and still running it. */
+    private val active = mutableSetOf<Standby>()
     private val recent = ArrayDeque<List<String>>()
     @Volatile private var lastRun = System.nanoTime()
     @Volatile private var running = 0
@@ -272,11 +310,12 @@ internal object SimulatorPool {
         writer.println("{}")
         Runtime.getRuntime().halt(0)
       }
-      val key = request["command"]!!.jsonArray.map { it.jsonPrimitive.content }
+      val command = request["command"]!!.jsonArray.map { it.jsonPrimitive.content }
       val go = request["go"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content }
       val keep = (request["keep"]?.jsonPrimitive?.intOrNull ?: 1).coerceIn(1, MAX_STANDBYS)
       val cwd = request["cwd"]?.jsonPrimitive?.contentOrNull?.let(::File)
       val env = request["env"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty()
+      val key = identity(command, cwd, env)
       val start = System.nanoTime()
       val (standby, warm) =
         synchronized(lock) {
@@ -285,7 +324,7 @@ internal object SimulatorPool {
           remember(key)
           val taken =
             standbys.firstOrNull { it.key == key && it.process.isAlive }?.also { standbys -= it }
-          (taken ?: spawn(key, cwd, env)) to (taken != null)
+          ((taken ?: spawn(command, key, cwd, env)) to (taken != null)).also { active += it.first }
         }
       log(
         "run ${standby.process.pid()}: ${if (warm) "standby ${if (standby.ready) "ready" else "starting"}" else "no standby, booting"}",
@@ -334,17 +373,25 @@ internal object SimulatorPool {
           running--
           lastRun = System.nanoTime()
           // Only now, with the run's tests done, are the next standbys started.
-          if (running == 0) refill(key, keep, cwd, env)
+          active -= standby
+          if (running == 0) refill(command, key, keep, cwd, env)
         }
       }
     }
 
     /** Standbys of [key] up to [keep], once nothing is running. */
-    private fun refill(key: List<String>, keep: Int, cwd: File?, env: Map<String, String>) {
+    private fun refill(
+      command: List<String>,
+      key: List<String>,
+      keep: Int,
+      cwd: File?,
+      env: Map<String, String>,
+    ) {
+      if (stopping) return
       standbys.removeAll { !it.process.isAlive }
       var have = standbys.count { it.key == key }
       while (have < keep && standbys.size < MAX_STANDBYS) {
-        standbys += spawn(key, cwd, env)
+        standbys += spawn(command, key, cwd, env)
         have++
       }
     }
@@ -365,8 +412,13 @@ internal object SimulatorPool {
       }
     }
 
-    private fun spawn(key: List<String>, cwd: File?, env: Map<String, String>): Standby {
-      val command = key.take(1) + "-D$STANDBY_PROPERTY=true" + key.drop(1)
+    private fun spawn(
+      run: List<String>,
+      key: List<String>,
+      cwd: File?,
+      env: Map<String, String>,
+    ): Standby {
+      val command = run.take(1) + "-D$STANDBY_PROPERTY=true" + run.drop(1)
       val builder = ProcessBuilder(command).redirectErrorStream(true)
       if (env.isNotEmpty()) {
         builder.environment().clear()
@@ -380,8 +432,12 @@ internal object SimulatorPool {
 
     private fun shutdown(socket: File) {
       synchronized(lock) {
-        standbys.forEach { destroyTree(it.process) }
+        stopping = true
+        // The runs under way too: with the pool gone, nothing would watch for their clients
+        // leaving.
+        (standbys + active).forEach { destroyTree(it.process) }
         standbys.clear()
+        active.clear()
       }
       socket.delete()
     }
