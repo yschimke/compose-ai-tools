@@ -236,15 +236,16 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
 
       project.configurations.configureEach {
         if (!isCanBeResolved) return@configureEach
-        if (ClientCompatibilityFloor.isProductionRuntimeClasspath(name)) {
+        val configName = name
+        if (ClientCompatibilityFloor.isProductionRuntimeClasspath(configName)) {
           val versions = resolvedModuleVersions(this)
           floorCheck.configure {
             resolvedVersions.addAll(versions)
-            if (name == "runtimeClasspath" || name == "jvmRuntimeClasspath") {
+            if (configName == "runtimeClasspath" || configName == "jvmRuntimeClasspath") {
               runtimeClasspath.from(this@configureEach)
             }
           }
-        } else if (ClientCompatibilityFloor.isProductionCompileClasspath(name)) {
+        } else if (ClientCompatibilityFloor.isProductionCompileClasspath(configName)) {
           val versions = resolvedModuleVersions(this)
           floorCheck.configure { resolvedVersions.addAll(versions) }
         }
