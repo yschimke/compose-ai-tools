@@ -69,7 +69,7 @@ internal class ApkConversionCache(
     converterStamp: String,
     convert: (out: File, previous: File?) -> String,
   ): Entry {
-    val apkDir = File(root, sha256(apk))
+    val apkDir = File(root, rememberedSha256(apk))
     val entryDir = File(apkDir, converterStamp)
     val classesJar = File(entryDir, CLASSES_JAR)
     val summaryFile = File(entryDir, SUMMARY_JSON)
@@ -304,9 +304,16 @@ internal class ApkConversionCache(
       val digest = MessageDigest.getInstance("SHA-256")
       for (jar in converterJars.sortedBy { it.name }) {
         digest.update(jar.name.toByteArray())
-        if (!jar.name.startsWith("simulator-host") || !digestConverterClasses(jar, digest)) {
-          jar.inputStream().use { digest.update(it) }
-        }
+        // Each jar's part, remembered while the jar is unchanged: the dex2jar jars are read whole.
+        val part =
+          FileFacts.remember(jar, "converter-jar-1") {
+            val own = MessageDigest.getInstance("SHA-256")
+            if (!jar.name.startsWith("simulator-host") || !digestConverterClasses(jar, own)) {
+              jar.inputStream().use { own.update(it) }
+            }
+            own.digest().toHex()
+          }
+        digest.update(part.toByteArray())
       }
       digest.update("${platformJar.parentFile?.name}/${platformJar.length()}".toByteArray())
       return digest.digest().toHex().take(16)
@@ -334,6 +341,9 @@ internal class ApkConversionCache(
         return entries.isNotEmpty()
       }
     }
+
+    /** [sha256] of [file], remembered while it is unchanged ([FileFacts]). */
+    fun rememberedSha256(file: File): String = FileFacts.remember(file, "sha256") { sha256(file) }
 
     fun sha256(file: File): String {
       val digest = MessageDigest.getInstance("SHA-256")

@@ -244,7 +244,7 @@ internal class AndroidSimulatorCommand(
       val start = System.nanoTime()
       val entryStamp =
         if (context == null) stamp
-        else "$stamp-with-${ApkConversionCache.sha256(context.apk).take(16)}"
+        else "$stamp-with-${ApkConversionCache.rememberedSha256(context.apk).take(16)}"
       val contextJars = listOfNotNull(context?.entry?.classesJar)
       val entry =
         cache.ensure(apk, entryStamp) { out, previous ->

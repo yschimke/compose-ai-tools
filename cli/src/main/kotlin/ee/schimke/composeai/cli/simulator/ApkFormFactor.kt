@@ -82,7 +82,43 @@ internal enum class ApkFormFactor(
      * declarative Watch Face Format APK; [PHONE] and no activity when nothing marks it, or it
      * cannot be read.
      */
-    fun inspect(apk: File): Detected = runCatching {
+    fun inspect(apk: File): Detected =
+      decode(FileFacts.remember(apk, "form-factor-1") { encode(inspectNow(apk)) })
+        ?: inspectNow(apk)
+
+    /** [Detected] as one line of `key=value` pairs, for [FileFacts]. */
+    internal fun encode(detected: Detected): String =
+      listOfNotNull(
+          "formFactor=${detected.formFactor.id}",
+          detected.projectedActivity?.let { "projectedActivity=$it" },
+          "wff=${detected.isWffWatchFace}",
+          detected.minSdkVersion?.let { "minSdk=$it" },
+          "pushClient=${detected.isWatchFacePushClient}",
+        )
+        .joinToString("\t")
+
+    internal fun decode(line: String): Detected? {
+      val fields =
+        line
+          .split('\t')
+          .mapNotNull { field ->
+            field
+              .indexOf('=')
+              .takeIf { it > 0 }
+              ?.let { field.substring(0, it) to field.substring(it + 1) }
+          }
+          .toMap()
+      val formFactor = fields["formFactor"]?.let(::byId) ?: return null
+      return Detected(
+        formFactor,
+        fields["projectedActivity"],
+        isWffWatchFace = fields["wff"] == "true",
+        minSdkVersion = fields["minSdk"]?.toIntOrNull(),
+        isWatchFacePushClient = fields["pushClient"] == "true",
+      )
+    }
+
+    private fun inspectNow(apk: File): Detected = runCatching {
       ZipFile(apk).use { zip ->
         val manifest =
           zip.getEntry("AndroidManifest.xml")?.let { zip.getInputStream(it).readBytes() }
@@ -118,10 +154,19 @@ internal enum class ApkFormFactor(
       val xrFeature = signals.features.any { it.startsWith(XR_FEATURE_PREFIX) }
       var glimmer = false
       var spatial = false
+      // One pass per dex for the packages' shared prefix, then which of them follows it.
       for (bytes in dex) {
-        if (!glimmer && contains(bytes, GLIMMER_TYPE)) glimmer = true
-        if (!spatial && (contains(bytes, XR_COMPOSE_TYPE) || contains(bytes, SCENECORE_TYPE))) {
-          spatial = true
+        var at = indexOf(bytes, XR_PREFIX, 0)
+        while (at >= 0) {
+          val after = at + XR_PREFIX.size
+          if (startsWith(bytes, after, GLIMMER_SUFFIX)) glimmer = true
+          else if (
+            startsWith(bytes, after, COMPOSE_SUFFIX) || startsWith(bytes, after, SCENECORE_SUFFIX)
+          ) {
+            spatial = true
+          }
+          if (glimmer) break
+          at = indexOf(bytes, XR_PREFIX, after)
         }
         if (glimmer) break
       }
@@ -138,29 +183,27 @@ internal enum class ApkFormFactor(
     const val XR_FEATURE_PREFIX = "android.software.xr.api."
     /** Jetpack XR's two spellings of the projected (glasses) display category. */
     val XR_PROJECTED = setOf("android.hardware.display.category.XR_PROJECTED", "xr_projected")
-    private val GLIMMER_TYPE = "Landroidx/xr/glimmer/".toByteArray()
-    private val XR_COMPOSE_TYPE = "Landroidx/xr/compose/".toByteArray()
-    private val SCENECORE_TYPE = "Landroidx/xr/scenecore/".toByteArray()
+    private val XR_PREFIX = "Landroidx/xr/".toByteArray()
+    private val GLIMMER_SUFFIX = "glimmer/".toByteArray()
+    private val COMPOSE_SUFFIX = "compose/".toByteArray()
+    private val SCENECORE_SUFFIX = "scenecore/".toByteArray()
 
-    private fun contains(haystack: ByteArray, needle: ByteArray): Boolean {
-      if (needle.isEmpty()) return true
+    private fun startsWith(haystack: ByteArray, at: Int, prefix: ByteArray): Boolean {
+      if (at + prefix.size > haystack.size) return false
+      for (j in prefix.indices) if (haystack[at + j] != prefix[j]) return false
+      return true
+    }
+
+    /** The first index of [needle] in [haystack] at or after [from], or -1. */
+    private fun indexOf(haystack: ByteArray, needle: ByteArray, from: Int): Int {
       val first = needle[0]
       val last = haystack.size - needle.size
-      var i = 0
-      outer@ while (i <= last) {
-        if (haystack[i] != first) {
-          i++
-          continue
-        }
-        for (j in 1 until needle.size) {
-          if (haystack[i + j] != needle[j]) {
-            i++
-            continue@outer
-          }
-        }
-        return true
+      var i = from
+      while (i <= last) {
+        if (haystack[i] == first && startsWith(haystack, i, needle)) return i
+        i++
       }
-      return false
+      return -1
     }
   }
 }
