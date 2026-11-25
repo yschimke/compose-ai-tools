@@ -2033,6 +2033,7 @@ Gradle properties:
 | `composePreview.simulatorJava` | a JDK 21 toolchain Gradle knows; else the CLI looks for one |
 | `composePreview.simulatorSdk` | the CLI's default Android SDK level |
 | `composePreview.simulatorShards` | 1: every test in one simulator ([Sharding](#sharding)) |
+| `composePreview.simulatorPool` | false: each run boots its own simulator ([A pool of started simulators](#a-pool-of-started-simulators)) |
 
 ### From the CLI
 
@@ -2087,6 +2088,35 @@ tests outlast a boot. Measured on four cores, from warm caches:
 
 Shards run in separate JVMs, so nothing in memory is shared between tests of different shards; a
 suite whose tests depend on each other's order should stay in one.
+
+### A pool of started simulators
+
+`--pool` (Gradle: `-PcomposePreview.simulatorPool=true`; `COMPOSE_PREVIEW_SIMULATOR_POOL=1` for
+every run) runs the tests in a simulator started ahead of the run, so the JVM's start,
+Robolectric's sandbox and the framework's setup of the app's resources, display and configuration
+drop out of it. It is meant for the loop an agent runs: edit, rebuild, run the suite again.
+
+The first `--pool` run starts the pool, a background process per user listening on a Unix socket
+in `<cache>/simulator/pool/` (its log is `pool.log` there). The pool keeps standbys: simulators
+launched with the run's own command plus `composeai.simulator.standby`, which stop just before the
+app's `AppComponentFactory` creates the application, before any of the app's code has run. A run
+takes a standby launched with the same command, less what one run of a suite changes (`--tests`,
+the shard, the report paths): those go to it in its go line. The pool relays its output and exit
+code, and only once the run has ended starts the next standby, so that boot does not compete with
+the tests. With `--shards N` it keeps N.
+
+A rebuilt app or test APK converts to new jars, so its command matches no standby: that run boots
+as without the pool and leaves a standby for the next. The pool keeps standbys for its two most
+recent commands, four in all; each is an idle simulator JVM of a few hundred megabytes. It exits
+after 30 minutes with no run, and `android-simulator --pool-stop` ends it at once. A run whose
+client goes away (Ctrl-C, a cancelled build) takes its simulator with it.
+
+Measured on four cores (each run after the first takes a started simulator):
+
+| Suite | Without the pool | With it |
+| --- | --- | --- |
+| `samples/android-instrumented` | 9.1 s | 7.2 s (6.7 s in the simulator, from 11.1 s cold) |
+| Cadence | 9.5 s | 7.9 s |
 
 How the pieces fit:
 

@@ -51,7 +51,32 @@ internal object InstrumentationShards {
    * Runs [commands] (one per shard) at once, each line of their output prefixed with its shard, and
    * returns their exit codes in order. Every simulator is taken down if this JVM is.
    */
-  fun run(commands: List<List<String>>, out: (String) -> Unit = ::println): List<Int> {
+  fun run(
+    commands: List<List<String>>,
+    out: (String) -> Unit = ::println,
+    pool: Boolean = false,
+  ): List<Int> {
+    val prefixed = commands.size > 1
+    fun sink(index: Int): (String) -> Unit {
+      val prefix = if (prefixed) "[${index + 1}/${commands.size}] " else ""
+      return { line -> synchronized(out) { out(prefix + line) } }
+    }
+    if (pool) {
+      val exits = IntArray(commands.size)
+      commands
+        .mapIndexed { index, command ->
+          thread(name = "shard-$index") {
+            exits[index] =
+              runCatching { SimulatorPool.run(command, keep = commands.size, out = sink(index)) }
+                .getOrElse {
+                  sink(index)("compose-preview: $it")
+                  1
+                }
+          }
+        }
+        .forEach { it.join() }
+      return exits.toList()
+    }
     val processes = Collections.synchronizedList(mutableListOf<Process>())
     val hook = Thread { processes.forEach { destroyTree(it) } }
     Runtime.getRuntime().addShutdownHook(hook)
@@ -60,11 +85,9 @@ internal object InstrumentationShards {
         val process = ProcessBuilder(command).redirectErrorStream(true).start()
         processes += process
         process.outputStream.close()
-        val prefix = "[${index + 1}/${commands.size}] "
+        val sink = sink(index)
         thread(name = "shard-$index", isDaemon = true) {
-          process.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach { line -> synchronized(out) { out(prefix + line) } }
-          }
+          process.inputStream.bufferedReader().useLines { lines -> lines.forEach(sink) }
         }
       }
       val exits = processes.toList().map { it.waitFor() }

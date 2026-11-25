@@ -244,6 +244,8 @@ internal object CliFlagValidation {
       "--test-report",
       "--test-json",
       "--shards",
+      "--pool",
+      "--pool-stop",
       "--qualifiers",
       "--device",
       "--display",

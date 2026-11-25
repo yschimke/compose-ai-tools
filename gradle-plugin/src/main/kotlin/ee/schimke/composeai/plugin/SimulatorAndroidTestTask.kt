@@ -60,6 +60,12 @@ abstract class SimulatorAndroidTestTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val shards: Property<Int>
 
+  /**
+   * Run in a simulator the CLI's background pool started ahead of the run, `--pool`, leaving one
+   * started for the next: start-up drops out of every run after the first.
+   */
+  @get:Input @get:Optional abstract val pool: Property<Boolean>
+
   @get:Input
   @get:Optional
   @get:Option(
