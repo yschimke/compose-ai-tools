@@ -2187,7 +2187,8 @@ The simulator fixes that came out of it apply to every launch, not only tests:
 - `SystemClock.sleep` off the main thread sleeps, as on a device, instead of jumping the clock:
   UiAutomator's long press is a down, a sleep and an up;
 - the home screen's resize frame sits on the widget (it was drawn without the status bar's
-  offset), with Launcher3's edge handles, and stays on the widget after each resize; and an app
+  offset), with Launcher3's edge handles, and stays on the widget after each resize
+  ([before and after](design/evidence/simulator-launch/widget-resize-frame-before-after.png)); and an app
   that asked to pin a widget from the front comes back once the request is answered, as a device's
   launcher shows its confirmation as a dialog over the app.
 
