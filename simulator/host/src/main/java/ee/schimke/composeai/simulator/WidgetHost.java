@@ -868,8 +868,9 @@ public final class WidgetHost {
     onMain(
         () -> {
           broadcast(
+              // The singular extra: AppWidgetProvider.onReceive reads it for a deletion.
               new Intent(AppWidgetManager.ACTION_APPWIDGET_DELETED)
-                  .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, new int[] {id}),
+                  .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id),
               info);
           if (last) broadcast(new Intent(AppWidgetManager.ACTION_APPWIDGET_DISABLED), info);
         });
