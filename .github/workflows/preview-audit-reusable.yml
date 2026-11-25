@@ -387,7 +387,7 @@ jobs:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
           BASH_DEFAULT_TIMEOUT_MS: '1200000'
           BASH_MAX_TIMEOUT_MS: '2400000'
-        uses: anthropics/claude-code-action@cc98b3ae241b0fcfb6a42a2690751afffecb4452 # v1.0.278
+        uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
         with:
           # Exactly one credential, chosen by the gate: the subscription token,
           # or the API key (billed to the API organization's credits).
