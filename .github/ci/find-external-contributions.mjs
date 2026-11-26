@@ -113,6 +113,7 @@ export function filterExternalItems(items, { owner, archivedRepos = new Set(), n
 function escapeTableCell(text) {
   return String(text ?? '')
     .replace(/\r?\n/g, ' ')
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|')
     .trim();
 }
