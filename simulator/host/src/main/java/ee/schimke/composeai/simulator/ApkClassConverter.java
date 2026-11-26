@@ -853,9 +853,13 @@ public final class ApkClassConverter {
    */
   static int legalClassAccess(int access) {
     if ((access & Opcodes.ACC_ABSTRACT) != 0 && (access & Opcodes.ACC_FINAL) != 0) {
-      return access & ~Opcodes.ACC_FINAL;
+      access &= ~Opcodes.ACC_FINAL;
     }
-    return access;
+    // Every class public, as ART treats them for reflection: it checks a member's own access
+    // only, where HotSpot also refuses a public member of a class the caller cannot see. A
+    // Kotlin `private data object`'s INSTANCE, read by kotlinx.serialization (Navigation 3's
+    // saved state), was refused. Members keep their access, so nothing else can reach them.
+    return (access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
   }
 
   private static boolean isIntZero(Value value) {

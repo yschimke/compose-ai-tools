@@ -283,6 +283,15 @@ public final class Session {
   }
 
   /** One simulator cycle, on the main thread. */
+  /**
+   * One cycle of the running session, outside the simulator's loop: while Espresso holds the main
+   * thread ({@link InstrumentationRun}). On the main thread.
+   */
+  static void cycleNow() {
+    Session session = current;
+    if (session != null) session.cycle();
+  }
+
   void cycle() {
     navigator.pump();
     if (home != null) home.cycle();

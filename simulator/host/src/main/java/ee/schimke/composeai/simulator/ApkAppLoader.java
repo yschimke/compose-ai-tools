@@ -76,6 +76,17 @@ public final class ApkAppLoader implements Runnable {
         new AndroidManifest(null, null, null, null, null, apk) {
           private ApplicationInfo parsed;
 
+          /**
+           * Null (the APK's own, read by Robolectric from the parsed package), unless the test
+           * APK's runner creates another application in an {@code --instrument} run.
+           */
+          @Override
+          public String getApplicationName() {
+            ApplicationInfo info = parsed();
+            String name = info.className != null ? info.className : Application.class.getName();
+            return TestRunnerApplication.runnerApplication(name, info.packageName);
+          }
+
           @Override
           public String getAppComponentFactory() {
             // The last moment before the app's own classes: a standby waits here.

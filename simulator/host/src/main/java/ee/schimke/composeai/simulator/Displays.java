@@ -490,8 +490,18 @@ public final class Displays {
         Object dispatcher =
             ReflectionHelpers.callInstanceMethod(root.impl, "getOnBackInvokedDispatcher");
         if (dispatcher == null) return null;
-        boolean enabled =
-            ReflectionHelpers.callInstanceMethod(dispatcher, "isOnBackInvokedCallbackEnabled");
+        boolean enabled;
+        try {
+          enabled =
+              ReflectionHelpers.callInstanceMethod(dispatcher, "isOnBackInvokedCallbackEnabled");
+        } catch (RuntimeException noInstanceMethod) {
+          // API 33 has only the static form, which reads the window's context.
+          enabled =
+              ReflectionHelpers.callStaticMethod(
+                  dispatcher.getClass(),
+                  "isOnBackInvokedCallbackEnabled",
+                  ClassParameter.from(android.content.Context.class, root.view.getContext()));
+        }
         return enabled ? ReflectionHelpers.callInstanceMethod(dispatcher, "getTopCallback") : null;
       } catch (RuntimeException e) {
         // A platform without these hidden methods: Back goes in as the key, as it always did.

@@ -118,10 +118,14 @@ public final class InstrumentationRun {
    * else the simulator's loop keeps time, and two clocks would run it fast.
    */
   private static void espressoClock(Thread main) {
+    android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    java.util.concurrent.atomic.AtomicBoolean cycleQueued =
+        new java.util.concurrent.atomic.AtomicBoolean();
     Thread ticker =
         new Thread(
             () -> {
               long last = System.nanoTime();
+              long lastCycle = 0;
               while (true) {
                 try {
                   Thread.sleep(2);
@@ -131,6 +135,17 @@ public final class InstrumentationRun {
                 long now = System.nanoTime();
                 if (inEspressoPoll(main)) {
                   ShadowSystemClock.advanceBy(Duration.ofNanos(now - last));
+                  // The simulator's cycle too (the activity stack: a finish, a start, Back's
+                  // task to the back), which its loop runs and Espresso's does not; else an
+                  // Espresso check right after an action saw the stack from before it.
+                  if (now - lastCycle >= CYCLE_NANOS && cycleQueued.compareAndSet(false, true)) {
+                    lastCycle = now;
+                    mainHandler.post(
+                        () -> {
+                          cycleQueued.set(false);
+                          Session.cycleNow();
+                        });
+                  }
                 }
                 last = now;
               }
@@ -139,6 +154,9 @@ public final class InstrumentationRun {
     ticker.setDaemon(true);
     ticker.start();
   }
+
+  /** How often the simulator's cycle runs while Espresso holds the main thread: a frame. */
+  private static final long CYCLE_NANOS = 16_000_000L;
 
   /** Whether [main] waits in the message queue's poll, called from Espresso's interrogator. */
   static boolean inEspressoPoll(Thread main) {
@@ -227,6 +245,7 @@ public final class InstrumentationRun {
       return java.util.Collections.enumeration(kept);
     }
   }
+
 
   /**
    * The test APK's activities, under the app's package: {@code ActivityScenario} starts
@@ -460,17 +479,29 @@ public final class InstrumentationRun {
     return false;
   }
 
-  /** Libraries a test APK bundles: never the suite's own tests. */
-  private static boolean skipped(String entry) {
-    for (String prefix :
-        new String[] {
-          "androidx/", "android/", "junit/", "org/junit/", "org/hamcrest/", "kotlin/", "kotlinx/",
-          "com/google/", "org/jetbrains/", "javax/", "META-INF/"
-        }) {
+  /**
+   * Libraries a test APK bundles: never the suite's own tests. Google's libraries by their own
+   * packages, not all of {@code com.google}: Google's apps and samples keep their tests there too
+   * ({@code com.google.samples.apps.nowinandroid}), and a whole-prefix skip found none of them.
+   */
+  static boolean skipped(String entry) {
+    for (String prefix : LIBRARY_PREFIXES) {
       if (entry.startsWith(prefix)) return true;
     }
     return false;
   }
+
+  static final String[] LIBRARY_PREFIXES = {
+    "androidx/", "android/", "junit/", "org/junit/", "org/hamcrest/", "kotlin/", "kotlinx/",
+    "org/jetbrains/", "javax/", "META-INF/", "dagger/",
+    "com/google/common/", "com/google/thirdparty/", "com/google/errorprone/",
+    "com/google/j2objc/", "com/google/protobuf/", "com/google/gson/", "com/google/auto/",
+    "com/google/dagger/", "com/google/firebase/", "com/google/accompanist/",
+    "com/google/testing/", "com/google/truth/", "com/google/android/material/",
+    "com/google/android/gms/", "com/google/android/play/", "com/google/android/datatransport/",
+    "com/google/android/libraries/", "com/google/android/apps/common/testing/",
+    "com/google/android/odml/", "com/google/mlkit/", "com/google/crypto/",
+  };
 
   static final class TestClassScan extends ClassVisitor {
     String name;

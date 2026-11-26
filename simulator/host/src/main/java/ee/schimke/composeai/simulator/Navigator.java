@@ -359,10 +359,22 @@ public final class Navigator {
    */
   private void syncFocus() {
     java.util.Set<Integer> seen = new java.util.HashSet<>();
+    java.util.Map<Integer, android.view.View> focused = new java.util.HashMap<>();
     for (Entry entry : stack) {
       boolean top = seen.add(entry.displayId);
       Activity activity = entry.activity();
       boolean wanted = top && !entry.stopped && !activity.isFinishing() && resumed(activity);
+      if (wanted) {
+        // A dialog over the activity (or any focusable window of its above it) takes the focus
+        // from it, as on a device: the window manager focuses the top focusable window.
+        android.view.View window = Displays.activeWindow(entry.displayId);
+        if (window != null
+            && activity.getWindow() != null
+            && window != activity.getWindow().getDecorView()) {
+          focused.put(entry.displayId, window);
+          wanted = false;
+        }
+      }
       if (activity.hasWindowFocus() == wanted) continue;
       if (activity.getWindow() == null
           || !activity.getWindow().getDecorView().isAttachedToWindow()) {
@@ -374,6 +386,34 @@ public final class Navigator {
         // No view root yet (a window not drawn); the next pump tries again.
       }
     }
+    // The other windows (dialogs): focused while on top of a resumed activity, else not.
+    for (Integer display : seen) {
+      for (android.view.View window : Displays.windows(display)) {
+        boolean wanted = window == focused.get(display);
+        if (isActivityWindow(window) || window.hasWindowFocus() == wanted) continue;
+        if (!wanted && !window.hasWindowFocus()) continue;
+        try {
+          Object root = org.robolectric.util.ReflectionHelpers.callInstanceMethod(window, "getViewRootImpl");
+          if (root == null) continue;
+          org.robolectric.shadows.ShadowViewRootImpl shadow =
+              org.robolectric.shadow.api.Shadow.extract(root);
+          shadow.callWindowFocusChanged(wanted);
+        } catch (RuntimeException e) {
+          // Not laid out yet; the next pump tries again.
+        }
+      }
+    }
+  }
+
+  /** Whether [window] is one of the stack's activities' own windows. */
+  private boolean isActivityWindow(android.view.View window) {
+    for (Entry entry : stack) {
+      Activity activity = entry.activity();
+      if (activity.getWindow() != null && activity.getWindow().getDecorView() == window) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean resumed(Activity activity) {
@@ -1620,6 +1660,10 @@ public final class Navigator {
     private IBinder real() {
       Navigator navigator = current;
       if (navigator == null) return real;
+      // The first call can come from any thread (a Messenger sent from an app's worker, as
+      // Firebase's session client does); the service is created on the main thread, as the
+      // system creates it on the app's.
+      if (!MainThread.isCurrent()) return MainThread.get(this::real);
       if (real == null || navigator.services.get(component) != boundTo) {
         real =
             navigator.bindForApp(

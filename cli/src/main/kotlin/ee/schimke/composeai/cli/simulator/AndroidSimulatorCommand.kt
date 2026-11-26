@@ -443,11 +443,23 @@ internal class AndroidSimulatorCommand(
         ?.let { put("composeai.simulator.dwfSkikoDir", it) }
     }
     val defaultSdk = maxOf(AndroidBundleLaunch.DEFAULT_SDK, detected.minSdkVersion ?: 0)
+    args.flagValue("--sdk")?.let { value ->
+      val requested = value.toIntOrNull() ?: fail("--sdk takes an API level, e.g. 35")
+      if (requested !in SIMULATOR_MIN_SDK..AndroidBundleLaunch.MAX_SDK) {
+        val reason =
+          "the simulator runs API $SIMULATOR_MIN_SDK to ${AndroidBundleLaunch.MAX_SDK} " +
+            "(Robolectric's simulator draws with real draw traversals, which need API " +
+            "$SIMULATOR_MIN_SDK); --sdk $requested is outside that"
+        // An --instrument run still says why it has no results, where its results would be.
+        if (instrumentApk != null) writeInstrumentError(args.flagValue("--test-json"), reason)
+        fail(reason)
+      }
+    }
     val options =
       Options(
         sdk =
           (args.flagValue("--sdk")?.toIntOrNull() ?: defaultSdk).coerceIn(
-            AndroidBundleLaunch.MIN_SDK,
+            SIMULATOR_MIN_SDK,
             AndroidBundleLaunch.MAX_SDK,
           ),
         qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
@@ -457,7 +469,11 @@ internal class AndroidSimulatorCommand(
         network = network,
         playServices = playServices,
         fontScale = args.flagValue("--font-scale"),
-        fingerprint = args.flagValue("--fingerprint"),
+        // A test run gets a device's fingerprint: Robolectric's ("robolectric") makes Compose's
+        // test rule use Robolectric's idling strategy, which assumes the test thread is the main
+        // one, and Espresso actions then stopped waiting for Compose's recompositions.
+        fingerprint =
+          args.flagValue("--fingerprint") ?: if (instrumentApk != null) TEST_FINGERPRINT else null,
         maxHeap =
           args.flagValue("--max-heap")?.also {
             if (!Regex("[0-9]+[kKmMgG]?").matches(it)) fail("--max-heap takes a size, e.g. 2g")
@@ -1011,7 +1027,18 @@ internal class AndroidSimulatorCommand(
         commandFor(SimulatorSupervisor.Launch(effectiveHostApk, listOf(classes)), options)
       if (verbose)
         System.err.println("compose-preview android-simulator: ${command.joinToString(" ")}")
-      finish(ProcessBuilder(command).inheritIO().runTiedToLauncher())
+      val testJson = args.flagValue("--test-json")?.takeIf { instrumentApk != null }
+      // A report left by an earlier run must not pass for this one's.
+      testJson?.let { File(it).absoluteFile.delete() }
+      val exit = ProcessBuilder(command).inheritIO().runTiedToLauncher()
+      if (exit != 0 && testJson != null && !File(testJson).absoluteFile.exists()) {
+        writeInstrumentError(
+          testJson,
+          "the simulator exited $exit before reporting any test (a crash while starting the " +
+            "app or the tests); its output above says why",
+        )
+      }
+      finish(exit)
     }
     if (scenarioFile != null) {
       val exit =
@@ -1364,6 +1391,32 @@ internal class AndroidSimulatorCommand(
     }
   }
 
+  /**
+   * An `--instrument` run that could not start its tests: `{"tests":0,…,"error":…}` in [json] (the
+   * `--test-json` path, if any), as the simulator writes when it fails before the first test, so a
+   * harness reading only the report still learns why there are no results.
+   */
+  private fun writeInstrumentError(json: String?, reason: String) {
+    if (json == null) return
+    runCatching {
+      File(json)
+        .absoluteFile
+        .apply { parentFile?.mkdirs() }
+        .writeText(
+          kotlinx.serialization.json
+            .buildJsonObject {
+              put("tests", 0)
+              put("passed", 0)
+              put("failed", 0)
+              put("skipped", 0)
+              put("error", reason)
+              put("cases", kotlinx.serialization.json.JsonArray(emptyList()))
+            }
+            .toString() + "\n",
+        )
+    }
+  }
+
   /** `InstrumentationRun`'s properties, when [testApk] is given. */
   private fun instrumentProperties(
     testApk: File?,
@@ -1477,6 +1530,16 @@ internal class AndroidSimulatorCommand(
 
     /** The most simulators one `--shards` run starts: each is a JVM of up to 2 GB. */
     const val MAX_SHARDS = 16
+
+    /**
+     * The lowest API level the simulator runs: Robolectric's simulator turns on real draw
+     * traversals, which Robolectric supports from API 33.
+     */
+    const val SIMULATOR_MIN_SDK = 33
+
+    /** The fingerprint an `--instrument` run reports: an emulator image's, not Robolectric's. */
+    const val TEST_FINGERPRINT =
+      "google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.036/10874431:userdebug/dev-keys"
 
     /** `1`: every `--instrument` run uses the pool, as `--pool` does. */
     const val POOL_ENV = "COMPOSE_PREVIEW_SIMULATOR_POOL"

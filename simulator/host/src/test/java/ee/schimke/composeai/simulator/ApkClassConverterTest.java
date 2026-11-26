@@ -545,6 +545,9 @@ public class ApkClassConverterTest {
     assertEquals(0x4409, flags[0]);
     assertEquals(0x0401, ApkClassConverter.legalClassAccess(0x0411));
     assertEquals(0x0011, ApkClassConverter.legalClassAccess(0x0011));
+    // Package-private and private classes become public; final ones stay final.
+    assertEquals(0x0031, ApkClassConverter.legalClassAccess(0x0030));
+    assertEquals(0x0019, ApkClassConverter.legalClassAccess(0x001a));
   }
 
   @Test
