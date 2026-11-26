@@ -3645,8 +3645,9 @@ internal object AndroidPreviewSupport {
   /**
    * Cheap-signal files per
    * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
-   * version catalog, this project's build script, settings, `gradle.properties`, `local.properties`
-   * — existing files only. Shared with desktop.
+   * version catalogs, this project's and root's build scripts, settings, `gradle.properties`,
+   * `local.properties`, and convention-plugin files in `buildSrc` and included builds — existing
+   * files only. Shared with desktop and `sourceWatch.buildFiles`.
    *
    * Sibling build scripts aren't walked: Tier-2 (runtime classpath fingerprint) already catches
    * meaningful sibling changes, and walking siblings under IP would need a settings plugin.
@@ -3656,27 +3657,189 @@ internal object AndroidPreviewSupport {
 }
 
 /**
- * IP-safe collector: only `project.rootDir` and the project's own dir. See
- * [AndroidPreviewSupport.collectCheapSignalFiles].
+ * IP-safe collector: only `project.rootDir`, the project's own dir, `buildSrc`, and included build
+ * roots (no cross-`Project` access). See [AndroidPreviewSupport.collectCheapSignalFiles].
  */
 internal object CheapSignalFiles {
+  private val EXCLUDED_DIR_NAMES: Set<String> = setOf("build", "out", "node_modules")
+
+  private val CONVENTION_BUILD_FILE_NAMES: Set<String> =
+    setOf(
+      "build.gradle.kts",
+      "build.gradle",
+      "settings.gradle.kts",
+      "settings.gradle",
+      "gradle.properties",
+      "local.properties",
+    )
+
+  private val CONVENTION_BUILD_EXTENSIONS: Set<String> = setOf("kt", "kts", "java", "groovy")
+
+  private val INCLUDE_BUILD_DECL: Regex =
+    Regex("""\bincludeBuild\s*(?:\(\s*|\s+)["']([^"']+)["']""")
+
+  internal const val MAX_CONVENTION_BUILD_ROOTS: Int = 16
+  internal const val MAX_CONVENTION_BUILD_DEPTH: Int = 12
+  internal const val MAX_CONVENTION_BUILD_FILES: Int = 512
+
   internal fun collect(project: org.gradle.api.Project): List<java.io.File> {
+    val includedDirs = runCatching {
+      project.gradle.includedBuilds.map { it.projectDir }
+    }
+      .getOrDefault(emptyList())
+    return collect(
+      rootDir = project.rootDir,
+      moduleDir = project.projectDir,
+      includedBuildDirs = includedDirs,
+    )
+  }
+
+  internal fun collect(
+    rootDir: java.io.File,
+    moduleDir: java.io.File,
+    includedBuildDirs: Collection<java.io.File> = emptyList(),
+    maxConventionFiles: Int = MAX_CONVENTION_BUILD_FILES,
+  ): List<java.io.File> {
     val out = LinkedHashSet<java.io.File>()
-    val rootDir = project.rootDir
+    fun addNormalized(file: java.io.File) {
+      out += file.toPath().normalize().toFile()
+    }
+
     listOf(
         "gradle/libs.versions.toml",
         "settings.gradle.kts",
         "settings.gradle",
+        "build.gradle.kts",
+        "build.gradle",
         "gradle.properties",
         "local.properties",
       )
-      .forEach { out += java.io.File(rootDir, it) }
-    val moduleDir = project.projectDir
-    out += java.io.File(moduleDir, "build.gradle.kts")
-    out += java.io.File(moduleDir, "build.gradle")
+      .forEach { addNormalized(java.io.File(rootDir, it)) }
+
+    java.io
+      .File(rootDir, "gradle")
+      .takeIf { it.isDirectory }
+      ?.listFiles { file -> file.isFile && file.name.endsWith(".versions.toml") }
+      ?.sortedBy { it.name }
+      ?.forEach(::addNormalized)
+
+    addNormalized(java.io.File(moduleDir, "build.gradle.kts"))
+    addNormalized(java.io.File(moduleDir, "build.gradle"))
+
+    // Convention plugin builds: `buildSrc`, Gradle's `includedBuilds`, and any
+    // `pluginManagement { includeBuild(...) }` roots from `settings.gradle(.kts)` (Gradle does
+    // not always include plugin-management builds in `gradle.includedBuilds`).
+    val conventionRoots = collectConventionBuildRoots(rootDir, includedBuildDirs)
+    var remaining = maxConventionFiles
+    for (conventionRoot in conventionRoots) {
+      if (remaining <= 0) break
+      val found = collectConventionBuildFiles(conventionRoot, remaining)
+      found.forEach(::addNormalized)
+      remaining -= found.size
+    }
+
     // Existing files only, so missing ones don't put ghost paths into the fingerprint.
     return out.filter { it.isFile }
   }
+
+  private fun collectConventionBuildRoots(
+    rootDir: java.io.File,
+    includedBuildDirs: Collection<java.io.File>,
+  ): List<java.io.File> {
+    val rootCanonical = canonicalOrAbsolute(rootDir)
+    val seen = LinkedHashSet<java.io.File>()
+    val result = mutableListOf<java.io.File>()
+    val queue = ArrayDeque<java.io.File>()
+
+    fun enqueue(candidate: java.io.File) {
+      if (!candidate.isDirectory) return
+      if (java.nio.file.Files.isSymbolicLink(candidate.toPath())) return
+      val canonical = canonicalOrAbsolute(candidate)
+      if (canonical == rootCanonical) return
+      if (seen.add(canonical)) {
+        queue.addLast(candidate.toPath().normalize().toFile())
+      }
+    }
+
+    enqueue(java.io.File(rootDir, "buildSrc"))
+    includedBuildDirs.sortedBy { it.absolutePath }.forEach(::enqueue)
+    parseIncludeBuildDirs(rootDir).forEach(::enqueue)
+
+    while (queue.isNotEmpty() && result.size < MAX_CONVENTION_BUILD_ROOTS) {
+      val current = queue.removeFirst()
+      result += current
+      parseIncludeBuildDirs(current).forEach(::enqueue)
+    }
+    return result
+  }
+
+  private fun parseIncludeBuildDirs(dir: java.io.File): List<java.io.File> {
+    val found = mutableListOf<java.io.File>()
+    for (settingsName in listOf("settings.gradle.kts", "settings.gradle")) {
+      val settingsFile = java.io.File(dir, settingsName)
+      if (!settingsFile.isFile) continue
+      val text = runCatching { stripBuildComments(settingsFile.readText()) }.getOrNull() ?: continue
+      for (match in INCLUDE_BUILD_DECL.findAll(text)) {
+        val raw = match.groupValues[1].trim()
+        if (raw.isEmpty()) continue
+        val resolved = java.io.File(raw).let { if (it.isAbsolute) it else java.io.File(dir, raw) }
+        found += resolved
+      }
+    }
+    return found.sortedBy { it.absolutePath }
+  }
+
+  private fun stripBuildComments(text: String): String {
+    val withoutBlock = text.replace(Regex("""/\*[\s\S]*?\*/"""), " ")
+    return withoutBlock.replace(Regex("""//[^\n]*"""), "")
+  }
+
+  private fun collectConventionBuildFiles(
+    conventionRoot: java.io.File,
+    maxFiles: Int,
+  ): List<java.io.File> {
+    if (!conventionRoot.isDirectory || maxFiles <= 0) return emptyList()
+    val collected = mutableListOf<java.io.File>()
+    // Breadth-first by directory level so root build scripts, settings and catalogs are always
+    // collected ahead of deep source trees if the cap is reached.
+    val queue = ArrayDeque<Pair<java.io.File, Int>>()
+    queue.addLast(conventionRoot to 0)
+
+    while (queue.isNotEmpty() && collected.size < maxFiles) {
+      val (dir, depth) = queue.removeFirst()
+      val children = dir.listFiles()?.sortedBy { it.name } ?: continue
+      for (child in children) {
+        if (collected.size >= maxFiles) break
+        if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue
+        if (child.isDirectory) {
+          val name = child.name
+          if (
+            depth < MAX_CONVENTION_BUILD_DEPTH &&
+              !name.startsWith(".") &&
+              name !in EXCLUDED_DIR_NAMES
+          ) {
+            queue.addLast(child to (depth + 1))
+          }
+        } else if (child.isFile && isConventionBuildFile(child)) {
+          collected += child
+        }
+      }
+    }
+    return collected
+  }
+
+  private fun isConventionBuildFile(file: java.io.File): Boolean {
+    val name = file.name
+    if (name in CONVENTION_BUILD_FILE_NAMES) return true
+    if (name.endsWith(".versions.toml")) return true
+    if (name.endsWith(".gradle.kts") || name.endsWith(".gradle")) return true
+    return file.extension in CONVENTION_BUILD_EXTENSIONS
+  }
+
+  private fun canonicalOrAbsolute(file: java.io.File): java.io.File = runCatching {
+    file.canonicalFile
+  }
+    .getOrDefault(file.absoluteFile)
 }
 
 /** Injects [ArchiveOperations] for unpacking renderer jars without capturing the Project. */
