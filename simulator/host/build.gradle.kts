@@ -384,7 +384,9 @@ dependencies { "robolectricTestAars"(libs.robolectric) }
 
 val unpackRobolectricTestJars =
   tasks.register<UnpackAarClasses>("unpackRobolectricTestJars") {
-    aars.from(robolectricTestAars.filter { it.name.endsWith(".aar") })
+    aars.from(
+      robolectricTestAars.elements.map { set -> set.filter { it.asFile.name.endsWith(".aar") } },
+    )
     jars.set(layout.buildDirectory.dir("robolectric-test-jars"))
   }
 
