@@ -3794,6 +3794,8 @@ internal object CheapSignalFiles {
     return withoutBlock.replace(Regex("""//[^\n]*"""), "")
   }
 
+  private data class WalkDir(val dir: java.io.File, val depth: Int, val inSourceTree: Boolean)
+
   private fun collectConventionBuildFiles(
     conventionRoot: java.io.File,
     maxFiles: Int,
@@ -3802,23 +3804,24 @@ internal object CheapSignalFiles {
     val collected = mutableListOf<java.io.File>()
     // Breadth-first by directory level so root build scripts, settings and catalogs are always
     // collected ahead of deep source trees if the cap is reached.
-    val queue = ArrayDeque<Pair<java.io.File, Int>>()
-    queue.addLast(conventionRoot to 0)
+    val queue = ArrayDeque<WalkDir>()
+    queue.addLast(WalkDir(conventionRoot, depth = 0, inSourceTree = false))
 
     while (queue.isNotEmpty() && collected.size < maxFiles) {
-      val (dir, depth) = queue.removeFirst()
+      val (dir, depth, inSourceTree) = queue.removeFirst()
       val children = dir.listFiles()?.sortedBy { it.name } ?: continue
       for (child in children) {
         if (collected.size >= maxFiles) break
         if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue
         if (child.isDirectory) {
           val name = child.name
-          if (
-            depth < MAX_CONVENTION_BUILD_DEPTH &&
-              !name.startsWith(".") &&
-              name !in EXCLUDED_DIR_NAMES
-          ) {
-            queue.addLast(child to (depth + 1))
+          // Exclude build/output directories (`build`, `out`, `node_modules`) only outside `src/`
+          // trees so convention plugin source packages like `com/example/build/` are preserved.
+          val isExcludedOutputDir = !inSourceTree && name in EXCLUDED_DIR_NAMES
+          if (depth < MAX_CONVENTION_BUILD_DEPTH && !name.startsWith(".") && !isExcludedOutputDir) {
+            queue.addLast(
+              WalkDir(child, depth = depth + 1, inSourceTree = inSourceTree || name == "src"),
+            )
           }
         } else if (child.isFile && isConventionBuildFile(child)) {
           collected += child

@@ -170,4 +170,47 @@ class CheapSignalFilesTest {
     assertThat(buildFiles).doesNotContain(buildSrcOutput.absolutePath)
     assertThat(buildFiles).doesNotContain(buildLogicOutput.absolutePath)
   }
+
+  @Test
+  fun `preserves source packages named build or out while still excluding output directories`() {
+    val root = tempDir.root
+    val appDir = File(root, "app").apply { mkdirs() }
+    writeFile(root, "settings.gradle.kts", """pluginManagement { includeBuild("build-logic") }""")
+    writeFile(appDir, "build.gradle.kts")
+
+    val buildPackagePlugin =
+      writeFile(
+        root,
+        "buildSrc/src/main/kotlin/com/example/build/ComposeConventionPlugin.kt",
+        "package com.example.build",
+      )
+    val outPackagePlugin =
+      writeFile(
+        root,
+        "buildSrc/src/main/kotlin/com/example/out/OutConventionPlugin.kt",
+        "package com.example.out",
+      )
+    val subprojectBuildPackagePlugin =
+      writeFile(
+        root,
+        "build-logic/convention/src/main/kotlin/com/example/build/SubprojectPlugin.kt",
+        "package com.example.build",
+      )
+
+    val buildSrcOutputWithSrc =
+      writeFile(root, "buildSrc/build/generated-sources/src/main/kotlin/Generated.kt")
+    val buildSrcOutDir = writeFile(root, "buildSrc/out/production/classes/Output.kt")
+    val subprojectBuildOutput =
+      writeFile(root, "build-logic/convention/build/generated/GeneratedPlugin.kt")
+    val nodeModulesFile = writeFile(root, "build-logic/node_modules/pkg/Helper.kt")
+
+    val collected = CheapSignalFiles.collect(rootDir = root, moduleDir = appDir)
+
+    assertThat(collected)
+      .containsAtLeast(buildPackagePlugin, outPackagePlugin, subprojectBuildPackagePlugin)
+    assertThat(collected).doesNotContain(buildSrcOutputWithSrc)
+    assertThat(collected).doesNotContain(buildSrcOutDir)
+    assertThat(collected).doesNotContain(subprojectBuildOutput)
+    assertThat(collected).doesNotContain(nodeModulesFile)
+  }
 }
