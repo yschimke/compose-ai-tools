@@ -1,0 +1,63 @@
+name: External PRs & Issues
+
+# Surfaces open pull requests and issues from external contributors across all
+# public, non-archived repositories owned by this account, in one pinned tracking
+# issue (`external-contributions` label). Read-only across repositories: the
+# default token can only write this repository's tracking issue.
+
+on:
+  schedule:
+    - cron: '17 7,19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: external-contributions
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find external PRs and issues
+        env:
+          # EXTERNAL_CONTRIBUTIONS_TOKEN: optional read-only token for higher search rate limits.
+          # Private repositories are always excluded so private metadata is never published here.
+          GITHUB_TOKEN: ${{ secrets.EXTERNAL_CONTRIBUTIONS_TOKEN || github.token }}
+        run: |
+          node .github/ci/find-external-contributions.mjs \
+            --owner "${{ github.repository_owner }}" \
+            --json external.json \
+            --markdown external.md
+          cat external.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create external-contributions --color 0E8A16 \
+            --description "Open PRs and issues from external contributors" 2>/dev/null || true
+          number=$(gh issue list --label external-contributions --state all --limit 1 \
+            --json number --jq '.[0].number // empty')
+          count=$(jq length external.json)
+          if [ -z "$number" ]; then
+            [ "$count" -eq 0 ] && exit 0
+            gh issue create --title "External PRs & Issues" \
+              --label external-contributions --body-file external.md
+            exit 0
+          fi
+          gh issue edit "$number" --body-file external.md
+          state=$(gh issue view "$number" --json state --jq .state)
+          if [ "$count" -eq 0 ] && [ "$state" = OPEN ]; then
+            gh issue close "$number" --reason completed \
+              --comment "No open external PRs or issues."
+          elif [ "$count" -gt 0 ] && [ "$state" = CLOSED ]; then
+            gh issue reopen "$number"
+          fi

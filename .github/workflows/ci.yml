@@ -1137,6 +1137,8 @@ jobs:
         run: ./.github/scripts/check-workflow-yaml.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
+      - name: Run external-contributions watcher tests
+        run: node --test .github/ci/test_find_external_contributions.mjs
       # The Figma reference column cuts a node out of a repo's committed page
       # cache. Its rasteriser is an optional dependency this job doesn't
       # install (those tests self-skip); what runs here is everything that
