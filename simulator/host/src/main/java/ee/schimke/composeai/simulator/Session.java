@@ -1409,6 +1409,22 @@ public final class Session {
     return Intents.fromJson(spec != null ? spec : c, app);
   }
 
+  /**
+   * An adb shell line run as the {@code shell} command runs it, for {@code
+   * UiAutomation.executeShellCommand}: its result as JSON text, or an error line. On the main
+   * thread.
+   */
+  public static String shell(String line) {
+    Session session = current;
+    if (session == null) return "/system/bin/sh: no simulator session\n";
+    try {
+      JSONObject command = shellCommand(new JSONObject().put("command", line));
+      return session.run(command.getString("cmd"), command).toString() + "\n";
+    } catch (Throwable t) {
+      return "/system/bin/sh: " + line + ": " + t.getMessage() + "\n";
+    }
+  }
+
   /** A command translated from {@code command} (an adb shell line) or {@code args} (its argv). */
   private static JSONObject shellCommand(JSONObject c) throws JSONException {
     java.util.Map<String, Object> translated;

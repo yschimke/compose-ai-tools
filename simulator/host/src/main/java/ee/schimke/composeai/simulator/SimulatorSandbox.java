@@ -12,6 +12,7 @@ import ee.schimke.composeai.simulator.shadows.SimulatorShadowActivityClient;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAlarmManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppFunctionManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppWidgetHostView;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppWidgetHost;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowAppWidgetManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowBluetoothGatt;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowCompanionDeviceManager;
@@ -112,6 +113,7 @@ public final class SimulatorSandbox {
                 SimulatorShadowResultReceiver.class,
                 SimulatorShadowActivityClient.class,
                 SimulatorShadowAppWidgetManager.class,
+                SimulatorShadowAppWidgetHost.class,
                 SimulatorShadowAppWidgetHostView.class,
                 // SurfaceView with a surface its app can draw into, shown on screen.
                 SimulatorShadowSurfaceView.class,
@@ -173,6 +175,15 @@ public final class SimulatorSandbox {
         ClassParameter.from(
             String.class,
             SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowPixelCopy"),
+        ClassParameter.from(boolean.class, false));
+    // Frame-commit callbacks run once the frame is drawn (the native renderer never calls back).
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.view.ViewRootImpl"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowViewRootImpl"),
         ClassParameter.from(boolean.class, false));
     // SystemClock.sleep off the main thread sleeps, as on a device (UiAutomator's long press).
     ReflectionHelpers.callInstanceMethod(

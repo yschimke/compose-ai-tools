@@ -118,6 +118,27 @@ public final class WidgetHost {
   private int nextId = 1;
   private PinRequest pin;
 
+  /**
+   * The widgets an app hosts itself, with an {@code AppWidgetHost} of its own (a launcher, a
+   * widget picker's preview, a test): ids allocated from the same space as the home screen's,
+   * bound to a provider, and drawn by the host views the app creates for them.
+   */
+  static final class AppHosted {
+    final int id;
+    final int hostId;
+    AppWidgetProviderInfo info;
+    Bundle options = new Bundle();
+    RemoteViews views;
+    final List<android.appwidget.AppWidgetHostView> hostViews = new ArrayList<>();
+
+    AppHosted(int id, int hostId) {
+      this.id = id;
+      this.hostId = hostId;
+    }
+  }
+
+  private final Map<Integer, AppHosted> appHosted = new java.util.HashMap<>();
+
   /** The home screen that draws and places widgets: set with {@code --launcher}. */
   private HomeScreen home;
 
@@ -798,6 +819,9 @@ public final class WidgetHost {
   public synchronized int[] idsOf(ComponentName provider) {
     List<Integer> ids = new ArrayList<>();
     for (Hosted h : widgets.values()) if (h.info.provider.equals(provider)) ids.add(h.id);
+    for (AppHosted a : appHosted.values()) {
+      if (a.info != null && a.info.provider.equals(provider)) ids.add(a.id);
+    }
     int[] array = new int[ids.size()];
     for (int i = 0; i < array.length; i++) array[i] = ids.get(i);
     return array;
@@ -805,16 +829,146 @@ public final class WidgetHost {
 
   public synchronized AppWidgetProviderInfo infoOf(int id) {
     Hosted h = widgets.get(id);
-    return h == null ? null : h.info;
+    if (h == null) {
+      AppHosted a = appHosted.get(id);
+      return a == null ? null : a.info;
+    }
+    return h.info;
   }
 
   public synchronized Bundle optionsOf(int id) {
     Hosted h = widgets.get(id);
-    return h == null ? Bundle.EMPTY : new Bundle(h.options);
+    if (h == null) {
+      AppHosted a = appHosted.get(id);
+      return a == null ? Bundle.EMPTY : new Bundle(a.options);
+    }
+    return new Bundle(h.options);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Widgets the app hosts itself
+
+  /** {@code AppWidgetHost.allocateAppWidgetId} for the app's host [hostId]: a new id. */
+  public synchronized int allocateForApp(int hostId) {
+    int id = nextId++;
+    appHosted.put(id, new AppHosted(id, hostId));
+    return id;
+  }
+
+  /** {@code AppWidgetHost.deleteAppWidgetId}: the id is gone, and the provider told. */
+  public void deleteForApp(int id) {
+    AppHosted removed;
+    boolean last;
+    synchronized (this) {
+      removed = appHosted.remove(id);
+      last = removed != null && removed.info != null && idsOf(removed.info.provider).length == 0;
+    }
+    if (removed == null || removed.info == null) return;
+    AppWidgetProviderInfo info = removed.info;
+    onMain(
+        () -> {
+          broadcast(
+              // The singular extra: AppWidgetProvider.onReceive reads it for a deletion.
+              new Intent(AppWidgetManager.ACTION_APPWIDGET_DELETED)
+                  .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id),
+              info);
+          if (last) broadcast(new Intent(AppWidgetManager.ACTION_APPWIDGET_DISABLED), info);
+        });
+  }
+
+  public synchronized boolean isAppHosted(int id) {
+    return appHosted.containsKey(id);
+  }
+
+  /**
+   * {@code bindAppWidgetIdIfAllowed} on an id the app allocated: bound to [provider] with
+   * [options], and the provider told ({@code APPWIDGET_ENABLED} for its first widget, then {@code
+   * APPWIDGET_UPDATE}), as the service does. The app holds {@code BIND_APPWIDGET} the way a test
+   * adopts it from the shell, so the simulator does not ask. False for an id it did not allocate,
+   * or a provider it does not have.
+   */
+  public boolean bindForApp(int id, ComponentName provider, Bundle options) {
+    AppWidgetProviderInfo info = null;
+    for (AppWidgetProviderInfo candidate : providers()) {
+      if (candidate.provider.equals(provider)) info = candidate;
+    }
+    if (info == null) return false;
+    boolean first;
+    synchronized (this) {
+      AppHosted a = appHosted.get(id);
+      if (a == null) return false;
+      first = idsOf(provider).length == 0;
+      a.info = info;
+      if (options != null) a.options.putAll(options);
+    }
+    AppWidgetProviderInfo bound = info;
+    onMain(
+        () -> {
+          if (first) broadcast(new Intent(AppWidgetManager.ACTION_APPWIDGET_ENABLED), bound);
+          broadcast(
+              new Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
+                  .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, new int[] {id}),
+              bound);
+        });
+    return true;
+  }
+
+  /**
+   * The app's host created [view] for its widget [id] ({@code AppWidgetHost.createView}): it gets
+   * what the provider last sent, and every later update.
+   */
+  public void appViewCreated(int id, android.appwidget.AppWidgetHostView view) {
+    RemoteViews last;
+    synchronized (this) {
+      AppHosted a = appHosted.get(id);
+      if (a == null) return;
+      a.hostViews.add(view);
+      last = a.views;
+    }
+    if (last != null) onMain(() -> view.updateAppWidget(last));
+  }
+
+  /** [views] for a widget the app hosts, merged for a partial update, shown by its host views. */
+  private boolean appHostedUpdated(int id, RemoteViews views, boolean partial) {
+    List<android.appwidget.AppWidgetHostView> targets;
+    RemoteViews shown;
+    synchronized (this) {
+      AppHosted a = appHosted.get(id);
+      if (a == null) return false;
+      if (partial) {
+        if (a.views == null) return true;
+        ReflectionHelpers.callInstanceMethod(
+            a.views, "mergeRemoteViews", ClassParameter.from(RemoteViews.class, views));
+      } else {
+        a.views = views;
+      }
+      shown = a.views;
+      targets = new ArrayList<>(a.hostViews);
+    }
+    onMain(
+        () -> {
+          for (android.appwidget.AppWidgetHostView view : targets) view.updateAppWidget(shown);
+        });
+    return true;
   }
 
   /** The app changed a widget's options itself: stored, and the provider told, as on a device. */
   public void appUpdatedOptions(int id, Bundle options) {
+    synchronized (this) {
+      AppHosted a = appHosted.get(id);
+      if (a != null && options != null && a.info != null) {
+        a.options.putAll(options);
+        AppWidgetProviderInfo info = a.info;
+        onMain(
+            () ->
+                broadcast(
+                    new Intent(AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, new Bundle(options)),
+                    info));
+        return;
+      }
+    }
     Hosted hosted;
     synchronized (this) {
       hosted = widgets.get(id);
@@ -832,6 +986,7 @@ public final class WidgetHost {
 
   /** {@code updateAppWidget}: [views] replace what widget [id] shows. */
   public void appUpdated(int id, RemoteViews views, boolean partial) {
+    if (views != null && appHostedUpdated(id, views, partial)) return;
     Hosted hosted;
     int count;
     synchronized (this) {

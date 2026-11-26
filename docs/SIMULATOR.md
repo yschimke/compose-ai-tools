@@ -2168,6 +2168,14 @@ How the pieces fit:
 - **Which tests run.** As AndroidJUnitRunner's filters: a test whose `@SdkSuppress` (on the
   method, else the class) excludes the simulated API level and code name is left out, as is one
   marked `@RequiresDevice`.
+- **An app's own widgets.** An `AppWidgetHost` the app runs itself allocates ids from the
+  device's id space; `bindAppWidgetIdIfAllowed` binds them to the app's provider and sends it
+  `APPWIDGET_ENABLED` and `APPWIDGET_UPDATE`, as the service does for a host holding
+  `BIND_APPWIDGET` (which a test adopts from the shell); the provider's `updateAppWidget` reaches
+  the host views the app created, and `updateAppWidgetOptions` sends `APPWIDGET_OPTIONS_CHANGED`.
+- **Frame commits.** `ViewTreeObserver.registerFrameCommitCallback` callbacks run on the main
+  thread once the frame they were registered for is drawn; Robolectric's native renderer never
+  calls them back.
 - **Screenshots from the test thread.** `PixelCopy.request`, which Compose's `captureToImage()`
   calls, copies on the main thread while the test's thread waits.
 
@@ -2198,21 +2206,20 @@ The simulator fixes that came out of it apply to every launch, not only tests:
 Cadence's own suite (13 tests: launch, notifications, Media3 transcoding with chapter splits, a
 storage tree URI) passes at `--sdk 36` (its notification tests assume API 36). Home Assistant
 RemoteCompose's app suite, which drives the launcher with UiAutomator (long-press menus, widget
-pinning with cancel and confirm, resize handles) and captures Compose screenshots, passes 41 of its
-47 tests at `--sdk 36 --qualifiers w411dp-h914dp-xxhdpi`, every UiAutomator and `captureToImage`
-test among them (its one API 37 test is left out by its `@SdkSuppress`, as on an API 36 device).
-Of the rest, two are skipped by the suite itself; two host the app's own widget with an
-`AppWidgetHost` and wait on `am wait-for-broadcast-idle` and a frame-commit callback, which the
-simulator does not provide yet; one IME test measures a doubled bottom inset; and a preview
-comparison passes alone but not after the rest of the suite.
+pinning with cancel and confirm, resize handles), hosts its own widgets with an `AppWidgetHost`
+and captures Compose screenshots, passes 43 of its 47 tests at `--sdk 36 --qualifiers
+w411dp-h914dp-xxhdpi`, every UiAutomator and `captureToImage` test among them (its one API 37 test
+is left out by its `@SdkSuppress`, as on an API 36 device). Of the rest, two are skipped by the
+suite itself; one IME test measures a doubled bottom inset at that density (it passes at the
+default display); and a preview comparison passes alone but not after the rest of the suite.
 
 Not yet:
 
 - `InstrumentationRegistry.getArguments()` is empty (no `-e` arguments), and there is no
   orchestrator, `ClassRule`-level isolation or per-test process.
-- An app's own `AppWidgetHost` (allocate, `bindAppWidgetIdIfAllowed`, its views receiving the
-  provider's updates) is not supported: provider updates reach the home screen's widgets.
-- `UiDevice.executeShellCommand` and `adb shell` from a test, screenshots through
+- `UiAutomation.executeShellCommand` knows `am wait-for-broadcast-idle`; anything else runs
+  through the [adb shell translation](#adb-equivalents) and answers with that command's JSON, not
+  the device tool's text. Screenshots through
   `DeviceCapture`, and permissions granted with `GrantPermissionRule` are untried. UiAutomator
   searches only the active window (multi-window search needs `AccessibilityWindowInfo`s the
   simulator does not provide).
