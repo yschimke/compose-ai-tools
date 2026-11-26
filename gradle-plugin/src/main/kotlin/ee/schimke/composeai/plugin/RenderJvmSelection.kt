@@ -132,24 +132,43 @@ internal object BytecodeTargetDetector {
   }
 
   /**
-   * `compilerOptions.jvmTarget` from the named Kotlin compile tasks, by reflection (no KGP compile
-   * dependency). Highest major, or `null`.
+   * Formats a JVM major version as a Kotlin `-jvm-target` / `JvmTarget` string (`8` → `"1.8"`, `17`
+   * → `"17"`, `21` → `"21"`).
+   */
+  fun formatKotlinJvmTarget(major: Int): String = if (major == 8) "1.8" else major.toString()
+
+  /**
+   * `compilerOptions.jvmTarget` from the named Kotlin compile tasks, falling back to the project's
+   * `kotlin` extension when none of the candidate tasks reported a target, by reflection (no KGP
+   * compile dependency). Highest major across the candidate tasks, or `null`.
    */
   fun detectKotlinJvmTarget(project: Project, candidateTaskNames: List<String>): Int? {
     var best: Int? = null
+    fun record(major: Int?) {
+      if (major != null && (best == null || major > best!!)) best = major
+    }
     for (name in candidateTaskNames) {
       val task = project.tasks.findByName(name) ?: continue
-      val major = runCatching {
-        val opts = task.javaClass.getMethod("getCompilerOptions").invoke(task)
-        val prop =
-          opts.javaClass.methods.firstOrNull { it.name == "getJvmTarget" }?.invoke(opts)
-            ?: return@runCatching null
-        val value = prop.javaClass.getMethod("getOrNull").invoke(prop) ?: return@runCatching null
-        parseTargetMajor(value.toString())
+      record(readCompilerOptionsJvmTarget(task))
+    }
+    // Only probe the project-level `kotlin` extension (`kotlin { compilerOptions { jvmTarget } }`)
+    // as a fallback when no candidate compile task reported a target; the extension is a default
+    // and must not override an explicit lower task-level target.
+    if (best == null) {
+      project.extensions.findByName("kotlin")?.let { kotlinExt ->
+        record(readCompilerOptionsJvmTarget(kotlinExt))
       }
-        .getOrNull()
-      if (major != null && (best == null || major > best!!)) best = major
     }
     return best
   }
+
+  private fun readCompilerOptionsJvmTarget(holder: Any): Int? = runCatching {
+    val opts = holder.javaClass.getMethod("getCompilerOptions").invoke(holder)
+    val prop =
+      opts.javaClass.methods.firstOrNull { it.name == "getJvmTarget" }?.invoke(opts)
+        ?: return@runCatching null
+    val value = prop.javaClass.getMethod("getOrNull").invoke(prop) ?: return@runCatching null
+    parseTargetMajor(value.toString())
+  }
+    .getOrNull()
 }

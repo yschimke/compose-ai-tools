@@ -51,6 +51,7 @@ class BtaCompiler(
     outputDir: Path,
     compilerPlugins: List<CompilerPlugin> = emptyList(),
     moduleName: String = DEFAULT_MODULE_NAME,
+    jvmTarget: JvmTarget = JvmTarget.JVM_17,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
@@ -61,6 +62,7 @@ class BtaCompiler(
         compileClasspath,
         compilerPlugins,
         moduleName,
+        jvmTarget,
       )
       executeOrThrow(session, builder.build())
     }
@@ -81,6 +83,7 @@ class BtaCompiler(
     compilerPlugins: List<CompilerPlugin> = emptyList(),
     sourcesChanges: SourcesChanges = SourcesChanges.ToBeCalculated,
     moduleName: String = DEFAULT_MODULE_NAME,
+    jvmTarget: JvmTarget = JvmTarget.JVM_17,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     workingDir.toFile().mkdirs()
@@ -114,6 +117,7 @@ class BtaCompiler(
         compileClasspath,
         compilerPlugins,
         moduleName,
+        jvmTarget,
       )
 
       executeOrThrow(session, builder.build())
@@ -126,9 +130,10 @@ class BtaCompiler(
     compileClasspath: List<Path>,
     compilerPlugins: List<CompilerPlugin>,
     moduleName: String,
+    jvmTarget: JvmTarget,
   ) {
     args.set(JvmCompilerArguments.CLASSPATH, compileClasspath)
-    args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
+    args.set(JvmCompilerArguments.JVM_TARGET, jvmTarget)
     args.set(JvmCompilerArguments.MODULE_NAME, moduleName)
     if (compilerPlugins.isNotEmpty()) {
       args.set(CommonCompilerArguments.COMPILER_PLUGINS, compilerPlugins)

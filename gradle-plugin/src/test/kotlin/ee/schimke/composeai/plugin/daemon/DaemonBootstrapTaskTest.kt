@@ -396,6 +396,29 @@ class DaemonBootstrapTaskTest {
     val bta = descriptor.btaCompile
     assertThat(bta).isNotNull()
     assertThat(bta!!.ineligibilityReason).isEqualTo("com.google.devtools.ksp plugin applied")
+    assertThat(bta.jvmTarget).isNull()
+    assertThat(outFile.readText()).doesNotContain("\"jvmTarget\"")
+  }
+
+  @Test
+  fun `btaCompile emits jvmTarget when btaJvmTarget is configured`() {
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
+    val task =
+      project.tasks.register("bootstrapJvm21", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        btaImplClasspath.from(implJar)
+        btaModuleName.set("samples-android")
+        btaOutputDir.set("/abs/out")
+        btaIcWorkingDir.set("/abs/ic")
+        btaJvmTarget.set("21")
+      }
+    task.get().emit()
+    val raw = outFile.readText()
+    assertThat(raw).contains("\"jvmTarget\": \"21\"")
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(raw)
+    assertThat(descriptor.btaCompile?.jvmTarget).isEqualTo("21")
   }
 
   /** Shared filler for the descriptor fields stage-2 tests don't care about. */

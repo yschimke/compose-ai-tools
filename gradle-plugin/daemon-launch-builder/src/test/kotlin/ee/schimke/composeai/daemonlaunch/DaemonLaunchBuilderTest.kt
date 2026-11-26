@@ -127,4 +127,37 @@ class DaemonLaunchBuilderTest {
     assertThat(metadata["schemaVersion"]?.jsonPrimitive?.content?.toInt())
       .isEqualTo(DAEMON_DESCRIPTOR_SCHEMA_VERSION)
   }
+
+  @Test
+  fun `btaCompile jvmTarget round-trips and is omitted when null`() {
+    val descriptor =
+      DaemonLaunchBuilder.build(
+        modulePath = ":app",
+        variant = "debug",
+        mainClass = "Main",
+        classpath = emptyList(),
+        jvmArgs = emptyList(),
+        systemProperties = emptyMap(),
+        workingDirectory = "/x",
+        manifestPath = "/x/p.json",
+      )
+    val baseBta =
+      BtaCompileConfig(
+        implClasspath = listOf("/impl.jar"),
+        compileClasspath = listOf("/cp.jar"),
+        compilerPlugins = emptyList(),
+        outputDir = "/out",
+        moduleName = "app",
+        icWorkingDir = "/ic",
+      )
+
+    val withoutTarget = DaemonLaunchBuilder.encode(descriptor.copy(btaCompile = baseBta))
+    assertThat(withoutTarget).doesNotContain("jvmTarget")
+    assertThat(DaemonLaunchBuilder.decode(withoutTarget).btaCompile?.jvmTarget).isNull()
+
+    val withTarget =
+      DaemonLaunchBuilder.encode(descriptor.copy(btaCompile = baseBta.copy(jvmTarget = "21")))
+    assertThat(withTarget).contains("\"jvmTarget\": \"21\"")
+    assertThat(DaemonLaunchBuilder.decode(withTarget).btaCompile?.jvmTarget).isEqualTo("21")
+  }
 }

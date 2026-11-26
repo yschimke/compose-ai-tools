@@ -3079,6 +3079,10 @@ internal object AndroidPreviewSupport {
           ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
           kotlinPluginConfigurationName =
             "kotlinCompilerPluginClasspath${variantName.replaceFirstChar { it.uppercase() }}",
+          jvmTarget =
+            (detectRenderBytecodeMajor(project, mainCompileTaskNames) ?: renderBytecodeMajor)?.let(
+              BytecodeTargetDetector::formatKotlinJvmTarget,
+            ),
         )
         // What the variant is built from, for the descriptor's `sourceWatch`.
         variant.sources.java?.all?.let { dirs ->
