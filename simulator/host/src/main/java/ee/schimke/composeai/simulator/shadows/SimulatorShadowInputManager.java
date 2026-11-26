@@ -1,6 +1,7 @@
 package ee.schimke.composeai.simulator.shadows;
 
 import ee.schimke.composeai.simulator.Displays;
+import ee.schimke.composeai.simulator.Session;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.InputEvent;
@@ -45,7 +46,7 @@ public class SimulatorShadowInputManager extends ShadowInputManager {
 
   static boolean inject(InputEvent event, int mode) {
     if (Looper.myLooper() == Looper.getMainLooper()) {
-      return Displays.inject(event, Displays.routeOf(event));
+      return deliver(event, Displays.routeOf(event));
     }
     InputEvent owned = copy(event);
     int display = Displays.routeOf(owned);
@@ -55,7 +56,7 @@ public class SimulatorShadowInputManager extends ShadowInputManager {
         .post(
             () -> {
               try {
-                handled.set(Displays.inject(owned, display));
+                handled.set(deliver(owned, display));
               } finally {
                 done.countDown();
               }
@@ -67,6 +68,17 @@ public class SimulatorShadowInputManager extends ShadowInputManager {
       Thread.currentThread().interrupt();
       return false;
     }
+  }
+
+  /**
+   * [event] as the system delivers it: BACK and HOME by the system's routing first ({@link
+   * Session#systemKey}: the shade, the home screen, an opted-in window's {@code
+   * OnBackInvokedCallback}), as {@code UiAutomation}'s keys are, since an app that opted in to the
+   * callback API hears Back only that way; anything else into the display's windows.
+   */
+  static boolean deliver(InputEvent event, int display) {
+    if (event instanceof KeyEvent key && Session.systemKey(key, display)) return true;
+    return Displays.inject(event, display);
   }
 
   /** A copy the main thread owns: the caller may recycle [event] once the call returns. */

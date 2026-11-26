@@ -157,6 +157,112 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
 
     private volatile Context testContext;
 
+    // The simulator's own activities (the home screen, the stand-in for an app with nothing
+    // started) are the system's: a device's launcher runs in another process, where androidx.test's
+    // activity monitor never sees it. Their lifecycle goes through the framework's Instrumentation
+    // without the monitor's signals, so Back from the app's last activity leaves no activity
+    // resumed (Espresso's NoActivityResumedException), and a test's ActivityScenario never finds
+    // the home screen.
+
+    private static boolean systemActivity(android.app.Activity activity) {
+      if (!InstrumentationRun.enabled()) return false;
+      return activity.getClass().getName().startsWith(SimulatorTestEnvironment.class.getPackageName() + ".");
+    }
+
+    /**
+     * What the framework's {@code Instrumentation.callActivityOn*} does, without the monitor's
+     * signal: a {@code findSpecial} call to it would land in Robolectric's monitoring override
+     * all the same (a super call resolves from the direct superclass), so the activity's own
+     * lifecycle methods are called, as {@code Instrumentation}'s are.
+     */
+    private static void unmonitored(String stage, android.app.Activity activity, android.os.Bundle state) {
+      switch (stage) {
+        case "create" ->
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(
+                android.app.Activity.class,
+                activity,
+                "performCreate",
+                org.robolectric.util.ReflectionHelpers.ClassParameter.from(android.os.Bundle.class, state));
+        case "start" -> org.robolectric.util.ReflectionHelpers.callInstanceMethod(android.app.Activity.class, activity, "onStart");
+        case "restart" ->
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(android.app.Activity.class, activity, "onRestart");
+        case "resume" -> {
+          org.robolectric.util.ReflectionHelpers.setField(android.app.Activity.class, activity, "mResumed", true);
+          org.robolectric.util.ReflectionHelpers.callInstanceMethod(android.app.Activity.class, activity, "onResume");
+        }
+        case "pause" ->
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(android.app.Activity.class, activity, "performPause");
+        case "stop" -> org.robolectric.util.ReflectionHelpers.callInstanceMethod(android.app.Activity.class, activity, "onStop");
+        case "destroy" ->
+            org.robolectric.util.ReflectionHelpers.callInstanceMethod(
+                android.app.Activity.class, activity, "performDestroy");
+        default -> throw new IllegalArgumentException(stage);
+      }
+    }
+
+    @Override
+    public void callActivityOnCreate(android.app.Activity activity, android.os.Bundle state) {
+      if (systemActivity(activity)) {
+        unmonitored("create", activity, state);
+      } else {
+        super.callActivityOnCreate(activity, state);
+      }
+    }
+
+    @Override
+    public void callActivityOnStart(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("start", activity, null);
+      } else {
+        super.callActivityOnStart(activity);
+      }
+    }
+
+    @Override
+    public void callActivityOnRestart(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("restart", activity, null);
+      } else {
+        super.callActivityOnRestart(activity);
+      }
+    }
+
+    @Override
+    public void callActivityOnResume(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("resume", activity, null);
+      } else {
+        super.callActivityOnResume(activity);
+      }
+    }
+
+    @Override
+    public void callActivityOnPause(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("pause", activity, null);
+      } else {
+        super.callActivityOnPause(activity);
+      }
+    }
+
+    @Override
+    public void callActivityOnStop(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("stop", activity, null);
+      } else {
+        super.callActivityOnStop(activity);
+      }
+    }
+
+    @Override
+    public void callActivityOnDestroy(android.app.Activity activity) {
+      if (systemActivity(activity)) {
+        unmonitored("destroy", activity, null);
+      } else {
+        super.callActivityOnDestroy(activity);
+      }
+    }
+
     /**
      * The test APK's context under {@code --instrument} ({@link TestApkContext}), else the app's,
      * as Robolectric answers.

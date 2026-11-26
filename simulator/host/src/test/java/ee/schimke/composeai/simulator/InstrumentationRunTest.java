@@ -419,4 +419,16 @@ public class InstrumentationRunTest {
     java.util.Collections.sort(copy);
     return copy;
   }
+
+  @Test
+  public void googlesOwnTestsAreFoundAndItsLibrariesAreNot() {
+    assertFalse(
+        InstrumentationRun.skipped(
+            "com/google/samples/apps/nowinandroid/ui/NavigationTest.class"));
+    assertFalse(InstrumentationRun.skipped("com/google/android/apps/example/MainTest.class"));
+    assertTrue(InstrumentationRun.skipped("com/google/common/truth/Truth.class"));
+    assertTrue(InstrumentationRun.skipped("com/google/android/material/button/MaterialButton.class"));
+    assertTrue(InstrumentationRun.skipped("dagger/hilt/android/testing/HiltTestApplication.class"));
+    assertTrue(InstrumentationRun.skipped("androidx/test/core/app/ActivityScenario.class"));
+  }
 }

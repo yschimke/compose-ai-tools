@@ -1998,6 +1998,11 @@ data, and never touches the Data Layer, unless it is set.
 A prototype: an app's `androidTest` suite runs inside the simulator, beside the app, as
 `am instrument` runs it on a device or emulator — `connectedDebugAndroidTest` with no device.
 
+**API levels: 33 and up.** Robolectric's simulator draws with real draw traversals, which
+Robolectric supports from API 33, so `--sdk` takes 33 to the newest level and anything lower is
+refused before the simulator starts, with that range in the message (and in `--test-json`'s
+`error`). A suite whose CI runs an emulator below 33 runs here at 33 or above.
+
 ### From Gradle (the way to hand it to an agent)
 
 The preview plugin registers `simulator<Variant>AndroidTest` in every application module, for each
@@ -2061,7 +2066,9 @@ any test starts. A class named whole runs all of its tests, a suite included; a 
 method runs every parameter. Without `--tests`, discovery finds concrete classes with `@RunWith`, a
 `@Test` method or a JUnit 3 `TestCase` superclass (inherited ones included). It leaves out suites,
 whose member classes are found on their own, and the libraries the test APK bundles (`androidx.`,
-`com.google.`, `kotlin.` and the like): name such a class with `--tests` to run it.
+`kotlin.`, `dagger.`, Google's libraries by their own packages such as `com.google.common.` and
+`com.google.android.material.`, and the like): name such a class with `--tests` to run it. A
+project's own tests under `com.google` (Google's samples) are found.
 
 `samples/android-instrumented` is the suite CI runs through `simulatorDebugAndroidTest`
 (InstrumentationRegistry, `runOnMainSync`, an Espresso click through `ActivityScenario`, and a
@@ -2140,6 +2147,18 @@ How the pieces fit:
   at androidx.test's device runner (`android.junit.runner`), since left alone it picks
   Robolectric's whenever that is on the class path, which would start a sandbox of its own. The
   instrumentation is the one the simulator already registered with `InstrumentationRegistry`.
+- **The test APK's runner chooses the application.** The `<instrumentation android:name>` runner
+  is instantiated and asked, through its `newApplication`, which `Application` it creates: a Hilt
+  project's runner answers `HiltTestApplication`, which the app is then created as, as
+  `am instrument` creates it. The runner is otherwise not used.
+- **A device's fingerprint.** `Build.FINGERPRINT` is an emulator image's in a test run (unless
+  `--fingerprint` says otherwise): Robolectric's own makes Compose's test rule pick Robolectric's
+  idling strategy, which assumes the test thread is the main one, and Espresso then stopped
+  waiting for Compose.
+- **The home screen is not the app's.** The simulator's home screen runs in the app's process,
+  but androidx.test's activity monitor does not see it, as a launcher in its own process is not
+  seen: Back from the app's last activity leaves no activity resumed (Espresso's
+  `NoActivityResumedException`).
 - **androidx.test's device implementations.** Robolectric registers its own `ActivityInvoker`,
   `UiController` and `ControlledLooper` through `ServiceLoader`; they drive a paused main looper
   from the test thread, which the simulator's looping main thread refuses. The test and main
@@ -2176,6 +2195,11 @@ How the pieces fit:
 - **Frame commits.** `ViewTreeObserver.registerFrameCommitCallback` callbacks run on the main
   thread once the frame they were registered for is drawn; Robolectric's native renderer never
   calls them back.
+- **Back and focus.** Espresso's injected keys go where the system sends them, as UiAutomator's
+  do: Back to an opted-in window's `OnBackInvokedCallback` (API 33's static opt-in check
+  included). A dialog over the resumed activity has window focus, as on a device, so
+  `inRoot(isDialog())` finds it. While Espresso holds the main thread, the simulator's cycle still
+  runs, so a finish or a start an action causes is applied before Espresso looks.
 - **Screenshots from the test thread.** `PixelCopy.request`, which Compose's `captureToImage()`
   calls, copies on the main thread while the test's thread waits.
 
@@ -2191,6 +2215,11 @@ The simulator fixes that came out of it apply to every launch, not only tests:
   reaches the window, as `UiAutomation`'s does;
 - audio: `MediaExtractor` reads real files and an MP3 decoder and AAC encoder are in
   `MediaCodecList` ([Audio files and codecs](#audio-files-and-codecs));
+- a service bound from another thread (a `Messenger` from an app's worker, as Firebase's session
+  client sends) is created on the main thread;
+- every converted class is public, as ART treats classes for reflection: HotSpot refused a public
+  member of a non-public class (a Kotlin `private data object`'s `INSTANCE`, read by
+  kotlinx.serialization);
 - the simulated clock keeps up with real time. Robolectric's loop advanced it by the time it spent
   waiting, not the time it spent running tasks and drawing, so a busy UI fell three to four times
   behind, while other threads (a test's waits, network timeouts, a long press held for real) count
@@ -2212,6 +2241,15 @@ w411dp-h914dp-xxhdpi`, every UiAutomator and `captureToImage` test among them (i
 is left out by its `@SdkSuppress`, as on an API 36 device). Of the rest, two are skipped by the
 suite itself; one IME test measures a doubled bottom inset at that density (it passes at the
 default display); and a preview comparison passes alone but not after the rest of the suite.
+
+Four of the `android` organisation's projects, their own suites unchanged, at the levels from 33
+their CI runs (or their targetSdk): architecture-samples 38 of 38 (API 35; Hilt through its
+`CustomTestRunner`), nav3-recipes 21 of 21 (API 33; predictive Back, dialogs), nowinandroid's app
+11 of 11 (API 34; Hilt, `NiaTestRunner`), compose-samples' JetNews 4 of 4 and Jetchat 11 of 13 (API
+33; the two failing use `Modifier.blur`'s runtime shader, which Robolectric's native shader
+compiler rejects). A library module's test APK instruments itself: pass it as both APKs
+(`android-simulator lib-androidTest.apk --instrument lib-androidTest.apk`); nowinandroid's eight
+non-Hilt module suites pass that way.
 
 Not yet:
 
