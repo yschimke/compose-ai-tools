@@ -94,6 +94,7 @@ export function filterExternalItems(items, { owner, archivedRepos = new Set(), n
   for (const item of items) {
     if (!item || (item.state && item.state !== 'open')) continue;
     if (item.archived === true || item.repository?.archived === true) continue;
+    if (item.repository?.private === true) continue;
     if (isExcludedAuthor(item.user, owner)) continue;
 
     const repo = repoFromItem(item);
@@ -226,12 +227,13 @@ async function searchAll(api, query) {
 }
 
 /**
- * Queries GitHub Search API for open PRs and issues under `owner`, verifies repo archive status,
- * and returns filtered external contributions plus scan metadata.
+ * Queries GitHub Search API for open PRs and issues in public, non-archived repositories under
+ * `owner`, verifies repo archive and visibility status, and returns filtered external
+ * contributions plus scan metadata.
  */
 export async function collectExternalContributions({ owner = DEFAULT_OWNER, api, now = new Date() }) {
-  const prQuery = `user:${owner} state:open type:pr archived:false -author:${owner}`;
-  const issueQuery = `user:${owner} state:open type:issue archived:false -author:${owner}`;
+  const prQuery = `user:${owner} is:public state:open type:pr archived:false -author:${owner}`;
+  const issueQuery = `user:${owner} is:public state:open type:issue archived:false -author:${owner}`;
 
   const [prSearch, issueSearch] = await Promise.all([
     searchAll(api, prQuery),
@@ -241,17 +243,20 @@ export async function collectExternalContributions({ owner = DEFAULT_OWNER, api,
   const rawItems = [...prSearch.items, ...issueSearch.items];
   const candidates = filterExternalItems(rawItems, { owner, now });
 
-  const archivedRepos = new Set();
+  const excludedRepos = new Set();
   const checkedRepos = new Set();
   for (const entry of candidates) {
     if (checkedRepos.has(entry.repo)) continue;
     checkedRepos.add(entry.repo);
     const repoInfo = await api(`/repos/${entry.repo}`, { allow404: true });
-    if (repoInfo?.archived) archivedRepos.add(entry.repo);
+    // Fail closed so private or archived repo metadata is never published to a public report.
+    if (!repoInfo || repoInfo.archived === true || repoInfo.private !== false) {
+      excludedRepos.add(entry.repo);
+    }
   }
 
-  const items = archivedRepos.size
-    ? candidates.filter(entry => !archivedRepos.has(entry.repo))
+  const items = excludedRepos.size
+    ? candidates.filter(entry => !excludedRepos.has(entry.repo))
     : candidates;
 
   return {

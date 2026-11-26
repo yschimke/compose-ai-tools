@@ -174,13 +174,14 @@ test('renderMarkdown formats PR and Issue tables, escapes pipes, and embeds JSON
   assert.match(md, /<details><summary>JSON<\/summary>/);
 });
 
-test('collectExternalContributions queries both PRs and issues, paginates, and drops archived repos', async () => {
+test('collectExternalContributions queries public PRs and issues, paginates, and drops archived/private repos', async () => {
   const calls = [];
   const api = async path => {
     calls.push(path);
     if (path.includes('type%3Apr') && path.includes('page=1')) {
+      assert.match(path, /is%3Apublic/);
       return {
-        total_count: 2,
+        total_count: 3,
         incomplete_results: false,
         items: [
           makeItem({
@@ -197,12 +198,20 @@ test('collectExternalContributions queries both PRs and issues, paginates, and d
             pull_request: {},
             user: { login: 'dev2', type: 'User' },
           }),
+          makeItem({
+            number: 5,
+            repository_url: 'https://api.github.com/repos/yschimke/secret-repo',
+            html_url: 'https://github.com/yschimke/secret-repo/pull/5',
+            pull_request: {},
+            user: { login: 'dev4', type: 'User' },
+          }),
         ],
       };
     }
     if (path.includes('type%3Aissue') && path.includes('page=1')) {
+      assert.match(path, /is%3Apublic/);
       return {
-        total_count: 2,
+        total_count: 3,
         incomplete_results: false,
         items: [
           makeItem({
@@ -217,22 +226,34 @@ test('collectExternalContributions queries both PRs and issues, paginates, and d
             html_url: 'https://github.com/yschimke/active-repo/issues/4',
             user: { login: 'dev3', type: 'User' },
           }),
+          makeItem({
+            number: 6,
+            repository_url: 'https://api.github.com/repos/yschimke/missing-repo',
+            html_url: 'https://github.com/yschimke/missing-repo/issues/6',
+            user: { login: 'dev5', type: 'User' },
+          }),
         ],
       };
     }
     if (path === '/repos/yschimke/active-repo') {
-      return { full_name: 'yschimke/active-repo', archived: false };
+      return { full_name: 'yschimke/active-repo', archived: false, private: false };
     }
     if (path === '/repos/yschimke/stale-archived') {
-      return { full_name: 'yschimke/stale-archived', archived: true };
+      return { full_name: 'yschimke/stale-archived', archived: true, private: false };
+    }
+    if (path === '/repos/yschimke/secret-repo') {
+      return { full_name: 'yschimke/secret-repo', archived: false, private: true };
+    }
+    if (path === '/repos/yschimke/missing-repo') {
+      return null;
     }
     throw new Error(`Unexpected API call: ${path}`);
   };
 
   const result = await collectExternalContributions({ owner: 'yschimke', api, now: NOW });
 
-  assert.equal(result.scannedPrs, 2);
-  assert.equal(result.scannedIssues, 2);
+  assert.equal(result.scannedPrs, 3);
+  assert.equal(result.scannedIssues, 3);
   assert.equal(result.truncated, false);
   assert.deepEqual(
     result.items.map(i => `${i.repo}#${i.number}:${i.kind}`),

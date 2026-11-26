@@ -1,9 +1,9 @@
 name: External PRs & Issues
 
 # Surfaces open pull requests and issues from external contributors across all
-# non-archived repositories owned by this account, in one pinned tracking issue
-# (`external-contributions` label). Read-only across repositories: the default
-# token can only write this repository's tracking issue.
+# public, non-archived repositories owned by this account, in one pinned tracking
+# issue (`external-contributions` label). Read-only across repositories: the
+# default token can only write this repository's tracking issue.
 
 on:
   schedule:
@@ -28,9 +28,8 @@ jobs:
           persist-credentials: false
       - name: Find external PRs and issues
         env:
-          # EXTERNAL_CONTRIBUTIONS_TOKEN: optional read-only token across the owner's
-          # repositories (including private ones, if desired). Falls back to github.token
-          # which searches public repositories of the owner.
+          # EXTERNAL_CONTRIBUTIONS_TOKEN: optional read-only token for higher search rate limits.
+          # Private repositories are always excluded so private metadata is never published here.
           GITHUB_TOKEN: ${{ secrets.EXTERNAL_CONTRIBUTIONS_TOKEN || github.token }}
         run: |
           node .github/ci/find-external-contributions.mjs \
