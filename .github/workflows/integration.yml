@@ -672,6 +672,10 @@ jobs:
             #      runtime with "No subspace compose hierarchies found in the
             #      app" — main-only, since the XR step is skipped on PRs.
             #      `.github/ci/check_consumer_xr_version.py` guards the pair.
+            #      From rc01 the XR libraries pull Compose 1.12, whose AARs need
+            #      AGP 9.1+ (XR material3 alpha18: 9.3.1) and compileSdk 37, so
+            #      the patch also moves the sample to AGP 9.3.1 (built-in Kotlin
+            #      and the new DSL off), Gradle 9.9.1 and compileSdk 37.
             #   2. adaptive-apps-samples-xr-spatial-previews.patch — a CI-only
             #      overlay adding two @XrSubspacePreview functions that lay
             #      JetStream's real components (MovieCard / WatchNowButton /
