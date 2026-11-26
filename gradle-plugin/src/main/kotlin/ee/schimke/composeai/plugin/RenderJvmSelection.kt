@@ -138,8 +138,9 @@ internal object BytecodeTargetDetector {
   fun formatKotlinJvmTarget(major: Int): String = if (major == 8) "1.8" else major.toString()
 
   /**
-   * `compilerOptions.jvmTarget` from the named Kotlin compile tasks and the project's `kotlin`
-   * extension, by reflection (no KGP compile dependency). Highest major, or `null`.
+   * `compilerOptions.jvmTarget` from the named Kotlin compile tasks, falling back to the project's
+   * `kotlin` extension when none of the candidate tasks reported a target, by reflection (no KGP
+   * compile dependency). Highest major across the candidate tasks, or `null`.
    */
   fun detectKotlinJvmTarget(project: Project, candidateTaskNames: List<String>): Int? {
     var best: Int? = null
@@ -150,10 +151,13 @@ internal object BytecodeTargetDetector {
       val task = project.tasks.findByName(name) ?: continue
       record(readCompilerOptionsJvmTarget(task))
     }
-    // Also probe the project-level `kotlin` extension (`kotlin { compilerOptions { jvmTarget } }`),
-    // which is already populated even if lazy compile tasks haven't been realized yet.
-    project.extensions.findByName("kotlin")?.let { kotlinExt ->
-      record(readCompilerOptionsJvmTarget(kotlinExt))
+    // Only probe the project-level `kotlin` extension (`kotlin { compilerOptions { jvmTarget } }`)
+    // as a fallback when no candidate compile task reported a target; the extension is a default
+    // and must not override an explicit lower task-level target.
+    if (best == null) {
+      project.extensions.findByName("kotlin")?.let { kotlinExt ->
+        record(readCompilerOptionsJvmTarget(kotlinExt))
+      }
     }
     return best
   }

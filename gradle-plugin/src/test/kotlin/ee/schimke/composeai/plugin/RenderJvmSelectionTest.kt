@@ -97,4 +97,50 @@ class RenderJvmSelectionTest {
     assertThat(BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compileDebugKotlin")))
       .isEqualTo(21)
   }
+
+  @Test
+  fun `detectKotlinJvmTarget prefers task target over higher kotlin extension target`() {
+    val project = org.gradle.testfixtures.ProjectBuilder.builder().build()
+    project.tasks.register("compileDebugKotlin", FakeKotlinCompileTask::class.java) {
+      targetProp.set("JVM_17")
+    }
+    val extTargetProp = project.objects.property(String::class.java).value("JVM_21")
+    project.extensions.add("kotlin", FakeKotlinExtension(extTargetProp))
+
+    assertThat(BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compileDebugKotlin")))
+      .isEqualTo(17)
+  }
+
+  @Test
+  fun `detectKotlinJvmTarget falls back to kotlin extension when candidate task has no explicit target`() {
+    val project = org.gradle.testfixtures.ProjectBuilder.builder().build()
+    project.tasks.register("compileDebugKotlin", FakeKotlinCompileTask::class.java) {
+      // targetProp deliberately left unset
+    }
+    val extTargetProp = project.objects.property(String::class.java).value("JVM_21")
+    project.extensions.add("kotlin", FakeKotlinExtension(extTargetProp))
+
+    assertThat(BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compileDebugKotlin")))
+      .isEqualTo(21)
+  }
+
+  abstract class FakeKotlinCompileTask : org.gradle.api.DefaultTask() {
+    val targetProp = project.objects.property(String::class.java)
+
+    @Suppress("unused")
+    fun getCompilerOptions(): Any =
+      object {
+        @Suppress("unused") fun getJvmTarget() = targetProp
+      }
+  }
+
+  private class FakeKotlinExtension(
+    private val targetProp: org.gradle.api.provider.Property<String>,
+  ) {
+    @Suppress("unused")
+    fun getCompilerOptions(): Any =
+      object {
+        @Suppress("unused") fun getJvmTarget() = targetProp
+      }
+  }
 }
