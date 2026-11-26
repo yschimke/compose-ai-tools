@@ -1,18 +1,80 @@
+diff --git a/AdaptiveJetStream/benchmark/build.gradle.kts b/AdaptiveJetStream/benchmark/build.gradle.kts
+index c032743..6e6ecd6 100644
+--- a/AdaptiveJetStream/benchmark/build.gradle.kts
++++ b/AdaptiveJetStream/benchmark/build.gradle.kts
+@@ -45,7 +45,7 @@ android {
+         buildConfig = true
+     }
+ 
+-    testOptions.managedDevices.devices {
++    testOptions.managedDevices.allDevices {
+         create<ManagedVirtualDevice>("tvApi34") {
+             device = "Television (1080p)"
+             apiLevel = 34
+diff --git a/AdaptiveJetStream/gradle.properties b/AdaptiveJetStream/gradle.properties
+index daa6a8b..f14d3d9 100644
+--- a/AdaptiveJetStream/gradle.properties
++++ b/AdaptiveJetStream/gradle.properties
+@@ -18,3 +18,5 @@ android.useAndroidX=true
+ # Kotlin code style for this project: "official" or "obsolete":
+ kotlin.code.style=official
+ android.experimental.enableScreenshotTest=true
++android.builtInKotlin=false
++android.newDsl=false
 diff --git a/AdaptiveJetStream/gradle/libs.versions.toml b/AdaptiveJetStream/gradle/libs.versions.toml
-index f1b27b2..62a1d0a 100644
+index f1b27b2..67e47ad 100644
 --- a/AdaptiveJetStream/gradle/libs.versions.toml
 +++ b/AdaptiveJetStream/gradle/libs.versions.toml
+@@ -1,6 +1,6 @@
+ [versions]
+ activity-compose = "1.11.0"
+-android-gradle-plugin = "8.13.0"
++android-gradle-plugin = "9.3.1"
+ android-test-plugin = "8.13.0"
+ androidx-baselineprofile = "1.4.1"
+ benchmark-macro-junit4 = "1.4.1"
 @@ -27,8 +27,8 @@ profileinstaller = "1.4.1"
  uiautomator = "2.3.0"
  rules = "1.7.0"
  window = "1.5.0"
 -xr = "1.0.0-alpha07"
 -xr-material3 = "1.0.0-alpha11"
-+xr = "1.0.0-beta02"
-+xr-material3 = "1.0.0-alpha17"
++xr = "1.0.0-rc01"
++xr-material3 = "1.0.0-alpha18"
  screenshot = "0.0.1-alpha13"
  ui-tooling-preview = "1.10.0"
  ui-tooling = "1.10.0"
+diff --git a/AdaptiveJetStream/gradle/wrapper/gradle-wrapper.properties b/AdaptiveJetStream/gradle/wrapper/gradle-wrapper.properties
+index 35a1b01..0be75cd 100644
+--- a/AdaptiveJetStream/gradle/wrapper/gradle-wrapper.properties
++++ b/AdaptiveJetStream/gradle/wrapper/gradle-wrapper.properties
+@@ -1,6 +1,6 @@
+ distributionBase=GRADLE_USER_HOME
+ distributionPath=wrapper/dists
+-distributionUrl=https\://services.gradle.org/distributions/gradle-9.0.0-bin.zip
++distributionUrl=https\://services.gradle.org/distributions/gradle-9.9.1-bin.zip
+ networkTimeout=10000
+ zipStoreBase=GRADLE_USER_HOME
+ zipStorePath=wrapper/dists
+diff --git a/AdaptiveJetStream/jetstream/build.gradle.kts b/AdaptiveJetStream/jetstream/build.gradle.kts
+index 308a774..5ffc2ba 100644
+--- a/AdaptiveJetStream/jetstream/build.gradle.kts
++++ b/AdaptiveJetStream/jetstream/build.gradle.kts
+@@ -39,12 +39,12 @@ kotlin {
+ android {
+     namespace = "com.google.jetstream"
+     // Needed for latest androidx snapshot build
+-    compileSdk = 36
++    compileSdk = 37
+ 
+     defaultConfig {
+         applicationId = "com.google.jetstream"
+         minSdk = 28
+-        targetSdk = 36
++        targetSdk = 37
+         versionCode = 1
+         versionName = "1.0"
+ 
 diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt
 index 40dfcd5..2983d16 100644
 --- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt
@@ -66,7 +128,7 @@ index 40dfcd5..2983d16 100644
              Icon(
                  imageVector = ImageVector.vectorResource(R.drawable.ic_expand_content),
 diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
-index ac01039..579b08f 100644
+index ac01039..f2e20f4 100644
 --- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
 +++ b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
 @@ -16,6 +16,8 @@
@@ -87,15 +149,17 @@ index ac01039..579b08f 100644
  import androidx.compose.ui.Modifier
  import androidx.compose.ui.focus.onFocusChanged
  import androidx.compose.ui.graphics.Color
-@@ -40,14 +42,13 @@ import androidx.compose.ui.unit.dp
+@@ -39,15 +41,14 @@ import androidx.compose.ui.res.vectorResource
+ import androidx.compose.ui.unit.dp
  import androidx.navigation.NavHostController
  import androidx.xr.compose.material3.ExperimentalMaterial3XrApi
- import androidx.xr.compose.material3.NavigationRail
+-import androidx.xr.compose.material3.NavigationRail
 -import androidx.xr.compose.platform.LocalSpatialConfiguration
 -import androidx.xr.compose.platform.SpatialConfiguration
 -import androidx.xr.compose.spatial.ApplicationSubspace
 -import androidx.xr.compose.subspace.MovePolicy
 -import androidx.xr.compose.subspace.ResizePolicy
++import androidx.xr.compose.material3.SpatialNavigationRail
 +import androidx.xr.compose.platform.requestHomeSpace
 +import androidx.xr.compose.spatial.Subspace
  import androidx.xr.compose.subspace.SpatialPanel
@@ -153,18 +217,20 @@ index ac01039..579b08f 100644
          onScreenSelected = onScreenSelected
      )
  }
-@@ -165,9 +160,10 @@ private fun NavigationInObiter(
+@@ -165,10 +160,11 @@ private fun NavigationInObiter(
  private fun NavigationRailInObiter(
      screens: List<Screens>,
      currentScreen: Screens,
 -    spatialConfiguration: SpatialConfiguration = LocalSpatialConfiguration.current,
      onScreenSelected: (Screens) -> Unit = {}
  ) {
+-    NavigationRail {
 +    val activity = LocalActivity.current
 +    val coroutineScope = rememberCoroutineScope()
-     NavigationRail {
++    SpatialNavigationRail {
          screens.forEach { screen ->
              val isSelected = screen == currentScreen
+             NavigationRailItem(
 @@ -192,7 +188,11 @@ private fun NavigationRailInObiter(
          }
          NavigationRailItem(
@@ -179,7 +245,7 @@ index ac01039..579b08f 100644
                  Icon(
                      imageVector = ImageVector.vectorResource(R.drawable.ic_collapse_content),
 diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
-index 47f4195..58dc2a4 100644
+index 47f4195..2898a22 100644
 --- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
 +++ b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
 @@ -16,6 +16,7 @@
@@ -207,7 +273,7 @@ index 47f4195..58dc2a4 100644
 +import androidx.xr.compose.platform.requestFullSpace
 +import androidx.xr.compose.platform.requestHomeSpace
  import androidx.xr.compose.spatial.Orbiter
-+import androidx.xr.compose.spatial.OrbiterAnchorPoint
++import androidx.xr.compose.spatial.OrbiterPosition
  import androidx.xr.compose.spatial.Subspace
  import androidx.xr.compose.subspace.SpatialExternalSurface
  import androidx.xr.compose.subspace.SpatialPanel
@@ -254,14 +320,15 @@ index 47f4195..58dc2a4 100644
                          }
                      }
                  }
-@@ -529,8 +538,8 @@ private fun SpatialVideoPlayerControls(
+@@ -529,8 +538,9 @@ private fun SpatialVideoPlayerControls(
          videoPlayerState.isControlsVisible
      ) {
          Orbiter(
 -            position = ContentEdge.Bottom,
 -            offset = 200.dp
-+            anchorPoint = OrbiterAnchorPoint.Bottom,
-+            offset = DpVolumeOffset(y = (-200).dp)
++            position = OrbiterPosition.BottomCenter(
++                offset = DpVolumeOffset(y = (-200).dp)
++            )
          ) {
              Box(
                  modifier = Modifier
