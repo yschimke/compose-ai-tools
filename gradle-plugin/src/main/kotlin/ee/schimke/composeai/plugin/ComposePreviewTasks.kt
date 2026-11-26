@@ -1217,6 +1217,8 @@ internal object ComposePreviewTasks {
         },
       ineligibilityReason = detectStageTwoIneligibility(project),
       kotlinPluginConfigurationName = "kotlinCompilerPluginClasspathMain",
+      jvmTarget =
+        detectDesktopBytecodeMajor(project)?.let(BytecodeTargetDetector::formatKotlinJvmTarget),
     )
   }
 
@@ -1237,6 +1239,7 @@ internal object ComposePreviewTasks {
     icWorkingDirProvider: org.gradle.api.provider.Provider<String>,
     ineligibilityReason: String?,
     kotlinPluginConfigurationName: String? = null,
+    jvmTarget: String? = null,
   ) {
     val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
     val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
@@ -1255,6 +1258,7 @@ internal object ComposePreviewTasks {
     task.btaModuleName.set(moduleName)
     task.btaOutputDir.set(outputDirProvider)
     task.btaIcWorkingDir.set(icWorkingDirProvider)
+    jvmTarget?.takeIf { it.isNotBlank() }?.let { task.btaJvmTarget.set(it) }
     // A plugin the daemon cannot configure (one that takes options, or one it does not know) keeps
     // the module on the Gradle compile, which applies it.
     task.btaIneligibilityReason.set(
@@ -1288,6 +1292,10 @@ internal object ComposePreviewTasks {
     task.systemProperties.put(
       "composeai.daemon.bta.ineligibilityReason",
       task.btaIneligibilityReason.orElse(""),
+    )
+    task.systemProperties.put(
+      "composeai.daemon.bta.jvmTarget",
+      task.btaJvmTarget.orElse(""),
     )
   }
 

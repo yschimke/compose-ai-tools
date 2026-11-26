@@ -151,6 +151,12 @@ abstract class DaemonBootstrapTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val btaIneligibilityReason: Property<String>
 
+  /**
+   * Module's Kotlin JVM bytecode target (for example `"17"` or `"21"`), passed to both the Build
+   * Tools API compiler and the warm in-process compiler. Absent when unknown.
+   */
+  @get:Input @get:Optional abstract val btaJvmTarget: Property<String>
+
   // -------------------------------------------------------------------------------------------
 
   // --- Source watch -----------------------------------------------------------------------------
@@ -230,6 +236,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
       moduleName = moduleName,
       icWorkingDir = icDir,
       ineligibilityReason = btaIneligibilityReason.orNull,
+      jvmTarget = btaJvmTarget.orNull?.takeIf { it.isNotBlank() },
     )
   }
 

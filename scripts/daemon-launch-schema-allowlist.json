@@ -124,7 +124,7 @@
   },
   "wireFingerprint": {
     "history": {
-      "2": "cb3d94dae18ffd6b"
+      "2": "404e41007c37e724"
     },
     "why": "The shape of the descriptor AS EMITTED, recorded per schema version: the writer's DTO, the DTOs it nests, and the reader-only fields a registered writer actually puts on the wire (serve's jailCommand / hardTtlSeconds). A version's entry is IMMUTABLE once written \u2014 changing the shape means adding a version, not refreshing this one. An amendment made anyway, because a bump would be the more breaking change, is recorded under `amendments` with the old and new digest and the reasoning.",
     "amendments": {
@@ -134,6 +134,12 @@
           "to": "cb3d94dae18ffd6b",
           "pr": "compose-ai-tools#6184",
           "why": "Added the optional `sourceWatch` block (and its `SourceWatch` DTO) without a version bump, deliberately. Every released v2 reader ignores unknown keys: VS Code's daemonProcess.ts, the contracts DaemonLaunchDescriptor, doctor, render sessions. The one strict reader, DaemonLaunchBuilder.decode (the CLI's Bazel keep-daemon path), never sees the key from an older-shaped build because a null `sourceWatch` is omitted, and is made tolerant in the same PR. A v3 bump instead would make every released VS Code extension, which accepts only v2, reject every descriptor."
+        },
+        {
+          "from": "cb3d94dae18ffd6b",
+          "to": "404e41007c37e724",
+          "issue": "compose-preview-daemon#505",
+          "why": "Added the optional `BtaCompileConfig.jvmTarget` field with `@EncodeDefault(EncodeDefault.Mode.NEVER)` without a schema version bump. Every released v2 reader ignores unknown keys (VS Code daemonProcess.ts, contracts DaemonLaunchDescriptor, DaemonLaunchBuilder.decode, doctor), and a null value is omitted on the wire. A v3 bump instead would break every released VS Code extension."
         }
       ]
     }

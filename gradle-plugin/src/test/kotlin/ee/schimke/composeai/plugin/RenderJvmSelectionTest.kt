@@ -71,4 +71,30 @@ class RenderJvmSelectionTest {
     assertThat(BytecodeTargetDetector.parseTargetMajor("")).isNull()
     assertThat(BytecodeTargetDetector.parseTargetMajor("nope")).isNull()
   }
+
+  @Test
+  fun `formatKotlinJvmTarget formats 8 as 1_8 and 9+ as digits`() {
+    assertThat(BytecodeTargetDetector.formatKotlinJvmTarget(8)).isEqualTo("1.8")
+    assertThat(BytecodeTargetDetector.formatKotlinJvmTarget(11)).isEqualTo("11")
+    assertThat(BytecodeTargetDetector.formatKotlinJvmTarget(17)).isEqualTo("17")
+    assertThat(BytecodeTargetDetector.formatKotlinJvmTarget(21)).isEqualTo("21")
+  }
+
+  @Test
+  fun `detectKotlinJvmTarget falls back to the project kotlin extension compilerOptions`() {
+    val project = org.gradle.testfixtures.ProjectBuilder.builder().build()
+    val jvmTargetProp = project.objects.property(String::class.java).value("JVM_21")
+    val compilerOptions =
+      object {
+        @Suppress("unused") fun getJvmTarget() = jvmTargetProp
+      }
+    val kotlinExtension =
+      object {
+        @Suppress("unused") fun getCompilerOptions() = compilerOptions
+      }
+    project.extensions.add("kotlin", kotlinExtension)
+
+    assertThat(BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compileDebugKotlin")))
+      .isEqualTo(21)
+  }
 }

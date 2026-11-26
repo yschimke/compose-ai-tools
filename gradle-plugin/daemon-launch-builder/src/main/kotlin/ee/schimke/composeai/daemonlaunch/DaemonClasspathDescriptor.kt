@@ -115,6 +115,15 @@ public data class BtaCompileConfig(
    * fallback reason.
    */
   public val ineligibilityReason: String? = null,
+  /**
+   * Module's Kotlin JVM bytecode target (for example `"17"` or `"21"`), passed to both the Build
+   * Tools API compiler and the warm in-process compiler. `null` when unknown, in which case the
+   * daemon falls back to JVM 17. Omitted on the wire when `null` so descriptors without a target
+   * stay byte-identical for older readers.
+   */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
+  public val jvmTarget: String? = null,
 )
 
 /**
