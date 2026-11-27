@@ -147,6 +147,10 @@ public final class Session {
     this.app = app;
     this.ui = ui;
     this.protocol = protocol;
+    SimulatorHooks.setSystemKeyHandler(Session::systemKey);
+    SimulatorHooks.setWearKeyInterceptor(WearSystemUi::intercepts);
+    SimulatorHooks.setCycleNowHandler(Session::cycleNow);
+    SimulatorHooks.setShellHandler(Session::shell);
     this.navigator = new Navigator(app, protocol);
     this.display = new DeviceDisplay(app, navigator);
     this.device = new Device(app, navigator, display);
