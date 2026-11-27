@@ -64,6 +64,8 @@ public final class Session {
   private final NotificationStream notifications;
   /** The Wear system UI ({@code --launcher}), or null. */
   private final WearSystemUi wear;
+  /** The Wear global status bar ({@code --global-status-bar}), or null outside Wear. */
+  private final WearStatusBar wearStatusBar;
   /** On, ambient or off, and the gestures between them. */
   private final ScreenPower screen;
   private final WidgetHost widgets;
@@ -152,6 +154,7 @@ public final class Session {
     this.displays = new Displays(app, navigator, protocol);
     this.notifications = new NotificationStream(app, navigator, protocol);
     this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
+    this.wearStatusBar = WearStatusBar.create(app, wear);
     this.screen = new ScreenPower(app, navigator, protocol, wear);
     this.widgets = new WidgetHost(app, navigator, protocol);
     // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
@@ -240,6 +243,7 @@ public final class Session {
   void start() {
     displays.start();
     screen.start();
+    if (wearStatusBar != null) wearStatusBar.start();
     if (wear != null) wear.start();
     if (wear == null && FormFactor.current() == FormFactor.PHONE) {
       Displays.edgeBack =
@@ -306,6 +310,10 @@ public final class Session {
     notifications.cycle();
     LayoutBounds.cycle();
     if (wear != null) wear.cycle();
+    if (wearStatusBar != null) {
+      wearStatusBar.ambient(screen.dark());
+      wearStatusBar.cycle();
+    }
     if (phoneUi != null) phoneUi.cycle();
     // A clock that redraws on TIME_TICK (Wear Compose's TimeText) moves with the simulated clock.
     if (timeTick.due(WatchState.currentTimeMillis())) {
@@ -515,6 +523,7 @@ public final class Session {
     if (emulated == null) emulated = displays.command(name, c);
     if (emulated == null) emulated = screen.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
+    if (emulated == null && wearStatusBar != null) emulated = wearStatusBar.command(name, c);
     if (emulated == null && WatchState.current() != null) {
       switch (name) {
         case "clock":

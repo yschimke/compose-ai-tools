@@ -395,6 +395,7 @@ class LaunchCommandTest {
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.device") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.displays") })
     assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.launcher") })
+    assertFalse(command.any { it.startsWith("-Dcomposeai.simulator.globalStatusBar") })
   }
 
   @Test
@@ -421,6 +422,33 @@ class LaunchCommandTest {
       )
     assertTrue("-Dcomposeai.simulator.launcher=true" in command)
     assertTrue("-Dcomposeai.simulator.tiles=.StatusTile,com.example.WeatherTile" in command)
+  }
+
+  @Test
+  fun `the Wear global status bar flag becomes a system property`() {
+    val command =
+      AndroidSimulatorCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("wear.apk"),
+        classes = emptyList(),
+        options =
+          AndroidSimulatorCommand.Options(
+            sdk = AndroidSimulatorCommand.GLOBAL_STATUS_BAR_MIN_SDK,
+            qualifiers = ApkFormFactor.WEAR.qualifiers,
+            formFactor = ApkFormFactor.WEAR.id,
+            globalStatusBar = true,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Drobolectric.deviceconfig.sdk=37" in command)
+    assertTrue("-Dcomposeai.simulator.formFactor=wear" in command)
+    assertTrue("-Dcomposeai.simulator.globalStatusBar=true" in command)
   }
 
   @Test
@@ -845,6 +873,7 @@ class LaunchCommandTest {
         sdk = 36,
         qualifiers = ApkFormFactor.PHONE.qualifiers,
         formFactor = ApkFormFactor.PHONE.id,
+        globalStatusBar = true,
         fontScale = null,
         headless = true,
         control = true,
@@ -874,11 +903,13 @@ class LaunchCommandTest {
       )
     assertFalse(phoneOptions.noLaunch)
     assertFalse(phoneOptions.launcher)
+    assertFalse(phoneOptions.globalStatusBar)
     assertNull(phoneOptions.watchface)
     assertTrue(phoneOptions.tiles.isEmpty())
 
     assertTrue(watchOptions.noLaunch)
     assertTrue(watchOptions.launcher)
+    assertTrue(watchOptions.globalStatusBar)
     assertEquals("com.example.watch/.AnalogFace", watchOptions.watchface)
     assertEquals(listOf(".WeatherTile"), watchOptions.tiles)
   }
