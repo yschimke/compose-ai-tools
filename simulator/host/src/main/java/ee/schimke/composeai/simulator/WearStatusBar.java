@@ -169,12 +169,14 @@ final class WearStatusBar {
     setSystemProperty(GLOBAL_STATUS_BAR_SYSPROP, "true");
     insets = PhoneSystemUi.robolectricStatusBar();
     height = statusBarHeight();
+    int overlayHeight =
+        Math.max(height, Math.round(48f * context.getResources().getDisplayMetrics().density));
     bar = new WearStatusBarView(context);
     PhoneSystemUi.simId(bar, "status_bar");
     barParams =
         new WindowManager.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            height,
+            overlayHeight,
             WindowManager.LayoutParams.TYPE_STATUS_BAR,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -426,18 +428,30 @@ final class WearStatusBar {
     }
   }
 
-  /** 12 o'clock Wear OS 8 system status bar overlay: translucent pill backplate, time, and icon. */
+  /** 12 o'clock Wear OS 8 system status bar overlay: curved arc backplate, time, and icon. */
   private final class WearStatusBarView extends View {
     String time = "";
     Indicator indicator;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF pill = new RectF();
+    private final RectF arcRect = new RectF();
     private final Path path = new Path();
+    private final Path textPath = new Path();
 
     WearStatusBarView(Context context) {
       super(context);
       setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+    }
+
+    private Typeface resolveStatusBarTypeface() {
+      Typeface fallback = Typeface.DEFAULT;
+      for (String family : new String[] {"google-sans-flex", "roboto-flex"}) {
+        Typeface candidate = Typeface.create(family, Typeface.NORMAL);
+        if (candidate != null && !candidate.equals(fallback)) {
+          return Typeface.create(candidate, 600, false);
+        }
+      }
+      return Typeface.create("sans-serif-medium", Typeface.NORMAL);
     }
 
     @Override
@@ -446,38 +460,72 @@ final class WearStatusBar {
       float h = getHeight();
       if (w <= 0 || h <= 0) return;
 
-      float density = getResources().getDisplayMetrics().density;
-      paint.setStyle(Paint.Style.FILL);
-      paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-      paint.setTextSize(
-          TypedValue.applyDimension(
-              TypedValue.COMPLEX_UNIT_SP, 12.5f, getResources().getDisplayMetrics()));
-      float textWidth = paint.measureText(time);
-      float iconSize = indicator != null ? 11f * density : 0f;
-      float gap = indicator != null ? 4f * density : 0f;
-      float padH = 8f * density;
-      float padV = 2f * density;
-      float contentWidth = iconSize + gap + textWidth;
-      float pillWidth = contentWidth + padH * 2f;
-      float pillHeight = Math.min(h - padV * 2f, 18f * density);
+      android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+      float density = dm.density;
+      float screenH = Math.max(dm.heightPixels, w);
       float cx = w / 2f;
-      float cy = h / 2f;
+      float cy = screenH / 2f;
+      float screenRadius = Math.min(w, screenH) / 2f;
+      float trackRadius = Math.max(16f, screenRadius - 13f * density);
 
-      pill.set(cx - pillWidth / 2f, cy - pillHeight / 2f, cx + pillWidth / 2f, cy + pillHeight / 2f);
-      paint.setColor(0xCC000000);
-      canvas.drawRoundRect(pill, pillHeight / 2f, pillHeight / 2f, paint);
+      paint.reset();
+      paint.setAntiAlias(true);
+      paint.setTypeface(resolveStatusBarTypeface());
+      paint.setFontVariationSettings("'wght' 600, 'wdth' 100");
+      paint.setLetterSpacing(0.04f);
+      paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 15f, dm));
+      paint.setTextAlign(Paint.Align.CENTER);
 
-      float x = cx - contentWidth / 2f;
+      float textWidth = paint.measureText(time);
+      Paint.FontMetrics fm = paint.getFontMetrics();
+      float baselineOffset = -(fm.ascent + fm.descent) / 2f;
+      float iconSize = indicator != null ? 13f * density : 0f;
+      float gap = indicator != null ? 4f * density : 0f;
+      float pad = 8f * density;
+
+      float totalArcPx = indicator != null ? iconSize + gap + textWidth : textWidth;
+      float totalSweepDeg = (float) Math.toDegrees(totalArcPx / trackRadius);
+      float backplatePadDeg = (float) Math.toDegrees(pad / trackRadius);
+      float backplateSweep = Math.max(12f, Math.min(120f, totalSweepDeg + backplatePadDeg * 2f));
+      float backplateStart = -90f - backplateSweep / 2f;
+
+      arcRect.set(cx - trackRadius, cy - trackRadius, cx + trackRadius, cy + trackRadius);
+
+      // Subtle dark curved backplate: blends into black Wear screens while keeping text legible
+      // over scrolled content.
+      paint.setStyle(Paint.Style.STROKE);
+      paint.setStrokeWidth(20f * density);
+      paint.setStrokeCap(Paint.Cap.ROUND);
+      paint.setColor(0xB8000000);
+      canvas.drawArc(arcRect, backplateStart, backplateSweep, false, paint);
+
+      float groupStartDeg = -90f - totalSweepDeg / 2f;
+      float textCenterDeg = -90f;
       if (indicator != null) {
-        drawIndicator(canvas, indicator, x, cy - iconSize / 2f, iconSize, density);
-        x += iconSize + gap;
+        float iconHalfDeg = (float) Math.toDegrees((iconSize / 2f) / trackRadius);
+        float iconCenterDeg = groupStartDeg + iconHalfDeg;
+        double rad = Math.toRadians(iconCenterDeg);
+        float iconX = cx + (float) (trackRadius * Math.cos(rad));
+        float iconY = cy + (float) (trackRadius * Math.sin(rad));
+
+        canvas.save();
+        canvas.translate(iconX, iconY);
+        canvas.rotate(iconCenterDeg + 90f);
+        drawIndicator(canvas, indicator, -iconSize / 2f, -iconSize / 2f, iconSize, density);
+        canvas.restore();
+
+        float iconAndGapDeg = (float) Math.toDegrees((iconSize + gap) / trackRadius);
+        float textHalfDeg = (float) Math.toDegrees((textWidth / 2f) / trackRadius);
+        textCenterDeg = groupStartDeg + iconAndGapDeg + textHalfDeg;
       }
 
       paint.setStyle(Paint.Style.FILL);
       paint.setColor(Color.WHITE);
-      Paint.FontMetrics fm = paint.getFontMetrics();
-      float baseline = cy - (fm.ascent + fm.descent) / 2f;
-      canvas.drawText(time, x, baseline, paint);
+      float textArcSweep = Math.max(8f, (float) Math.toDegrees(textWidth / trackRadius)) + 20f;
+      float textArcStart = textCenterDeg - textArcSweep / 2f;
+      textPath.reset();
+      textPath.addArc(arcRect, textArcStart, textArcSweep);
+      canvas.drawTextOnPath(time, textPath, 0f, baselineOffset, paint);
     }
 
     private void drawIndicator(
