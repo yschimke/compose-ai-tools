@@ -1181,6 +1181,32 @@ launcher or not, and the `notification` command acts on one by `key` (its id, or
 app's own library and shown as the face's chip and the launcher's first rows, their `Status` timers
 on the simulator clock.
 
+**Global system status bar (`--global-status-bar`).** Matches the Wear OS 7.1 Canary (API 37.2)
+system status bar contract that Wear Compose Material 3 1.8 (`AppScaffold` / `ScreenScaffold`)
+integrates with:
+
+- Pass `--global-status-bar` on a Wear launch (defaults `--sdk` to `37`, reporting Wear API
+  `WEAR_CINNAMON_BUN_2` via `com.google.wear.Sdk.VERSION_CODES.lookup` / `Sdk.isApiVersionAtLeast`).
+  Without `--global-status-bar`, API 37 reports `WEAR_CINNAMON_BUN_1` (Wear OS 7.1 stable) and keeps
+  the status bar off.
+- Activates only when the app targets API 35+ (`targetSdkVersion >= 35`) and declares
+  `<meta-data android:name="com.google.wear.ENABLE_GLOBAL_STATUS_BAR" android:value="true" />`
+  (merged automatically by `androidx.wear.compose:compose-material3:1.8.0-alpha02+`, or added
+  explicitly by View-based apps). `com.google.wear.settings.WearSettings.isStatusBarEnabled(context)`
+  enforces all three checks so non-opted-in and legacy apps keep their in-app `TimeText`.
+- When active, supplies top `WindowInsets.Type.statusBars()` insets (including
+  `statusBarsIgnoringVisibility`), renders the 12 o'clock time + single priority status indicator
+  pill (`sim:id/status_bar`), and tracks `WindowInsetsController.hide/show(statusBars())` so
+  scroll-away, `Modifier.suppressStatusBar()`, dialogs, pickers and steppers hide and restore it.
+- The `statusBar` control command reports `enabled`, `platformEnabled`, `appOptIn`, `targetSdk`,
+  `wearApiVersion`, `visible`, `heightPx`, `time`, `indicator`, and active mode/privacy flags
+  (`microphone`, `location`, `airplane`, `dnd`, `bedtime`, `theater`, `batterySaver`), and accepts
+  optional boolean fields (`microphone`, `location`, `dnd`, `bedtime`, `theater`) to toggle them.
+  At most one icon is shown at a time by priority: `microphone` > `location` > `airplane` > `dnd` >
+  `bedtime` > `theater` > `batterySaver` > `charging` > `lowBattery` > `offline`.
+
+![Wear OS global status bar: fallback, active, modes, suppression, scroll-away, and custom TimeText](design/evidence/simulator-launch/wear-global-status-bar.png)
+
 **The carousel** holds what the agent adds (`tiles op:add`, `--tile`, or the carousel's own add
 page): each tile is a whole page, and the Wear Widgets share one page, a scrolling list whose items
 shrink and fade toward the round screen's edges as a `TransformingLazyColumn`'s do. Tiles are

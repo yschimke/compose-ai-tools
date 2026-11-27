@@ -177,6 +177,11 @@ final class ScreenPower {
     }
   }
 
+  /** Whether the screen is actively interactive ({@link ScreenPolicy.State#ON}). */
+  boolean interactive() {
+    return policy.state() == ScreenPolicy.State.ON;
+  }
+
   String state() {
     return policy.state().id();
   }

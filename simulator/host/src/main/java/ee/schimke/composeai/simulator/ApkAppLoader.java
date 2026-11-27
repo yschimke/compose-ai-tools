@@ -122,6 +122,15 @@ public final class ApkAppLoader implements Runnable {
     manifest.getAppComponentFactory(); // Parses the APK, if setup did not: its target SDK.
 
     Application application = RuntimeEnvironment.getApplication();
+    if (Permissions.apkTargetSdk > 0) {
+      application.getApplicationInfo().targetSdkVersion = Permissions.apkTargetSdk;
+      ShadowPackageManager shadowPm = Shadow.extract(application.getPackageManager());
+      android.content.pm.PackageInfo pkgInfo =
+          shadowPm.getInternalMutablePackageInfo(application.getPackageName());
+      if (pkgInfo != null && pkgInfo.applicationInfo != null) {
+        pkgInfo.applicationInfo.targetSdkVersion = Permissions.apkTargetSdk;
+      }
+    }
     BackOptIn.apply(application);
     ActivityInfo info = firstActivity(application);
     String name = info.targetActivity != null ? info.targetActivity : info.name;

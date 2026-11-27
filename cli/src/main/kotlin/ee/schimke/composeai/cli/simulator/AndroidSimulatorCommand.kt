@@ -442,7 +442,17 @@ internal class AndroidSimulatorCommand(
         ?.takeIf { it.isNotBlank() }
         ?.let { put("composeai.simulator.dwfSkikoDir", it) }
     }
-    val defaultSdk = maxOf(AndroidBundleLaunch.DEFAULT_SDK, detected.minSdkVersion ?: 0)
+    val globalStatusBar = "--global-status-bar" in args
+    val hasPairedWatch = pair != null || appSpecs.any { LaunchTopology.isWatch(it.device) }
+    if (globalStatusBar && formFactor != ApkFormFactor.WEAR && !hasPairedWatch) {
+      fail("--global-status-bar is only supported on Wear OS (--form-factor wear)")
+    }
+    val defaultSdk =
+      maxOf(
+        AndroidBundleLaunch.DEFAULT_SDK,
+        detected.minSdkVersion ?: 0,
+        if (globalStatusBar) GLOBAL_STATUS_BAR_MIN_SDK else 0,
+      )
     args.flagValue("--sdk")?.let { value ->
       val requested = value.toIntOrNull() ?: fail("--sdk takes an API level, e.g. 35")
       if (requested !in SIMULATOR_MIN_SDK..AndroidBundleLaunch.MAX_SDK) {
@@ -454,6 +464,12 @@ internal class AndroidSimulatorCommand(
         if (instrumentApk != null) writeInstrumentError(args.flagValue("--test-json"), reason)
         fail(reason)
       }
+      if (globalStatusBar && requested < GLOBAL_STATUS_BAR_MIN_SDK) {
+        fail(
+          "--global-status-bar requires --sdk $GLOBAL_STATUS_BAR_MIN_SDK " +
+            "(Wear OS 7.1 Canary, API 37.2); --sdk $requested is too old",
+        )
+      }
     }
     val options =
       Options(
@@ -464,6 +480,7 @@ internal class AndroidSimulatorCommand(
           ),
         qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
         formFactor = formFactor.id,
+        globalStatusBar = globalStatusBar,
         launchActivity = launchActivity,
         device = device,
         network = network,
@@ -1184,6 +1201,8 @@ internal class AndroidSimulatorCommand(
      * [ApkFormFactor.id]; `info` reports it. A display with the `round` qualifier is drawn round.
      */
     val formFactor: String = ApkFormFactor.PHONE.id,
+    /** Wear OS 7.1 Canary global system status bar (`--global-status-bar`, API 37.2). */
+    val globalStatusBar: Boolean = false,
     /** The activity to start instead of the launcher: a Glimmer app's projected activity. */
     val launchActivity: String? = null,
     val fontScale: String?,
@@ -1537,6 +1556,9 @@ internal class AndroidSimulatorCommand(
      */
     const val SIMULATOR_MIN_SDK = 33
 
+    /** Minimum Android API level for Wear OS 7.1 Canary global status bar (API 37.2). */
+    const val GLOBAL_STATUS_BAR_MIN_SDK = 37
+
     /** The fingerprint an `--instrument` run reports: an emulator image's, not Robolectric's. */
     const val TEST_FINGERPRINT =
       "google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.036/10874431:userdebug/dev-keys"
@@ -1772,6 +1794,7 @@ internal class AndroidSimulatorCommand(
       if (!options.installProviders) properties["composeai.simulator.skipProviders"] = "true"
       if (!options.showAgent) properties["composeai.simulator.showAgent"] = "false"
       if (options.launcher) properties["composeai.simulator.launcher"] = "true"
+      if (options.globalStatusBar) properties["composeai.simulator.globalStatusBar"] = "true"
       if (options.noLaunch) properties["composeai.simulator.noLaunch"] = "true"
       if (options.tiles.isNotEmpty()) {
         properties["composeai.simulator.tiles"] = options.tiles.joinToString(",")
@@ -1825,7 +1848,13 @@ internal class AndroidSimulatorCommand(
             widgets = emptyList(),
           )
       } else if (hasWatch && !watch) {
-        own = own.copy(tiles = emptyList(), watchface = null, wffApks = emptyList())
+        own =
+          own.copy(
+            globalStatusBar = false,
+            tiles = emptyList(),
+            watchface = null,
+            wffApks = emptyList(),
+          )
       }
       if (watch && own.watchface != null) {
         own = own.copy(launcher = true, noLaunch = true)
@@ -1941,6 +1970,9 @@ internal class AndroidSimulatorCommand(
         --theme-from-watchface, --no-theme-from-watchface
                               Apply Material 3 dynamic system colors derived from the active
                               Wear watch face to Tiles, Glance widgets, and apps (default: on).
+        --global-status-bar   Wear: enable the Wear OS 7.1 Canary global system status bar
+                              (API 37.2, defaults --sdk to 37). Only activates for apps targeting
+                              API 35+ with com.google.wear.ENABLE_GLOBAL_STATUS_BAR=true.
         --scenario <file>     Run a declarative JSON/YAML scenario over the simulator control
                               channel, write snapshots + report.json, and exit 0/2.
         --report-dir <dir>    Output directory for --scenario snapshots and report.json.

@@ -436,7 +436,7 @@ public final class Displays {
     }
 
     boolean visible() {
-      return view.getWidth() > 0 && view.getHeight() > 0;
+      return view.getVisibility() == View.VISIBLE && view.getWidth() > 0 && view.getHeight() > 0;
     }
 
     boolean inside(MotionEvent event) {
@@ -615,17 +615,23 @@ public final class Displays {
     Surface surface = ReflectionHelpers.getField(root.impl, "mSurface");
     boolean traversals =
         ReflectionHelpers.callStaticMethod(ShadowView.class, "areRealDrawTraversalsEnabled");
-    if (traversals && surface != null) {
+    if (traversals && surface != null && surface.isValid()) {
       int[] xy = new int[2];
       root.view.getLocationInSurface(xy);
       Rect bounds =
           new Rect(xy[0], xy[1], xy[0] + root.view.getWidth(), xy[1] + root.view.getHeight());
-      ReflectionHelpers.callStaticMethod(
-          ShadowPixelCopy.class,
-          "captureImageFromSurface",
-          ClassParameter.from(Surface.class, surface),
-          ClassParameter.from(Bitmap.class, bitmap),
-          ClassParameter.from(Rect.class, bounds));
+      try {
+        ReflectionHelpers.callStaticMethod(
+            ShadowPixelCopy.class,
+            "captureImageFromSurface",
+            ClassParameter.from(Surface.class, surface),
+            ClassParameter.from(Bitmap.class, bitmap),
+            ClassParameter.from(Rect.class, bounds));
+      } catch (RuntimeException e) {
+        // An invisible/relayouting window's Surface can transiently have a null ImageReader
+        // right after a WindowInsetsController.hide/show transition; draw the view directly.
+        root.view.draw(new Canvas(bitmap));
+      }
     } else {
       root.view.draw(new Canvas(bitmap));
     }
