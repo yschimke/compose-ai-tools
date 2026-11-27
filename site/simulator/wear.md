@@ -159,6 +159,21 @@ status, then writes `report.json` and exits `2` on failure.
 
 ![Stream, expanded card, reply choices, reply delivered, heads-up]({{ ev }}/wear-notifications.png)
 
+## Wear Health Services
+
+`ExerciseClient`, `MeasureClient`, `PassiveMonitoringClient`, `HealthServicesClient` and
+`VersionApiService` are installed as real bindable AIDL services under
+`com.google.android.wearable.healthservices`, so apps run their unmodified
+`androidx.health:health-services-client` IPC paths.
+
+- `health` updates heart rate (with accuracy), daily steps, calories, distance and floors across
+  `SensorManager`, watch faces, tiles, widgets, `MeasureClient`, `PassiveMonitoringClient` (including
+  `PassiveGoal` evaluation) and active exercises.
+- `whs` drives the full exercise and sensor lifecycle: `exerciseUpdate`, `availability`
+  (`LOCATION`, `HEART_RATE_BPM`, …), `autoPause` / `autoResume` / `endExercise`,
+  `otherAppExercise`, `healthEvent` (`FALL_DETECTED`, `LOW_HR_DETECTED`, `ELEVATED_HR_DETECTED`),
+  `userActivity`, `permissionLost` and `capabilities` overrides.
+
 ## Data Layer pairing
 
 `--pair <watch.apk>` runs the watch app in a second simulator and connects the

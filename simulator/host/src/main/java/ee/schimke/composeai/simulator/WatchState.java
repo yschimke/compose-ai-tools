@@ -460,6 +460,10 @@ final class WatchState {
     return systemData == null ? 72f : systemData.heartRate();
   }
 
+  int heartRateAccuracyCode() {
+    return systemData == null ? 3 : systemData.heartRateAccuracyCode();
+  }
+
   int steps() {
     return systemData == null ? 4200 : systemData.steps();
   }

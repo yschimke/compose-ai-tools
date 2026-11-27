@@ -66,6 +66,8 @@ public final class Session {
   private final WearSystemUi wear;
   /** The Wear global status bar ({@code --global-status-bar}), or null outside Wear. */
   private final WearStatusBar wearStatusBar;
+  /** Health metrics holder when {@link #wear} is absent (standalone Wear app without --launcher). */
+  private final SystemData fallbackSystemData;
   /** On, ambient or off, and the gestures between them. */
   private final ScreenPower screen;
   private final WidgetHost widgets;
@@ -155,6 +157,12 @@ public final class Session {
     this.notifications = new NotificationStream(app, navigator, protocol);
     this.wear = WearSystemUi.create(app, navigator, protocol, notifications);
     this.wearStatusBar = WearStatusBar.create(app, wear);
+    if (this.wear == null && WatchState.current() == null) {
+      this.fallbackSystemData = new SystemData(app);
+      new WatchState(app, navigator, this.fallbackSystemData);
+    } else {
+      this.fallbackSystemData = null;
+    }
     this.screen = new ScreenPower(app, navigator, protocol, wear);
     this.widgets = new WidgetHost(app, navigator, protocol);
     // --launcher is the Wear system UI on a watch, the phone home screen everywhere else.
@@ -524,6 +532,12 @@ public final class Session {
     if (emulated == null) emulated = screen.command(name, c);
     if (emulated == null && wear != null) emulated = wear.command(name, c);
     if (emulated == null && wearStatusBar != null) emulated = wearStatusBar.command(name, c);
+    if (emulated == null && "whs".equals(name) && WearHealthServices.current() != null) {
+      emulated = WearHealthServices.current().command(c);
+    }
+    if (emulated == null && "health".equals(name) && fallbackSystemData != null) {
+      emulated = fallbackSystemData.command(c);
+    }
     if (emulated == null && WatchState.current() != null) {
       switch (name) {
         case "clock":
