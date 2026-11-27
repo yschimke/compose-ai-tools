@@ -1238,9 +1238,7 @@ final class WearHealthServices {
     private int endReason = HealthProto.EXERCISE_END_REASON_UNKNOWN;
     private HealthProto.ParsedExerciseConfig config;
     private Set<String> warmUpDataTypes = new LinkedHashSet<>();
-    private final List<HealthProto.ParsedExerciseGoal> activeGoals = new ArrayList<>();
-    private final Set<Integer> achievedOneTimeGoalIndices = new HashSet<>();
-    private final Map<Integer, Integer> milestoneCounts = new HashMap<>();
+    private final List<TrackedGoal> activeGoals = new ArrayList<>();
 
     // Timing
     private long startTimeEpochMs;
@@ -1262,6 +1260,7 @@ final class WearHealthServices {
     private double exerciseElevationGain;
     private double exerciseElevationLoss;
     private final StatsAccumulator hrStats = new StatsAccumulator();
+    private final StatsAccumulator lapHrStats = new StatsAccumulator();
     private final StatsAccumulator speedStats = new StatsAccumulator();
     private final StatsAccumulator paceStats = new StatsAccumulator();
     private final StatsAccumulator elevationStats = new StatsAccumulator();
@@ -1285,8 +1284,6 @@ final class WearHealthServices {
       config = null;
       warmUpDataTypes.clear();
       activeGoals.clear();
-      achievedOneTimeGoalIndices.clear();
-      milestoneCounts.clear();
       startTimeEpochMs = 0L;
       accumulatedActiveDurationMs = 0L;
       lastResumedEpochMs = 0L;
@@ -1299,6 +1296,7 @@ final class WearHealthServices {
       exerciseElevationGain = 0.0;
       exerciseElevationLoss = 0.0;
       hrStats.reset();
+      lapHrStats.reset();
       speedStats.reset();
       paceStats.reset();
       elevationStats.reset();
@@ -1503,9 +1501,9 @@ final class WearHealthServices {
             if (goal != null) {
               synchronized (this) {
                 if (code == EX_ADD_GOAL) {
-                  activeGoals.add(goal);
+                  activeGoals.add(new TrackedGoal(goal));
                 } else {
-                  activeGoals.removeIf(g -> Arrays.equals(g.rawBytes, goal.rawBytes));
+                  activeGoals.removeIf(g -> Arrays.equals(g.goal.rawBytes, goal.rawBytes));
                 }
               }
             }
@@ -1582,9 +1580,9 @@ final class WearHealthServices {
       exerciseState = HealthProto.EXERCISE_STATE_ACTIVE;
       endReason = HealthProto.EXERCISE_END_REASON_UNKNOWN;
       activeGoals.clear();
-      activeGoals.addAll(cfg.exerciseGoals);
-      achievedOneTimeGoalIndices.clear();
-      milestoneCounts.clear();
+      for (HealthProto.ParsedExerciseGoal g : cfg.exerciseGoals) {
+        activeGoals.add(new TrackedGoal(g));
+      }
       lastAchievedGoalProtos.clear();
       startTimeEpochMs = now;
       accumulatedActiveDurationMs = 0L;
@@ -1602,8 +1600,11 @@ final class WearHealthServices {
       exerciseFloors = 0.0;
       exerciseElevationGain = 0.0;
       exerciseElevationLoss = 0.0;
+      double initialHr = currentHeartRate();
       hrStats.reset();
-      hrStats.record(currentHeartRate());
+      hrStats.record(initialHr);
+      lapHrStats.reset();
+      lapHrStats.record(initialHr);
       speedStats.reset();
       speedStats.record(speedMps);
       paceStats.reset();
@@ -1678,14 +1679,14 @@ final class WearHealthServices {
           HealthProto.STEPS_TOTAL,
           HealthProto.cumulativeAggregateDataPoint(
               HealthProto.STEPS_TOTAL, HealthProto.valueLong(lapStp), lapStartEpochMs, now));
-      if (hrStats.count > 0) {
+      if (lapHrStats.count > 0) {
         lapMetrics.put(
             HealthProto.HEART_RATE_BPM_STATS,
             HealthProto.statisticalAggregateDataPoint(
                 HealthProto.HEART_RATE_BPM_STATS,
-                HealthProto.valueDouble(hrStats.min),
-                HealthProto.valueDouble(hrStats.max),
-                HealthProto.valueDouble(hrStats.avg()),
+                HealthProto.valueDouble(lapHrStats.min),
+                HealthProto.valueDouble(lapHrStats.max),
+                HealthProto.valueDouble(lapHrStats.avg()),
                 lapStartEpochMs,
                 now));
       }
@@ -1699,6 +1700,7 @@ final class WearHealthServices {
       lapStartDistance = exerciseDistance;
       lapStartCalories = exerciseCalories;
       lapStartSteps = exerciseSteps;
+      lapHrStats.reset();
       return event;
     }
 
@@ -1781,7 +1783,9 @@ final class WearHealthServices {
       List<byte[]> achieved;
       synchronized (this) {
         if (exerciseState != HealthProto.EXERCISE_STATE_ACTIVE) return;
-        hrStats.record(currentHeartRate());
+        double hr = currentHeartRate();
+        hrStats.record(hr);
+        lapHrStats.record(hr);
         pkg = ownerPackage;
         achieved = evaluateExerciseGoals();
       }
@@ -1814,11 +1818,9 @@ final class WearHealthServices {
           lastResumedEpochMs = now;
           lastCheckpointEpochMs = now;
         }
-        if (c.has("heartRate")) {
-          hrStats.record(c.getDouble("heartRate"));
-        } else {
-          hrStats.record(currentHeartRate());
-        }
+        double hr = c.has("heartRate") ? c.getDouble("heartRate") : currentHeartRate();
+        hrStats.record(hr);
+        lapHrStats.record(hr);
         if (c.has("speedMps")) speedStats.record(speedMps);
         if (c.has("paceMillisPerKm")) paceStats.record(paceMillisPerKm);
         if (c.has("absoluteElevationMeters")) elevationStats.record(absoluteElevationMeters);
@@ -1885,20 +1887,19 @@ final class WearHealthServices {
 
     private synchronized List<byte[]> evaluateExerciseGoals() {
       List<byte[]> newlyAchieved = new ArrayList<>();
-      for (int i = 0; i < activeGoals.size(); i++) {
-        HealthProto.ParsedExerciseGoal goal = activeGoals.get(i);
+      for (TrackedGoal tracked : activeGoals) {
+        HealthProto.ParsedExerciseGoal goal = tracked.goal;
         double value = currentExerciseMetricValue(goal.condition.dataType.name);
         if (goal.goalType == HealthProto.EXERCISE_GOAL_MILESTONE && goal.hasPeriod && goal.period > 0) {
-          int prevCount = milestoneCounts.getOrDefault(i, 0);
-          double nextThreshold = goal.condition.threshold + prevCount * goal.period;
+          double nextThreshold = goal.condition.threshold + tracked.milestoneCount * goal.period;
           if (value >= nextThreshold) {
-            int newCount = (int) Math.floor((value - goal.condition.threshold) / goal.period) + 1;
-            milestoneCounts.put(i, newCount);
+            tracked.milestoneCount =
+                (int) Math.floor((value - goal.condition.threshold) / goal.period) + 1;
             newlyAchieved.add(goal.rawBytes);
           }
         } else {
-          if (!achievedOneTimeGoalIndices.contains(i) && goal.condition.matches(value)) {
-            achievedOneTimeGoalIndices.add(i);
+          if (!tracked.achieved && goal.condition.matches(value)) {
+            tracked.achieved = true;
             newlyAchieved.add(goal.rawBytes);
           }
         }
@@ -1934,6 +1935,10 @@ final class WearHealthServices {
         long now = nowEpochMs();
         long elapsed = bootElapsedMs();
         long activeMs = currentActiveDurationMs();
+        long checkpointEpochMs =
+            exerciseState == HealthProto.EXERCISE_STATE_ACTIVE
+                ? now
+                : (lastCheckpointEpochMs > 0 ? lastCheckpointEpochMs : now);
         Map<HealthProto.DataTypeSpec, List<byte[]>> latestMetrics = new LinkedHashMap<>();
         List<byte[]> aggregateMetrics = new ArrayList<>();
 
@@ -1970,7 +1975,7 @@ final class WearHealthServices {
                 startTimeEpochMs,
                 activeMs,
                 elapsed,
-                lastCheckpointEpochMs > 0 ? lastCheckpointEpochMs : now,
+                checkpointEpochMs,
                 endReason,
                 config != null ? config.rawBytes : null,
                 latestMetrics,
@@ -2135,6 +2140,16 @@ final class WearHealthServices {
       sum = 0.0;
       last = 0.0;
       count = 0;
+    }
+  }
+
+  private static final class TrackedGoal {
+    final HealthProto.ParsedExerciseGoal goal;
+    boolean achieved;
+    int milestoneCount;
+
+    TrackedGoal(HealthProto.ParsedExerciseGoal goal) {
+      this.goal = goal;
     }
   }
 
