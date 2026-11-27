@@ -79,7 +79,8 @@ When emulating Android platform capabilities in `:simulator-host`, implement the
 compose-preview android-simulator app.apk
  ├─ ApkClassConverter (own JVM, lib-dex2jar/)      APK dex ─► classes.jar   [cached by APK sha256]
  └─ simulator JVM (Java 21+)
-     classpath: lib-simulator/  (Robolectric simulator + :simulator-host)
+     classpath: lib-simulator/  (Robolectric simulator + :simulator-host, :simulator-core,
+                                 :simulator-wearable, :simulator-mobile, :simulator-wear)
                 lib-daemon-android/  (Robolectric 4.x + native graphics; the Android daemon sidecar)
                 android.jar
      LaunchMain ─► SimulatorMain app.apk classes.jar
@@ -87,6 +88,20 @@ compose-preview android-simulator app.apk
                           ├─ Navigator   app startActivity/startService/stopService → real lifecycle
                           └─ Session     --control stdio commands
 ```
+
+**Module layout.** The simulator is split into five Gradle modules under `simulator/` so platform
+surfaces can evolve independently while `:simulator-host` stages them together into `lib-simulator/`:
+
+- `:simulator-core` — device framework, lifecycle (`Navigator`), protocol, displays, inputs,
+  networking, media, permissions, notifications, `ApkClassConverter`, and core shadows.
+- `:simulator-wearable` — shared mobile + Wear companion surfaces (Play Services Wearable Data
+  Layer, channels, remote intents, peer presence, `WearCompanion` / `PhoneCompanion`, GMS shadows).
+- `:simulator-mobile` — phone launcher (`PhoneHome`, `HomeScreen`), lock screen, navigation bar,
+  app widgets, shortcuts, picture-in-picture, and soft keyboard.
+- `:simulator-wear` — Wear OS launcher (`WearHome`, `WearSystemUi`), watch state, Wear Platform
+  Services, Wear Health Services, tiles, Wear widgets, watch faces (DWF/WFF), and complications.
+- `:simulator-host` — thin composition root (`Session`, `SimulatorControl`, `SimulatorSandbox`,
+  `LaunchMain`, `-javaagent` hot swap, and `META-INF/services`) that exports all four modules.
 
 **Converting dex.** `ApkClassConverter` runs [dex2jar](https://github.com/ThexXTURBOXx/dex2jar)
 over every `classes*.dex`, with two repairs of its own:
