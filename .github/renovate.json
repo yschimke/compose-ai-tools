@@ -62,6 +62,26 @@
       "allowedVersions": "/^[0-5]\\.[0-9]+\\.[0-9]+$/"
     },
     {
+      "description": "compose-bom 2026.11 pulls Compose 1.13 artifacts whose AAR metadata declares minCompileSdk = 37.1, failing checkAarMetadata across modules compiling against API 37 (compose-ai-tools#6724). Restores the shared preset skip overridden by the gradle-wide -compat rule above; placed before compose-bom-compat so 2025.11.x stays pinned. Remove when modules move to compileSdk 37.1+.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "androidx.compose:compose-bom"
+      ],
+      "allowedVersions": "!/^(2026\\.11(\\..*)?|.*-SNAPSHOT|.*-compat)$/"
+    },
+    {
+      "description": "Compose 1.13 core artifacts declare minCompileSdk = 37.1 in AAR metadata (compose-ai-tools#6724). Restores the shared preset skip overridden by the gradle-wide -compat rule above. Remove when modules move to compileSdk 37.1+.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^androidx\\.compose\\.(animation|foundation|material|runtime|ui)($|[.:])/"
+      ],
+      "allowedVersions": "!/^(1\\.13(\\..*)?|.*-SNAPSHOT|.*-compat)$/"
+    },
+    {
       "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
       "matchManagers": [
         "dockerfile"
