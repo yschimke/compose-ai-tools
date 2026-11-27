@@ -1568,6 +1568,8 @@ final class WearHealthServices {
       accumulatedActiveDurationMs = 0L;
       lastResumedEpochMs = 0L;
       lastCheckpointEpochMs = nowEpochMs();
+      hrStats.reset();
+      lapHrStats.reset();
     }
 
     private synchronized void startExercise(String pkg, HealthProto.ParsedExerciseConfig cfg) {
@@ -1908,9 +1910,13 @@ final class WearHealthServices {
         double value = currentExerciseMetricValue(goal.condition.dataType.name);
         if (goal.goalType == HealthProto.EXERCISE_GOAL_MILESTONE && goal.hasPeriod && goal.period > 0) {
           double nextThreshold = goal.condition.threshold + tracked.milestoneCount * goal.period;
-          if (value >= nextThreshold) {
-            tracked.milestoneCount =
-                (int) Math.floor((value - goal.condition.threshold) / goal.period) + 1;
+          boolean strict = goal.condition.comparisonType == HealthProto.COMPARISON_GREATER_THAN;
+          boolean matched = strict ? value > nextThreshold : value >= nextThreshold;
+          if (matched) {
+            double steps = (value - goal.condition.threshold) / goal.period;
+            int newCount = strict ? (int) Math.ceil(steps) : (int) Math.floor(steps) + 1;
+            if (newCount <= tracked.milestoneCount) newCount = tracked.milestoneCount + 1;
+            tracked.milestoneCount = newCount;
             newlyAchieved.add(goal.rawBytes);
           }
         } else {
@@ -2012,7 +2018,10 @@ final class WearHealthServices {
 
     private byte[] buildExerciseDeltaPoint(HealthProto.DataTypeSpec spec, long elapsed) {
       if (spec == HealthProto.HEART_RATE_BPM) {
-        double hr = hrStats.count > 0 ? hrStats.last : currentHeartRate();
+        double hr =
+            exerciseState != HealthProto.EXERCISE_STATE_PREPARING && hrStats.count > 0
+                ? hrStats.last
+                : currentHeartRate();
         return HealthProto.sampleDataPoint(
             spec,
             HealthProto.valueDouble(hr),
