@@ -169,7 +169,7 @@ final class WearHealthServices {
   private final Map<String, Integer> availabilities =
       Collections.synchronizedMap(new LinkedHashMap<>());
 
-  private volatile boolean watchStateListening;
+  private volatile WatchState attachedWatchState;
 
   WearHealthServices(Application app) {
     this.app = app;
@@ -308,11 +308,10 @@ final class WearHealthServices {
         HealthProto.LOCATION.name, HealthProto.LOCATION_AVAILABILITY_ACQUIRED_TETHERED);
   }
 
-  private void ensureWatchStateListener() {
-    if (watchStateListening) return;
+  synchronized void ensureWatchStateListener() {
     WatchState state = WatchState.current();
-    if (state == null) return;
-    watchStateListening = true;
+    if (state == null || state == attachedWatchState) return;
+    attachedWatchState = state;
     state.onChange(this::onWatchStateChanged);
   }
 

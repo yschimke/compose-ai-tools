@@ -141,6 +141,12 @@ final class WatchState {
     this.navigator = navigator;
     this.systemData = systemData;
     active = this;
+    try {
+      WearHealthServices whs = WearHealthServices.current();
+      if (whs != null) whs.ensureWatchStateListener();
+    } catch (LinkageError ignored) {
+      // Plain JVM unit tests without android.jar.
+    }
   }
 
   static WatchState current() {
