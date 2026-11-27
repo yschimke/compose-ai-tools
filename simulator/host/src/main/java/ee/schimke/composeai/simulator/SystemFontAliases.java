@@ -149,20 +149,31 @@ final class SystemFontAliases {
       String ttfUrl = fetchTruetypeUrl(family, weight);
       if (ttfUrl == null) return null;
       if (!cacheDir.exists() && !cacheDir.mkdirs() && !cacheDir.isDirectory()) return null;
-      File tmp = new File(cacheDir, slug + "-" + weight + ".ttf.part");
-      download(ttfUrl, tmp);
-      if (tmp.length() <= 1024) {
+      File tmp = File.createTempFile(slug + "-" + weight + "-", ".ttf.part", cacheDir);
+      try {
+        download(ttfUrl, tmp);
+        if (tmp.length() <= 1024) {
+          tmp.delete();
+          return null;
+        }
+        try {
+          java.nio.file.Files.move(
+              tmp.toPath(),
+              cached.toPath(),
+              java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+              java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+          java.nio.file.Files.move(
+              tmp.toPath(),
+              cached.toPath(),
+              java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        return cached;
+      } catch (IOException | RuntimeException e) {
         tmp.delete();
+        if (cached.isFile() && cached.length() > 1024) return cached;
         return null;
       }
-      if (!tmp.renameTo(cached)) {
-        if (cached.isFile() && cached.length() > 1024) {
-          tmp.delete();
-          return cached;
-        }
-        return tmp;
-      }
-      return cached;
     } catch (IOException | RuntimeException ignored) {
       return null;
     }
