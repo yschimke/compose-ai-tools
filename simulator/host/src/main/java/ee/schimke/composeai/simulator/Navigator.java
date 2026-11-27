@@ -1597,8 +1597,16 @@ public final class Navigator {
     }
     if (!bindable.containsKey(component)) return;
     Intent key = new Intent(intent);
-    // Bound with this intent, as onBind will see it: its action, data and categories included.
-    LazyBinder binder = new LazyBinder(component, new Intent(intent).setComponent(component));
+    Intent boundIntent = new Intent(intent).setComponent(component);
+    Navigator nav = current;
+    IBinder binder = null;
+    if (nav != null && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+      binder = nav.bindForApp(component, boundIntent);
+    }
+    if (binder == null) {
+      // Bound with this intent, as onBind will see it: its action, data and categories included.
+      binder = new LazyBinder(component, boundIntent);
+    }
     ShadowApplication shadowApp = Shadow.extract(app);
     shadowApp.setComponentNameAndServiceForBindServiceForIntent(key, component, binder);
     boundByApp.add(new Intent.FilterComparison(key));
