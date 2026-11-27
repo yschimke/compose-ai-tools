@@ -1260,6 +1260,13 @@ final class WearHealthServices {
     private double exerciseFloors;
     private double exerciseElevationGain;
     private double exerciseElevationLoss;
+    private long lastIntervalElapsedMs;
+    private double lastIntervalCalories;
+    private double lastIntervalDistance;
+    private long lastIntervalSteps;
+    private double lastIntervalFloors;
+    private double lastIntervalElevationGain;
+    private double lastIntervalElevationLoss;
     private final StatsAccumulator hrStats = new StatsAccumulator();
     private final StatsAccumulator lapHrStats = new StatsAccumulator();
     private final StatsAccumulator speedStats = new StatsAccumulator();
@@ -1296,6 +1303,13 @@ final class WearHealthServices {
       exerciseFloors = 0.0;
       exerciseElevationGain = 0.0;
       exerciseElevationLoss = 0.0;
+      lastIntervalElapsedMs = 0L;
+      lastIntervalCalories = 0.0;
+      lastIntervalDistance = 0.0;
+      lastIntervalSteps = 0L;
+      lastIntervalFloors = 0.0;
+      lastIntervalElevationGain = 0.0;
+      lastIntervalElevationLoss = 0.0;
       hrStats.reset();
       lapHrStats.reset();
       speedStats.reset();
@@ -1603,6 +1617,13 @@ final class WearHealthServices {
       exerciseFloors = 0.0;
       exerciseElevationGain = 0.0;
       exerciseElevationLoss = 0.0;
+      lastIntervalElapsedMs = bootElapsedMs();
+      lastIntervalCalories = 0.0;
+      lastIntervalDistance = 0.0;
+      lastIntervalSteps = 0L;
+      lastIntervalFloors = 0.0;
+      lastIntervalElevationGain = 0.0;
+      lastIntervalElevationLoss = 0.0;
       double initialHr = currentHeartRate();
       hrStats.reset();
       hrStats.record(initialHr);
@@ -1980,14 +2001,24 @@ final class WearHealthServices {
               config != null ? config.aggregateDataTypeNames : Collections.emptySet();
 
           // Delta data points
+          long intervalStart =
+              lastIntervalElapsedMs > 0 ? lastIntervalElapsedMs : Math.max(0L, elapsed - 1000L);
+          long intervalEnd = Math.max(intervalStart + 1L, elapsed);
           for (String dtName : deltas) {
             HealthProto.DataTypeSpec spec = HealthProto.findDeltaByName(dtName);
             if (spec == null) continue;
-            byte[] dp = buildExerciseDeltaPoint(spec, elapsed);
+            byte[] dp = buildExerciseDeltaPoint(spec, elapsed, intervalStart, intervalEnd);
             if (dp != null) {
               latestMetrics.put(spec, Collections.singletonList(dp));
             }
           }
+          lastIntervalElapsedMs = intervalEnd;
+          lastIntervalCalories = exerciseCalories;
+          lastIntervalDistance = exerciseDistance;
+          lastIntervalSteps = exerciseSteps;
+          lastIntervalFloors = exerciseFloors;
+          lastIntervalElevationGain = exerciseElevationGain;
+          lastIntervalElevationLoss = exerciseElevationLoss;
           // Aggregate data points (cumulative & statistical)
           long aggStart = startTimeEpochMs > 0 ? startTimeEpochMs : now;
           for (String dtName : aggregates) {
@@ -2017,6 +2048,11 @@ final class WearHealthServices {
     }
 
     private byte[] buildExerciseDeltaPoint(HealthProto.DataTypeSpec spec, long elapsed) {
+      return buildExerciseDeltaPoint(spec, elapsed, Math.max(0L, elapsed - 1000L), elapsed);
+    }
+
+    private byte[] buildExerciseDeltaPoint(
+        HealthProto.DataTypeSpec spec, long elapsed, long intervalStart, long intervalEnd) {
       if (spec == HealthProto.HEART_RATE_BPM) {
         double hr =
             exerciseState != HealthProto.EXERCISE_STATE_PREPARING && hrStats.count > 0
@@ -2027,6 +2063,48 @@ final class WearHealthServices {
             HealthProto.valueDouble(hr),
             elapsed,
             HealthProto.hrAccuracy(currentHrAccuracy()));
+      }
+      if (spec == HealthProto.DISTANCE) {
+        double delta = exerciseDistance - lastIntervalDistance;
+        return delta > 0.0
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueDouble(delta), intervalStart, intervalEnd)
+            : null;
+      }
+      if (spec == HealthProto.CALORIES) {
+        double delta = exerciseCalories - lastIntervalCalories;
+        return delta > 0.0
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueDouble(delta), intervalStart, intervalEnd)
+            : null;
+      }
+      if (spec == HealthProto.STEPS) {
+        long delta = exerciseSteps - lastIntervalSteps;
+        return delta > 0L
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueLong(delta), intervalStart, intervalEnd)
+            : null;
+      }
+      if (spec == HealthProto.FLOORS) {
+        double delta = exerciseFloors - lastIntervalFloors;
+        return delta > 0.0
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueDouble(delta), intervalStart, intervalEnd)
+            : null;
+      }
+      if (spec == HealthProto.ELEVATION_GAIN) {
+        double delta = exerciseElevationGain - lastIntervalElevationGain;
+        return delta > 0.0
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueDouble(delta), intervalStart, intervalEnd)
+            : null;
+      }
+      if (spec == HealthProto.ELEVATION_LOSS) {
+        double delta = exerciseElevationLoss - lastIntervalElevationLoss;
+        return delta > 0.0
+            ? HealthProto.intervalDataPoint(
+                spec, HealthProto.valueDouble(delta), intervalStart, intervalEnd)
+            : null;
       }
       return buildCurrentDataPoint(spec);
     }
