@@ -1205,6 +1205,8 @@ integrates with:
   At most one icon is shown at a time by priority: `microphone` > `location` > `airplane` > `dnd` >
   `bedtime` > `theater` > `batterySaver` > `charging` > `lowBattery` > `offline`.
 
+![Wear OS global status bar: fallback, active, modes, suppression, scroll-away, and custom TimeText](design/evidence/simulator-launch/wear-global-status-bar.png)
+
 **The carousel** holds what the agent adds (`tiles op:add`, `--tile`, or the carousel's own add
 page): each tile is a whole page, and the Wear Widgets share one page, a scrolling list whose items
 shrink and fade toward the round screen's edges as a `TransformingLazyColumn`'s do. Tiles are

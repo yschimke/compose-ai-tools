@@ -167,6 +167,30 @@ public final class SimulatorSandbox {
             String.class,
             SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowInstrumentation"),
         ClassParameter.from(boolean.class, false));
+    // Wear SDK API version and global status bar settings (instrumented under com.google.wear.).
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "com.google.wear.Sdk"),
+        ClassParameter.from(
+            String.class, SimulatorSandbox.class.getPackageName() + ".shadows.ShadowWearSdk"),
+        ClassParameter.from(boolean.class, false));
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "com.google.wear.Sdk$VERSION_CODES"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.ShadowWearSdk$VersionCodes"),
+        ClassParameter.from(boolean.class, false));
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "com.google.wear.settings.WearSettings"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.ShadowWearSettings"),
+        ClassParameter.from(boolean.class, false));
     // PixelCopy (Compose's captureToImage) from a test's own thread, copied on the main thread.
     ReflectionHelpers.callInstanceMethod(
         shadows,

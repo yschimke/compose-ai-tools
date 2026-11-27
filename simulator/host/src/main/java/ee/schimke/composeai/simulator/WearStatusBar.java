@@ -133,10 +133,21 @@ final class WearStatusBar {
     this.wear = wear;
     this.context = new ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault);
     this.windows = app.getSystemService(WindowManager.class);
-    this.platformEnabled = WearSettings.isPlatformStatusBarEnabled();
+    this.platformEnabled = isPlatformEnabled();
     this.targetSdk = readTargetSdk(app);
     this.appOptIn = readManifestOptIn(app);
     this.enabled = platformEnabled && targetSdk >= MIN_TARGET_SDK && appOptIn;
+  }
+
+  private static boolean isPlatformEnabled() {
+    if (FormFactor.current() != FormFactor.WEAR) return false;
+    if (!"true".equalsIgnoreCase(System.getProperty(PROPERTY, "").trim())) return false;
+    String explicit = System.getProperty(Sdk.WEAR_API_VERSION_PROPERTY);
+    if (explicit != null && !explicit.isBlank()) {
+      com.google.wear.WearApiVersion v = Sdk.VERSION_CODES.lookup(explicit.trim());
+      return v != null && v.compareTo(Sdk.VERSION_CODES.WEAR_CINNAMON_BUN_2) >= 0;
+    }
+    return android.os.Build.VERSION.SDK_INT >= 37;
   }
 
   /** Creates the Wear status bar controller when running on a Wear form factor, else null. */

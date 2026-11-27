@@ -237,6 +237,7 @@ internal object CliFlagValidation {
       "--dwf-runtime",
       "--theme-from-watchface",
       "--no-theme-from-watchface",
+      "--global-status-bar",
       "--scenario",
       "--report-dir",
       "--instrument",

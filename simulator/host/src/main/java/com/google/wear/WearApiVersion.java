@@ -16,7 +16,11 @@ public final class WearApiVersion implements Comparable<WearApiVersion> {
   private final int platformApiLevel;
   private final int incrementalApiLevel;
 
-  WearApiVersion(String name, int platformApiLevel, int incrementalApiLevel) {
+  public WearApiVersion() {
+    this("UNKNOWN", 0, 0);
+  }
+
+  public WearApiVersion(String name, int platformApiLevel, int incrementalApiLevel) {
     this.name = Objects.requireNonNull(name, "name");
     this.platformApiLevel = platformApiLevel;
     this.incrementalApiLevel = incrementalApiLevel;

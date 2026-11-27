@@ -311,7 +311,7 @@ public final class Session {
     LayoutBounds.cycle();
     if (wear != null) wear.cycle();
     if (wearStatusBar != null) {
-      wearStatusBar.ambient(screen.dark());
+      wearStatusBar.ambient(!screen.interactive());
       wearStatusBar.cycle();
     }
     if (phoneUi != null) phoneUi.cycle();
