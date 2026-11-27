@@ -308,7 +308,12 @@ internal class ApkConversionCache(
         val part =
           FileFacts.remember(jar, "converter-jar-1") {
             val own = MessageDigest.getInstance("SHA-256")
-            if (!jar.name.startsWith("simulator-host") || !digestConverterClasses(jar, own)) {
+            val isSimulatorJar =
+              jar.name.startsWith("simulator-host") ||
+                jar.name.startsWith("simulator-core") ||
+                jar.name.startsWith("simulator-wear.") ||
+                jar.name.startsWith("simulator-wear-")
+            if (!isSimulatorJar || !digestConverterClasses(jar, own)) {
               jar.inputStream().use { own.update(it) }
             }
             own.digest().toHex()

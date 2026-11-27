@@ -219,9 +219,15 @@ internal class AndroidSimulatorCommand(
         )
     val simulatorJars = sidecar("lib-simulator")
     val dex2jarJars = sidecar("lib-dex2jar")
-    val hostJar =
-      simulatorJars.firstOrNull { it.name.startsWith(SIMULATOR_HOST_JAR) }
-        ?: fail("lib-simulator/ has no simulator-host jar")
+    val coreJar =
+      simulatorJars.firstOrNull { it.name.startsWith(SIMULATOR_CORE_JAR) }
+        ?: fail("lib-simulator/ has no simulator-core jar")
+    val wearJar = simulatorJars.firstOrNull {
+      it.name.startsWith("$SIMULATOR_WEAR_JAR.") || it.name.startsWith("$SIMULATOR_WEAR_JAR-")
+    }
+    if (simulatorJars.none { it.name.startsWith(SIMULATOR_HOST_JAR) }) {
+      fail("lib-simulator/ has no simulator-host jar")
+    }
 
     // Before provisioning: under the network switch Robolectric needs pre-provisioned android-all.
     val offline = robolectricOfflineProperties()
@@ -239,7 +245,7 @@ internal class AndroidSimulatorCommand(
       System.err.println("compose-preview android-simulator: warning: $it")
     }
 
-    val converterJars = listOf(hostJar) + dex2jarJars
+    val converterJars = listOfNotNull(coreJar, wearJar) + dex2jarJars
     // The sidecar's androidx.test jars: their classes are the simulator's, and the converter
     // drops an APK's copies of those (and only those) so they cannot shadow them. A test APK's
     // androidx.test classes the simulator lacks (uiautomator, espresso-contrib) stay its own.
@@ -1543,6 +1549,12 @@ internal class AndroidSimulatorCommand(
 
     /** The name `:simulator-host`'s jar starts with in `lib-simulator/`. */
     const val SIMULATOR_HOST_JAR = "simulator-host"
+
+    /** The name `:simulator-core`'s jar starts with in `lib-simulator/`. */
+    const val SIMULATOR_CORE_JAR = "simulator-core"
+
+    /** The name `:simulator-wear`'s jar starts with in `lib-simulator/`. */
+    const val SIMULATOR_WEAR_JAR = "simulator-wear"
 
     /** How long a reload waits for the simulator to redefine and recompose before restarting. */
     const val HOT_SWAP_TIMEOUT_MS = 30_000L
