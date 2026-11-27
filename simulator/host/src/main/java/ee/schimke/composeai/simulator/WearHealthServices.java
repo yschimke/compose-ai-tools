@@ -531,6 +531,7 @@ final class WearHealthServices {
       case "metrics":
         {
           applyExtendedMetrics(c);
+          exerciseBinder.recordExtendedMetrics(c);
           onWatchStateChanged();
           return describe();
         }
@@ -1778,16 +1779,35 @@ final class WearHealthServices {
           map, Collections.singletonList(HealthProto.BATCHING_MODE_HEART_RATE_5_SECONDS));
     }
 
+    synchronized void recordExtendedMetrics(JSONObject c) {
+      if (exerciseState != HealthProto.EXERCISE_STATE_ACTIVE) return;
+      recordExtendedMetricsLocked(c);
+    }
+
+    private void recordExtendedMetricsLocked(JSONObject c) {
+      if (c.has("speedMps")) speedStats.record(speedMps);
+      if (c.has("paceMillisPerKm")) paceStats.record(paceMillisPerKm);
+      if (c.has("absoluteElevationMeters")) elevationStats.record(absoluteElevationMeters);
+      if (c.has("stepsPerMinute")) spmStats.record(stepsPerMinute);
+      if (c.has("vo2Max")) vo2Stats.record(vo2Max);
+    }
+
     void onHealthStateChanged() {
       String pkg;
       List<byte[]> achieved;
       synchronized (this) {
-        if (exerciseState != HealthProto.EXERCISE_STATE_ACTIVE) return;
-        double hr = currentHeartRate();
-        hrStats.record(hr);
-        lapHrStats.record(hr);
-        pkg = ownerPackage;
-        achieved = evaluateExerciseGoals();
+        if (exerciseState == HealthProto.EXERCISE_STATE_PREPARING) {
+          pkg = ownerPackage;
+          achieved = Collections.emptyList();
+        } else if (exerciseState == HealthProto.EXERCISE_STATE_ACTIVE) {
+          double hr = currentHeartRate();
+          hrStats.record(hr);
+          lapHrStats.record(hr);
+          pkg = ownerPackage;
+          achieved = evaluateExerciseGoals();
+        } else {
+          return;
+        }
       }
       dispatchExerciseUpdate(pkg, achieved);
     }
@@ -1821,11 +1841,7 @@ final class WearHealthServices {
         double hr = c.has("heartRate") ? c.getDouble("heartRate") : currentHeartRate();
         hrStats.record(hr);
         lapHrStats.record(hr);
-        if (c.has("speedMps")) speedStats.record(speedMps);
-        if (c.has("paceMillisPerKm")) paceStats.record(paceMillisPerKm);
-        if (c.has("absoluteElevationMeters")) elevationStats.record(absoluteElevationMeters);
-        if (c.has("stepsPerMinute")) spmStats.record(stepsPerMinute);
-        if (c.has("vo2Max")) vo2Stats.record(vo2Max);
+        recordExtendedMetricsLocked(c);
         pkg = ownerPackage;
         achieved = evaluateExerciseGoals();
       }
@@ -1942,7 +1958,16 @@ final class WearHealthServices {
         Map<HealthProto.DataTypeSpec, List<byte[]>> latestMetrics = new LinkedHashMap<>();
         List<byte[]> aggregateMetrics = new ArrayList<>();
 
-        if (exerciseState != HealthProto.EXERCISE_STATE_PREPARING) {
+        if (exerciseState == HealthProto.EXERCISE_STATE_PREPARING) {
+          for (String dtName : warmUpDataTypes) {
+            HealthProto.DataTypeSpec spec = HealthProto.findDeltaByName(dtName);
+            if (spec == null) continue;
+            byte[] dp = buildExerciseDeltaPoint(spec, elapsed);
+            if (dp != null) {
+              latestMetrics.put(spec, Collections.singletonList(dp));
+            }
+          }
+        } else {
           Set<String> deltas =
               config != null ? config.deltaDataTypeNames : Collections.emptySet();
           Set<String> aggregates =
