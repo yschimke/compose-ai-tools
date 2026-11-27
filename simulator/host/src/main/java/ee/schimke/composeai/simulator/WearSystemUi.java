@@ -386,6 +386,11 @@ final class WearSystemUi {
           if (surface == Surface.TILES && onTop()) buildCarousel();
           return data;
         }
+      case "whs":
+        {
+          WearHealthServices whs = WearHealthServices.current();
+          return whs != null ? whs.command(c) : null;
+        }
       case "clock":
         return watchState.clockCommand(c);
       case "weather":
@@ -406,6 +411,7 @@ final class WearSystemUi {
       case "tiles":
       case "watchface":
       case "health":
+      case "whs":
       case "clock":
       case "weather":
       case "accel":

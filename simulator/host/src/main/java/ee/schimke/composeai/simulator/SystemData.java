@@ -73,6 +73,10 @@ final class SystemData {
     return values.get("HEART_RATE_BPM").floatValue();
   }
 
+  int heartRateAccuracyCode() {
+    return values.get("HEART_RATE_ACCURACY").intValue();
+  }
+
   int steps() {
     return values.get("DAILY_STEPS").intValue();
   }
