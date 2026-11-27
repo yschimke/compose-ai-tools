@@ -1,8 +1,9 @@
 // An app with an androidTest suite run in Robolectric's simulator, beside the app, with no
 // emulator: `./gradlew :samples:android-instrumented:simulatorDebugAndroidTest` (the preview
-// plugin's task), or `compose-preview android-simulator --instrument` on the two APKs. The tests
-// cover the androidx.test surfaces a suite leans on first: InstrumentationRegistry,
-// ActivityScenario, Espresso, and a Compose test rule.
+// plugin's default `SimulatorManagedDevice` registered with AGP's Gradle Managed Devices), or
+// `compose-preview android-simulator --instrument` on the two APKs. The tests cover the
+// androidx.test surfaces a suite leans on first: InstrumentationRegistry, ActivityScenario,
+// Espresso, and a Compose test rule.
 plugins {
   id("composeai.base-conventions")
   id("composeai.android-conventions")

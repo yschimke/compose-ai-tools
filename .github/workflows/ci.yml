@@ -659,7 +659,8 @@ jobs:
       # codecs"); without it MediaTranscodeTest is skipped rather than run.
       - name: ffmpeg for the host codecs
         run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg)
-      # Through the plugin's task, as an agent runs a suite: it builds both APKs and runs the CLI.
+      # Through the plugin's default managed device (`simulator`), as an agent runs a suite: AGP
+      # builds both APKs, invokes the CLI, and generates XML + HTML reports.
       - name: Instrumentation tests in the simulator
         run: >-
           ./gradlew :samples:android-instrumented:simulatorDebugAndroidTest
@@ -668,9 +669,11 @@ jobs:
       - name: Keep the instrumentation results
         if: always()
         run: >-
-          mkdir -p build/simulator-smoke/instrumentation &&
-          cp -r samples/android-instrumented/build/outputs/androidTest-results/simulator/.
-          build/simulator-smoke/instrumentation/ || true
+          mkdir -p build/simulator-smoke/instrumentation/results build/simulator-smoke/instrumentation/reports &&
+          cp -r samples/android-instrumented/build/outputs/androidTest-results/managedDevice/.
+          build/simulator-smoke/instrumentation/results/ || true &&
+          cp -r samples/android-instrumented/build/reports/androidTests/managedDevice/.
+          build/simulator-smoke/instrumentation/reports/ || true
       - name: Upload the screenshot and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

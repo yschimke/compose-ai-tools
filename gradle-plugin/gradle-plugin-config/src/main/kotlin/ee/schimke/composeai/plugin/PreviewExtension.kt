@@ -301,6 +301,22 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(false)
 
   /**
+   * Registers a default `"simulator"` Gradle Managed Device (`SimulatorManagedDevice`) in
+   * `android.testOptions.managedDevices.allDevices` when no device with that name exists, making
+   * `simulator<Variant>AndroidTest`, `simulatorCheck`, and `allDevices<Variant>AndroidTest`
+   * available with zero configuration.
+   *
+   * The `SimulatorManagedDevice` device type itself is always registered with AGP's
+   * `managedDeviceRegistry`, so custom simulator devices can still be declared explicitly even when
+   * this default device is disabled.
+   *
+   * Set `false` (or `-PcomposePreview.simulatorManagedDevice=false`) when a module runs
+   * `allDevicesCheck` against other managed devices without the `compose-preview` CLI installed.
+   */
+  val simulatorManagedDevice: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
+
+  /**
    * Source roots of the modules named by `composePreviewSource`, so their previews are attributed
    * to their declaring file.
    *

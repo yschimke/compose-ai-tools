@@ -49,6 +49,9 @@ dependencies {
   // ships (`NoSuchMethodError`).
   implementation(libs.okhttp)
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
+  // AGP's StaticTestData.testedApkFinder takes DeviceConfigProvider from builder-test-api (a
+  // runtime-only dep of AGP's gradle artifact).
+  compileOnly("com.android.tools.build:builder-test-api:${libs.versions.agp.get()}")
 
   // Test-only, for `AndroidPreviewLaunchParityTest`, keeping the daemon client off consumers'
   // buildscript classpaths. This included build doesn't get the main build's daemon BOM, and the
