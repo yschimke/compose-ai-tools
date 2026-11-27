@@ -255,6 +255,7 @@ public final class Session {
   void start() {
     displays.start();
     screen.start();
+    SystemFontAliases.seed();
     if (wearStatusBar != null) wearStatusBar.start();
     if (wear != null) wear.start();
     if (wear == null && FormFactor.current() == FormFactor.PHONE) {
