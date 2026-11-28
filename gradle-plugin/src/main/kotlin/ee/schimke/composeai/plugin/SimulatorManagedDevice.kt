@@ -1,8 +1,13 @@
 package ee.schimke.composeai.plugin
 
 import com.android.build.api.dsl.Device
+import com.android.build.api.dsl.KotlinMultiplatformAndroidDeviceTest
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import com.android.build.api.dsl.ManagedDevices
 import com.android.build.api.instrumentation.StaticTestData
+import com.android.build.api.instrumentation.manageddevice.DeviceSetupConfigureAction
+import com.android.build.api.instrumentation.manageddevice.DeviceSetupInput
+import com.android.build.api.instrumentation.manageddevice.DeviceSetupTaskAction
 import com.android.build.api.instrumentation.manageddevice.DeviceTestRunConfigureAction
 import com.android.build.api.instrumentation.manageddevice.DeviceTestRunInput
 import com.android.build.api.instrumentation.manageddevice.DeviceTestRunParameters
@@ -16,6 +21,7 @@ import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.NamedDomainObjectProvider
 import org.gradle.api.Project
+import org.gradle.api.file.Directory
 import org.gradle.api.logging.Logging
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
@@ -106,6 +112,126 @@ abstract class SimulatorManagedDeviceImpl @Inject constructor(private val device
   override fun getName(): String = deviceName
 }
 
+abstract class SimulatorSetupInput : DeviceSetupInput {
+  @get:Input abstract val cliExecutable: Property<String>
+
+  @get:Input @get:Optional abstract val javaHome: Property<String>
+
+  @get:Input @get:Optional abstract val apiLevel: Property<Int>
+
+  /** Module working directory for resolving relative CLI paths and spawning the process. */
+  @get:Internal abstract val projectDirectoryPath: Property<String>
+}
+
+abstract class SimulatorSetupConfigureAction
+@Inject
+constructor(
+  private val objects: ObjectFactory,
+  private val providers: ProviderFactory,
+  private val layout: org.gradle.api.file.ProjectLayout,
+) : DeviceSetupConfigureAction<SimulatorManagedDevice, SimulatorSetupInput> {
+
+  override fun configureTaskInput(deviceDSL: SimulatorManagedDevice): SimulatorSetupInput =
+    objects.newInstance(SimulatorSetupInput::class.java).apply {
+      cliExecutable.set(
+        deviceDSL.cliExecutable
+          .orElse(providers.gradleProperty("composePreview.cli"))
+          .orElse(providers.environmentVariable("COMPOSE_PREVIEW_CLI"))
+          .orElse("compose-preview"),
+      )
+      javaHome.set(
+        deviceDSL.javaHome.orElse(providers.gradleProperty("composePreview.simulatorJava")),
+      )
+      apiLevel.set(
+        deviceDSL.apiLevel.orElse(
+          providers.gradleProperty("composePreview.simulatorSdk").map { it.toInt() },
+        ),
+      )
+      projectDirectoryPath.set(layout.projectDirectory.asFile.absolutePath)
+    }
+}
+
+open class SimulatorSetupTaskAction @Inject constructor() :
+  DeviceSetupTaskAction<SimulatorSetupInput>, java.io.Serializable {
+
+  override fun setup(setupInput: SimulatorSetupInput, outputDir: Directory) {
+    val logger = Logging.getLogger(SimulatorSetupTaskAction::class.java)
+    val apiLevel = setupInput.apiLevel.orNull
+    if (apiLevel != null && apiLevel < SimulatorManagedDeviceSupport.MIN_SIMULATOR_API) {
+      throw GradleException(
+        "SimulatorManagedDevice requires apiLevel >= ${SimulatorManagedDeviceSupport.MIN_SIMULATOR_API}, " +
+          "got $apiLevel.",
+      )
+    }
+
+    val outDir = outputDir.asFile
+    outDir.mkdirs()
+    val marker = File(outDir, "simulator-setup.json")
+
+    val workingDir = setupInput.projectDirectoryPath.orNull?.let(::File)?.takeIf { it.isDirectory }
+    val resolvedCli =
+      SimulatorManagedDeviceSupport.resolveExecutable(setupInput.cliExecutable.get(), workingDir)
+    val command =
+      SimulatorManagedDeviceSupport.buildSetupCommand(
+        cliExecutable = resolvedCli,
+        javaHome = setupInput.javaHome.orNull,
+        apiLevel = apiLevel,
+      )
+    logger.info("compose-preview setup: {}", command.joinToString(" "))
+
+    val outputLines = mutableListOf<String>()
+    val exitValue =
+      try {
+        val pb = ProcessBuilder(command).redirectErrorStream(true)
+        if (workingDir != null) pb.directory(workingDir)
+        val process = pb.start()
+        process.inputStream.bufferedReader().useLines { lines ->
+          lines.forEach { line ->
+            outputLines += line
+            logger.info(line)
+          }
+        }
+        process.waitFor()
+      } catch (e: Exception) {
+        throw GradleException(
+          "Could not run `${setupInput.cliExecutable.get()}` during simulator device setup " +
+            "(${e.message}). Install the compose-preview CLI, or point -PcomposePreview.cli " +
+            "(or COMPOSE_PREVIEW_CLI) at it.",
+          e,
+        )
+      }
+
+    val combined = outputLines.joinToString("\n")
+    if (exitValue == 0) {
+      val jsonLine = outputLines.lastOrNull { it.trim().startsWith("{") }
+      marker.writeText((jsonLine ?: """{"ready":true}""") + "\n")
+      return
+    }
+
+    // Older compose-preview CLIs did not support `--prepare-runtime`: degrade gracefully so device
+    // setup does not break existing installs; test execution still provisions lazily.
+    if (SimulatorManagedDeviceSupport.isUnsupportedPrepareRuntimeOutput(combined)) {
+      logger.warn(
+        "compose-preview CLI does not support `--prepare-runtime`; skipping pre-provisioning " +
+          "(upgrade compose-preview CLI to pre-warm sidecar and android-all in <device>Setup).",
+      )
+      marker.writeText("""{"ready":true,"legacyCli":true}""" + "\n")
+      return
+    }
+
+    throw GradleException(
+      buildString {
+        append("Simulator device setup failed (exit $exitValue).")
+        if (combined.isNotBlank()) append("\n").append(combined)
+      },
+    )
+  }
+
+  companion object {
+    private const val serialVersionUID: Long = 1L
+  }
+}
+
 abstract class SimulatorTestRunInput : DeviceTestRunInput {
   @get:Input abstract val cliExecutable: Property<String>
 
@@ -122,12 +248,18 @@ abstract class SimulatorTestRunInput : DeviceTestRunInput {
   @get:Internal abstract val shards: Property<Int>
 
   @get:Internal abstract val pool: Property<Boolean>
+
+  /** Module working directory for resolving relative CLI paths and spawning the process. */
+  @get:Internal abstract val projectDirectoryPath: Property<String>
 }
 
 abstract class SimulatorTestRunConfigureAction
 @Inject
-constructor(private val objects: ObjectFactory, private val providers: ProviderFactory) :
-  DeviceTestRunConfigureAction<SimulatorManagedDevice, SimulatorTestRunInput> {
+constructor(
+  private val objects: ObjectFactory,
+  private val providers: ProviderFactory,
+  private val layout: org.gradle.api.file.ProjectLayout,
+) : DeviceTestRunConfigureAction<SimulatorManagedDevice, SimulatorTestRunInput> {
 
   override fun configureTaskInput(deviceDSL: SimulatorManagedDevice): SimulatorTestRunInput =
     objects.newInstance(SimulatorTestRunInput::class.java).apply {
@@ -168,6 +300,7 @@ constructor(private val objects: ObjectFactory, private val providers: ProviderF
           providers.gradleProperty("composePreview.simulatorPool").map { it.toBoolean() },
         ),
       )
+      projectDirectoryPath.set(layout.projectDirectory.asFile.absolutePath)
     }
 }
 
@@ -195,13 +328,25 @@ open class SimulatorTestRunTaskAction @Inject constructor() :
     xmlReport.delete()
     jsonReport.delete()
 
+    val coverageOutDir =
+      if (testData.isTestCoverageEnabled) {
+        runData.coverageOutputDirectory.asFile.apply { mkdirs() }
+      } else {
+        null
+      }
+    val additionalOutputDir = runData.additionalTestOutputDir?.asFile?.apply { mkdirs() }
+
     val runnerArgs = testData.instrumentationRunnerArguments
     val testsFilter = runnerArgs["class"]?.trim()?.takeIf { it.isNotEmpty() }
     val effectiveShards = input.shards.orNull ?: runnerArgs["numShards"]?.trim()?.toIntOrNull()
 
+    val workingDir = input.projectDirectoryPath.orNull?.let(::File)?.takeIf { it.isDirectory }
+    val resolvedCli =
+      SimulatorManagedDeviceSupport.resolveExecutable(input.cliExecutable.get(), workingDir)
+
     val command =
       SimulatorManagedDeviceSupport.buildCommand(
-        cliExecutable = input.cliExecutable.get(),
+        cliExecutable = resolvedCli,
         appApk = appApk,
         testApk = testApk,
         xmlReport = xmlReport,
@@ -214,12 +359,16 @@ open class SimulatorTestRunTaskAction @Inject constructor() :
         shards = effectiveShards,
         pool = input.pool.getOrElse(false),
         testsFilter = testsFilter,
+        coverageOutputDir = coverageOutDir,
+        additionalTestOutputDir = additionalOutputDir,
       )
 
     logger.info("compose-preview: {}", command.joinToString(" "))
     val exitValue =
       try {
-        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val pb = ProcessBuilder(command).redirectErrorStream(true)
+        if (workingDir != null) pb.directory(workingDir)
+        val process = pb.start()
         process.inputStream.bufferedReader().useLines { lines ->
           lines.forEach { logger.lifecycle(it) }
         }
@@ -273,7 +422,7 @@ internal object SimulatorManagedDeviceSupport {
   const val DEFAULT_DEVICE_NAME: String = "simulator"
 
   /** Minimum Android API level Robolectric's simulator supports. */
-  private const val MIN_SIMULATOR_API: Int = 33
+  internal const val MIN_SIMULATOR_API: Int = 33
 
   data class Summary(val text: String, val error: String?)
 
@@ -281,12 +430,43 @@ internal object SimulatorManagedDeviceSupport {
   fun registerDeviceType(androidComponents: AndroidComponentsExtension<*, *, *>) {
     androidComponents.managedDeviceRegistry.registerDeviceType(SimulatorManagedDevice::class.java) {
       dslImplementationClass = SimulatorManagedDeviceImpl::class.java
+      setSetupActions(
+        SimulatorSetupConfigureAction::class.java,
+        SimulatorSetupTaskAction::class.java,
+      )
       setTestRunActions(
         SimulatorTestRunConfigureAction::class.java,
         SimulatorTestRunTaskAction::class.java,
       )
     }
   }
+
+  /**
+   * Registers [SimulatorManagedDevice] on a KMP-Android module only when the consumer enabled
+   * `withDeviceTest {}` (calling `managedDeviceRegistry` otherwise throws in AGP).
+   */
+  fun configureKmpDeviceTestIfEnabled(
+    project: Project,
+    extension: PreviewExtension,
+    androidComponents: AndroidComponentsExtension<*, *, *>,
+    android: KotlinMultiplatformAndroidLibraryExtension,
+  ) {
+    if (runCatching { androidComponents.managedDeviceRegistry }.isFailure) return
+    runCatching { registerDeviceType(androidComponents) }
+    val managedDevices = kmpDeviceTestManagedDevices(android) ?: return
+    configureDevices(project, extension, managedDevices)
+  }
+
+  private fun kmpDeviceTestManagedDevices(
+    android: KotlinMultiplatformAndroidLibraryExtension,
+  ): ManagedDevices? = runCatching {
+    val method =
+      android.javaClass.methods.firstOrNull {
+        it.name.startsWith("getAndroidTestOnDeviceOptions") && it.parameterCount == 0
+      } ?: return@runCatching null
+    (method.invoke(android) as? KotlinMultiplatformAndroidDeviceTest)?.managedDevices
+  }
+    .getOrNull()
 
   /**
    * Wires default conventions onto every [SimulatorManagedDevice] in [managedDevices] and registers
@@ -433,6 +613,43 @@ internal object SimulatorManagedDeviceSupport {
     }
   }
 
+  /**
+   * Resolves a relative path CLI executable (such as `./tools/compose-preview`) against
+   * [workingDir], while leaving bare command names (`compose-preview`) untouched for `PATH` lookup.
+   */
+  internal fun resolveExecutable(cliExecutable: String, workingDir: File?): String {
+    if (workingDir == null) return cliExecutable
+    if (!cliExecutable.contains('/') && !cliExecutable.contains('\\')) return cliExecutable
+    val file = File(cliExecutable)
+    return if (file.isAbsolute) cliExecutable else File(workingDir, cliExecutable).path
+  }
+
+  internal fun buildSetupCommand(
+    cliExecutable: String,
+    javaHome: String? = null,
+    apiLevel: Int? = null,
+  ): List<String> = buildList {
+    add(cliExecutable)
+    add("android-simulator")
+    add("--prepare-runtime")
+    javaHome
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        add("--java")
+        add(it)
+      }
+    apiLevel?.let {
+      add("--sdk")
+      add(it.toString())
+    }
+  }
+
+  internal fun isUnsupportedPrepareRuntimeOutput(output: String): Boolean {
+    val lower = output.lowercase()
+    return lower.contains("--prepare-runtime") &&
+      (lower.contains("unknown") || lower.contains("unrecognized") || lower.contains("unexpected"))
+  }
+
   internal fun buildCommand(
     cliExecutable: String,
     appApk: File,
@@ -447,6 +664,8 @@ internal object SimulatorManagedDeviceSupport {
     shards: Int? = null,
     pool: Boolean = false,
     testsFilter: String? = null,
+    coverageOutputDir: File? = null,
+    additionalTestOutputDir: File? = null,
   ): List<String> = buildList {
     add(cliExecutable)
     add("android-simulator")
@@ -498,6 +717,14 @@ internal object SimulatorManagedDeviceSupport {
         add("--tests")
         add(it)
       }
+    coverageOutputDir?.let {
+      add("--coverage-out")
+      add(it.absolutePath)
+    }
+    additionalTestOutputDir?.let {
+      add("--additional-test-output-dir")
+      add(it.absolutePath)
+    }
   }
 
   /**

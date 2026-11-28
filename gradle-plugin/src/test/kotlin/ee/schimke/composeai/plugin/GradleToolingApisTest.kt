@@ -192,4 +192,40 @@ class GradleToolingApisTest {
       (binaryDirProp.get().asFile.listFiles()?.size ?: 0) > 0,
     )
   }
+
+  @Test
+  fun `PreviewTestEventSession handles blank className and root failure cleanly`() {
+    val project =
+      ProjectBuilder.builder().withProjectDir(tempFolder.newFolder("lottie-proj")).build()
+    val task =
+      project.tasks.register("composePreviewRenderLottie", RenderPreviewsTask::class.java).get()
+    val binaryDirProp: DirectoryProperty = project.objects.directoryProperty()
+    val htmlDirProp: DirectoryProperty = project.objects.directoryProperty()
+    binaryDirProp.set(tempFolder.newFolder("lottie-binary"))
+    htmlDirProp.set(tempFolder.newFolder("lottie-html"))
+
+    val session =
+      PreviewTestEventSession.open(
+        factory = task.testEventReporterFactory,
+        rootName = "composePreviewRenderLottie",
+        binaryResultsDir = binaryDirProp.get(),
+        htmlReportDir = htmlDirProp.get(),
+      )!!
+    val t0 = Instant.now()
+    val t1 = t0.plusMillis(10)
+    try {
+      session.recordCapture(
+        className = "",
+        testName = "lottie__spin[0]",
+        displayName = "lottie/spin.json (lottie__spin)",
+        startTime = t0,
+        endTime = t1,
+        outcome = PreviewTestEventSession.CaptureOutcome.Failed("NoSuchMethodError", "trace"),
+      )
+      session.finishRoot(failedMessage = "no output produced")
+    } finally {
+      session.close()
+    }
+    assertTrue(File(htmlDirProp.get().asFile, "index.html").isFile)
+  }
 }

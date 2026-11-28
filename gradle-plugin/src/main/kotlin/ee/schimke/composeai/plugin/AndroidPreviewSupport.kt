@@ -572,6 +572,24 @@ internal object AndroidPreviewSupport {
   }
 
   /**
+   * Registers [SimulatorManagedDevice] on standalone `com.android.test` modules without configuring
+   * Compose preview discovery or rendering.
+   */
+  fun configureTestModule(project: Project, extension: PreviewExtension) {
+    val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
+    SimulatorManagedDeviceSupport.registerDeviceType(androidComponents)
+    androidComponents.finalizeDsl { android: Any ->
+      if (android is CommonExtension) {
+        SimulatorManagedDeviceSupport.configureDevices(
+          project,
+          extension,
+          android.testOptions.managedDevices,
+        )
+      }
+    }
+  }
+
+  /**
    * [kmpAndroidFallback] runs once when a KMP-Android module doesn't take the Robolectric lane (not
    * opted in, or no host-test compilation), re-routing it to Desktop. Null for classic Android
    * modules.
@@ -627,6 +645,12 @@ internal object AndroidPreviewSupport {
           if (extension.enabled.get() && extension.kmpAndroidRobolectric.get()) {
             android.androidResources.enable = true
           }
+          SimulatorManagedDeviceSupport.configureKmpDeviceTestIfEnabled(
+            project,
+            extension,
+            androidComponents,
+            android,
+          )
           // No `isIncludeAndroidResources` flip here: `withHostTest { }` can only be called once,
           // so the consumer owns it; [routeKmpAndroid] reports when it matters.
           val resolvedCompileSdk: Int? = android.compileSdk

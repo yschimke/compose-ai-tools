@@ -63,6 +63,8 @@ class SimulatorManagedDeviceTest {
         shards = 3,
         pool = true,
         testsFilter = "com.example.LoginTest,com.example.CartTest#checkout",
+        coverageOutputDir = File("/tmp/coverage"),
+        additionalTestOutputDir = File("/tmp/extra-out"),
       )
 
     assertThat(cmd)
@@ -91,8 +93,65 @@ class SimulatorManagedDeviceTest {
         "--pool",
         "--tests",
         "com.example.LoginTest,com.example.CartTest#checkout",
+        "--coverage-out",
+        File("/tmp/coverage").absolutePath,
+        "--additional-test-output-dir",
+        File("/tmp/extra-out").absolutePath,
       )
       .inOrder()
+  }
+
+  @Test
+  fun `buildSetupCommand emits prepare-runtime with optional java and sdk`() {
+    assertThat(SimulatorManagedDeviceSupport.buildSetupCommand("compose-preview"))
+      .containsExactly("compose-preview", "android-simulator", "--prepare-runtime")
+      .inOrder()
+
+    assertThat(
+        SimulatorManagedDeviceSupport.buildSetupCommand(
+          cliExecutable = "/opt/bin/compose-preview",
+          javaHome = "/opt/jdk-21",
+          apiLevel = 35,
+        ),
+      )
+      .containsExactly(
+        "/opt/bin/compose-preview",
+        "android-simulator",
+        "--prepare-runtime",
+        "--java",
+        "/opt/jdk-21",
+        "--sdk",
+        "35",
+      )
+      .inOrder()
+
+    assertThat(
+        SimulatorManagedDeviceSupport.isUnsupportedPrepareRuntimeOutput(
+          "compose-preview: unknown flag --prepare-runtime",
+        ),
+      )
+      .isTrue()
+    assertThat(
+        SimulatorManagedDeviceSupport.isUnsupportedPrepareRuntimeOutput(
+          "compose-preview: missing Java 21",
+        ),
+      )
+      .isFalse()
+  }
+
+  @Test
+  fun `resolveExecutable resolves relative paths against module directory and preserves bare names`() {
+    val moduleDir = File("/workspace/app")
+    assertThat(SimulatorManagedDeviceSupport.resolveExecutable("compose-preview", moduleDir))
+      .isEqualTo("compose-preview")
+    assertThat(SimulatorManagedDeviceSupport.resolveExecutable("/usr/local/bin/cp", moduleDir))
+      .isEqualTo("/usr/local/bin/cp")
+    assertThat(
+        SimulatorManagedDeviceSupport.resolveExecutable("./tools/compose-preview", moduleDir),
+      )
+      .isEqualTo(File(moduleDir, "./tools/compose-preview").path)
+    assertThat(SimulatorManagedDeviceSupport.resolveExecutable("./tools/compose-preview", null))
+      .isEqualTo("./tools/compose-preview")
   }
 
   @Test
@@ -120,6 +179,8 @@ class SimulatorManagedDeviceTest {
     assertThat(cmd).doesNotContain("--shards")
     assertThat(cmd).doesNotContain("--pool")
     assertThat(cmd).doesNotContain("--tests")
+    assertThat(cmd).doesNotContain("--coverage-out")
+    assertThat(cmd).doesNotContain("--additional-test-output-dir")
   }
 
   @Test

@@ -2048,9 +2048,10 @@ refused before the simulator starts, with that range in the message (and in `--t
 ### From Gradle (Gradle Managed Device)
 
 The preview plugin registers `SimulatorManagedDevice` with AGP's Gradle Managed Devices
-(`managedDeviceRegistry`) on every Android application and library module, and registers a default
-`"simulator"` device automatically in `android.testOptions.managedDevices.allDevices` (unless a
-device with that name already exists, or `composePreview { simulatorManagedDevice = false }` /
+(`managedDeviceRegistry`) on every Android application, library, standalone `com.android.test`,
+and KMP-Android module with `withDeviceTest {}` enabled, and registers a default `"simulator"`
+device automatically in `managedDevices.allDevices` (unless a device with that name already exists,
+or `composePreview { simulatorManagedDevice = false }` /
 `-PcomposePreview.simulatorManagedDevice=false` opts out). It does not need the module to have
 previews, and `check` does not depend on it, so it runs only when asked for:
 
@@ -2090,10 +2091,20 @@ android {
 }
 ```
 
-AGP generates `<device><Variant>AndroidTest` (e.g. `pixelApi35DebugAndroidTest`),
-`<device>Check`, `<group>Group<Variant>AndroidTest`, `allDevices<Variant>AndroidTest`, and
-`allDevicesCheck`. Library modules instrument their own `androidTest` APK automatically. Tasks are
-cacheable under AGP's `ManagedDeviceTestTask`; pass `--rerun` to force a fresh run.
+AGP generates `<device>Setup` (which validates Java/SDK and pre-provisions the Android daemon
+sidecar + `android-all` via `android-simulator --prepare-runtime`),
+`<device><Variant>AndroidTest` (e.g. `pixelApi35DebugAndroidTest`), `<device>Check`,
+`<group>Group<Variant>AndroidTest`, `allDevices<Variant>AndroidTest`, and `allDevicesCheck`.
+Library modules instrument their own `androidTest` APK automatically, and concurrent simulator
+JVMs across multi-module builds are bounded by a shared `BuildService`
+(`-PcomposePreview.simulatorMaxParallel`). Tasks are cacheable under AGP's `ManagedDeviceTestTask`;
+pass `--rerun` to force a fresh run.
+
+When `enableAndroidTestCoverage = true` is enabled on a build type, the managed device task passes
+`--coverage-out` so JaCoCo `.ec` execution data lands in AGP's managed-device coverage directory
+for `createManagedDevice<Variant>AndroidTestCoverageReport`. When
+`-Pandroid.enableAdditionalTestOutput=true` is enabled, `--additional-test-output-dir` is wired
+through to `android.test.additionalTestOutputDir`.
 
 Results and reports land in AGP's standard managed-device locations:
 
@@ -2116,6 +2127,7 @@ DSL values):
 | Property | Default |
 | --- | --- |
 | `composePreview.simulatorManagedDevice` | `true`: auto-register the default `"simulator"` managed device |
+| `composePreview.simulatorMaxParallel` | half of host CPUs, clamped to `1..4` (build-wide `BuildService` concurrency limit) |
 | `composePreview.cli` | `COMPOSE_PREVIEW_CLI`, else `compose-preview` on `PATH` |
 | `composePreview.simulatorJava` | a JDK 21 toolchain Gradle knows; else the CLI looks for one |
 | `composePreview.simulatorSdk` | the CLI's default Android SDK level |
@@ -2130,7 +2142,8 @@ instrumented test execution (`<device><Variant>AndroidTest`, `<device>Check`, `a
 AGP and Android Studio do not use managed devices as targets for `installDebug` or Studio's Run
 deployment dropdown. To make the simulator appear as a live device in `adb devices` and Android
 Studio's Running Devices / Run dropdown, start it with `compose-preview android-simulator --adb`
-([As a device: adb and Android Studio](#as-a-device-adb-and-android-studio)).
+([As a device: adb and Android Studio](#as-a-device-adb-and-android-studio)) or install the
+`compose-preview-ide` plugin (which registers a lazy `DeviceProvisionerPlugin` in Android Studio).
 
 ### From the CLI
 

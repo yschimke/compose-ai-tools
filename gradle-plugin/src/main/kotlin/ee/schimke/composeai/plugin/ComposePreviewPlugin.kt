@@ -69,6 +69,9 @@ constructor(
     }
     project.pluginManager.withPlugin("com.android.application") { androidHandler() }
     project.pluginManager.withPlugin("com.android.library") { androidHandler() }
+    project.pluginManager.withPlugin("com.android.test") {
+      AndroidPreviewSupport.configureTestModule(project, extension)
+    }
 
     // KMP-Android defaults to the CMP Desktop lane (#248), registered once `org.jetbrains.compose`
     // applies; `kmpAndroidRobolectric = true` opts into Robolectric, decided in

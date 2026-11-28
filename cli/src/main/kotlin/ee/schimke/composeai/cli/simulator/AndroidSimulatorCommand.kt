@@ -245,6 +245,40 @@ internal class AndroidSimulatorCommand(
       System.err.println("compose-preview android-simulator: warning: $it")
     }
 
+    if ("--prepare-runtime" in args) {
+      val requestedSdk =
+        args.flagValue("--sdk")?.let { value ->
+          val parsed = value.toIntOrNull() ?: fail("--sdk takes an API level, e.g. 35")
+          if (parsed !in SIMULATOR_MIN_SDK..AndroidBundleLaunch.MAX_SDK) {
+            fail(
+              "the simulator runs API $SIMULATOR_MIN_SDK to ${AndroidBundleLaunch.MAX_SDK} " +
+                "(Robolectric's simulator draws with real draw traversals, which need API " +
+                "$SIMULATOR_MIN_SDK); --sdk $parsed is outside that",
+            )
+          }
+          parsed
+        }
+      val sdk =
+        (requestedSdk ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
+          SIMULATOR_MIN_SDK,
+          AndroidBundleLaunch.MAX_SDK,
+        )
+      if (offline.isEmpty()) {
+        provisionAndroidAll(robolectricJars, sdk)
+      }
+      println(
+        kotlinx.serialization.json
+          .buildJsonObject {
+            put("ready", true)
+            put("sdk", sdk)
+            put("java", java.binary.absolutePath)
+            put("androidJar", androidJar.absolutePath)
+          }
+          .toString(),
+      )
+      return
+    }
+
     val converterJars = listOfNotNull(coreJar, wearJar) + dex2jarJars
     // The sidecar's androidx.test jars: their classes are the simulator's, and the converter
     // drops an APK's copies of those (and only those) so they cannot shadow them. A test APK's
@@ -543,6 +577,8 @@ internal class AndroidSimulatorCommand(
               args.flagValue("--tests"),
               args.flagValue("--test-report"),
               args.flagValue("--test-json"),
+              args.flagValue("--coverage-out"),
+              args.flagValue("--additional-test-output-dir"),
             ),
       )
     val extraJars = args.flagValuesAll("--jar").map { File(it) } + listOfNotNull(instrumentClasses)
@@ -1449,6 +1485,8 @@ internal class AndroidSimulatorCommand(
     tests: String?,
     report: String?,
     json: String?,
+    coverageOut: String? = null,
+    additionalOutputDir: String? = null,
   ): Map<String, String> = buildMap {
     if (testApk == null || testClasses == null) return@buildMap
     put("composeai.simulator.instrument", testClasses.path)
@@ -1456,6 +1494,10 @@ internal class AndroidSimulatorCommand(
     tests?.let { put("composeai.simulator.instrument.tests", it) }
     report?.let { put("composeai.simulator.instrument.report", File(it).absolutePath) }
     json?.let { put("composeai.simulator.instrument.json", File(it).absolutePath) }
+    coverageOut?.let { put("composeai.simulator.instrument.coverageDir", File(it).absolutePath) }
+    additionalOutputDir?.let {
+      put("composeai.simulator.instrument.additionalOutputDir", File(it).absolutePath)
+    }
   }
 
   /** `--project`: the app's Gradle build, for `reload` and `--live`. */
@@ -1997,6 +2039,11 @@ internal class AndroidSimulatorCommand(
         --test-report <file>  With --instrument: also write a JUnit XML report.
         --test-json <file>    With --instrument: also write the results as JSON (each test's
                               class, method, status, duration and failure; for agents).
+        --coverage-out <dir>  With --instrument: write JaCoCo .ec execution data into <dir> when
+                              the instrumented APK carries JaCoCo runtime instrumentation.
+        --additional-test-output-dir <dir>
+                              With --instrument: directory exposed via
+                              android.test.additionalTestOutputDir for extra test artifacts.
         --shards <n>          With --instrument: split the tests across n simulators run at
                               once (as AndroidJUnitRunner's numShards), merging their reports.
         --pool                With --instrument: run in a simulator a background pool started
@@ -2051,6 +2098,8 @@ internal class AndroidSimulatorCommand(
                               with --adb.
         --java <path>         The JDK (home or java binary) to run the simulator on.
         --prepare             Convert and cache the APK, print the classes jar, and exit.
+        --prepare-runtime     Validate Java/SDK and provision the Android sidecar + android-all
+                              runtime for --sdk without launching an APK, then exit.
         --verbose, -v         Print the cache entry and the launched command.
         --help, -h            Show this help.
       """

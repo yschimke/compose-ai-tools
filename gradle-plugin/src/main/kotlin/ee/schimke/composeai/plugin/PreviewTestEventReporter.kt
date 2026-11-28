@@ -20,10 +20,11 @@ private constructor(
 
   private val classGroups = LinkedHashMap<String, ClassGroupState>()
   private var closed = false
-  private var rootOutcomeRecorded = false
+  private var rootCompleted = false
 
   private class ClassGroupState(
     val reporter: GroupTestEventReporter,
+    var started: Boolean = false,
     var anyFailed: Boolean = false,
   )
 
@@ -35,41 +36,65 @@ private constructor(
     endTime: Instant,
     outcome: CaptureOutcome,
   ) {
+    // Asset previews (Lottie, SVG) have an empty className; Gradle's test event reporter requires a
+    // non-blank group name.
+    val safeGroupName = className.trim().ifEmpty { DEFAULT_GROUP_NAME }
+    val safeTestName = testName.trim().ifEmpty { "preview" }
+    val safeDisplayName = displayName.trim().ifEmpty { safeTestName }
+
     val group =
-      classGroups.getOrPut(className) {
-        val groupReporter = rootReporter.reportTestGroup(className)
-        groupReporter.started(startTime)
-        ClassGroupState(groupReporter)
-      }
-    val test = group.reporter.reportTest(testName, displayName)
-    test.started(startTime)
-    when (outcome) {
-      is CaptureOutcome.Succeeded -> test.succeeded(endTime)
-      is CaptureOutcome.Failed -> {
-        group.anyFailed = true
-        if (outcome.stackTrace.isNullOrBlank()) {
-          test.failed(endTime, outcome.message)
-        } else {
-          test.failed(endTime, outcome.message, outcome.stackTrace)
+      classGroups[safeGroupName]
+        ?: run {
+          val groupReporter = rootReporter.reportTestGroup(safeGroupName)
+          val state = ClassGroupState(groupReporter)
+          classGroups[safeGroupName] = state
+          groupReporter.started(startTime)
+          state.started = true
+          state
+        }
+
+    val test = group.reporter.reportTest(safeTestName, safeDisplayName)
+    var testCompleted = false
+    try {
+      test.started(startTime)
+      when (outcome) {
+        is CaptureOutcome.Succeeded -> test.succeeded(endTime)
+        is CaptureOutcome.Failed -> {
+          group.anyFailed = true
+          if (outcome.stackTrace.isNullOrBlank()) {
+            test.failed(endTime, outcome.message)
+          } else {
+            test.failed(endTime, outcome.message, outcome.stackTrace)
+          }
         }
       }
+      testCompleted = true
+    } finally {
+      if (!testCompleted) {
+        runCatching { test.failed(Instant.now(), "Failed to record preview result") }
+      }
+      test.close()
     }
-    test.close()
   }
 
   internal fun finishRoot(failedMessage: String? = null) {
-    if (rootOutcomeRecorded) return
-    rootOutcomeRecorded = true
+    if (rootCompleted) return
     val now = Instant.now()
-    for (group in classGroups.values) {
-      if (group.anyFailed) {
-        group.reporter.failed(now)
-      } else {
-        group.reporter.succeeded(now)
-      }
-      group.reporter.close()
-    }
+    val groups = classGroups.values.toList()
     classGroups.clear()
+    for (group in groups) {
+      try {
+        if (group.started) {
+          if (group.anyFailed) {
+            group.reporter.failed(now)
+          } else {
+            group.reporter.succeeded(now)
+          }
+        }
+      } finally {
+        runCatching { group.reporter.close() }
+      }
+    }
     // When running on Gradle 8.13 (3-arg factory where close() throws on root failure), keep root
     // succeeded so RenderPreviewsTask's own GradleException propagates without being masked.
     if (failedMessage != null && !closeThrowsOnFailure) {
@@ -77,15 +102,19 @@ private constructor(
     } else {
       rootReporter.succeeded(now)
     }
+    rootCompleted = true
   }
 
   override fun close() {
     if (closed) return
     closed = true
-    if (!rootOutcomeRecorded) {
-      finishRoot(failedMessage = null)
+    try {
+      if (!rootCompleted) {
+        finishRoot(failedMessage = null)
+      }
+    } finally {
+      rootReporter.close()
     }
-    rootReporter.close()
   }
 
   internal sealed interface CaptureOutcome {
@@ -95,6 +124,7 @@ private constructor(
   }
 
   internal companion object {
+    internal const val DEFAULT_GROUP_NAME = "previews"
     private val JSON = Json { ignoreUnknownKeys = true }
 
     internal fun open(
@@ -107,12 +137,13 @@ private constructor(
       binaryResultsDir.asFile.mkdirs()
       htmlReportDir.asFile.mkdirs()
       var closeThrows = false
+      val safeRootName = rootName.trim().ifEmpty { "composePreviewRender" }
       val reporter =
         try {
-          factory.createTestEventReporter(rootName, binaryResultsDir, htmlReportDir, false)
+          factory.createTestEventReporter(safeRootName, binaryResultsDir, htmlReportDir, false)
         } catch (_: NoSuchMethodError) {
           closeThrows = true
-          factory.createTestEventReporter(rootName, binaryResultsDir, htmlReportDir)
+          factory.createTestEventReporter(safeRootName, binaryResultsDir, htmlReportDir)
         }
       reporter.started(Instant.now())
       return PreviewTestEventSession(reporter, closeThrows)

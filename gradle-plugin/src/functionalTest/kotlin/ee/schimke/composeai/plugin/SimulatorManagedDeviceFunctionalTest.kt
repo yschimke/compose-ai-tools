@@ -214,6 +214,51 @@ class SimulatorManagedDeviceFunctionalTest {
     assertThat(result.output).contains(":app:allDevicesCheck SKIPPED")
   }
 
+  @Test
+  fun `setup task, relative CLI path, additional test outputs, and standalone android test module work end to end`() {
+    val projectDir =
+      createProject(
+        includeApp = true,
+        includeLib = false,
+        includeTestModule = true,
+      )
+    val argsLog = File(projectDir, "cli-args.txt")
+    val setupLog = File(projectDir, "setup-args.txt")
+    val appToolsDir = File(projectDir, "app/tools").apply { mkdirs() }
+    createFakeCli(appToolsDir, argsLog, mode = "pass", setupArgsLog = setupLog)
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          ":app:simulatorDebugAndroidTest",
+          "-PcomposePreview.cli=./tools/fake-compose-preview.sh",
+          "-Pandroid.enableAdditionalTestOutput=true",
+          "--stacktrace",
+        )
+        .withPluginClasspath(androidPluginClasspath())
+        .build()
+
+    assertThat(result.output).contains("1 tests: 1 passed, 0 failed, 0 skipped")
+    assertThat(setupLog.readLines())
+      .containsAtLeast("android-simulator", "--prepare-runtime")
+      .inOrder()
+
+    val recorded = argsLog.readLines()
+    val additionalIdx = recorded.indexOf("--additional-test-output-dir")
+    assertThat(additionalIdx).isGreaterThan(0)
+    assertThat(File(recorded[additionalIdx + 1]).isDirectory).isTrue()
+
+    val testModuleDryRun =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(":testmod:simulatorDebugAndroidTest", "--dry-run")
+        .withPluginClasspath(androidPluginClasspath())
+        .build()
+    assertThat(testModuleDryRun.output).contains(":testmod:simulatorSetup SKIPPED")
+    assertThat(testModuleDryRun.output).contains(":testmod:simulatorDebugAndroidTest SKIPPED")
+  }
+
   private fun androidPluginClasspath(): List<File> {
     val metadata = java.util.Properties()
     javaClass.classLoader.getResourceAsStream("plugin-under-test-metadata.properties")!!.use {
@@ -227,7 +272,12 @@ class SimulatorManagedDeviceFunctionalTest {
     return (plugin + android).map(::File)
   }
 
-  private fun createFakeCli(projectDir: File, argsLog: File, mode: String): File {
+  private fun createFakeCli(
+    projectDir: File,
+    argsLog: File,
+    mode: String,
+    setupArgsLog: File? = null,
+  ): File {
     val script = File(projectDir, "fake-compose-preview.sh")
     val xmlBody =
       if (mode == "pass") {
@@ -255,6 +305,15 @@ class SimulatorManagedDeviceFunctionalTest {
       buildString {
         appendLine("#!/usr/bin/env bash")
         appendLine("set -euo pipefail")
+        appendLine("for arg in \"\$@\"; do")
+        appendLine("  if [[ \"\$arg\" == \"--prepare-runtime\" ]]; then")
+        if (setupArgsLog != null) {
+          appendLine("    printf '%s\\n' \"\$@\" > \"${setupArgsLog.absolutePath}\"")
+        }
+        appendLine("    echo '{\"ready\":true,\"sdk\":35}'")
+        appendLine("    exit 0")
+        appendLine("  fi")
+        appendLine("done")
         appendLine("printf '%s\\n' \"\$@\" > \"${argsLog.absolutePath}\"")
         appendLine("XML=\"\"")
         appendLine("JSON=\"\"")
@@ -285,6 +344,7 @@ class SimulatorManagedDeviceFunctionalTest {
   private fun createProject(
     includeApp: Boolean,
     includeLib: Boolean,
+    includeTestModule: Boolean = false,
     extraAppDsl: String = "",
     isolatedProjects: Boolean = false,
   ): File {
@@ -297,6 +357,7 @@ class SimulatorManagedDeviceFunctionalTest {
     val includes = buildList {
       if (includeApp) add("include(\":app\")")
       if (includeLib) add("include(\":lib\")")
+      if (includeTestModule) add("include(\":testmod\")")
     }
     File(projectDir, "settings.gradle.kts")
       .writeText(
@@ -384,6 +445,31 @@ class SimulatorManagedDeviceFunctionalTest {
             .trimIndent(),
         )
       writeSampleAndroidTest(libDir, "ee.schimke.test")
+    }
+
+    if (includeTestModule) {
+      val testModDir = File(projectDir, "testmod").apply { mkdirs() }
+      File(testModDir, "build.gradle.kts")
+        .writeText(
+          """
+          plugins {
+              id("com.android.test")
+              id("ee.schimke.composeai.preview")
+          }
+
+          android {
+              namespace = "ee.schimke.test.standalone"
+              compileSdk = 36
+              targetProjectPath = ":app"
+              defaultConfig {
+                  minSdk = 26
+              }
+          }
+          """
+            .trimIndent(),
+        )
+      val manifestDir = File(testModDir, "src/main").apply { mkdirs() }
+      File(manifestDir, "AndroidManifest.xml").writeText("<manifest />\n")
     }
 
     return projectDir
