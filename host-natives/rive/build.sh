@@ -153,7 +153,7 @@ sources=()
 while read -r file; do sources+=("$file"); done < <(find "$jni/src" -name '*.cpp' | sort)
 # rive-android's CMakeLists.txt adds Rive's Vulkan bootstrap to the library itself.
 for file in "$runtime"/renderer/rive_vk_bootstrap/src/*.cpp; do sources+=("$file"); done
-sources+=("$here/host/HostAndroid.cpp")
+sources+=("$here/host/HostAndroid.cpp" "$here/host/HostEgl.cpp")
 
 pids=()
 objs=()

@@ -8,14 +8,20 @@ import android.util.Log
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import app.rive.Result
+import app.rive.Rive
+import app.rive.RiveFileSource
 import app.rive.RiveRenderException
+import app.rive.rememberRiveFile
 import app.rive.rememberRiveWorkerOrNull
 import app.rive.runtime.kotlin.RiveAnimationView
-import app.rive.runtime.kotlin.core.Rive
+import app.rive.runtime.kotlin.core.Rive as RiveRuntime
 
 /**
  * Three [RiveAnimationView]s, one per part of Rive's native runtime the simulator's host build has
@@ -41,13 +47,16 @@ import app.rive.runtime.kotlin.core.Rive
 class MainActivity : ComponentActivity() {
   private val main = Handler(Looper.getMainLooper())
 
-  /** The Compose row's outcome, once its worker has started or failed. */
+  /** The Compose row's outcome once it is settled: its worker failed, or its file did not load. */
   @Volatile private var composeResult: String? = null
+
+  /** Reads the Compose row's last frame back, once Rive has drawn one (its GPU worker started). */
+  @Volatile private var composeFrame: (() -> android.graphics.Bitmap)? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    Rive.init(this)
-    Log.i(TAG, "renderer ${Rive.defaultRendererType}")
+    RiveRuntime.init(this)
+    Log.i(TAG, "renderer ${RiveRuntime.defaultRendererType}")
 
     val files =
       listOf(
@@ -83,19 +92,29 @@ class MainActivity : ComponentActivity() {
           val error = remember { mutableStateOf<Throwable?>(null) }
           val worker = rememberRiveWorkerOrNull(error)
           LaunchedEffect(worker, error.value) {
+            if (worker != null) return@LaunchedEffect
             composeResult =
               when {
-                worker != null -> "PASS compose: a GPU worker started"
                 error.value == null -> null
-                // Rive's own error for a device without the GPU it needs; anything else (a crash
+                // Rive's own error for a host without the GPU it needs; anything else (a crash
                 // inside the runtime) is a failure.
                 generateSequence(error.value) { it.cause }.any { it is RiveRenderException } ->
                   "PASS compose: no GPU, the worker failed with ${error.value}"
                 else -> "FAIL compose: the worker failed with ${error.value}"
               }
           }
+          if (worker != null) {
+            val file = rememberRiveFile(RiveFileSource.RawRes.from(R.raw.image_db_cats), worker)
+            when (file) {
+              is Result.Success ->
+                Rive(file.value, Modifier.fillMaxSize(), onBitmapAvailable = { composeFrame = it })
+              is Result.Error -> composeResult = "FAIL compose: ${file.throwable}"
+              is Result.Loading -> Unit
+            }
+          }
         }
       },
+      LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
     )
     setContentView(column)
     val started = System.currentTimeMillis()
@@ -103,11 +122,21 @@ class MainActivity : ComponentActivity() {
       object : Runnable {
         override fun run() {
           val timedOut = System.currentTimeMillis() - started > CHECK_TIMEOUT_MS
-          val done = views.all { (_, view) -> drawn(view) > 0 } && composeResult != null
+          val done = views.all { (_, view) -> drawn(view) > 0 } && composeDone()
           if (done || timedOut) report(views) else main.postDelayed(this, CHECK_INTERVAL_MS)
         }
       },
     )
+  }
+
+  /** Whether the Compose row has settled: failed, or drawn a frame with something in it. */
+  private fun composeDone(): Boolean =
+    composeResult != null || (composeFrame?.let { drawn(it()) > 0 } ?: false)
+
+  private fun drawn(frame: android.graphics.Bitmap): Int {
+    val pixels = IntArray(frame.width * frame.height)
+    frame.getPixels(pixels, 0, frame.width, 0, 0, frame.width, frame.height)
+    return pixels.count { Color.alpha(it) != 0 }
   }
 
   /** How many of [view]'s pixels its last frame covered; 0 before it has a texture or a frame. */
@@ -130,9 +159,18 @@ class MainActivity : ComponentActivity() {
           "%.1f%% of pixels drawn".format(100.0 * drawn / total),
       )
     }
-    val compose = composeResult
-    if (compose != null && compose.startsWith("PASS")) passed++
-    Log.i(TAG, compose ?: "FAIL compose: the worker neither started nor failed")
+    val frame = composeFrame?.invoke()
+    val compose =
+      composeResult
+        ?: when {
+          frame == null -> "FAIL compose: the worker neither drew nor failed"
+          drawn(frame) > 0 ->
+            "PASS compose: the GPU renderer drew ${frame.width}x${frame.height}, " +
+              "%.1f%% of pixels".format(100.0 * drawn(frame) / (frame.width * frame.height))
+          else -> "FAIL compose: the GPU renderer drew an empty frame"
+        }
+    if (compose.startsWith("PASS")) passed++
+    Log.i(TAG, compose)
     Log.i(TAG, "DONE $passed/${views.size + 1} passed")
   }
 

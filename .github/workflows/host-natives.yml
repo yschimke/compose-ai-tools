@@ -308,6 +308,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Rive's Compose API renders with the host's OpenGL ES (host/HostEgl.cpp): Mesa's
+      # surfaceless EGL and llvmpipe, as verify-filament.
+      - name: Install Mesa
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libegl1 libgles2 libgl1 libegl-mesa0 libgl1-mesa-dri
+
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin

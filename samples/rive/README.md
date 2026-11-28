@@ -9,12 +9,15 @@ Three `RiveAnimationView`s, one per part of Rive's native runtime the simulator'
 | `image_db_cats.riv` | embedded images, decoded through `android.graphics` |
 | `font_db_station_sign.riv` | an embedded font, shaped with HarfBuzz |
 
-A fourth row uses Rive's Compose API (`rememberRiveWorkerOrNull`), which needs OpenGL ES or Vulkan.
-The host build has no GPU, so the worker must fail with an error the app can handle, as on a device
-without OpenGL ES, and the row logs `PASS compose: no GPU, …` when it does.
+A fourth row draws `image_db_cats.riv` with Rive's Compose API (`rememberRiveWorkerOrNull` and
+`Rive`), which needs OpenGL ES. The host build renders it with the host's EGL (Mesa's llvmpipe will
+do) and presents each frame to the row's `TextureView` (`SimulatorShadowEGL14`); the row logs
+`PASS compose: the GPU renderer drew …`. On a host without EGL the worker must fail with an error
+the app can handle, as on a device without OpenGL ES, and the row logs `PASS compose: no GPU, …`.
 
-In the simulator, as on a device or emulator without Rive's GPU renderer, every view falls back to
-Rive's Canvas renderer, which draws into the view's `TextureView` (`SimulatorShadowTextureView`).
+In the simulator, as on a device or emulator without Rive's GPU renderer, every `RiveAnimationView`
+falls back to Rive's Canvas renderer, which draws into the view's `TextureView`
+(`SimulatorShadowTextureView`).
 The app reads each view's frame back until all have drawn, and logs the result under the
 `RiveSample` tag:
 

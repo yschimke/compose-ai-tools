@@ -23,9 +23,10 @@ of four fixes applies to it. Then it describes the mechanism that now serves hos
   ([how it works](#how-launch-serves-host-builds)). It covers graphics-path, AndroidX sqlite-bundled
   and Ink, zstd-jni, JNA and libsignal. `samples/host-natives` exercises all of them: 7 of 7 checks
   pass in the simulator (see [the test app](#the-test-app)).
-- **Rive draws, through its Canvas renderer.** `host-natives/rive` builds `librive-android` from
-  rive-android's sources with the GPU renderer off, and the simulator's `TextureView` takes the
-  frames Rive draws with `Surface.lockCanvas` ([the rive-android host build](#the-rive-android-host-build)).
+- **Rive draws.** `host-natives/rive` builds `librive-android` from rive-android's sources.
+  `RiveAnimationView` uses its Canvas renderer, and the simulator's `TextureView` takes the frames
+  Rive draws with `Surface.lockCanvas`; the Compose API (`app.rive.Rive`) uses its GL renderer on
+  the host's own EGL ([the rive-android host build](#the-rive-android-host-build)).
 - **Several more libraries have an upstream host build at the same version**: Realm Kotlin,
   ObjectBox and ONNX Runtime. Each has an open issue for what stands in the way.
 - **Conscrypt needs nothing.** The simulator never loads the APK's `org.conscrypt` classes;
@@ -346,13 +347,14 @@ to Canvas wherever its GPU renderer does not start, emulators included.
 - **The library.** [`host-natives/rive/`](../../host-natives/rive) builds rive-android's
   `kotlin/src/main/cpp` and the rive-runtime it pins, with Rive's own premake flow and the options
   rive-android's CMake passes it, into one host library. Its sources are unchanged except for
-  `host/host.patch` (OpenJDK's `<jni.h>` signatures at two call sites, and OpenGL switched off so
-  every renderer is Canvas) and a rewrite of `->FindClass(` to the runtime's own ClassLoader-based
+  `host/host.patch` (OpenJDK's `<jni.h>` signatures at two call sites, `RiveAnimationView` kept on
+  Canvas, and the render contexts' host hooks) and a rewrite of `->FindClass(` to the runtime's own ClassLoader-based
   lookup, as Rive's worker threads see only the boot class path and the framework's classes live in
   the sandbox. The NDK pieces it calls (logging, `AndroidBitmap_*`, the API level, native windows)
-  are written in `host/HostAndroid.cpp` over the device's Java API. GL and EGL go through glad and
-  Vulkan through its loader, both resolved at run time and never reached, so the library needs only
-  glibc. Its exported JNI surface is the Android library's, symbol for symbol (310 at 11.17.0).
+  are written in `host/HostAndroid.cpp` over the device's Java API; `AndroidBitmap_lockPixels`
+  hands out RGBA bytes, converted through colour ints, since a bitmap's memory is in the host's byte
+  order under Robolectric's native graphics. GL and EGL go through glad and Vulkan through its
+  loader, all resolved at run time, so the library needs only glibc. Its exported JNI surface is the Android library's, symbol for symbol (310 at 11.17.0).
 - **stdout.** On a device stdout goes nowhere, so the runtime prints there (Luau's `print`, Yoga's
   logger); in the simulator stdout is the control channel. `printf`, `puts`, `putchar`, `vprintf`
   and `stdout` are linked with `--wrap` to stderr, and `build.sh` checks none is left.
@@ -362,16 +364,27 @@ to Canvas wherever its GPU renderer does not start, emulators included.
   framework's `getTextureLayer` does, and `SimulatorShadowSurface` gives a surface made from it a
   `lockCanvas` over a bitmap, which `unlockCanvasAndPost` hands to the view to draw. Any app that
   draws a `TextureView` with a canvas benefits, not only Rive.
+- **The GPU renderer (Compose API).** `app.rive.Rive` renders only with the Rive renderer, on an
+  EGL context the app makes through `android.opengl.EGL14` over the `TextureView`'s
+  `SurfaceTexture`. The simulator's `SimulatorShadowEGL14` answers those calls with tagged tokens
+  and remembers each window surface's `Surface`. The host build's EGL calls go to
+  `host/HostEgl.cpp` (redirected in its stand-in `EGL/egl.h`), which loads the host's EGL (Mesa's
+  surfaceless platform where there is one), gives each token a real ES 3 context and an offscreen
+  pbuffer at the window's size, and on `eglSwapBuffers` reads the frame back and hands it to
+  `SimulatorShadowEGL14.present`, which draws it into the `Surface` and so the view. Mesa's
+  llvmpipe is enough: Rive draws in its MSAA mode, as on a GPU without pixel-local storage. Where
+  the host has no EGL, `RenderContextGL` throws `RiveRenderException`, as on a device without
+  OpenGL ES, so `rememberRiveWorkerOrNull` returns null instead of the simulator crashing;
+  `RenderContextVulkan` always does.
 - **Verification.** `host-natives.yml`'s `verify-rive` job adds the fresh build to a local index
   and runs [`samples/rive`](../../samples/rive) in the simulator
-  (`simulator_smoke.py --check rive`): vector animation, embedded images and an embedded font, each
-  checked for a drawn frame, with a screenshot kept.
+  (`simulator_smoke.py --check rive`) with Mesa installed: vector animation, embedded images and an
+  embedded font on Canvas, and the same embedded-image file through the Compose API on the GPU
+  renderer, each checked for a drawn frame, with a screenshot kept.
 - **Not covered.**
-  - Rive's GPU renderer, and so the newer Compose API (`app.rive.Rive` with a `CommandQueue`),
-    which has no Canvas path. Its render context fails as on a device without OpenGL ES: the host
-    build's `RenderContextGL` and `RenderContextVulkan` throw `RiveRenderException`, so
-    `rememberRiveWorkerOrNull` returns null (and `rememberRiveWorker` throws) instead of the
-    simulator crashing on an EGL that was never loaded. `samples/rive` checks it.
+  - The GPU renderer on macOS, which has no EGL or OpenGL ES of its own; it would need ANGLE, as
+    Filament's macOS build ships. There the Compose API fails with `RiveRenderException`.
+  - `RiveAnimationView` on the GPU renderer: it stays on Canvas, which is cheaper and needs no EGL.
   - macOS: the recipe builds Linux only for now. The same layer should build there (no GL, no
     `objcopy` step), but needs `ld64`'s alternative to `--wrap` for stdout.
   - System fallback fonts. Rive finds them by parsing `/system/etc/fonts.xml` and reading

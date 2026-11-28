@@ -2431,13 +2431,16 @@ What does not, or not yet:
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
   or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
   unregistered client.
-- **GPU content.** No video, camera or GL producer for a `TextureView`. A `TextureView` does get a
+- **GPU content.** No video or camera producer for a `TextureView`, and Java's own `GLES20` calls
+  do nothing. GL from native code the simulator serves a host build of can render: Rive's Compose
+  API draws with the host's EGL and OpenGL ES (Mesa), and `SimulatorShadowEGL14` presents each frame
+  into the `TextureView`. A `TextureView` does get a
   texture: its first draw makes it and calls `onSurfaceTextureAvailable`, as on a device, and a
   `Surface` made from it draws with `lockCanvas` (or `lockHardwareCanvas`); each frame posted is
   drawn as the view's content, under its `setTransform`, and calls `onSurfaceTextureUpdated`. That
   is how Rive's `RiveAnimationView` draws in the simulator: `host-natives/rive` serves a host
-  `librive-android` with the GPU renderer off, so Rive takes its Canvas renderer, as on a device
-  without the Rive renderer (`samples/rive`). A `SurfaceView` does get a
+  `librive-android` whose `RiveAnimationView` takes its Canvas renderer, as on a device without the
+  Rive renderer (`samples/rive`). A `SurfaceView` does get a
   surface: its holder runs `surfaceCreated`, `surfaceChanged` and `surfaceDestroyed` as the view is
   attached, laid out, shown and hidden. What the app draws, with `holder.lockCanvas()` or a hardware
   canvas on `holder.getSurface()`, shows under the window through the hole the view punches, or

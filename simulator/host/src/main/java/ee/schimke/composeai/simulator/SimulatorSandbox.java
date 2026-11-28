@@ -26,6 +26,7 @@ import ee.schimke.composeai.simulator.shadows.SimulatorShadowRemoteViewsAdapter;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResources;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResultReceiver;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSettings;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowEGL14;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurface;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceTexture;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
@@ -124,6 +125,8 @@ public final class SimulatorSandbox {
                 // the Surface a texture makes.
                 SimulatorShadowTextureView.class,
                 SimulatorShadowSurface.class,
+                // EGL14 whose tokens a host build's native OpenGL ES renders for (Rive's Compose API).
+                SimulatorShadowEGL14.class,
                 SimulatorShadowSurfaceTexture.class,
                 SimulatorShadowRemoteViewsAdapter.class,
                 SimulatorShadowCompanionDeviceManager.class,

@@ -15,7 +15,7 @@ index 19de547..7830862 100644
        if (attachResult != JNI_OK)
        {
 diff --git a/src/bindings/bindings_render_context.cpp b/src/bindings/bindings_render_context.cpp
-index e0adc66..4f50f87 100644
+index e0adc66..ef870c2 100644
 --- a/src/bindings/bindings_render_context.cpp
 +++ b/src/bindings/bindings_render_context.cpp
 @@ -17,6 +17,28 @@ void throwRenderException(JNIEnv* env, const char* message)
@@ -47,7 +47,7 @@ index e0adc66..4f50f87 100644
  /**
   * Store surface JNI handles as RenderSurface pointers so later base-pointer
   * recovery does not depend on concrete class inheritance layout.
-@@ -30,11 +52,18 @@ template <typename SurfaceT> jlong surfaceToLong(SurfaceT* surface)
+@@ -30,11 +52,19 @@ template <typename SurfaceT> jlong surfaceToLong(SurfaceT* surface)
  extern "C"
  {
    JNIEXPORT jlong JNICALL Java_app_rive_core_RenderContextGL_cppConstructor(
@@ -57,17 +57,27 @@ index e0adc66..4f50f87 100644
        jlong display,
        jlong context)
    {
-+    // Host build (compose-ai-tools host-natives/rive): there is no GPU, and the EGL handles a
-+    // simulator hands over are not a host display's. Fail as a device without OpenGL ES does,
-+    // rather than call into an EGL that was never loaded.
-+    (void)display;
-+    (void)context;
-+    throwHostRenderException(env, "The Rive renderer has no GPU in this host build.");
-+    return 0;
++    // Host build (compose-ai-tools host-natives/rive): the handles are the simulator's EGL14 tokens,
++    // which host/HostEgl.cpp renders for on the host's EGL. Without one, fail as a device without
++    // OpenGL ES does, rather than call into an EGL that was never loaded.
++    if (!rive_host_egl_available())
++    {
++      throwHostRenderException(env, "The Rive renderer has no GPU on this host (no EGL).");
++      return 0;
++    }
      auto eglDisplay = reinterpret_cast<EGLDisplay>(display);
      auto eglContext = reinterpret_cast<EGLContext>(context);
  
-@@ -96,10 +125,14 @@ extern "C"
+@@ -66,6 +96,8 @@ extern "C"
+       jint width,
+       jint height)
+   {
++    // Host build: the offscreen surface host/HostEgl.cpp renders the window into is this size.
++    rive_host_egl_window_size(reinterpret_cast<EGLSurface>(eglSurface), width, height);
+     return surfaceToLong(new RenderSurfaceGL(
+         reinterpret_cast<EGLSurface>(eglSurface),
+         static_cast<uint32_t>(width),
+@@ -96,10 +128,14 @@ extern "C"
  
  #ifdef RIVE_VULKAN
    JNIEXPORT jlong JNICALL Java_app_rive_core_RenderContextVulkan_cppConstructor(

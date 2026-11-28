@@ -98,12 +98,18 @@ int sdkInt()
 }
 
 // AndroidBitmap_lockPixels hands out a pointer to the bitmap's pixels. The Java API has no such
-// pointer, so a lock copies them out (Bitmap.copyPixelsToBuffer, the same bytes in the same order)
-// and an unlock copies a mutable bitmap's back.
+// pointer, so a lock copies them out and an unlock copies a mutable bitmap's back. Through colour
+// ints (Bitmap.getPixels), not copyPixelsToBuffer: under Robolectric's native graphics a bitmap's
+// bytes are in the host's order (BGRA), where the NDK's RGBA_8888 is R, G, B, A in memory, and
+// premultiplied when the bitmap is.
 struct LockedBitmap
 {
   jweak bitmap;
   std::vector<uint8_t> pixels;
+  uint32_t width;
+  uint32_t height;
+  uint32_t stride;
+  bool premultiplied;
 };
 std::mutex g_bitmapMutex;
 std::vector<LockedBitmap*> g_locked;
@@ -126,21 +132,93 @@ bool callBoolean(JNIEnv* env, jobject obj, const char* name)
   return env->CallBooleanMethod(obj, method) == JNI_TRUE;
 }
 
-bool copyPixels(JNIEnv* env,
-                jobject bitmap,
-                std::vector<uint8_t>& pixels,
-                const char* method)
+// The bitmap's colours into [locked]'s RGBA bytes.
+bool readPixels(JNIEnv* env, jobject bitmap, LockedBitmap* locked)
 {
-  jobject buffer = env->NewDirectByteBuffer(pixels.data(),
-                                            static_cast<jlong>(pixels.size()));
-  if (buffer == nullptr) return false;
   jclass cls = env->GetObjectClass(bitmap);
-  jmethodID copy =
-      env->GetMethodID(cls, method, "(Ljava/nio/Buffer;)V");
+  jmethodID getPixels = env->GetMethodID(cls, "getPixels", "([IIIIIII)V");
   env->DeleteLocalRef(cls);
-  if (copy != nullptr) env->CallVoidMethod(bitmap, copy, buffer);
-  env->DeleteLocalRef(buffer);
-  return copy != nullptr && !env->ExceptionCheck();
+  if (getPixels == nullptr) return false;
+  const jsize count = static_cast<jsize>(locked->width * locked->height);
+  jintArray colors = env->NewIntArray(count);
+  if (colors == nullptr) return false;
+  env->CallVoidMethod(bitmap,
+                      getPixels,
+                      colors,
+                      0,
+                      static_cast<jint>(locked->width),
+                      0,
+                      0,
+                      static_cast<jint>(locked->width),
+                      static_cast<jint>(locked->height));
+  if (env->ExceptionCheck())
+  {
+    env->DeleteLocalRef(colors);
+    return false;
+  }
+  jint* values = env->GetIntArrayElements(colors, nullptr);
+  for (uint32_t y = 0; y < locked->height; ++y)
+  {
+    uint8_t* row = &locked->pixels[static_cast<size_t>(y) * locked->stride];
+    for (uint32_t x = 0; x < locked->width; ++x)
+    {
+      const uint32_t c = static_cast<uint32_t>(values[y * locked->width + x]);
+      uint32_t a = c >> 24, r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+      if (locked->premultiplied && a != 255)
+      {
+        r = r * a / 255;
+        g = g * a / 255;
+        b = b * a / 255;
+      }
+      row[x * 4 + 0] = static_cast<uint8_t>(r);
+      row[x * 4 + 1] = static_cast<uint8_t>(g);
+      row[x * 4 + 2] = static_cast<uint8_t>(b);
+      row[x * 4 + 3] = static_cast<uint8_t>(a);
+    }
+  }
+  env->ReleaseIntArrayElements(colors, values, JNI_ABORT);
+  env->DeleteLocalRef(colors);
+  return true;
+}
+
+// [locked]'s RGBA bytes back into the bitmap's colours.
+bool writePixels(JNIEnv* env, jobject bitmap, const LockedBitmap* locked)
+{
+  jclass cls = env->GetObjectClass(bitmap);
+  jmethodID setPixels = env->GetMethodID(cls, "setPixels", "([IIIIIII)V");
+  env->DeleteLocalRef(cls);
+  if (setPixels == nullptr) return false;
+  const jsize count = static_cast<jsize>(locked->width * locked->height);
+  std::vector<jint> values(static_cast<size_t>(count));
+  for (uint32_t y = 0; y < locked->height; ++y)
+  {
+    const uint8_t* row = &locked->pixels[static_cast<size_t>(y) * locked->stride];
+    for (uint32_t x = 0; x < locked->width; ++x)
+    {
+      uint32_t r = row[x * 4 + 0], g = row[x * 4 + 1], b = row[x * 4 + 2], a = row[x * 4 + 3];
+      if (locked->premultiplied && a != 0 && a != 255)
+      {
+        r = r * 255 / a > 255 ? 255 : r * 255 / a;
+        g = g * 255 / a > 255 ? 255 : g * 255 / a;
+        b = b * 255 / a > 255 ? 255 : b * 255 / a;
+      }
+      values[y * locked->width + x] = static_cast<jint>((a << 24) | (r << 16) | (g << 8) | b);
+    }
+  }
+  jintArray colors = env->NewIntArray(count);
+  if (colors == nullptr) return false;
+  env->SetIntArrayRegion(colors, 0, count, values.data());
+  env->CallVoidMethod(bitmap,
+                      setPixels,
+                      colors,
+                      0,
+                      static_cast<jint>(locked->width),
+                      0,
+                      0,
+                      static_cast<jint>(locked->width),
+                      static_cast<jint>(locked->height));
+  env->DeleteLocalRef(colors);
+  return !env->ExceptionCheck();
 }
 } // namespace
 
@@ -261,7 +339,9 @@ extern "C" int AndroidBitmap_getInfo(JNIEnv* env,
 
   info->width = static_cast<uint32_t>(width);
   info->height = static_cast<uint32_t>(height);
-  info->stride = static_cast<uint32_t>(rowBytes);
+  // The stride of what AndroidBitmap_lockPixels hands out: packed rows.
+  info->stride = format == ANDROID_BITMAP_FORMAT_RGBA_8888 ? static_cast<uint32_t>(width) * 4
+                                                           : static_cast<uint32_t>(rowBytes);
   info->format = format;
   info->flags = flags;
   return ANDROID_BITMAP_RESULT_SUCCESS;
@@ -279,9 +359,19 @@ extern "C" int AndroidBitmap_lockPixels(JNIEnv* env,
   int result = AndroidBitmap_getInfo(env, bitmap, &info);
   if (result != ANDROID_BITMAP_RESULT_SUCCESS) return result;
 
+  if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888)
+  {
+    // Only ARGB_8888 is read through colour ints; nothing here locks another config.
+    return ANDROID_BITMAP_RESULT_BAD_PARAMETER;
+  }
   auto* locked = new LockedBitmap();
-  locked->pixels.resize(static_cast<size_t>(info.stride) * info.height);
-  if (!copyPixels(env, bitmap, locked->pixels, "copyPixelsToBuffer"))
+  locked->width = info.width;
+  locked->height = info.height;
+  locked->stride = info.width * 4;
+  // ANDROID_BITMAP_FLAGS_ALPHA_UNPREMUL is 2.
+  locked->premultiplied = (info.flags & 2) == 0;
+  locked->pixels.resize(static_cast<size_t>(locked->stride) * info.height);
+  if (!readPixels(env, bitmap, locked))
   {
     delete locked;
     return env->ExceptionCheck() ? ANDROID_BITMAP_RESULT_JNI_EXCEPTION
@@ -317,8 +407,7 @@ extern "C" int AndroidBitmap_unlockPixels(JNIEnv* env, jobject bitmap)
   }
   if (locked == nullptr) return ANDROID_BITMAP_RESULT_BAD_PARAMETER;
   int result = ANDROID_BITMAP_RESULT_SUCCESS;
-  if (callBoolean(env, bitmap, "isMutable") &&
-      !copyPixels(env, bitmap, locked->pixels, "copyPixelsFromBuffer"))
+  if (callBoolean(env, bitmap, "isMutable") && !writePixels(env, bitmap, locked))
   {
     result = ANDROID_BITMAP_RESULT_JNI_EXCEPTION;
   }
@@ -342,7 +431,11 @@ extern "C"
 {
   FILE* __wrap_stdout = nullptr;
 
-  __attribute__((constructor(101))) static void riveHostStdout()
+  // Before libstdc++'s standard streams (its static ios_base::Init has init priority 90): the
+  // libstdc++ linked in here is wrapped too, so std::cout writes through this pointer, and builds
+  // over whatever it holds when it starts. 50 is in the range reserved for the implementation,
+  // which this is standing in for.
+  __attribute__((constructor(50))) static void riveHostStdout()
   {
     __wrap_stdout = stderr;
   }
