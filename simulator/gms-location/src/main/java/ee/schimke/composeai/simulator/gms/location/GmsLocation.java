@@ -368,13 +368,50 @@ public final class GmsLocation {
   }
 
   void setMockLocation(Location location) {
-    this.mockLocation = location;
-    if (mockMode && location != null) {
+    Location mock = copyAsMock(location);
+    this.mockLocation = mock;
+    if (mockMode && mock != null) {
       if (locationAvailable) {
-        completePendingCurrentLocations(location);
-        deliverLocation(location);
+        completePendingCurrentLocations(mock);
+        deliverLocation(mock);
       }
-      evaluateGeofences(location);
+      evaluateGeofences(mock);
+    }
+  }
+
+  private static Location copyAsMock(Location location) {
+    if (location == null) return null;
+    Location copy;
+    try {
+      copy = new Location(location);
+    } catch (RuntimeException | LinkageError ignored) {
+      return location;
+    }
+    markMock(copy);
+    return copy;
+  }
+
+  private static void markMock(Location location) {
+    try {
+      Method m = Location.class.getMethod("setMock", boolean.class);
+      m.invoke(location, true);
+      return;
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+    try {
+      Method m = Location.class.getMethod("setIsFromMockProvider", boolean.class);
+      m.setAccessible(true);
+      m.invoke(location, true);
+      return;
+    } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+    }
+    try {
+      android.os.Bundle extras = location.getExtras();
+      android.os.Bundle updated =
+          extras != null ? new android.os.Bundle(extras) : new android.os.Bundle();
+      updated.putBoolean("mockLocation", true);
+      location.setExtras(updated);
+    } catch (RuntimeException | LinkageError ignored) {
     }
   }
 
