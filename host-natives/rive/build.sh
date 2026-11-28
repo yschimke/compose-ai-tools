@@ -125,6 +125,10 @@ if $macos; then
     exit 1
   }
   perl -pi -e "s/makecommand = makecommand \.\. ' rive_pls_macosx_metallib'/makecommand = makecommand/" "$pls"
+  # --nop-obj-c compiles src/metal/metal_nop.cpp in place of the Metal backend, a file this
+  # rive-runtime no longer has; nothing outside the backend needs what it defined.
+  nop="$runtime/renderer/src/metal/metal_nop.cpp"
+  [[ -f "$nop" ]] || echo "// Host build: the Metal backend is left out (--nop-obj-c)." >"$nop"
 fi
 # Rive's premake runs `clang` and `clang++` by name and ignores CFLAGS and CXXFLAGS, which the
 # manylinux build needs (--gcc-toolchain, for gcc-toolset's libstdc++): shims ahead on PATH add them.
@@ -296,8 +300,10 @@ else
       copies+=("$renamed/$(basename "$file")")
     done
     archives=("${copies[@]}")
+    # Objective-C++: on Apple platforms Rive's headers import <Metal/Metal.h> (ORE_BACKEND_METAL),
+    # which only ObjC++ accepts; Rive compiles its own such sources the same way.
     compile_jni "$static" "$out/../rive-android-objects-$arch" \
-      -arch "$clang_arch" -mmacosx-version-min=11.0
+      -arch "$clang_arch" -mmacosx-version-min=11.0 -x objective-c++
     for obj in "${objs[@]}"; do
       # HostAndroid.o defines the __wrap_ functions, which call stderr's.
       [[ "$(basename "$obj")" == host-HostAndroid.o ]] && continue
@@ -308,7 +314,9 @@ else
     "$cxx" ${LDFLAGS:-} -dynamiclib -arch "$clang_arch" -mmacosx-version-min=11.0 \
       -install_name @rpath/librive-android.dylib -o "$slice" "${objs[@]}" "${archives[@]}" \
       -Wl,-exported_symbols_list,"$exported" -Wl,-dead_strip \
-      -framework CoreFoundation -framework CoreAudio -framework AudioToolbox >&2
+      -framework CoreFoundation -framework Foundation -framework CoreAudio -framework AudioToolbox \
+      -framework CoreText -framework CoreGraphics -framework Metal -framework QuartzCore \
+      -framework Security -lobjc >&2
     for symbol in _printf _vprintf _puts _putchar ___stdoutp; do
       if nm -u "$slice" | grep -q -x "$symbol"; then
         echo "host-natives: $slice ($arch) still uses $symbol" >&2
