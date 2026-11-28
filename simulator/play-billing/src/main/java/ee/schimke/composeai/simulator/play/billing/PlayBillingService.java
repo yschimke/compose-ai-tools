@@ -47,6 +47,8 @@ public final class PlayBillingService {
   public static final String DESCRIPTOR = "com.android.vending.billing.IInAppBillingService";
   public static final String ACTION_PURCHASES_UPDATED =
       "com.android.vending.billing.PURCHASES_UPDATED";
+  public static final String ACTION_PURCHASE_FLOW =
+      "ee.schimke.composeai.simulator.play.billing.PURCHASE_FLOW";
 
   // BillingResponseCode constants.
   public static final int RESULT_OK = 0;
@@ -63,18 +65,18 @@ public final class PlayBillingService {
   public static final int PURCHASE_STATE_PURCHASED = 0;
   public static final int PURCHASE_STATE_PENDING = 2;
 
-  // Standard IInAppBillingService AIDL transaction codes.
+  // Standard IInAppBillingService AIDL wire transaction codes (FIRST_CALL_TRANSACTION + id).
   static final int TX_IS_BILLING_SUPPORTED = 1;
   static final int TX_GET_SKU_DETAILS = 2;
   static final int TX_GET_BUY_INTENT = 3;
   static final int TX_GET_PURCHASES = 4;
   static final int TX_CONSUME_PURCHASE = 5;
   static final int TX_GET_BUY_INTENT_EXTRA_PARAMS = 8;
-  static final int TX_GET_PURCHASES_EXTRA_PARAMS = 9;
   static final int TX_IS_BILLING_SUPPORTED_EXTRA_PARAMS = 10;
+  static final int TX_GET_PURCHASES_EXTRA_PARAMS = 11;
   static final int TX_CONSUME_PURCHASE_EXTRA_PARAMS = 12;
-  static final int TX_GET_SKU_DETAILS_EXTRA_PARAMS = 14;
-  static final int TX_ACKNOWLEDGE_PURCHASE = 901;
+  static final int TX_GET_SKU_DETAILS_EXTRA_PARAMS = 901;
+  static final int TX_ACKNOWLEDGE_PURCHASE = 902;
 
   private static volatile PlayBillingService active;
 
@@ -230,9 +232,36 @@ public final class PlayBillingService {
 
   /** Installs the {@code IInAppBillingService} binder into {@code com.android.vending}. */
   public static PlayBillingService install(Application app) {
+    return install(app, null);
+  }
+
+  /**
+   * Installs the {@code IInAppBillingService} binder and registers a {@link
+   * ee.schimke.composeai.simulator.Navigator.SystemUi} handler for {@code BUY_INTENT} activity
+   * launches so {@code ProxyBillingActivity} receives {@code Activity.RESULT_OK} with purchase
+   * data.
+   */
+  public static PlayBillingService install(
+      Application app, ee.schimke.composeai.simulator.Navigator navigator) {
     Handler handler = new Handler(Looper.getMainLooper());
     PlayBillingService service = new PlayBillingService(app, handler::post);
     service.registerWithRobolectric();
+    if (navigator != null) {
+      navigator.addSystemUi(
+          (intent, requestCode, requester) -> {
+            if (intent == null || !ACTION_PURCHASE_FLOW.equals(intent.getAction())) return false;
+            if (requester != null) {
+              Intent result = new Intent();
+              result.putExtra("RESPONSE_CODE", intent.getIntExtra("RESPONSE_CODE", RESULT_OK));
+              String data = intent.getStringExtra("INAPP_PURCHASE_DATA");
+              String sig = intent.getStringExtra("INAPP_DATA_SIGNATURE");
+              if (data != null) result.putExtra("INAPP_PURCHASE_DATA", data);
+              if (sig != null) result.putExtra("INAPP_DATA_SIGNATURE", sig);
+              navigator.deliverResult(requester, requestCode, android.app.Activity.RESULT_OK, result);
+            }
+            return true;
+          });
+    }
     active = service;
     return service;
   }
@@ -681,12 +710,30 @@ public final class PlayBillingService {
       int rc = executeBuy(pkg, sku, type);
       out.putInt("RESPONSE_CODE", rc);
       if (rc == RESULT_OK && app != null) {
-        Intent stubIntent = new Intent(ACTION_PURCHASES_UPDATED).putExtra("RESPONSE_CODE", rc);
+        Intent flowIntent = new Intent(ACTION_PURCHASE_FLOW).putExtra("RESPONSE_CODE", rc);
+        PurchaseRecord latest = findLatestPurchase(sku);
+        if (latest != null) {
+          try {
+            flowIntent.putExtra("INAPP_PURCHASE_DATA", latest.toPurchaseJson().toString());
+            flowIntent.putExtra("INAPP_DATA_SIGNATURE", "sim-signature-" + latest.orderId);
+          } catch (JSONException ignored) {
+          }
+        }
         PendingIntent pi =
-            PendingIntent.getBroadcast(app, sku.hashCode(), stubIntent, PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent.getActivity(app, sku.hashCode(), flowIntent, PendingIntent.FLAG_IMMUTABLE);
         out.putParcelable("BUY_INTENT", pi);
       }
       return out;
+    }
+
+    private PurchaseRecord findLatestPurchase(String sku) {
+      PurchaseRecord found = null;
+      synchronized (purchases) {
+        for (PurchaseRecord rec : purchases.values()) {
+          if (sku.equals(rec.productId)) found = rec;
+        }
+      }
+      return found;
     }
 
     private Bundle buildPurchasesBundle(String type) {

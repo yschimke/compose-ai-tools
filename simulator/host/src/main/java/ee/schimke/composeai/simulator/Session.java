@@ -195,7 +195,7 @@ public final class Session {
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     ee.schimke.composeai.simulator.gms.auth.GmsAuth.install(app, navigator);
-    ee.schimke.composeai.simulator.play.billing.PlayBillingService.install(app);
+    ee.schimke.composeai.simulator.play.billing.PlayBillingService.install(app, navigator);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
     this.prompts = new SystemPrompts(app, protocol, navigator);
