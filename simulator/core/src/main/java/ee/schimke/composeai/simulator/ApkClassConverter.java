@@ -1419,31 +1419,49 @@ public final class ApkClassConverter {
       Stmt pred, boolean includePredDef, Set<Local> candidates, Map<Stmt, List<Local>> defsAt) {
     if (candidates.isEmpty()) return null;
     if (candidates.size() == 1) return candidates.iterator().next();
-    Set<Stmt> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-    ArrayDeque<Stmt> queue = new ArrayDeque<>();
-    if (includePredDef) {
-      visited.add(pred);
-      queue.add(pred);
-    } else if (pred.cfgFroms != null) {
-      for (Stmt from : pred.cfgFroms) {
-        if (visited.add(from)) queue.add(from);
-      }
+    Set<Stmt> visitedAfter = Collections.newSetFromMap(new IdentityHashMap<>());
+    Set<Stmt> visitedBefore = Collections.newSetFromMap(new IdentityHashMap<>());
+    ArrayDeque<Stmt> stmtQueue = new ArrayDeque<>();
+    ArrayDeque<Boolean> includeQueue = new ArrayDeque<>();
+    if ((includePredDef ? visitedAfter : visitedBefore).add(pred)) {
+      stmtQueue.add(pred);
+      includeQueue.add(includePredDef);
     }
-    while (!queue.isEmpty()) {
-      Stmt cur = queue.poll();
-      List<Local> defs = defsAt.get(cur);
-      if (defs != null) {
-        for (Local def : defs) {
-          if (candidates.contains(def)) return def;
+    while (!stmtQueue.isEmpty()) {
+      Stmt cur = stmtQueue.poll();
+      boolean includeDef = includeQueue.poll();
+      if (includeDef) {
+        List<Local> defs = defsAt.get(cur);
+        if (defs != null) {
+          for (Local def : defs) {
+            if (candidates.contains(def)) return def;
+          }
         }
       }
       if (cur.cfgFroms != null) {
+        LabelStmt curLabel = cur instanceof LabelStmt l ? l : null;
         for (Stmt from : cur.cfgFroms) {
-          if (visited.add(from)) queue.add(from);
+          boolean exceptionOnly =
+              curLabel != null
+                  && from.exceptionHandlers != null
+                  && from.exceptionHandlers.contains(curLabel)
+                  && !isNormalEdge(from, curLabel);
+          boolean nextInclude = !exceptionOnly;
+          if ((nextInclude ? visitedAfter : visitedBefore).add(from)) {
+            stmtQueue.add(from);
+            includeQueue.add(nextInclude);
+          }
         }
       }
     }
     return null;
+  }
+
+  private static boolean isNormalEdge(Stmt from, LabelStmt target) {
+    if (from.getNext() == target && from.st.canContinue()) return true;
+    if (from.st == Stmt.ST.GOTO && ((GotoStmt) from).target == target) return true;
+    if (from.st == Stmt.ST.IF && ((IfStmt) from).target == target) return true;
+    return from instanceof BaseSwitchStmt sw && switchTargets(sw, target);
   }
 
   private static Constant defaultConstant(String valueType) {

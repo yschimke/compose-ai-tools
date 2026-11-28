@@ -1208,4 +1208,52 @@ public class ApkClassConverterTest {
       assertEquals("p0", slots.get(1));
     }
   }
+
+  @Test
+  public void sparseUnssaPreservesValueBeforeThrowingAssignmentAcrossCatchEdge() throws Exception {
+    // Mirrors `v = input; try { v = callable.call(); } catch (Exception e) {} return v;` on the
+    // sparse UnSSA path (triggered here via @Advice.OnMethodEnter). On the catch path, the phi at
+    // the return merge must pick `input`, not the unassigned result of the throwing `call()`.
+    String advice =
+        """
+        .class public Lapp/CatchMergeAdvice;
+        .super Ljava/lang/Object;
+        .method public static run(Ljava/lang/String;Ljava/util/concurrent/Callable;)Ljava/lang/String;
+          .registers 4
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          move-object v0, p0
+          :try_start
+          invoke-interface {p1}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+          move-result-object v1
+          check-cast v1, Ljava/lang/String;
+          move-object v0, v1
+          :try_end
+          .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch_handler
+          goto :merge
+          :catch_handler
+          move-exception v1
+          :merge
+          return-object v0
+        .end method
+        """;
+    Path outApk = apk("catch-merge-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("catch-merge-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      java.lang.reflect.Method run =
+          loader
+              .loadClass("app.CatchMergeAdvice")
+              .getMethod("run", String.class, java.util.concurrent.Callable.class);
+      java.util.concurrent.Callable<Object> failing =
+          () -> {
+            throw new IllegalStateException("boom");
+          };
+      java.util.concurrent.Callable<Object> succeeding = () -> "updated";
+      assertEquals("fallback", run.invoke(null, "fallback", failing));
+      assertEquals("updated", run.invoke(null, "fallback", succeeding));
+    }
+  }
 }
