@@ -28,6 +28,14 @@ static inline int sched_getaffinity(pid_t, size_t, cpu_set_t* set)
   return 0;
 }
 static inline int sched_setaffinity(pid_t, size_t, const cpu_set_t*) { return 0; }
+#ifdef __cplusplus
+// Linux's pthread_setname_np(thread, name); macOS's names only the calling thread, which is the
+// only one librive-android names (helpers/worker_thread.hpp, with pthread_self()).
+static inline int pthread_setname_np(pthread_t thread, const char* name)
+{
+  return pthread_equal(thread, pthread_self()) ? pthread_setname_np(name) : 0;
+}
+#endif
 #endif
 
 #ifdef __cplusplus
