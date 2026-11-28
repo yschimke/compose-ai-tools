@@ -56,7 +56,9 @@ final class TextureFrames {
 
   /** One texture's buffers: the one a locked canvas draws into, and the last frame posted. */
   static final class Target {
-    private final SurfaceTexture texture;
+    // Weak, as TARGETS's key is this texture: a strong reference here would keep every entry, and
+    // its bitmaps, for the life of the sandbox.
+    private final WeakReference<SurfaceTexture> texture;
     private final WeakReference<TextureView> view;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AtomicBoolean updatePending = new AtomicBoolean();
@@ -69,7 +71,7 @@ final class TextureFrames {
     private Bitmap shown;
 
     private Target(SurfaceTexture texture, TextureView view) {
-      this.texture = texture;
+      this.texture = new WeakReference<>(texture);
       this.view = new WeakReference<>(view);
     }
 
@@ -116,11 +118,12 @@ final class TextureFrames {
           () -> {
             updatePending.set(false);
             TextureView current = view.get();
-            if (current == null || current.getSurfaceTexture() != texture) return;
+            SurfaceTexture shown = texture.get();
+            if (current == null || shown == null || current.getSurfaceTexture() != shown) return;
             current.invalidate();
             TextureView.SurfaceTextureListener listener =
                 ReflectionHelpers.getField(current, "mListener");
-            if (listener != null) listener.onSurfaceTextureUpdated(texture);
+            if (listener != null) listener.onSurfaceTextureUpdated(shown);
           });
     }
 
