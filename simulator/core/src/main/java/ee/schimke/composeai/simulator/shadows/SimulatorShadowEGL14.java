@@ -15,8 +15,11 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
@@ -63,16 +66,34 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
   /** Each surface token's record. */
   private static final Map<Long, SurfaceRecord> SURFACES = new ConcurrentHashMap<>();
 
+  /**
+   * Context and surface tokens destroyed since a host build last asked ({@link #takeReleased}), so
+   * it can release the real contexts and surfaces behind them. Collected only once a host build
+   * has asked, so an app without one queues nothing.
+   */
+  private static final Queue<Long> RELEASED = new ConcurrentLinkedQueue<>();
+
+  private static volatile boolean hostAttached;
+
   private static final int EGL_OPENGL_ES3_BIT = 0x40;
 
   private static final class SurfaceRecord {
+    /** The app's window: it keeps it for as long as it draws into it. */
     final WeakReference<Surface> window;
+
+    /**
+     * A window this made ({@code eglCreateWindowSurface} given a {@code SurfaceTexture}): only this
+     * holds it, until the EGL surface is destroyed.
+     */
+    final Surface owned;
+
     final int width;
     final int height;
     Bitmap frame;
 
-    SurfaceRecord(Surface window, int width, int height) {
+    SurfaceRecord(Surface window, boolean owned, int width, int height) {
       this.window = new WeakReference<>(window);
+      this.owned = owned ? window : null;
       this.width = width;
       this.height = height;
     }
@@ -172,8 +193,26 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
 
   @Implementation
   protected static boolean eglDestroyContext(EGLDisplay dpy, EGLContext ctx) {
-    CONTEXTS.remove(ctx.getNativeHandle());
+    if (CONTEXTS.remove(ctx.getNativeHandle()) != null) released(ctx.getNativeHandle());
     return true;
+  }
+
+  private static void released(long token) {
+    if (hostAttached) RELEASED.add(token);
+  }
+
+  /**
+   * The context and surface tokens destroyed since the last call, for a host build to release what
+   * it made for them; the first call starts the collection. Called from the host build's render
+   * thread.
+   */
+  public static long[] takeReleased() {
+    hostAttached = true;
+    long[] tokens = new long[RELEASED.size()];
+    int count = 0;
+    Long token;
+    while (count < tokens.length && (token = RELEASED.poll()) != null) tokens[count++] = token;
+    return count == tokens.length ? tokens : Arrays.copyOf(tokens, count);
   }
 
   @Implementation
@@ -194,10 +233,12 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
   protected static EGLSurface eglCreateWindowSurface(
       EGLDisplay dpy, EGLConfig config, Object win, int[] attribList, int offset) {
     Surface surface;
+    boolean owned = false;
     if (win instanceof Surface) {
       surface = (Surface) win;
     } else if (win instanceof SurfaceTexture) {
       surface = new Surface((SurfaceTexture) win);
+      owned = true;
     } else if (win instanceof SurfaceView) {
       surface = ((SurfaceView) win).getHolder().getSurface();
     } else if (win instanceof SurfaceHolder) {
@@ -206,7 +247,7 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
       return EGL14.EGL_NO_SURFACE;
     }
     long token = token(SURFACE);
-    SURFACES.put(token, new SurfaceRecord(surface, 0, 0));
+    SURFACES.put(token, new SurfaceRecord(surface, owned, 0, 0));
     return handle(EGLSurface.class, token);
   }
 
@@ -218,6 +259,7 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
         token,
         new SurfaceRecord(
             null,
+            false,
             attrib(attribList, offset, EGL14.EGL_WIDTH, 1),
             attrib(attribList, offset, EGL14.EGL_HEIGHT, 1)));
     return handle(EGLSurface.class, token);
@@ -225,7 +267,11 @@ public class SimulatorShadowEGL14 extends ShadowEGL14 {
 
   @Implementation
   protected static boolean eglDestroySurface(EGLDisplay dpy, EGLSurface surface) {
-    SURFACES.remove(surface.getNativeHandle());
+    SurfaceRecord record = SURFACES.remove(surface.getNativeHandle());
+    if (record != null) {
+      if (record.owned != null) record.owned.release();
+      released(surface.getNativeHandle());
+    }
     return true;
   }
 

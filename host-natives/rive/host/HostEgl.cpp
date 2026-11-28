@@ -197,35 +197,86 @@ Handle tokenFor(Handle real, const Map& map)
   return real;
 }
 
-// SimulatorShadowEGL14.present, found on first use through the app's class loader.
+// SimulatorShadowEGL14 and its present and takeReleased, found on first use through the app's
+// class loader.
+std::once_flag g_shadowOnce;
 jclass g_presentClass = nullptr;
 jmethodID g_present = nullptr;
+jmethodID g_takeReleased = nullptr;
 
-bool present(EGLSurface token, int width, int height)
+bool shadow(JNIEnv* env)
 {
-  JNIEnv* env = rive_android::GetJNIEnv();
-  if (env == nullptr) return false;
-  if (g_present == nullptr)
-  {
+  std::call_once(g_shadowOnce, [env] {
     jclass local = rive_host_FindClass(
         env, "ee/schimke/composeai/simulator/shadows/SimulatorShadowEGL14");
     if (local == nullptr)
     {
       env->ExceptionClear();
       __android_log_print(ANDROID_LOG_ERROR, TAG, "No SimulatorShadowEGL14 to present frames to.");
-      return false;
+      return;
     }
-    g_presentClass = static_cast<jclass>(env->NewGlobalRef(local));
+    jclass global = static_cast<jclass>(env->NewGlobalRef(local));
     env->DeleteLocalRef(local);
-    g_present = env->GetStaticMethodID(g_presentClass,
-                                       "present",
-                                       "(JLjava/nio/ByteBuffer;II)Z");
-    if (g_present == nullptr)
+    jmethodID presentMethod =
+        env->GetStaticMethodID(global, "present", "(JLjava/nio/ByteBuffer;II)Z");
+    if (presentMethod == nullptr) env->ExceptionClear();
+    jmethodID takeReleasedMethod = env->GetStaticMethodID(global, "takeReleased", "()[J");
+    if (takeReleasedMethod == nullptr) env->ExceptionClear();
+    g_presentClass = global;
+    g_present = presentMethod;
+    g_takeReleased = takeReleasedMethod;
+  });
+  return g_presentClass != nullptr;
+}
+
+// Hold g_mutex. Destroys the real contexts and surfaces behind the tokens the app has destroyed
+// (through EGL14, which reaches SimulatorShadowEGL14, not this library). EGL defers destroying a
+// context or surface still current on a thread until it is released there.
+void releaseDestroyedLocked()
+{
+  JNIEnv* env = rive_android::GetJNIEnv();
+  if (env == nullptr || !shadow(env) || g_takeReleased == nullptr) return;
+  auto tokens = static_cast<jlongArray>(env->CallStaticObjectMethod(g_presentClass, g_takeReleased));
+  if (env->ExceptionCheck())
+  {
+    env->ExceptionClear();
+    return;
+  }
+  if (tokens == nullptr) return;
+  const jsize count = env->GetArrayLength(tokens);
+  std::vector<jlong> values(static_cast<size_t>(count));
+  env->GetLongArrayRegion(tokens, 0, count, values.data());
+  env->DeleteLocalRef(tokens);
+  for (jlong value : values)
+  {
+    const void* token = reinterpret_cast<const void*>(value);
+    if (kind(token) == KIND_CONTEXT)
     {
-      env->ExceptionClear();
-      return false;
+      auto found = g_contexts.find(token);
+      if (found == g_contexts.end()) continue;
+      glad_eglDestroyContext(g_display, found->second);
+      g_contexts.erase(found);
+    }
+    else if (kind(token) == KIND_SURFACE)
+    {
+      auto found = g_surfaces.find(token);
+      if (found != g_surfaces.end())
+      {
+        if (found->second.real != EGL_NO_SURFACE)
+        {
+          glad_eglDestroySurface(g_display, found->second.real);
+        }
+        g_surfaces.erase(found);
+      }
+      g_windowSizes.erase(token);
     }
   }
+}
+
+bool present(EGLSurface token, int width, int height)
+{
+  JNIEnv* env = rive_android::GetJNIEnv();
+  if (env == nullptr || !shadow(env) || g_present == nullptr) return false;
   // The frame, bottom row first as OpenGL reads it, then flipped to top row first.
   std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
   GLint framebuffer = 0;
@@ -288,6 +339,7 @@ extern "C"
                                             : EGL_FALSE;
     }
     if (!initLocked()) return EGL_FALSE;
+    releaseDestroyedLocked();
     EGLContext realCtx = realContext(ctx);
     EGLSurface realDraw = realSurface(draw);
     EGLSurface realRead = read == draw ? realDraw : realSurface(read);

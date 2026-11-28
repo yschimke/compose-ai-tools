@@ -151,6 +151,63 @@ public class SimulatorShadowEGL14Test {
   }
 
   @Test
+  public void destroyedTokensAreHandedToTheHostBuild() {
+    EGLDisplay display = display();
+    EGLConfig config = config(display);
+    int[] es3 = {EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE};
+    // The first call attaches the host build (the shadow's state outlives a test, so it also
+    // drains whatever earlier tests destroyed).
+    SimulatorShadowEGL14.takeReleased();
+
+    EGLContext context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, es3, 0);
+    EGLSurface pbuffer =
+        EGL14.eglCreatePbufferSurface(display, config, new int[] {EGL14.EGL_NONE}, 0);
+    assertTrue(EGL14.eglDestroyContext(display, context));
+    assertTrue(EGL14.eglDestroySurface(display, pbuffer));
+    // Destroying twice releases once.
+    EGL14.eglDestroySurface(display, pbuffer);
+    long[] released = SimulatorShadowEGL14.takeReleased();
+    assertEquals(2, released.length);
+    assertEquals(context.getNativeHandle(), released[0]);
+    assertEquals(pbuffer.getNativeHandle(), released[1]);
+    assertEquals(0, SimulatorShadowEGL14.takeReleased().length);
+  }
+
+  @Test
+  public void aWindowMadeFromATextureLivesUntilItsSurfaceIsDestroyed() throws InterruptedException {
+    Activity activity = Robolectric.setupActivity(Activity.class);
+    FrameLayout content = new FrameLayout(activity);
+    activity.setContentView(content);
+    TextureView view = new TextureView(activity);
+    content.addView(view, new FrameLayout.LayoutParams(40, 20));
+    idle();
+    View root = activity.getWindow().getDecorView();
+    root.draw(
+        new Canvas(
+            Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888)));
+    idle();
+
+    EGLDisplay display = display();
+    // Given the SurfaceTexture, the shadow makes the Surface; nothing else holds it.
+    EGLSurface surface =
+        EGL14.eglCreateWindowSurface(
+            display, config(display), view.getSurfaceTexture(), new int[] {EGL14.EGL_NONE}, 0);
+    System.gc();
+    Thread.sleep(50);
+    System.gc();
+    ByteBuffer rgba = ByteBuffer.allocateDirect(40 * 20 * 4);
+    for (int i = 0; i < 40 * 20; i++) {
+      rgba.put((byte) 23).put((byte) 64).put((byte) 75).put((byte) 255);
+    }
+    assertTrue(SimulatorShadowEGL14.present(surface.getNativeHandle(), rgba, 40, 20));
+    idle();
+    assertEquals(Color.rgb(23, 64, 75), view.getBitmap().getPixel(20, 10));
+
+    assertTrue(EGL14.eglDestroySurface(display, surface));
+    assertFalse(SimulatorShadowEGL14.present(surface.getNativeHandle(), rgba, 40, 20));
+  }
+
+  @Test
   public void presentRefusesWhatIsNotAWindow() {
     EGLDisplay display = display();
     EGLSurface pbuffer =
