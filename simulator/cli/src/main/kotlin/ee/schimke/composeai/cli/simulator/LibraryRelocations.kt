@@ -34,7 +34,7 @@ internal object LibraryRelocations {
   const val MAIN = "ee.schimke.composeai.simulator.LibraryRelocation"
   const val RUNTIME_PROPERTY = "composeai.simulator.relocation.runtime"
   const val BOUNDARY_PROPERTY = "composeai.simulator.relocation.boundary"
-  const val PACKAGES_PROPERTY = "composeai.simulator.relocation.packages"
+  const val CONTEXT_PROPERTY = "composeai.simulator.relocation.context"
 
   /** `0` turns relocation off: the app runs against the runtime's copies, as before. */
   const val ENV = "COMPOSE_PREVIEW_SIMULATOR_RELOCATION"
@@ -44,14 +44,17 @@ internal object LibraryRelocations {
   /** What a relocation decided: [jar] to run, if anything moved, and the [packages] that did. */
   data class Outcome(val jar: File?, val packages: List<String>, val summary: String)
 
-  /** Names and sizes of [runtimeJars], and [forced] packages: what a decision depends on. */
-  fun stamp(runtimeJars: List<File>, forced: List<String>?): String {
+  /**
+   * Names and sizes of [runtimeJars], and the [context] (an app's relocated jar, for its test APK):
+   * what a decision depends on.
+   */
+  fun stamp(runtimeJars: List<File>, context: File?): String {
     val digest = MessageDigest.getInstance("SHA-256")
     digest.update("relocation-1".toByteArray())
     for (jar in runtimeJars) {
       digest.update("${jar.name}:${jar.length()}\n".toByteArray())
     }
-    forced?.let { digest.update("forced:${it.joinToString(",")}".toByteArray()) }
+    context?.let { digest.update("context:${it.path}:${it.length()}".toByteArray()) }
     return digest.digest().joinToString("") { "%02x".format(it) }.take(16)
   }
 
@@ -64,7 +67,7 @@ internal object LibraryRelocations {
     androidJar: File,
     runtime: List<File>,
     boundary: List<File>,
-    forced: List<String>?,
+    context: File?,
   ): List<String> =
     listOfNotNull(
       java.path,
@@ -72,7 +75,7 @@ internal object LibraryRelocations {
       "-XX:+UseSerialGC",
       "-D$RUNTIME_PROPERTY=" + runtime.joinToString(File.pathSeparator) { it.path },
       "-D$BOUNDARY_PROPERTY=" + boundary.joinToString(File.pathSeparator) { it.path },
-      forced?.let { "-D$PACKAGES_PROPERTY=" + it.joinToString(",") },
+      context?.let { "-D$CONTEXT_PROPERTY=" + it.path },
       "-cp",
       classpath.joinToString(File.pathSeparator) { it.path },
       MAIN,

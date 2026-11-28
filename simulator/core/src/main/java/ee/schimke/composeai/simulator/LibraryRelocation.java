@@ -15,9 +15,9 @@ import java.util.Deque;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.zip.ZipEntry;
@@ -75,10 +75,11 @@ public final class LibraryRelocation {
   public static final String BOUNDARY_PROPERTY = "composeai.simulator.relocation.boundary";
 
   /**
-   * Packages to relocate without analysis, comma-separated: a test APK takes its app's, so both
-   * refer to the same copy.
+   * The app's relocated jar, for a test APK: its renames are applied as they are, without
+   * analysis, so the test's references reach the app's classes (and the app's copy of Guava) by the
+   * names the app's now have.
    */
-  public static final String PACKAGES_PROPERTY = "composeai.simulator.relocation.packages";
+  public static final String CONTEXT_PROPERTY = "composeai.simulator.relocation.context";
 
   /** Where relocated classes go: {@code com/google/common/base/Joiner} becomes this + that. */
   static final String PREFIX = "composeai/relocated/";
@@ -158,7 +159,10 @@ public final class LibraryRelocation {
             Paths.get(args[2]),
             paths(System.getProperty(RUNTIME_PROPERTY)),
             paths(System.getProperty(BOUNDARY_PROPERTY)),
-            packages(System.getProperty(PACKAGES_PROPERTY)));
+            Optional.ofNullable(System.getProperty(CONTEXT_PROPERTY))
+                .filter(value -> !value.isEmpty())
+                .map(Paths::get)
+                .orElse(null));
     System.out.println(result.toJson());
   }
 
@@ -238,17 +242,13 @@ public final class LibraryRelocation {
 
   /**
    * Relocates [in]'s packages that the [runtime] jars' copies would break into [out], which is
-   * written only when there are any. With [forced] non-null, those packages are relocated and
-   * nothing is analysed.
+   * written only when there are any. With a [context] (the app's relocated jar, for a test APK), its
+   * renames are applied to [in] as they are, and nothing is analysed.
    */
   public static Result relocate(
-      Path in,
-      Path out,
-      Path platform,
-      List<Path> runtime,
-      List<Path> boundary,
-      Set<String> forced)
+      Path in, Path out, Path platform, List<Path> runtime, List<Path> boundary, Path context)
       throws IOException {
+    if (context != null) return relocateLike(in, out, context);
     Result result = new Result();
     try (Types host = new Types(runtime, platform);
         ZipFile app = new ZipFile(in.toFile())) {
@@ -256,12 +256,7 @@ public final class LibraryRelocation {
       result.collisions = model.colliding.size();
       Set<String> relocated;
       Set<String> pinned = Set.of();
-      if (forced != null) {
-        relocated = new HashSet<>();
-        for (String pkg : forced) {
-          if (model.packages.contains(pkg)) relocated.add(pkg);
-        }
-      } else if (model.colliding.isEmpty()) {
+      if (model.colliding.isEmpty()) {
         relocated = Set.of();
       } else {
         pinned = crossing(boundary, model.classes.keySet());
@@ -280,6 +275,47 @@ public final class LibraryRelocation {
         result.relocatedClasses = renames.size();
         write(app, out, renames, relocated);
       }
+    }
+    return result;
+  }
+
+  /**
+   * [in] (a test APK's classes) with [context]'s renames (its app's relocated jar): every reference
+   * to a class the app moved follows it, whether or not [in] has a copy of that class. A class of
+   * [in]'s own in a relocated package moves too, unless the app kept that name (a shared type).
+   */
+  static Result relocateLike(Path in, Path out, Path context) throws IOException {
+    Result result = new Result();
+    Map<String, String> renames = new HashMap<>();
+    Set<String> kept = new HashSet<>();
+    try (ZipFile appJar = new ZipFile(context.toFile())) {
+      for (ZipEntry entry : Collections.list(appJar.entries())) {
+        String name = entry.getName();
+        if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+        String className = name.substring(0, name.length() - ".class".length());
+        if (className.startsWith(PREFIX)) {
+          String original = className.substring(PREFIX.length());
+          renames.put(original, className);
+          result.packages.add(pkg(original));
+        } else {
+          kept.add(className);
+        }
+      }
+    }
+    if (renames.isEmpty()) return result;
+    try (ZipFile test = new ZipFile(in.toFile())) {
+      for (ZipEntry entry : Collections.list(test.entries())) {
+        String name = entry.getName();
+        if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+        String className = name.substring(0, name.length() - ".class".length());
+        if (renames.containsKey(className)) {
+          result.relocatedClasses++;
+        } else if (result.packages.contains(pkg(className)) && !kept.contains(className)) {
+          renames.put(className, PREFIX + className);
+          result.relocatedClasses++;
+        }
+      }
+      write(test, out, renames, result.packages);
     }
     return result;
   }
@@ -1245,16 +1281,6 @@ public final class LibraryRelocation {
     if (value == null || value.isEmpty()) return out;
     for (String part : value.split(java.io.File.pathSeparator)) {
       if (!part.isEmpty()) out.add(Paths.get(part));
-    }
-    return out;
-  }
-
-  static Set<String> packages(String value) {
-    if (value == null) return null;
-    Set<String> out = new LinkedHashSet<>();
-    for (String part : value.split(",")) {
-      String pkg = part.trim().replace('.', '/');
-      if (!pkg.isEmpty()) out.add(pkg);
     }
     return out;
   }

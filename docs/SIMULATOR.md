@@ -179,11 +179,11 @@ splitting one of them from the rest stays the runtime's, and the summary says wh
 The decision is cached beside `classes.jar`, as `relocation-<stamp>.json`, and the relocated jar as
 `classes-relocated-<stamp>.jar`, keyed by the runtime jars' names and sizes rather than the
 converter stamp: a new simulator re-runs only this (seconds), not the conversion. The `conversion`
-event's `relocated` lists the packages. A test APK (`--instrument`) has its app's packages relocated,
-without analysis, so both refer to the same copy. `COMPOSE_PREVIEW_SIMULATOR_RELOCATION=0` turns it
-off. Not
-rewritten: Kotlin metadata, and class names a library builds at run time; a hot reload's overlay
-classes refer to the original names, which a release build does not reload against anyway.
+event's `relocated` lists the packages. A test APK (`--instrument`) takes its app's renames as they
+are, without analysis, so its references reach the app's classes by their new names.
+`COMPOSE_PREVIEW_SIMULATOR_RELOCATION=0` turns it off. Not rewritten: Kotlin metadata, and class
+names a library builds at run time; a hot reload's overlay classes refer to the original names,
+which a release build does not reload against anyway.
 
 **Navigation.** `Navigator` drains Robolectric's recorded intents every loop turn and does what the
 system would: activities go onto a back stack through `ActivityController` (the one below is paused

@@ -66,7 +66,7 @@ class LibraryRelocationsTest {
   }
 
   @Test
-  fun theStampFollowsTheRuntimeJarsAndForcedPackages() {
+  fun theStampFollowsTheRuntimeJarsAndContext() {
     val a = File(dir, "guava.jar").apply { writeText("12345") }
     val b = File(dir, "kotlin-stdlib.jar").apply { writeText("1") }
     val base = LibraryRelocations.stamp(listOf(a, b), null)
@@ -74,11 +74,11 @@ class LibraryRelocationsTest {
     assertEquals(base, LibraryRelocations.stamp(listOf(a, b), null))
     b.writeText("12")
     assertNotEquals(base, LibraryRelocations.stamp(listOf(a, b), null))
-    assertNotEquals(base, LibraryRelocations.stamp(listOf(a, b), listOf("lib")))
+    assertNotEquals(base, LibraryRelocations.stamp(listOf(a, b), File(dir, "app-relocated.jar")))
   }
 
   @Test
-  fun theCommandPassesTheRuntimeBoundaryAndForcedPackages() {
+  fun theCommandPassesTheRuntimeBoundaryAndContext() {
     val command =
       LibraryRelocations.command(
         java = File("/jdk/bin/java"),
@@ -88,12 +88,12 @@ class LibraryRelocationsTest {
         androidJar = File("android.jar"),
         runtime = listOf(File("guava.jar")),
         boundary = listOf(File("simulator-core.jar")),
-        forced = listOf("com/google/common/base"),
+        context = File("app-relocated.jar"),
       )
 
     assertTrue("-D${LibraryRelocations.RUNTIME_PROPERTY}=guava.jar" in command)
     assertTrue("-D${LibraryRelocations.BOUNDARY_PROPERTY}=simulator-core.jar" in command)
-    assertTrue("-D${LibraryRelocations.PACKAGES_PROPERTY}=com/google/common/base" in command)
+    assertTrue("-D${LibraryRelocations.CONTEXT_PROPERTY}=app-relocated.jar" in command)
     assertEquals(
       listOf(LibraryRelocations.MAIN, "classes.jar", "out.jar", "android.jar"),
       command.takeLast(4),

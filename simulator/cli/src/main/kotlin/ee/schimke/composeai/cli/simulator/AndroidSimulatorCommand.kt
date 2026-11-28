@@ -298,20 +298,22 @@ class AndroidSimulatorCommand(
     val relocationEnabled = System.getenv(LibraryRelocations.ENV) != "0"
     /**
      * [entry]'s classes with the libraries the runtime would break relocated
-     * ([LibraryRelocations]); [forced] packages, a test APK's app's, without analysis.
+     * ([LibraryRelocations]); with a [context] (a test APK's app), the app's renames as they are.
      */
     fun relocationOf(
       entry: ApkConversionCache.Entry,
-      forced: List<String>?,
+      context: Conversion?,
     ): LibraryRelocations.Outcome {
       if (!relocationEnabled) return LibraryRelocations.Outcome(null, emptyList(), "")
-      if (forced != null && forced.isEmpty()) {
+      // A test APK takes its app's renames as they are; an app with none leaves it alone.
+      if (context != null && context.relocated.isEmpty()) {
         return LibraryRelocations.Outcome(null, emptyList(), "")
       }
+      val contextJar = context?.entry?.classesJar
       return try {
         LibraryRelocations.ensure(
           entry.classesJar,
-          LibraryRelocations.stamp(relocationRuntime, forced),
+          LibraryRelocations.stamp(relocationRuntime, contextJar),
         ) { out ->
           val process =
             ProcessBuilder(
@@ -323,7 +325,7 @@ class AndroidSimulatorCommand(
                   androidJar,
                   runtime = relocationRuntime,
                   boundary = simulatorJars,
-                  forced = forced,
+                  context = contextJar,
                 ),
               )
               .redirectError(ProcessBuilder.Redirect.INHERIT)
@@ -371,7 +373,7 @@ class AndroidSimulatorCommand(
       // Once per entry: a second lock on the same file from this process throws
       // (OverlappingFileLockException), as an update to an APK already running would.
       if (locked.add(entry.classesJar.absolutePath)) inUse += cache.use(entry)
-      val relocation = relocationOf(entry, forced = context?.relocated)
+      val relocation = relocationOf(entry, context)
       val conversion =
         Conversion(
           apk,

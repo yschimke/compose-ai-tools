@@ -230,17 +230,30 @@ public class LibraryRelocationTest {
   }
 
   @Test
-  public void forcedPackagesAreRelocatedWithoutAnalysis() throws Exception {
-    // A test APK takes its app's packages, so both refer to the same copy.
+  public void aTestApkFollowsItsAppsRenamesEvenForClassesItLacks() throws Exception {
+    // The app's Guava moved; the test APK has no Guava of its own, but calls the app's.
     Path runtime = jar("runtime", Map.of("com/google/common/Util", util(7, false)));
     Path app =
-        jar("app", Map.of("com/google/common/Util", util(7, false), "app/Main", main(callStatic("com/google/common/Util", "f"))));
+        jar(
+            "app",
+            Map.of(
+                "com/google/common/Util", util(42, true),
+                "app/Main", main(callStatic("com/google/common/Util", "g"))));
+    relocate(app, runtime, List.of());
+    Path appRelocated = temp.getRoot().toPath().resolve("app-relocated.jar");
+    Files.move(out(), appRelocated);
+    Map<String, byte[]> testClasses = new HashMap<>();
+    byte[] testMain = main(callStatic("com/google/common/Util", "g"));
+    testClasses.put("app/Main", testMain);
+    Path test = jar("test", testClasses);
 
     LibraryRelocation.Result result =
-        LibraryRelocation.relocate(app, out(), null, List.of(runtime), List.of(), Set.of("com/google/common"));
+        LibraryRelocation.relocate(test, out(), null, List.of(), List.of(), appRelocated);
 
     assertEquals(Set.of("com/google/common"), result.packages);
-    assertTrue(classes(out()).containsKey("composeai/relocated/com/google/common/Util"));
+    assertEquals(
+        "composeai/relocated/com/google/common/Util",
+        calls(classes(out()).get("app/Main")).get(0).owner);
   }
 
   @Test
