@@ -284,6 +284,11 @@ public final class SimulatorSandbox {
         .doNotAcquirePackage("ee.schimke.composeai.simulator.hotswap.")
         .doNotAcquirePackage("org.bouncycastle.")
         .doNotAcquirePackage("org.conscrypt.")
+        // Mockito's InlineByteBuddyMockMaker (and MockK's JVM agent) inject their dispatcher
+        // classes directly into the bootstrap class loader; acquiring them in the sandbox fails
+        // with ClassNotFoundException. Keep BootJarLoader in the sandbox.
+        .doNotAcquirePackage("org.mockito.internal.creation.bytebuddy.inject.")
+        .doNotAcquireClass("io.mockk.proxy.jvm.dispatcher.JvmMockKDispatcher")
         .doNotAcquirePackage("org.objectweb.asm")
         .doNotAcquirePackage("org.robolectric.manifest.")
         .doNotAcquirePackage("org.robolectric.res.")

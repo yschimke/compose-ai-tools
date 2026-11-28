@@ -540,6 +540,8 @@ public final class Displays {
       Object impl = impls.get(i);
       View view = ReflectionHelpers.callInstanceMethod(impl, "getView");
       if (view == null || displayOf(view) != id) continue;
+      Activity owner = ownerActivityOf(view.getContext());
+      if (owner != null && owner.isDestroyed()) continue;
       WindowManager.LayoutParams p = (WindowManager.LayoutParams) params.get(i);
       // A stopped activity's window, and its dialogs and popups, which share its token.
       if (hidden.contains(view.getApplicationWindowToken())
@@ -553,6 +555,66 @@ public final class Displays {
             .reversed()
             .thenComparing(Comparator.comparingInt((Root r) -> r.index).reversed()));
     return roots;
+  }
+
+  /**
+   * Removes every window still registered in {@code WindowManagerGlobal} that belongs to
+   * [activity] (its own decor view and any undismissed dialogs or popups), matching Android's
+   * {@code ActivityThread.handleDestroyActivity -> WindowManagerGlobal.closeAll}. Without this, a
+   * leaked dialog from a failed test stays top-most and focused in {@code WindowManagerGlobal} and
+   * hijacks Espresso's root picker for every subsequent test.
+   */
+  static void closeWindowsFor(
+      Activity activity, View decor, Object attrToken, Object appToken) {
+    Object global;
+    try {
+      global =
+          ReflectionHelpers.callStaticMethod(
+              Class.forName(
+                  "android.view.WindowManagerGlobal", true, Displays.class.getClassLoader()),
+              "getInstance");
+    } catch (ClassNotFoundException | RuntimeException e) {
+      return;
+    }
+    List<?> views = asList(ReflectionHelpers.getField(global, "mViews"));
+    List<?> params = asList(ReflectionHelpers.getField(global, "mParams"));
+    List<View> toRemove = new ArrayList<>();
+    for (int i = 0; i < Math.min(views.size(), params.size()); i++) {
+      Object v = views.get(i);
+      if (!(v instanceof View view)) continue;
+      WindowManager.LayoutParams p = (WindowManager.LayoutParams) params.get(i);
+      boolean matches =
+          view == decor
+              || (attrToken != null && (p.token == attrToken || view.getApplicationWindowToken() == attrToken))
+              || (appToken != null && (p.token == appToken || view.getApplicationWindowToken() == appToken))
+              || ownerActivityOf(view.getContext()) == activity;
+      if (matches) {
+        toRemove.add(view);
+      }
+    }
+    for (View view : toRemove) {
+      try {
+        ReflectionHelpers.callInstanceMethod(
+            global,
+            "removeView",
+            ClassParameter.from(View.class, view),
+            ClassParameter.from(boolean.class, true));
+      } catch (RuntimeException ignored) {
+        // Already detached or mid-removal.
+      }
+    }
+  }
+
+  /** Unwraps {@link android.content.ContextWrapper}s to find the owning {@link Activity}, if any. */
+  static Activity ownerActivityOf(android.content.Context context) {
+    int depth = 0;
+    while (context instanceof android.content.ContextWrapper && depth++ < 16) {
+      if (context instanceof Activity activity) return activity;
+      android.content.Context base = ((android.content.ContextWrapper) context).getBaseContext();
+      if (base == context) break;
+      context = base;
+    }
+    return context instanceof Activity activity ? activity : null;
   }
 
   private static List<?> asList(Object value) {

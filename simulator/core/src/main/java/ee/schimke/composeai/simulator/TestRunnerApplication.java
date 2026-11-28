@@ -11,7 +11,24 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
  * InstrumentationRun}, whose test discovery and reporting run (and are unit tested) without the
  * framework's classes.
  */
-final class TestRunnerApplication {
+public final class TestRunnerApplication {
+
+  private static final ThreadLocal<String[]> PROBE = new ThreadLocal<>();
+
+  private static final class ProbeRecorded extends RuntimeException {}
+
+  /**
+   * Called by {@link ee.schimke.composeai.simulator.shadows.SimulatorShadowInstrumentation} when
+   * {@code Instrumentation.newApplication(Class, Context)} runs. During {@link #ask}, captures the
+   * requested application class name and aborts before {@code Application.attach(Context)} runs
+   * against the probe's dummy context (which would otherwise throw and lose the class name).
+   */
+  public static void recordApplicationClass(Class<?> clazz) {
+    String[] slot = PROBE.get();
+    if (slot == null) return;
+    if (slot[0] == null && clazz != null) slot[0] = clazz.getName();
+    throw new ProbeRecorded();
+  }
 
   /**
    * The {@code Application} class the test APK's own runner creates in place of [manifestName],
@@ -20,8 +37,9 @@ final class TestRunnerApplication {
    * (and others) override to return their test application ({@code HiltTestApplication}); the
    * simulator runs the tests with its own runner, so it asks theirs which class it would have
    * created. The runner is instantiated and asked with a class loader that records the name it
-   * loads and stops there; one that creates the application some other way is answered by the
-   * class of what it returns. Any failure keeps the manifest's application.
+   * loads and stops there, and with a static {@code Instrumentation.newApplication(Class, Context)}
+   * probe for runners that bypass the class loader; one that creates the application some other way
+   * is answered by the class of what it returns. Any failure keeps the manifest's application.
    */
   static String runnerApplication(String manifestName, String packageName) {
     // Robolectric asks more than once while it sets the application up; the runner is asked once.
@@ -72,12 +90,17 @@ final class TestRunnerApplication {
             }
           };
       Object created = null;
+      PROBE.set(asked);
       try {
         created = runner.newApplication(recording, manifestName, context);
       } catch (Throwable expected) {
-        // The recording class loader stops the creation once the name is known.
+        // The recording class loader or static newApplication probe stops creation once the name is
+        // known.
+      } finally {
+        PROBE.remove();
       }
-      String chosen = asked[0] != null ? asked[0] : created == null ? null : created.getClass().getName();
+      String chosen =
+          asked[0] != null ? asked[0] : created == null ? null : created.getClass().getName();
       if (chosen == null || chosen.equals(manifestName)) return null;
       System.err.println(
           "instrument: " + info.name + " creates " + chosen + " in place of " + manifestName);

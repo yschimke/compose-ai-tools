@@ -56,6 +56,28 @@ public class InstrumentationRunTest {
               AllTests.class)) {
         copyClass(type, out);
       }
+      // Concrete JUnit 3 helper base with no test* methods: must be skipped.
+      writeClass(
+          out,
+          "app/EmptyLegacyBase",
+          "junit/framework/TestCase",
+          null,
+          false);
+      // Concrete @RunWith(AndroidJUnit4) helper base with no @Test methods (e.g. BaseViewTest):
+      // must be skipped.
+      writeClass(
+          out,
+          "app/EmptyAndroidJUnit4Base",
+          "java/lang/Object",
+          "Landroidx/test/ext/junit/runners/AndroidJUnit4;",
+          false);
+      // Concrete subclass of the helper base that adds an actual @Test method: must be kept.
+      writeClass(
+          out,
+          "app/ConcreteFromEmptyBase",
+          "app/EmptyAndroidJUnit4Base",
+          null,
+          true);
       // A library the test APK bundles is never scanned, whatever it declares.
       out.putNextEntry(new JarEntry("org/junit/Assert.class"));
       out.closeEntry();
@@ -63,10 +85,44 @@ public class InstrumentationRunTest {
 
     assertEquals(
         List.of(
+            "app.ConcreteFromEmptyBase",
             InstrumentationRunTest.class.getName(),
             InheritsTests.class.getName(),
             LegacyCase.class.getName()),
         InstrumentationRun.testClasses(jar));
+  }
+
+  private static void writeClass(
+      JarOutputStream out,
+      String internalName,
+      String superName,
+      String runWithDescriptor,
+      boolean addTestMethod)
+      throws IOException {
+    org.objectweb.asm.ClassWriter cw = new org.objectweb.asm.ClassWriter(0);
+    cw.visit(
+        org.objectweb.asm.Opcodes.V1_8,
+        org.objectweb.asm.Opcodes.ACC_PUBLIC,
+        internalName,
+        null,
+        superName,
+        null);
+    if (runWithDescriptor != null) {
+      org.objectweb.asm.AnnotationVisitor av =
+          cw.visitAnnotation("Lorg/junit/runner/RunWith;", true);
+      av.visit("value", org.objectweb.asm.Type.getType(runWithDescriptor));
+      av.visitEnd();
+    }
+    if (addTestMethod) {
+      org.objectweb.asm.MethodVisitor mv =
+          cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "runs", "()V", null, null);
+      mv.visitAnnotation("Lorg/junit/Test;", true).visitEnd();
+      mv.visitEnd();
+    }
+    cw.visitEnd();
+    out.putNextEntry(new JarEntry(internalName + ".class"));
+    out.write(cw.toByteArray());
+    out.closeEntry();
   }
 
   @Test

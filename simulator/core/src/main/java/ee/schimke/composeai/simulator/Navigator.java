@@ -289,7 +289,11 @@ public final class Navigator {
         retained = null;
       }
     }
+    android.view.View oldDecor = old.getWindow() != null ? old.getWindow().getDecorView() : null;
+    Object oldAttrToken = old.getWindow() != null ? old.getWindow().getAttributes().token : null;
+    Object oldAppToken = oldDecor != null ? oldDecor.getApplicationWindowToken() : null;
     entry.controller.destroy();
+    Displays.closeWindowsFor(old, oldDecor, oldAttrToken, oldAppToken);
     Bundle options =
         android.app.ActivityOptions.makeBasic().setLaunchDisplayId(entry.displayId).toBundle();
     Intent launch = old.getIntent();
@@ -346,8 +350,51 @@ public final class Navigator {
 
   /** Drains what the app started or stopped since the last cycle, and reaps finished components. */
   void pump() {
-    pumpStarts();
-    syncFocus();
+    withoutHeldMainLooper(
+        () -> {
+          pumpStarts();
+          syncFocus();
+        });
+  }
+
+  /**
+   * Runs [task] on the main thread without tripping {@code TestLooperManager}'s single-holder
+   * check. When Espresso's {@code Interrogator} executes a posted {@code cycleNow()} message via
+   * {@code TestLooperManager.execute()} on API 36+, the main looper is in {@code
+   * TestLooperManager.sHeldLoopers}, so any Robolectric {@code ActivityController} call inside
+   * {@link #pump} ({@code visible()}, {@code resume()}, {@code windowFocusChanged()}) that invokes
+   * {@code ShadowPausedLooper.idleIfPaused()} would otherwise throw {@code TestLooperManager
+   * already held for this looper}.
+   */
+  @SuppressWarnings("unchecked")
+  static void withoutHeldMainLooper(Runnable task) {
+    android.os.Looper main = android.os.Looper.getMainLooper();
+    java.util.Set<android.os.Looper> held;
+    try {
+      held =
+          org.robolectric.util.ReflectionHelpers.getStaticField(
+              android.os.TestLooperManager.class, "sHeldLoopers");
+    } catch (RuntimeException e) {
+      task.run();
+      return;
+    }
+    if (held == null) {
+      task.run();
+      return;
+    }
+    boolean removed;
+    synchronized (held) {
+      removed = held.remove(main);
+    }
+    try {
+      task.run();
+    } finally {
+      if (removed) {
+        synchronized (held) {
+          held.add(main);
+        }
+      }
+    }
   }
 
   /**
@@ -1103,7 +1150,7 @@ public final class Navigator {
   public boolean recreate(Activity activity) {
     for (Entry entry : stack) {
       if (entry.activity() == activity) {
-        recreate(entry);
+        withoutHeldMainLooper(() -> recreate(entry));
         return true;
       }
     }
@@ -1311,7 +1358,13 @@ public final class Navigator {
     } catch (RuntimeException ignored) {
       // Already stopped.
     }
+    android.view.View decor =
+        activity.getWindow() != null ? activity.getWindow().getDecorView() : null;
+    Object attrToken =
+        activity.getWindow() != null ? activity.getWindow().getAttributes().token : null;
+    Object appToken = decor != null ? decor.getApplicationWindowToken() : null;
     entry.controller.destroy();
+    Displays.closeWindowsFor(activity, decor, attrToken, appToken);
   }
 
   private boolean contains(Class<?> type, int displayId) {

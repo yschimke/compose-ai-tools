@@ -31,6 +31,11 @@ public final class LaunchMain {
       System.setOut(System.err);
     }
     System.setProperty("robolectric.useContextStartActivity", "true");
+    // Android's BouncyCastle provider natively reads legacy BKS v1 trust stores (res/raw/*.bks);
+    // desktop bcprov disables them unless this property is set before the provider initializes.
+    if (System.getProperty("org.bouncycastle.bks.enable_v1") == null) {
+      System.setProperty("org.bouncycastle.bks.enable_v1", "true");
+    }
     // Before any app code builds an HTTP client: the simulated network decides what its traffic
     // reaches (NetworkSim drives it). Online and untouched until then.
     ee.schimke.composeai.simulator.net.NetworkGate.install();

@@ -19,15 +19,24 @@ import com.googlecode.d2j.visitors.DexClassVisitor;
 import com.googlecode.d2j.visitors.DexFieldVisitor;
 import com.googlecode.d2j.visitors.DexMethodVisitor;
 import com.googlecode.dex2jar.ir.IrMethod;
+import com.googlecode.dex2jar.ir.Trap;
 import com.googlecode.dex2jar.ir.expr.BinopExpr;
 import com.googlecode.dex2jar.ir.expr.Constant;
 import com.googlecode.dex2jar.ir.expr.Exprs;
 import com.googlecode.dex2jar.ir.expr.InvokeExpr;
 import com.googlecode.dex2jar.ir.expr.Local;
 import com.googlecode.dex2jar.ir.expr.NewExpr;
+import com.googlecode.dex2jar.ir.expr.PhiExpr;
+import com.googlecode.dex2jar.ir.expr.RefExpr;
 import com.googlecode.dex2jar.ir.expr.Value;
+import com.googlecode.dex2jar.ir.stmt.AssignStmt;
+import com.googlecode.dex2jar.ir.stmt.BaseSwitchStmt;
+import com.googlecode.dex2jar.ir.stmt.GotoStmt;
+import com.googlecode.dex2jar.ir.stmt.IfStmt;
+import com.googlecode.dex2jar.ir.stmt.LabelStmt;
 import com.googlecode.dex2jar.ir.stmt.Stmt;
 import com.googlecode.dex2jar.ir.stmt.Stmts;
+import com.googlecode.dex2jar.ir.ts.Cfg;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -40,11 +49,15 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.zip.ZipEntry;
@@ -256,73 +269,156 @@ public final class ApkClassConverter {
           ClassReader header = new ClassReader(bytes);
           appClasses.put(header.getClassName(), ClassHierarchy.Header.of(header));
         }
-        ClassHierarchy hierarchy = new ClassHierarchy(appClasses, platform);
-        Set<String> written = new HashSet<>();
-        for (int i = 0; i < count; i++) {
-          Set<String> synth =
-              new TreeSet<>(neededInits.getOrDefault(names.get(i), Collections.emptySet()));
-          String synthEncoded = String.join(" ", synth);
-          Index.Entry entry;
-          byte[] bytes;
-          if (reused[i] != null
-              && reused[i].synthesizedInits.equals(synthEncoded)
-              && hierarchy.resolvesAsBefore(reused[i].dependencies)) {
-            entry = reused[i];
-            bytes = entryBytes(previousJar, entry.entryName);
-            summary.reused++;
-          } else {
-            Translation translation = fresh[i];
-            byte[] input;
-            if (translation != null) {
-              input =
-                  translation.entryName == null ? null : entryBytes(pass1, translation.entryName);
-            } else if (reused[i] != null) {
-              // Unchanged, but a supertype or synthesized <init> set changed: translate it again.
-              DexClassNode node = read(reader, i, false);
-              if (node == null) continue;
-              translation = translate(reader, i, node, classInfo);
-              input = translation.bytes;
+        try (ClassHierarchy hierarchy = new ClassHierarchy(appClasses, platform)) {
+          Set<String> written = new HashSet<>();
+          for (int i = 0; i < count; i++) {
+            Set<String> synth =
+                new TreeSet<>(neededInits.getOrDefault(names.get(i), Collections.emptySet()));
+            String synthEncoded = String.join(" ", synth);
+            Index.Entry entry;
+            byte[] bytes;
+            if (reused[i] != null
+                && reused[i].synthesizedInits.equals(synthEncoded)
+                && hierarchy.resolvesAsBefore(reused[i].dependencies)) {
+              entry = reused[i];
+              bytes = entryBytes(previousJar, entry.entryName);
+              summary.reused++;
             } else {
-              continue;
-            }
-            if (input == null) continue;
-            entry = new Index.Entry(names.get(i), keys[i], translation.entryName);
-            entry.withoutDebugInfo = translation.withoutDebugInfo;
-            entry.failedMethods = translation.failures.size();
-            entry.failures.addAll(translation.failures);
-            entry.inlinedInits = String.join(" ", translation.inlinedInits);
-            entry.synthesizedInits = synthEncoded;
-            Summary one = new Summary();
-            Set<String> lookups = new TreeSet<>();
-            hierarchy.recordInto(lookups);
-            for (String call : translation.inlinedInits) {
-              int p1 = call.indexOf('|');
-              int p2 = call.indexOf('|', p1 + 1);
-              if (p1 > 0 && p2 > p1) {
-                hierarchy.commonSuperClass(
-                    internalName(call.substring(0, p1)),
-                    internalName(call.substring(p1 + 1, p2)));
+              Translation translation = fresh[i];
+              byte[] input;
+              if (translation != null) {
+                input =
+                    translation.entryName == null ? null : entryBytes(pass1, translation.entryName);
+              } else if (reused[i] != null) {
+                // Unchanged, but a supertype or synthesized <init> set changed: translate it again.
+                DexClassNode node = read(reader, i, false);
+                if (node == null) continue;
+                translation = translate(reader, i, node, classInfo);
+                input = translation.bytes;
+              } else {
+                continue;
               }
+              if (input == null) continue;
+              entry = new Index.Entry(names.get(i), keys[i], translation.entryName);
+              entry.withoutDebugInfo = translation.withoutDebugInfo;
+              entry.failedMethods = translation.failures.size();
+              entry.failures.addAll(translation.failures);
+              entry.inlinedInits = String.join(" ", translation.inlinedInits);
+              entry.synthesizedInits = synthEncoded;
+              Summary one = new Summary();
+              Set<String> lookups = new TreeSet<>();
+              hierarchy.recordInto(lookups);
+              for (String call : translation.inlinedInits) {
+                int p1 = call.indexOf('|');
+                int p2 = call.indexOf('|', p1 + 1);
+                if (p1 > 0 && p2 > p1) {
+                  hierarchy.commonSuperClass(
+                      internalName(call.substring(0, p1)),
+                      internalName(call.substring(p1 + 1, p2)));
+                }
+              }
+              bytes = rewrite(input, synth, hierarchy, one);
+              hierarchy.recordInto(null);
+              entry.interfaceCallsFixed = one.interfaceCallsFixed;
+              entry.unframed = one.unframedClasses > 0;
+              entry.failures.addAll(one.failures);
+              entry.dependencies = hierarchy.describe(lookups);
             }
-            bytes = rewrite(input, synth, hierarchy, one);
-            hierarchy.recordInto(null);
-            entry.interfaceCallsFixed = one.interfaceCallsFixed;
-            entry.unframed = one.unframedClasses > 0;
-            entry.failures.addAll(one.failures);
-            entry.dependencies = hierarchy.describe(lookups);
+            if (!written.add(entry.entryName)) continue;
+            summary.add(entry);
+            index.write(entry);
+            zip.putNextEntry(new ZipEntry(entry.entryName));
+            zip.write(bytes);
+            zip.closeEntry();
           }
-          if (!written.add(entry.entryName)) continue;
-          summary.add(entry);
-          index.write(entry);
-          zip.putNextEntry(new ZipEntry(entry.entryName));
-          zip.write(bytes);
-          zip.closeEntry();
+          copyJavaResources(apk, zip, written);
         }
       }
     } finally {
       Files.deleteIfExists(translated);
     }
     return summary;
+  }
+
+  /**
+   * Copies Java classpath resources packaged in [apk] (such as {@code META-INF/services/*},
+   * ByteBuddy's {@code inject-MockMethodDispatcher.raw}, and {@code getResourceAsStream} fixtures)
+   * into the converted jar. Android-only packaging artifacts ({@code classes*.dex}, {@code res/},
+   * {@code assets/}, {@code lib/}, signing files, and Android ART {@code dexmaker} Mockito plugin
+   * descriptors) are left out so JVM-side tools like Mockito's ByteBuddy mock maker work natively.
+   */
+  private static void copyJavaResources(Path apk, ZipOutputStream out, Set<String> written)
+      throws IOException {
+    try (ZipFile apkZip = new ZipFile(apk.toFile())) {
+      Enumeration<? extends ZipEntry> entries = apkZip.entries();
+      while (entries.hasMoreElements()) {
+        ZipEntry entry = entries.nextElement();
+        String name = entry.getName();
+        if (entry.isDirectory() || !isJavaResourcePath(name) || written.contains(name)) continue;
+        byte[] data;
+        try (InputStream in = apkZip.getInputStream(entry)) {
+          data = in.readAllBytes();
+        }
+        if (!shouldCopyResource(name, data)) continue;
+        if (!written.add(name)) continue;
+        out.putNextEntry(new ZipEntry(name));
+        out.write(data);
+        out.closeEntry();
+      }
+    } catch (IOException e) {
+      // Not a zip (e.g. a bare .dex in unit tests): nothing to copy.
+    }
+  }
+
+  static boolean isJavaResourcePath(String name) {
+    if (name == null || name.isEmpty() || name.endsWith("/") || name.endsWith(".class")) {
+      return false;
+    }
+    if (name.equals("AndroidManifest.xml")
+        || name.equals("resources.arsc")
+        || name.equals("stamp-cert-sha256")
+        || name.startsWith("res/")
+        || name.startsWith("assets/")
+        || name.startsWith("lib/")
+        || name.startsWith("dexopt/")
+        || name.startsWith("META-INF/com/android/")
+        || name.startsWith("META-INF/services/androidx.test.")
+        || name.startsWith("META-INF/services/org.robolectric.")) {
+      return false;
+    }
+    if (name.startsWith("classes") && name.endsWith(".dex")) {
+      String mid = name.substring("classes".length(), name.length() - ".dex".length());
+      if (mid.isEmpty() || mid.chars().allMatch(Character::isDigit)) return false;
+    }
+    if (name.startsWith("META-INF/")) {
+      String rest = name.substring("META-INF/".length());
+      if (!rest.contains("/")) {
+        if (rest.equals("MANIFEST.MF")
+            || rest.endsWith(".SF")
+            || rest.endsWith(".RSA")
+            || rest.endsWith(".DSA")
+            || rest.endsWith(".EC")
+            || rest.startsWith("CERT.")) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  static boolean shouldCopyResource(String name, byte[] data) {
+    if (!isJavaResourcePath(name)) return false;
+    // mockito-android bundles dexmaker descriptors under mockito-extensions/; dexmaker requires
+    // ART/JVMTI and fails on a desktop JVM, whereas dropping those lets Mockito use its JVM
+    // ByteBuddy mock maker (whose inject-MockMethodDispatcher.raw IS copied above).
+    if (name.startsWith("mockito-extensions/")) {
+      String text = new String(data, StandardCharsets.UTF_8);
+      if (text.toLowerCase(java.util.Locale.ROOT).contains("dexmaker")
+          || text.contains("com.android.dx.mockito.")) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static List<String> splitSpaces(String value) {
@@ -398,6 +494,19 @@ public final class ApkClassConverter {
 
   private static Translation translateOnce(
       int dexVersion, DexClassNode node, Translator.ClassInfo classInfo) {
+    try {
+      return translateOnce(dexVersion, node, classInfo, false);
+    } catch (RuntimeException e) {
+      // ASM's ClassWriter.toByteArray() can fail in visitEnd() after dex2jar finishes all methods
+      // (for example, a >64 KB Dex method causing MethodTooLargeException or IllegalArgumentException
+      // inside ClassWriter.replaceAsmInstructions). Retry this class validating each method's ASM
+      // serialization in isolation so only the un-emittable method(s) become stubs.
+      return translateOnce(dexVersion, node, classInfo, true);
+    }
+  }
+
+  private static Translation translateOnce(
+      int dexVersion, DexClassNode node, Translator.ClassInfo classInfo, boolean safePerMethod) {
     Translation translation = new Translation();
     BaseDexExceptionHandler handler =
         new BaseDexExceptionHandler() {
@@ -419,11 +528,15 @@ public final class ApkClassConverter {
             public void visitEnd() {
               super.visitEnd();
               translation.entryName = names.getClassName() + ".class";
-              translation.bytes = writer.toByteArray();
+              byte[] bytes = writer.toByteArray();
+              if (bytes.length > 65535) {
+                validateBytecodeReadable(bytes);
+              }
+              translation.bytes = bytes;
             }
           };
         };
-    new Translator(handler, classInfo, translation.inlinedInits)
+    new Translator(handler, classInfo, translation.inlinedInits, safePerMethod)
         .convertClass(dexVersion, node, classes, classInfo.classes);
     return translation;
   }
@@ -438,11 +551,17 @@ public final class ApkClassConverter {
 
     private final ClassInfo classInfo;
     private final Set<String> inlinedInits;
+    private final boolean safePerMethod;
 
-    Translator(BaseDexExceptionHandler handler, ClassInfo classInfo, Set<String> inlinedInits) {
+    Translator(
+        BaseDexExceptionHandler handler,
+        ClassInfo classInfo,
+        Set<String> inlinedInits,
+        boolean safePerMethod) {
       super(handler);
       this.classInfo = classInfo;
       this.inlinedInits = inlinedInits;
+      this.safePerMethod = safePerMethod;
     }
 
     /**
@@ -766,6 +885,51 @@ public final class ApkClassConverter {
       return bridgeCounter;
     }
 
+    /**
+     * Above this {@code locals * stmts} product (~200 MB of dense live-analysis arrays), dex2jar's
+     * {@code UnSSATransformer.LiveA} and {@code Ir2JRegAssignTransformer}'s {@code
+     * SimpleLiveAnalyze} OOM on giant generated methods (e.g. 60k-instruction Kotlin list
+     * builders, where {@code locals * stmts} exceeds 1 billion). Switch to the linear-memory
+     * sparse passes below above this threshold, while keeping normal large suspend functions on
+     * dex2jar's graph-coloring allocator so {@code max_locals} stays compact for ASM frames.
+     */
+    private static final long SPARSE_UNSSA_THRESHOLD = 50_000_000L;
+
+    private boolean preserveParamSlots;
+
+    @Override
+    public void convertCode(DexMethodNode methodNode, MethodVisitor mv, ClzCtx clzCtx) {
+      this.preserveParamSlots = hasByteBuddyAdviceAnnotation(methodNode);
+      try {
+        super.convertCode(methodNode, mv, clzCtx);
+      } finally {
+        this.preserveParamSlots = false;
+      }
+    }
+
+    private static boolean hasByteBuddyAdviceAnnotation(DexMethodNode methodNode) {
+      if (methodNode.anns != null) {
+        for (com.googlecode.d2j.node.DexAnnotationNode ann : methodNode.anns) {
+          if (ann != null && ann.type != null && ann.type.startsWith("Lnet/bytebuddy/asm/Advice$")) {
+            return true;
+          }
+        }
+      }
+      if (methodNode.parameterAnns != null) {
+        for (List<com.googlecode.d2j.node.DexAnnotationNode> list : methodNode.parameterAnns) {
+          if (list == null) continue;
+          for (com.googlecode.d2j.node.DexAnnotationNode ann : list) {
+            if (ann != null
+                && ann.type != null
+                && ann.type.startsWith("Lnet/bytebuddy/asm/Advice$")) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
     // Dex2jar's own pass order, which differs from Dex2Asm's default in its last two steps.
     @Override
     public void optimize(IrMethod irMethod) {
@@ -789,16 +953,473 @@ public final class ApkClassConverter {
       T_REMOVE_LOCAL.transform(irMethod);
       T_REMOVE_CONST.transform(irMethod);
       T_TYPE.transform(irMethod);
-      T_UNSSA.transform(irMethod);
-      T_IR_2_J_REG_ASSIGN.transform(irMethod);
+      // ByteBuddy @Advice methods forbid writing to read-only @Advice parameter slots (which
+      // dex2jar's Ir2JRegAssignTransformer reuses once a parameter dies). Our sparse register
+      // allocator keeps 0..paramSlots-1 untouched, fixing Mockito's MockMethodAdvice.
+      if (preserveParamSlots
+          || (long) irMethod.locals.size() * irMethod.stmts.getSize() > SPARSE_UNSSA_THRESHOLD) {
+        deconstructPhisSparse(irMethod);
+        assignRegistersSparse(irMethod);
+        irMethod.vars.clear();
+      } else {
+        T_UNSSA.transform(irMethod);
+        T_IR_2_J_REG_ASSIGN.transform(irMethod);
+      }
       T_TRIM_EX.transform(irMethod);
     }
 
     @Override
     public void ir2j(IrMethod irMethod, MethodVisitor mv, ClzCtx clzCtx) {
       normalizeZeroLeftJumps(irMethod);
+      if (safePerMethod) {
+        ClassWriter probe = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        probe.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "probe/Probe", null, "java/lang/Object", null);
+        StringBuilder desc = new StringBuilder("(");
+        if (irMethod.args != null) {
+          for (String arg : irMethod.args) desc.append(arg);
+        }
+        desc.append(')').append(irMethod.ret == null ? "V" : irMethod.ret);
+        int access = Opcodes.ACC_PUBLIC | (irMethod.isStatic ? Opcodes.ACC_STATIC : 0);
+        MethodVisitor pmv = probe.visitMethod(access, "m", desc.toString(), null, null);
+        pmv.visitCode();
+        new IR2JConverter().clzCtx(clzCtx).ir(irMethod).asm(pmv).convert();
+        pmv.visitMaxs(-1, -1);
+        pmv.visitEnd();
+        probe.visitEnd();
+        byte[] probeBytes = probe.toByteArray();
+        if (probeBytes.length > 65535) {
+          validateBytecodeReadable(probeBytes);
+        }
+      }
       new IR2JConverter().clzCtx(clzCtx).ir(irMethod).asm(mv).convert();
     }
+  }
+
+  /**
+   * Verifies that ASM's {@link ClassReader} can parse every method body in [bytes] (catching
+   * methods whose bytecode exceeds the JVM's 65,535-byte {@code code_length} limit before Pass 2).
+   */
+  private static void validateBytecodeReadable(byte[] bytes) {
+    MethodVisitor sink = new MethodVisitor(Opcodes.ASM9) {};
+    new ClassReader(bytes)
+        .accept(
+            new ClassVisitor(Opcodes.ASM9) {
+              @Override
+              public MethodVisitor visitMethod(
+                  int access, String name, String descriptor, String signature, String[] exceptions) {
+                return sink;
+              }
+            },
+            ClassReader.SKIP_FRAMES);
+  }
+
+  /**
+   * Sparse phi deconstruction for methods too large for dex2jar's dense {@code UnSSATransformer}.
+   *
+   * <p>For each phi {@code dst = Phi(v1, v2, ...)} at a {@link LabelStmt}, allocates a fresh
+   * temporary local {@code tmp}, inserts {@code tmp = src} on every incoming CFG edge (using a
+   * bridge block for conditional branches and switches), and inserts {@code dst = tmp} immediately
+   * after the label (after any {@code @caughtexception} identity). Because every phi has its own
+   * temporary, parallel phi swaps never clobber each other.
+   */
+  static void deconstructPhisSparse(IrMethod irMethod) {
+    List<LabelStmt> phiLabels = new ArrayList<>();
+    for (Stmt s : irMethod.stmts) {
+      if (s.st == Stmt.ST.LABEL) {
+        LabelStmt label = (LabelStmt) s;
+        if (label.phis != null && !label.phis.isEmpty()) {
+          phiLabels.add(label);
+        }
+      }
+    }
+    if (phiLabels.isEmpty()) {
+      if (irMethod.phiLabels != null) irMethod.phiLabels.clear();
+      return;
+    }
+
+    Cfg.createCFG(irMethod);
+
+    // Map each statement to the SSA locals it defines (including phi targets on labels).
+    Map<Stmt, List<Local>> defsAt = new IdentityHashMap<>();
+    for (Stmt s : irMethod.stmts) {
+      if ((s.st == Stmt.ST.ASSIGN || s.st == Stmt.ST.IDENTITY)
+          && s.getOp1() instanceof Local loc) {
+        defsAt.computeIfAbsent(s, k -> new ArrayList<>(1)).add(loc);
+      } else if (s.st == Stmt.ST.LABEL) {
+        LabelStmt label = (LabelStmt) s;
+        if (label.phis != null) {
+          for (AssignStmt phi : label.phis) {
+            if (phi.getOp1() instanceof Local loc) {
+              defsAt.computeIfAbsent(label, k -> new ArrayList<>()).add(loc);
+            }
+          }
+        }
+      }
+    }
+
+    int tempSeq = 0;
+    for (LabelStmt label : phiLabels) {
+      List<AssignStmt> phis = label.phis;
+      List<Local> temps = new ArrayList<>(phis.size());
+      List<Local> dsts = new ArrayList<>(phis.size());
+      List<Set<Local>> opLocals = new ArrayList<>(phis.size());
+      List<Value> fallbackConsts = new ArrayList<>(phis.size());
+      for (AssignStmt phi : phis) {
+        Local dst = (Local) phi.getOp1();
+        Local tmp = Exprs.nLocal("phi_tmp_" + (tempSeq++));
+        tmp.valueType = dst.valueType;
+        irMethod.locals.add(tmp);
+        temps.add(tmp);
+        dsts.add(dst);
+        Set<Local> locals = Collections.newSetFromMap(new IdentityHashMap<>());
+        Value fallback = null;
+        if (phi.getOp2() instanceof PhiExpr phiExpr && phiExpr.getOps() != null) {
+          for (Value op : phiExpr.getOps()) {
+            if (op instanceof Local l) {
+              locals.add(l);
+            } else if (fallback == null && op != null) {
+              fallback = op;
+            }
+          }
+        }
+        opLocals.add(locals);
+        fallbackConsts.add(fallback);
+      }
+
+      List<Stmt> preds =
+          label.cfgFroms == null ? List.of() : new ArrayList<>(label.cfgFroms);
+      for (Stmt pred : preds) {
+        boolean isExceptionEdge =
+            pred.exceptionHandlers != null && pred.exceptionHandlers.contains(label);
+        boolean isGoto = pred.st == Stmt.ST.GOTO && ((GotoStmt) pred).target == label;
+        boolean isIfJump = pred.st == Stmt.ST.IF && ((IfStmt) pred).target == label;
+        boolean isSwitchJump = pred instanceof BaseSwitchStmt sw && switchTargets(sw, label);
+        boolean isFallthrough = pred.getNext() == label && pred.st.canContinue();
+
+        if (isExceptionEdge) {
+          List<AssignStmt> copies =
+              buildPhiCopies(pred, false, temps, dsts, opLocals, fallbackConsts, defsAt);
+          for (AssignStmt copy : copies) {
+            irMethod.stmts.insertBefore(pred, copy);
+          }
+        }
+        if (isGoto) {
+          List<AssignStmt> copies =
+              buildPhiCopies(pred, true, temps, dsts, opLocals, fallbackConsts, defsAt);
+          for (AssignStmt copy : copies) {
+            irMethod.stmts.insertBefore(pred, copy);
+          }
+        } else if (isIfJump && isFallthrough) {
+          List<AssignStmt> copies =
+              buildPhiCopies(pred, true, temps, dsts, opLocals, fallbackConsts, defsAt);
+          for (AssignStmt copy : copies) {
+            irMethod.stmts.insertBefore(pred, copy);
+          }
+        } else {
+          if (isIfJump) {
+            List<AssignStmt> copies =
+                buildPhiCopies(pred, true, temps, dsts, opLocals, fallbackConsts, defsAt);
+            LabelStmt bridge = appendPhiBridge(irMethod, label, copies);
+            ((IfStmt) pred).target = bridge;
+          }
+          if (isSwitchJump) {
+            List<AssignStmt> copies =
+                buildPhiCopies(pred, true, temps, dsts, opLocals, fallbackConsts, defsAt);
+            LabelStmt bridge = appendPhiBridge(irMethod, label, copies);
+            BaseSwitchStmt sw = (BaseSwitchStmt) pred;
+            if (sw.defaultTarget == label) sw.defaultTarget = bridge;
+            if (sw.targets != null) {
+              for (int i = 0; i < sw.targets.length; i++) {
+                if (sw.targets[i] == label) sw.targets[i] = bridge;
+              }
+            }
+          }
+          if (isFallthrough) {
+            List<AssignStmt> copies =
+                buildPhiCopies(pred, true, temps, dsts, opLocals, fallbackConsts, defsAt);
+            for (AssignStmt copy : copies) {
+              irMethod.stmts.insertBefore(label, copy);
+            }
+          }
+        }
+      }
+
+      Stmt anchor = label;
+      while (anchor.getNext() != null
+          && anchor.getNext().st == Stmt.ST.IDENTITY
+          && anchor.getNext().getOp2().vt == Value.VT.EXCEPTION_REF) {
+        anchor = anchor.getNext();
+      }
+      for (int i = dsts.size() - 1; i >= 0; i--) {
+        irMethod.stmts.insertAfter(anchor, Stmts.nAssign(dsts.get(i), temps.get(i)));
+      }
+      label.phis = null;
+    }
+    if (irMethod.phiLabels != null) irMethod.phiLabels.clear();
+  }
+
+  private static boolean switchTargets(BaseSwitchStmt sw, LabelStmt label) {
+    if (sw.defaultTarget == label) return true;
+    if (sw.targets != null) {
+      for (LabelStmt t : sw.targets) {
+        if (t == label) return true;
+      }
+    }
+    return false;
+  }
+
+  private static LabelStmt appendPhiBridge(
+      IrMethod irMethod, LabelStmt target, List<AssignStmt> copies) {
+    LabelStmt bridge = Stmts.nLabel();
+    irMethod.stmts.add(bridge);
+    for (AssignStmt copy : copies) {
+      irMethod.stmts.add(copy);
+    }
+    irMethod.stmts.add(Stmts.nGoto(target));
+    return bridge;
+  }
+
+  private static List<AssignStmt> buildPhiCopies(
+      Stmt pred,
+      boolean includePredDef,
+      List<Local> temps,
+      List<Local> dsts,
+      List<Set<Local>> opLocals,
+      List<Value> fallbackConsts,
+      Map<Stmt, List<Local>> defsAt) {
+    List<AssignStmt> copies = new ArrayList<>(temps.size());
+    for (int i = 0; i < temps.size(); i++) {
+      Local tmp = temps.get(i);
+      Value src = findReachingPhiOperand(pred, includePredDef, opLocals.get(i), defsAt);
+      if (src == null) src = fallbackConsts.get(i);
+      if (src == null) src = defaultConstant(dsts.get(i).valueType);
+      copies.add(Stmts.nAssign(tmp, src));
+    }
+    return copies;
+  }
+
+  private static Value findReachingPhiOperand(
+      Stmt pred, boolean includePredDef, Set<Local> candidates, Map<Stmt, List<Local>> defsAt) {
+    if (candidates.isEmpty()) return null;
+    if (candidates.size() == 1) return candidates.iterator().next();
+    Set<Stmt> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+    ArrayDeque<Stmt> queue = new ArrayDeque<>();
+    if (includePredDef) {
+      visited.add(pred);
+      queue.add(pred);
+    } else if (pred.cfgFroms != null) {
+      for (Stmt from : pred.cfgFroms) {
+        if (visited.add(from)) queue.add(from);
+      }
+    }
+    while (!queue.isEmpty()) {
+      Stmt cur = queue.poll();
+      List<Local> defs = defsAt.get(cur);
+      if (defs != null) {
+        for (Local def : defs) {
+          if (candidates.contains(def)) return def;
+        }
+      }
+      if (cur.cfgFroms != null) {
+        for (Stmt from : cur.cfgFroms) {
+          if (visited.add(from)) queue.add(from);
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Constant defaultConstant(String valueType) {
+    if (valueType == null || valueType.isEmpty()) return Exprs.nConstant(Constant.NULL);
+    Constant c =
+        switch (valueType.charAt(0)) {
+          case 'J' -> Exprs.nLong(0L);
+          case 'D' -> Exprs.nDouble(0.0);
+          case 'F' -> Exprs.nFloat(0.0f);
+          case 'I', 'Z', 'B', 'C', 'S' -> Exprs.nInt(0);
+          default -> Exprs.nConstant(Constant.NULL);
+        };
+    c.valueType = valueType;
+    return c;
+  }
+
+  /**
+   * Sparse JVM local-slot assignment for methods too large for dex2jar's dense {@code
+   * Ir2JRegAssignTransformer}.
+   *
+   * <p>Parameter and {@code this} locals keep their fixed ABI slots ({@code 0..paramSlots-1}).
+   * Cross-block locals get unique slots; intra-block temporaries reuse slots per JVM type category
+   * via linear scan over statement indices, keeping {@code max_locals} small and memory {@code
+   * O(stmts + locals)}.
+   */
+  static void assignRegistersSparse(IrMethod irMethod) {
+    int[] paramSlotOf = new int[irMethod.args == null ? 0 : irMethod.args.length];
+    int paramSlots = irMethod.isStatic ? 0 : 1;
+    if (irMethod.args != null) {
+      for (int i = 0; i < irMethod.args.length; i++) {
+        paramSlotOf[i] = paramSlots;
+        paramSlots += isWideType(irMethod.args[i]) ? 2 : 1;
+      }
+    }
+
+    Set<Local> fixed = Collections.newSetFromMap(new IdentityHashMap<>());
+    Map<Local, LocalRange> ranges = new IdentityHashMap<>();
+    for (Local loc : irMethod.locals) {
+      ranges.put(loc, new LocalRange(loc));
+    }
+
+    int stmtIdx = 0;
+    int block = 0;
+    boolean prevEndedBlock = false;
+    for (Stmt s : irMethod.stmts) {
+      if (s.st == Stmt.ST.LABEL || prevEndedBlock) {
+        block++;
+      }
+      if (s.st == Stmt.ST.IDENTITY && s.getOp1() instanceof Local lhs) {
+        Value rhs = s.getOp2();
+        if (rhs.vt == Value.VT.THIS_REF) {
+          lhs.lsIndex = 0;
+          fixed.add(lhs);
+        } else if (rhs.vt == Value.VT.PARAMETER_REF) {
+          int idx = ((RefExpr) rhs).parameterIndex;
+          if (idx >= 0 && idx < paramSlotOf.length) {
+            lhs.lsIndex = paramSlotOf[idx];
+            fixed.add(lhs);
+          }
+        }
+      }
+      recordStmtLocals(s, stmtIdx, block, ranges);
+      prevEndedBlock = endsBasicBlock(s.st);
+      stmtIdx++;
+    }
+
+    int nextSlot = paramSlots;
+    Map<Character, List<LocalRange>> intraByCategory = new HashMap<>();
+    for (LocalRange range : ranges.values()) {
+      if (fixed.contains(range.local)) continue;
+      int width = isWideType(range.local.valueType) ? 2 : 1;
+      if (range.firstIdx < 0) {
+        // Unreferenced local: keep a valid slot without growing max_locals unnecessarily.
+        range.local.lsIndex = paramSlots;
+      } else if (range.firstBlock != range.lastBlock) {
+        range.local.lsIndex = nextSlot;
+        nextSlot += width;
+      } else {
+        char cat = slotCategory(range.local.valueType);
+        intraByCategory.computeIfAbsent(cat, k -> new ArrayList<>()).add(range);
+      }
+    }
+
+    for (Map.Entry<Character, List<LocalRange>> entry : intraByCategory.entrySet()) {
+      char cat = entry.getKey();
+      int width = (cat == 'J' || cat == 'D') ? 2 : 1;
+      List<LocalRange> list = entry.getValue();
+      list.sort(Comparator.comparingInt(r -> r.firstIdx));
+      PriorityQueue<LocalRange> active =
+          new PriorityQueue<>(Comparator.comparingInt(r -> r.lastIdx));
+      ArrayDeque<Integer> freeSlots = new ArrayDeque<>();
+      for (LocalRange cur : list) {
+        while (!active.isEmpty() && active.peek().lastIdx < cur.firstIdx) {
+          freeSlots.push(active.poll().local.lsIndex);
+        }
+        int slot;
+        if (!freeSlots.isEmpty()) {
+          slot = freeSlots.pop();
+        } else {
+          slot = nextSlot;
+          nextSlot += width;
+        }
+        cur.local.lsIndex = slot;
+        active.add(cur);
+      }
+    }
+  }
+
+  private static final class LocalRange {
+    final Local local;
+    int firstIdx = -1;
+    int lastIdx = -1;
+    int firstBlock = -1;
+    int lastBlock = -1;
+
+    LocalRange(Local local) {
+      this.local = local;
+    }
+
+    void record(int idx, int block) {
+      if (firstIdx < 0) {
+        firstIdx = idx;
+        firstBlock = block;
+      }
+      lastIdx = idx;
+      lastBlock = block;
+    }
+  }
+
+  private static void recordStmtLocals(
+      Stmt s, int stmtIdx, int block, Map<Local, LocalRange> ranges) {
+    switch (s.et) {
+      case E0 -> {}
+      case E1 -> recordValueLocals(s.getOp(), stmtIdx, block, ranges);
+      case E2 -> {
+        recordValueLocals(s.getOp1(), stmtIdx, block, ranges);
+        recordValueLocals(s.getOp2(), stmtIdx, block, ranges);
+      }
+      case En -> {
+        Value[] ops = s.getOps();
+        if (ops != null) {
+          for (Value v : ops) recordValueLocals(v, stmtIdx, block, ranges);
+        }
+      }
+    }
+  }
+
+  private static void recordValueLocals(
+      Value v, int stmtIdx, int block, Map<Local, LocalRange> ranges) {
+    if (v == null) return;
+    if (v instanceof Local loc) {
+      ranges.computeIfAbsent(loc, LocalRange::new).record(stmtIdx, block);
+      return;
+    }
+    switch (v.et) {
+      case E0 -> {}
+      case E1 -> recordValueLocals(v.getOp(), stmtIdx, block, ranges);
+      case E2 -> {
+        recordValueLocals(v.getOp1(), stmtIdx, block, ranges);
+        recordValueLocals(v.getOp2(), stmtIdx, block, ranges);
+      }
+      case En -> {
+        Value[] ops = v.getOps();
+        if (ops != null) {
+          for (Value op : ops) recordValueLocals(op, stmtIdx, block, ranges);
+        }
+      }
+    }
+  }
+
+  private static boolean endsBasicBlock(Stmt.ST st) {
+    return st == Stmt.ST.GOTO
+        || st == Stmt.ST.IF
+        || st == Stmt.ST.TABLE_SWITCH
+        || st == Stmt.ST.LOOKUP_SWITCH
+        || st == Stmt.ST.RETURN
+        || st == Stmt.ST.RETURN_VOID
+        || st == Stmt.ST.THROW;
+  }
+
+  private static boolean isWideType(String type) {
+    return "J".equals(type) || "D".equals(type);
+  }
+
+  private static char slotCategory(String type) {
+    if (type == null || type.isEmpty()) return 'L';
+    return switch (type.charAt(0)) {
+      case 'J' -> 'J';
+      case 'D' -> 'D';
+      case 'F' -> 'F';
+      case 'I', 'Z', 'B', 'C', 'S' -> 'I';
+      default -> 'L';
+    };
   }
 
   /**
@@ -1124,7 +1745,7 @@ public final class ApkClassConverter {
    * Supertypes and interface-ness by internal name, read from class headers without loading
    * anything: the APK's own classes, then the platform `android.jar`, then the JDK.
    */
-  static final class ClassHierarchy {
+  static final class ClassHierarchy implements AutoCloseable {
 
     /** What frame computation needs from one class. */
     static final class Header {
@@ -1199,11 +1820,15 @@ public final class ApkClassConverter {
     private final List<ZipFile> context;
 
     private static List<ZipFile> openContext() {
-      String jars = System.getProperty(CONTEXT_PROPERTY);
-      if (jars == null || jars.isEmpty()) return List.of();
-      List<ZipFile> open = new ArrayList<>();
-      for (String jar : jars.split(java.io.File.pathSeparator)) {
-        if (jar.isEmpty()) continue;
+      Set<String> paths = new LinkedHashSet<>();
+      addJarPaths(paths, System.getProperty(CONTEXT_PROPERTY));
+      // Simulator-provided jars (e.g. androidx.test / espresso) whose copies were stripped from the
+      // APK by providedBySimulator must still be visible here so ASM COMPUTE_FRAMES computes real
+      // common superclasses (e.g. Throwable for multi-catch NoMatchingViewException | Error).
+      addJarPaths(paths, System.getProperty(PROVIDED_PROPERTY));
+      if (paths.isEmpty()) return List.of();
+      List<ZipFile> open = new ArrayList<>(paths.size());
+      for (String jar : paths) {
         try {
           open.add(new ZipFile(jar));
         } catch (IOException e) {
@@ -1211,6 +1836,24 @@ public final class ApkClassConverter {
         }
       }
       return open;
+    }
+
+    private static void addJarPaths(Set<String> out, String jars) {
+      if (jars == null || jars.isEmpty()) return;
+      for (String jar : jars.split(java.io.File.pathSeparator)) {
+        if (!jar.isEmpty()) out.add(jar);
+      }
+    }
+
+    @Override
+    public void close() {
+      for (ZipFile jar : context) {
+        try {
+          jar.close();
+        } catch (IOException e) {
+          // Best-effort cleanup.
+        }
+      }
     }
 
     boolean isInterface(String name) {

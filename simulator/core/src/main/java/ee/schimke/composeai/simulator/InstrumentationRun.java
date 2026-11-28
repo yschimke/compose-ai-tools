@@ -95,6 +95,7 @@ public final class InstrumentationRun {
   /** On the main thread, once the simulator loops: declares the test activities, starts the run. */
   static void start(Application app) {
     declareTestActivities(app);
+    disableAnimations(app);
     ClassLoader sandbox = Thread.currentThread().getContextClassLoader();
     DevicePlatform platform = new DevicePlatform(sandbox);
     // The main thread too: androidx.test looks its services up on whichever thread first needs
@@ -106,6 +107,23 @@ public final class InstrumentationRun {
     runner.start();
     watchdog(runner);
     espressoClock(Looper.getMainLooper().getThread());
+  }
+
+  /**
+   * Sets the three global animation scales to zero, matching {@code testOptions.animationsDisabled}
+   * on an emulator so Espresso does not abort actions with "Animations or transitions are enabled
+   * on the target device". Leaves {@code ValueAnimator}'s static duration scale alone because
+   * setting it to 0f causes repeating Material/EditText animators to reschedule zero-delay
+   * Choreographer frames indefinitely and trip Espresso's {@code AppNotIdleException}.
+   */
+  private static void disableAnimations(Application app) {
+    android.content.ContentResolver cr = app.getContentResolver();
+    android.provider.Settings.Global.putFloat(
+        cr, android.provider.Settings.Global.WINDOW_ANIMATION_SCALE, 0f);
+    android.provider.Settings.Global.putFloat(
+        cr, android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 0f);
+    android.provider.Settings.Global.putFloat(
+        cr, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f);
   }
 
   /**
@@ -380,16 +398,20 @@ public final class InstrumentationRun {
     int failures = 0;
     long millis = 0;
     for (int i = 0; i < classes.size(); i++) {
-      Request one = Request.runner(runners.get(i));
+      org.junit.runner.Runner runner = runners.get(i);
       Filter filter = selection.filterFor(classes.get(i).getName());
       Filter device = DeviceFilter.forThisDevice();
       filter = filter == null ? device : filter.intersect(device);
       if (shard != null) filter = shard.and(filter);
       // A class with none of its tests left is left out rather than filtered to nothing, which
       // JUnit reports as a failure ("No tests found matching").
-      if (!runsAny(runners.get(i).getDescription(), filter)) continue;
-      one = one.filterWith(filter);
-      Result result = core.run(one);
+      if (!runsAny(runner.getDescription(), filter)) continue;
+      try {
+        filter.apply(runner);
+      } catch (org.junit.runner.manipulation.NoTestsRemainException e) {
+        continue;
+      }
+      Result result = core.run(Request.runner(runner));
       runCount += result.getRunCount();
       failures += result.getFailureCount();
       millis += result.getRunTime();
@@ -448,23 +470,43 @@ public final class InstrumentationRun {
   }
 
   /**
-   * Whether [scan] or a superclass in the same jar has a {@code @Test} method or {@code @RunWith}
-   * (which is {@code @Inherited}): a concrete class whose tests all come from an abstract base still
-   * runs them, as JUnit runs it.
+   * Whether [scan] or a superclass in the same jar has runnable tests: a {@code @Test} method, a
+   * custom {@code @RunWith} (other than the standard JUnit4 / AndroidJUnit4 method runners, which
+   * require at least one {@code @Test} method), or a JUnit 3 {@code TestCase} subclass with at
+   * least one {@code public void test*()} method. Concrete helper base classes with no test methods
+   * (e.g. {@code open class BaseViewTest : BaseAndroidTest()}) are skipped as AndroidJUnitRunner
+   * skips them, rather than failing with {@code InvalidTestClassError: No runnable methods}.
    */
   private static boolean inheritsTests(
       TestClassScan scan, java.util.Map<String, TestClassScan> scans) {
     Set<String> seen = new java.util.HashSet<>();
+    boolean hasTestMethod = false;
+    boolean hasJunit3TestMethod = false;
+    boolean isJunit3TestCase = false;
+    String nearestRunner = null;
     for (TestClassScan at = scan; at != null && seen.add(at.name); at = scans.get(at.superName)) {
-      if (at.runWith || at.testMethod) return true;
+      if (at.testMethod) hasTestMethod = true;
+      if (at.junit3TestMethod) hasJunit3TestMethod = true;
+      if (at.runWith && nearestRunner == null) nearestRunner = at.runner != null ? at.runner : "";
       // JUnit 3: a TestCase subclass, which has neither annotation. TestCase itself is JUnit's,
       // so it is not among the scanned classes: it is recognised by name.
-      if (JUNIT3_TEST_CASE.equals(at.superName)) return true;
+      if (JUNIT3_TEST_CASE.equals(at.superName)) isJunit3TestCase = true;
     }
-    return false;
+    if (hasTestMethod) return true;
+    if (isJunit3TestCase && hasJunit3TestMethod) return true;
+    return nearestRunner != null && !STANDARD_METHOD_RUNNERS.contains(nearestRunner);
   }
 
   static final String JUNIT3_TEST_CASE = "junit/framework/TestCase";
+
+  /** Standard JUnit4 / AndroidJUnit4 runners that require at least one {@code @Test} method. */
+  static final Set<String> STANDARD_METHOD_RUNNERS =
+      Set.of(
+          "androidx/test/ext/junit/runners/AndroidJUnit4",
+          "androidx/test/runner/AndroidJUnit4",
+          "androidx/test/internal/runner/junit4/AndroidJUnit4ClassRunner",
+          "org/junit/runners/JUnit4",
+          "org/junit/runners/BlockJUnit4ClassRunner");
 
   /** JUnit's runners that only group other classes. */
   static final Set<String> SUITE_RUNNERS =
@@ -511,6 +553,7 @@ public final class InstrumentationRun {
     /** The {@code @RunWith} runner's internal name, when there is one. */
     String runner;
     boolean testMethod;
+    boolean junit3TestMethod;
 
     TestClassScan() {
       super(Opcodes.ASM9);
@@ -548,6 +591,13 @@ public final class InstrumentationRun {
     @Override
     public MethodVisitor visitMethod(
         int access, String name, String descriptor, String signature, String[] exceptions) {
+      if ((access & Opcodes.ACC_PUBLIC) != 0
+          && (access & Opcodes.ACC_STATIC) == 0
+          && (access & Opcodes.ACC_ABSTRACT) == 0
+          && name.startsWith("test")
+          && "()V".equals(descriptor)) {
+        junit3TestMethod = true;
+      }
       return new MethodVisitor(Opcodes.ASM9) {
         @Override
         public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
