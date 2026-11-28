@@ -895,15 +895,135 @@ public final class ApkClassConverter {
      */
     private static final long SPARSE_UNSSA_THRESHOLD = 50_000_000L;
 
+    private static final String ADVICE_KEEP_OWNER = "L__composeai_advice_keep__;";
+
+    private record WritableAdviceParam(int dexReg, int jvmSlot, String type) {}
+
     private boolean preserveParamSlots;
+    private List<WritableAdviceParam> writableAdviceParams = List.of();
 
     @Override
     public void convertCode(DexMethodNode methodNode, MethodVisitor mv, ClzCtx clzCtx) {
       this.preserveParamSlots = hasByteBuddyAdviceAnnotation(methodNode);
+      this.writableAdviceParams =
+          this.preserveParamSlots ? findWritableAdviceParams(methodNode) : List.of();
+      List<com.googlecode.d2j.node.insn.DexStmtNode> originalStmts = null;
+      if (!writableAdviceParams.isEmpty()
+          && methodNode.codeNode != null
+          && methodNode.codeNode.stmts != null) {
+        originalStmts = methodNode.codeNode.stmts;
+        List<com.googlecode.d2j.node.insn.DexStmtNode> augmented =
+            new ArrayList<>(originalStmts.size() + writableAdviceParams.size() * 2);
+        for (com.googlecode.d2j.node.insn.DexStmtNode stmt : originalStmts) {
+          if (isReturnOp(stmt.op)) {
+            for (WritableAdviceParam wp : writableAdviceParams) {
+              int[] regs =
+                  isWideType(wp.type)
+                      ? new int[] {wp.dexReg, wp.dexReg + 1}
+                      : new int[] {wp.dexReg};
+              augmented.add(
+                  new com.googlecode.d2j.node.insn.MethodStmtNode(
+                      com.googlecode.d2j.reader.Op.INVOKE_STATIC,
+                      regs,
+                      new Method(
+                          ADVICE_KEEP_OWNER,
+                          "keep" + wp.jvmSlot,
+                          new String[] {wp.type},
+                          "V")));
+            }
+          }
+          augmented.add(stmt);
+        }
+        methodNode.codeNode.stmts = augmented;
+      }
       try {
         super.convertCode(methodNode, mv, clzCtx);
       } finally {
+        if (originalStmts != null) {
+          methodNode.codeNode.stmts = originalStmts;
+        }
         this.preserveParamSlots = false;
+        this.writableAdviceParams = List.of();
+      }
+    }
+
+    private static boolean isReturnOp(com.googlecode.d2j.reader.Op op) {
+      return op == com.googlecode.d2j.reader.Op.RETURN_VOID
+          || op == com.googlecode.d2j.reader.Op.RETURN
+          || op == com.googlecode.d2j.reader.Op.RETURN_WIDE
+          || op == com.googlecode.d2j.reader.Op.RETURN_OBJECT;
+    }
+
+    private static List<WritableAdviceParam> findWritableAdviceParams(DexMethodNode methodNode) {
+      if (methodNode.parameterAnns == null || methodNode.codeNode == null) return List.of();
+      String[] paramTypes = methodNode.method.getParameterTypes();
+      if (paramTypes == null || paramTypes.length == 0) return List.of();
+      boolean isStatic = (methodNode.access & Opcodes.ACC_STATIC) != 0;
+      int inWords = isStatic ? 0 : 1;
+      for (String t : paramTypes) inWords += isWideType(t) ? 2 : 1;
+      int dexReg = methodNode.codeNode.totalRegister - inWords + (isStatic ? 0 : 1);
+      int jvmSlot = isStatic ? 0 : 1;
+      List<WritableAdviceParam> out = new ArrayList<>();
+      for (int i = 0; i < paramTypes.length; i++) {
+        String type = paramTypes[i];
+        int width = isWideType(type) ? 2 : 1;
+        if (i < methodNode.parameterAnns.length
+            && hasWritableAdviceAnnotation(methodNode.parameterAnns[i])) {
+          out.add(new WritableAdviceParam(dexReg, jvmSlot, type));
+        }
+        dexReg += width;
+        jvmSlot += width;
+      }
+      return out;
+    }
+
+    private static boolean hasWritableAdviceAnnotation(
+        List<com.googlecode.d2j.node.DexAnnotationNode> anns) {
+      if (anns == null) return false;
+      for (com.googlecode.d2j.node.DexAnnotationNode ann : anns) {
+        if (ann == null
+            || ann.type == null
+            || !ann.type.startsWith("Lnet/bytebuddy/asm/Advice$")
+            || ann.items == null) {
+          continue;
+        }
+        for (com.googlecode.d2j.node.DexAnnotationNode.Item item : ann.items) {
+          if ("readOnly".equals(item.name) && Boolean.FALSE.equals(item.value)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    private static void rewriteWritableAdviceParamKeeps(
+        IrMethod irMethod, List<WritableAdviceParam> params) {
+      if (params.isEmpty()) return;
+      Map<String, WritableAdviceParam> byName = new HashMap<>();
+      for (WritableAdviceParam wp : params) {
+        byName.put("keep" + wp.jvmSlot, wp);
+      }
+      List<Stmt> stmts = new ArrayList<>();
+      for (Stmt s : irMethod.stmts) stmts.add(s);
+      int seq = 0;
+      for (Stmt s : stmts) {
+        if (s.st != Stmt.ST.VOID_INVOKE) continue;
+        if (!(s.getOp() instanceof InvokeExpr inv)) continue;
+        if (!ADVICE_KEEP_OWNER.equals(inv.getOwner())) continue;
+        WritableAdviceParam wp = byName.get(inv.getName());
+        if (wp == null) continue;
+        Value[] ops = inv.getOps();
+        if (ops != null && ops.length == 1 && ops[0] != null) {
+          Value val = ops[0];
+          if (!(val instanceof Local l && l.lsIndex == wp.jvmSlot)) {
+            Local dst = Exprs.nLocal("advice_out_" + (seq++));
+            dst.lsIndex = wp.jvmSlot;
+            dst.valueType = wp.type;
+            irMethod.locals.add(dst);
+            irMethod.stmts.insertBefore(s, Stmts.nAssign(dst, val));
+          }
+        }
+        irMethod.stmts.remove(s);
       }
     }
 
@@ -955,11 +1075,12 @@ public final class ApkClassConverter {
       T_TYPE.transform(irMethod);
       // ByteBuddy @Advice methods forbid writing to read-only @Advice parameter slots (which
       // dex2jar's Ir2JRegAssignTransformer reuses once a parameter dies). Our sparse register
-      // allocator keeps 0..paramSlots-1 untouched, fixing Mockito's MockMethodAdvice.
+      // allocator keeps 0..paramSlots-1 untouched, fixing Mockito's MockMethodAdvice and MockK.
       if (preserveParamSlots
           || (long) irMethod.locals.size() * irMethod.stmts.getSize() > SPARSE_UNSSA_THRESHOLD) {
         deconstructPhisSparse(irMethod);
         assignRegistersSparse(irMethod);
+        rewriteWritableAdviceParamKeeps(irMethod, writableAdviceParams);
         irMethod.vars.clear();
       } else {
         T_UNSSA.transform(irMethod);
@@ -1630,6 +1751,9 @@ public final class ApkClassConverter {
             return hierarchy.commonSuperClass(type1, type2);
           }
         };
+    // ASM 9.11+ caps COMPUTE_FRAMES operations/memory by default, which trips on large Kotlin
+    // suspend state machines and leaves them unframed (VerifyError at class load time).
+    writer.setComputeLimits(Integer.MAX_VALUE, Long.MAX_VALUE);
     reader.accept(
         new ClassVisitor(Opcodes.ASM9, writer) {
           private String superInternalName;

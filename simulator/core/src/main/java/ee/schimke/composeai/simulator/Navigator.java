@@ -570,15 +570,18 @@ public final class Navigator {
     int flags = intent.getFlags();
 
     Entry root = requestCode < 0 ? root(displayId) : null;
-    if (root != null) {
+    if (root != null && !root.activity().isFinishing()) {
+      Entry topNow = top(displayId);
       Intent rootIntent = root.activity().getIntent();
       boolean reuse =
-          TaskReuse.bringsTaskForward(
-              flags,
-              component.equals(root.activity().getComponentName()),
-              withoutPackage(launch).filterEquals(withoutPackage(rootIntent)),
-              isLauncherIntent(launch),
-              isBare(rootIntent) || isLauncherIntent(rootIntent));
+          topNow != null
+              && !topNow.activity().isFinishing()
+              && TaskReuse.bringsTaskForward(
+                  flags,
+                  component.equals(root.activity().getComponentName()),
+                  withoutPackage(launch).filterEquals(withoutPackage(rootIntent)),
+                  isLauncherIntent(launch),
+                  isBare(rootIntent) || isLauncherIntent(rootIntent));
       if (reuse) {
         // The task comes forward as it is; nothing new starts and nothing gets the intent. A
         // launcher's start (RESET_TASK_IF_NEEDED) first applies the manifest's task resets.
@@ -595,7 +598,11 @@ public final class Navigator {
     ActivityInfo info = activityInfo(component, implementation);
     List<Entry> on = entriesOn(displayId);
     List<String> names = new ArrayList<>();
-    for (Entry entry : on) names.add(entry.activity().getClass().getName());
+    for (Entry entry : on) {
+      // A finishing activity is about to be destroyed by reapFinishedActivities() and must not be
+      // matched as a reusable singleTop/singleTask/CLEAR_TOP target.
+      names.add(entry.activity().isFinishing() ? "" : entry.activity().getClass().getName());
+    }
     LaunchModes.Plan plan =
         LaunchModes.plan(info == null ? 0 : info.launchMode, flags, names, type.getName());
     if (plan.clearTask) {

@@ -1057,4 +1057,58 @@ public class ApkClassConverterTest {
               .invoke(null, " hi ", null));
     }
   }
+
+  @Test
+  public void byteBuddyWritableReturnAdvicePreservesStoreToParameterSlot() throws Exception {
+    // Mirrors MockK's JvmMockKProxyAdvice.exit and Mockito's MockMethodAdvice.exit:
+    // `if (mocked != null) returned = mocked.call();` where `returned` is @Advice.Return(readOnly=false).
+    // dex2jar's T_DEAD_CODE / T_VOID_INVOKE would otherwise turn `move-result-object p0` into `pop`.
+    String exitAdvice =
+        """
+        .class public Lapp/ExitAdvice;
+        .super Ljava/lang/Object;
+        .method public static exit(Ljava/lang/Object;Ljava/util/concurrent/Callable;)V
+          .registers 2
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodExit;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Return;
+              readOnly = false
+            .end annotation
+          .end param
+          .param p1
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Enter;
+            .end annotation
+          .end param
+          if-eqz p1, :done
+          invoke-interface {p1}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+          move-result-object p0
+          :done
+          return-void
+        .end method
+        """;
+    Path outApk = apk("exit-advice.apk", exitAdvice);
+    Path outJar = temp.getRoot().toPath().resolve("exit-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (ZipFile zip = new ZipFile(outJar.toFile())) {
+      byte[] bytes = zip.getInputStream(zip.getEntry("app/ExitAdvice.class")).readAllBytes();
+      MethodNode exit = method(bytes, "exit");
+      boolean storesSlot0 = false;
+      boolean popsReturn = false;
+      for (org.objectweb.asm.tree.AbstractInsnNode insn : exit.instructions) {
+        if (insn instanceof org.objectweb.asm.tree.VarInsnNode varInsn
+            && varInsn.getOpcode() == Opcodes.ASTORE
+            && varInsn.var == 0) {
+          storesSlot0 = true;
+        }
+        if (insn.getOpcode() == Opcodes.POP) {
+          popsReturn = true;
+        }
+      }
+      assertTrue("Exit advice must write mocked return value into slot 0", storesSlot0);
+      assertFalse("Exit advice must not discard Callable.call() with POP", popsReturn);
+    }
+  }
 }
