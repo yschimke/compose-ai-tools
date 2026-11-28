@@ -65,7 +65,7 @@ public final class GmsLocation {
 
   private final List<CallbackEntry> locationCallbacks = new CopyOnWriteArrayList<>();
   private final List<ListenerEntry> locationListeners = new CopyOnWriteArrayList<>();
-  private final List<PendingIntent> locationPendingIntents = new CopyOnWriteArrayList<>();
+  private final List<PendingIntentEntry> locationPendingIntents = new CopyOnWriteArrayList<>();
   private final List<java.util.function.Consumer<Location>> pendingCurrentLocations =
       new CopyOnWriteArrayList<>();
   private final Map<String, GeofenceEntry> geofences =
@@ -109,20 +109,37 @@ public final class GmsLocation {
   static final class CallbackEntry {
     final Object callback;
     final Executor executor;
+    final int maxUpdates;
+    int delivered;
 
-    CallbackEntry(Object callback, Executor executor) {
+    CallbackEntry(Object callback, Executor executor, int maxUpdates) {
       this.callback = callback;
       this.executor = executor;
+      this.maxUpdates = maxUpdates;
     }
   }
 
   static final class ListenerEntry {
     final Object listener;
     final Executor executor;
+    final int maxUpdates;
+    int delivered;
 
-    ListenerEntry(Object listener, Executor executor) {
+    ListenerEntry(Object listener, Executor executor, int maxUpdates) {
       this.listener = listener;
       this.executor = executor;
+      this.maxUpdates = maxUpdates;
+    }
+  }
+
+  static final class PendingIntentEntry {
+    final PendingIntent pendingIntent;
+    final int maxUpdates;
+    int delivered;
+
+    PendingIntentEntry(PendingIntent pendingIntent, int maxUpdates) {
+      this.pendingIntent = pendingIntent;
+      this.maxUpdates = maxUpdates;
     }
   }
 
@@ -251,14 +268,21 @@ public final class GmsLocation {
   }
 
   void registerLocationCallback(Object callback, Executor executor) {
-    if (callback == null) return;
+    registerLocationCallback(callback, executor, Integer.MAX_VALUE);
+  }
+
+  void registerLocationCallback(Object callback, Executor executor, int maxUpdates) {
+    if (callback == null || maxUpdates <= 0) return;
     unregisterLocationCallback(callback);
-    locationCallbacks.add(new CallbackEntry(callback, executor != null ? executor : main));
+    CallbackEntry entry = new CallbackEntry(callback, executor != null ? executor : main, maxUpdates);
+    locationCallbacks.add(entry);
     // Deliver current availability and last location if already known.
     Location current = effectiveLastLocation();
     if (current != null) {
-      deliverToCallback(
-          locationCallbacks.get(locationCallbacks.size() - 1), current, locationAvailable);
+      deliverToCallback(entry, current, locationAvailable);
+      if (++entry.delivered >= entry.maxUpdates) {
+        locationCallbacks.remove(entry);
+      }
     }
   }
 
@@ -266,24 +290,26 @@ public final class GmsLocation {
     locationCallbacks.removeIf(entry -> entry.callback == callback);
   }
 
-  void registerLocationListener(Object listener, Executor executor) {
-    if (listener == null) return;
+  void registerLocationListener(Object listener, Executor executor, int maxUpdates) {
+    if (listener == null || maxUpdates <= 0) return;
     unregisterLocationListener(listener);
-    locationListeners.add(new ListenerEntry(listener, executor != null ? executor : main));
+    locationListeners.add(
+        new ListenerEntry(listener, executor != null ? executor : main, maxUpdates));
   }
 
   void unregisterLocationListener(Object listener) {
     locationListeners.removeIf(entry -> entry.listener == listener);
   }
 
-  void registerLocationPendingIntent(PendingIntent pendingIntent) {
-    if (pendingIntent != null && !locationPendingIntents.contains(pendingIntent)) {
-      locationPendingIntents.add(pendingIntent);
-    }
+  void registerLocationPendingIntent(PendingIntent pendingIntent, int maxUpdates) {
+    if (pendingIntent == null || maxUpdates <= 0) return;
+    unregisterLocationPendingIntent(pendingIntent);
+    locationPendingIntents.add(new PendingIntentEntry(pendingIntent, maxUpdates));
   }
 
   void unregisterLocationPendingIntent(PendingIntent pendingIntent) {
-    locationPendingIntents.remove(pendingIntent);
+    if (pendingIntent == null) return;
+    locationPendingIntents.removeIf(entry -> pendingIntent.equals(entry.pendingIntent));
   }
 
   void flushLocations() {
@@ -342,15 +368,21 @@ public final class GmsLocation {
   private void deliverLocation(Location fix) {
     for (CallbackEntry entry : locationCallbacks) {
       deliverToCallback(entry, fix, locationAvailable);
+      if (++entry.delivered >= entry.maxUpdates) {
+        locationCallbacks.remove(entry);
+      }
     }
     for (ListenerEntry entry : locationListeners) {
       entry.executor.execute(() -> invokeOnLocationChanged(entry.listener, fix));
+      if (++entry.delivered >= entry.maxUpdates) {
+        locationListeners.remove(entry);
+      }
     }
     if (!locationPendingIntents.isEmpty()) {
       ClassLoader loader =
           context != null ? context.getClassLoader() : getClass().getClassLoader();
       Object result = createLocationResult(loader, fix);
-      for (PendingIntent pi : locationPendingIntents) {
+      for (PendingIntentEntry entry : locationPendingIntents) {
         Intent fill = new Intent();
         if (result instanceof android.os.Parcelable) {
           fill.putExtra(
@@ -361,7 +393,10 @@ public final class GmsLocation {
             fill.putExtra("com.google.android.gms.location.EXTRA_LOCATION_RESULT_BYTES", bytes);
           }
         }
-        sendPendingIntent(pi, fill);
+        sendPendingIntent(entry.pendingIntent, fill);
+        if (++entry.delivered >= entry.maxUpdates) {
+          locationPendingIntents.remove(entry);
+        }
       }
     }
   }

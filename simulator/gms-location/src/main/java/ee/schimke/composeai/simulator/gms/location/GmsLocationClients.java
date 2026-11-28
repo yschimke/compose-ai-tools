@@ -178,6 +178,15 @@ public final class GmsLocationClients {
                           }
                         });
         engine.awaitNextLocation(waiter);
+        long durationMs = readDurationMillis(args.length > 0 ? args[0] : null);
+        if (durationMs > 0 && durationMs < Long.MAX_VALUE) {
+          scheduleTimeout(
+              durationMs,
+              () -> {
+                engine.cancelPendingLocation(waiter);
+                waiter.accept(null);
+              });
+        }
         if (token != null) {
           try {
             Class<?> listenerIface =
@@ -202,6 +211,28 @@ public final class GmsLocationClients {
         return task;
       } catch (ReflectiveOperationException e) {
         return ok(null);
+      }
+    }
+
+    private static long readDurationMillis(Object request) {
+      if (request == null || request instanceof Integer) return 30_000L;
+      try {
+        Method m = request.getClass().getMethod("getDurationMillis");
+        m.setAccessible(true);
+        Object val = m.invoke(request);
+        if (val instanceof Number) return ((Number) val).longValue();
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return 30_000L;
+    }
+
+    private static void scheduleTimeout(long delayMs, Runnable onTimeout) {
+      try {
+        Looper mainLooper = Looper.getMainLooper();
+        if (mainLooper != null) {
+          new Handler(mainLooper).postDelayed(onTimeout, delayMs);
+        }
+      } catch (RuntimeException ignored) {
       }
     }
 
@@ -241,6 +272,7 @@ public final class GmsLocationClients {
     }
 
     private Object handleRequestUpdates(Object[] args) {
+      int maxUpdates = readMaxUpdates(args.length > 0 ? args[0] : null);
       Executor exec = engine.mainExecutor();
       for (Object arg : args) {
         if (arg instanceof Executor) {
@@ -253,19 +285,36 @@ public final class GmsLocationClients {
       for (Object arg : args) {
         if (arg == null) continue;
         if (arg instanceof PendingIntent) {
-          engine.registerLocationPendingIntent((PendingIntent) arg);
+          engine.registerLocationPendingIntent((PendingIntent) arg, maxUpdates);
           return ok(null);
         }
         if (isLocationCallback(arg)) {
-          engine.registerLocationCallback(arg, exec);
+          engine.registerLocationCallback(arg, exec, maxUpdates);
           return ok(null);
         }
         if (isLocationListener(arg)) {
-          engine.registerLocationListener(arg, exec);
+          engine.registerLocationListener(arg, exec, maxUpdates);
           return ok(null);
         }
       }
       return ok(null);
+    }
+
+    private static int readMaxUpdates(Object request) {
+      if (request == null) return Integer.MAX_VALUE;
+      for (String method : new String[] {"getMaxUpdates", "getNumUpdates"}) {
+        try {
+          Method m = request.getClass().getMethod(method);
+          m.setAccessible(true);
+          Object val = m.invoke(request);
+          if (val instanceof Number) {
+            int n = ((Number) val).intValue();
+            if (n > 0) return n;
+          }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+      }
+      return Integer.MAX_VALUE;
     }
 
     private Object handleRemoveUpdates(Object[] args) {
