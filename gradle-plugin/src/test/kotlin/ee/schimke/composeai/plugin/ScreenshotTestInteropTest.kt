@@ -245,8 +245,11 @@ class ScreenshotTestInteropTest {
         .get()
     updateTask.update()
 
-    val createdRef = File(refDir, "com/example/CardsKt/CardPreview_light_0.png")
-    assertThat(createdRef.isFile).isTrue()
+    val createdRefs = File(refDir, "com/example/CardsKt").listFiles().orEmpty()
+    assertThat(createdRefs.map { it.name })
+      .containsExactly(
+        "CardPreview_light_${ScreenshotTestInterop.configHash(manifest.previews.single())}_0.png",
+      )
 
     val reportFile = File(projectDir, "build/reports/screenshot-test/report.json")
     val diffsDir = File(projectDir, "build/reports/screenshot-test/diffs")
@@ -281,5 +284,141 @@ class ScreenshotTestInteropTest {
     assertThat(error.message).contains("composePreviewUpdateScreenshotTest")
     assertThat(diffsDir.listFiles()?.map { it.name })
       .contains("com_example_cardskt_cardpreview_light_0_diff.png")
+  }
+
+  @Test
+  fun `resolveRenderedCaptures handles _PARAM_idx and labelled fan-outs while excluding siblings`() {
+    val rendersDir = tempDir.newFolder("renders")
+    val param0 = File(rendersDir, "BadgePreview-11112222_PARAM_0.png").apply { writeText("0") }
+    val param2 = File(rendersDir, "BadgePreview-11112222_PARAM_2.png").apply { writeText("2") }
+    val param10 = File(rendersDir, "BadgePreview-11112222_PARAM_10.png").apply { writeText("10") }
+
+    val paramPreview =
+      PreviewInfo(
+        id = "com.example.BadgesKt.BadgePreview",
+        functionName = "BadgePreview",
+        className = "com.example.BadgesKt",
+        params = PreviewParams(previewParameterProviderClassName = "com.example.BadgeProvider"),
+        captures = listOf(Capture(renderOutput = "renders/BadgePreview-11112222.png")),
+        previewTest = true,
+      )
+    val resolvedParam = ScreenshotTestInterop.resolveRenderedCaptures(paramPreview, rendersDir)
+    assertThat(resolvedParam.map { it.index to it.file })
+      .containsExactly(0 to param0, 2 to param2, 10 to param10)
+      .inOrder()
+    assertThat(resolvedParam.all { it.rowToken == null }).isTrue()
+
+    val dark = File(rendersDir, "Card_Dark.png").apply { writeText("sibling") }
+    val darkRow = File(rendersDir, "Card_Dark_Compact.png").apply { writeText("sibling-row") }
+    val cardAlpha = File(rendersDir, "Card_Alpha.png").apply { writeText("alpha") }
+    val cardBeta = File(rendersDir, "Card_Beta.png").apply { writeText("beta") }
+    assertThat(dark.isFile && darkRow.isFile).isTrue()
+
+    val labelledPreview =
+      PreviewInfo(
+        id = "com.example.CardsKt.Card",
+        functionName = "Card",
+        className = "com.example.CardsKt",
+        params = PreviewParams(previewParameterProviderClassName = "com.example.CardProvider"),
+        captures = listOf(Capture(renderOutput = "renders/Card.png")),
+        previewTest = true,
+      )
+    val resolvedLabelled =
+      ScreenshotTestInterop.resolveRenderedCaptures(
+        preview = labelledPreview,
+        rendersDir = rendersDir,
+        siblingOutputs = setOf("renders/Card_Dark.png"),
+      )
+    assertThat(resolvedLabelled.map { it.rowToken to it.file })
+      .containsExactly("Alpha" to cardAlpha, "Beta" to cardBeta)
+      .inOrder()
+  }
+
+  @Test
+  fun `multiple unnamed or same-named preview configurations keep distinct references`() {
+    val projectDir = tempDir.newFolder("multi-config")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val refDir = File(projectDir, "src/screenshotTestDebug/reference")
+
+    val lightPng = File(rendersDir, "MultiPreview-aaaa1111.png")
+    val darkPng = File(rendersDir, "MultiPreview-bbbb2222.png")
+    writeSolidPng(lightPng, 24, 24, Color(240, 240, 240, 255))
+    writeSolidPng(darkPng, 24, 24, Color(20, 20, 20, 255))
+
+    val lightPreview =
+      PreviewInfo(
+        id = "com.example.MultiKt.MultiPreview_day",
+        functionName = "MultiPreview",
+        className = "com.example.MultiKt",
+        sourceFile = "src/screenshotTest/kotlin/com/example/Multi.kt",
+        params = PreviewParams(name = "", uiMode = 16),
+        captures = listOf(Capture(renderOutput = "renders/${lightPng.name}")),
+        previewTest = true,
+      )
+    val darkPreview =
+      PreviewInfo(
+        id = "com.example.MultiKt.MultiPreview_night",
+        functionName = "MultiPreview",
+        className = "com.example.MultiKt",
+        sourceFile = "src/screenshotTest/kotlin/com/example/Multi.kt",
+        params = PreviewParams(name = "", uiMode = 32),
+        captures = listOf(Capture(renderOutput = "renders/${darkPng.name}")),
+        previewTest = true,
+      )
+
+    val manifest =
+      PreviewManifest(
+        module = ":app",
+        variant = "debug",
+        previews = listOf(lightPreview, darkPreview),
+      )
+    val manifestFile = File(projectDir, "build/compose-previews/manifest.json")
+    manifestFile.parentFile.mkdirs()
+    manifestFile.writeText(json.encodeToString(manifest))
+
+    val updateTask =
+      project.tasks
+        .register("multiUpdate", UpdateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDirPath.set(refDir.absolutePath)
+          this.requirePreviewTestAnnotation.set(true)
+        }
+        .get()
+    updateTask.update()
+
+    val createdFiles = File(refDir, "com/example/MultiKt").listFiles().orEmpty()
+    assertThat(createdFiles).hasLength(2)
+
+    val reportFile = File(projectDir, "build/reports/screenshot-test/report.json")
+    val diffsDir = File(projectDir, "build/reports/screenshot-test/diffs")
+    val validateTask =
+      project.tasks
+        .register("multiValidate", ValidateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDir.set(refDir)
+          this.referenceDirFallbackPath.set(refDir.absolutePath)
+          this.imageDifferenceThreshold.set(0.01)
+          this.channelTolerance.set(2)
+          this.failOnMissingReferences.set(true)
+          this.requirePreviewTestAnnotation.set(true)
+          this.modulePath.set(":app")
+          this.variantName.set("debug")
+          this.reportFile.set(reportFile)
+          this.diffsDir.set(diffsDir)
+          this.testBinaryResultsDir.set(File(projectDir, "build/test-results/multi/binary"))
+          this.testHtmlReportDir.set(File(projectDir, "build/reports/tests/multi"))
+        }
+        .get()
+
+    validateTask.validate()
+    assertThat(reportFile.readText()).contains("\"passed\": 2")
+
+    // Mutate only the dark render and verify only that configuration fails.
+    writeSolidPng(darkPng, 24, 24, Color(200, 10, 10, 255))
+    val err = assertThrows(GradleException::class.java) { validateTask.validate() }
+    assertThat(err.message).contains("1 of 2 failed")
   }
 }

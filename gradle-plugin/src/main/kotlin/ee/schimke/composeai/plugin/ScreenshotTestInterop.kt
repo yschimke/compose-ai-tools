@@ -220,50 +220,164 @@ internal object ScreenshotTestInterop {
     }
   }
 
+  internal data class RenderedCapture(
+    val index: Int,
+    val rowToken: String?,
+    val file: File,
+  )
+
+  private const val PARAM_INDEX_PREFIX = "PARAM_"
+
+  private val rowTokenOrder: Comparator<String> = Comparator { a, b ->
+    val ia =
+      a.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf { a.startsWith(PARAM_INDEX_PREFIX) }
+    val ib =
+      b.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf { b.startsWith(PARAM_INDEX_PREFIX) }
+    when {
+      ia != null && ib != null -> ia.compareTo(ib)
+      ia != null -> -1
+      ib != null -> 1
+      else -> a.compareTo(b)
+    }
+  }
+
   /**
-   * Resolves rendered PNG files for [preview]. Handles both single-capture previews (`<stem>.png`)
-   * and `@PreviewParameter` multi-index fanouts (`<stem>_0.png`, `<stem>_1.png`, …).
+   * Resolves rendered PNG files for [preview]. Handles single-capture previews (`<stem>.png`),
+   * multi-capture manifests, and `@PreviewParameter` fan-outs (`<stem>_PARAM_<idx>.png` and
+   * labelled `<stem>_<label>.png`), excluding files claimed by sibling previews.
    */
   internal fun resolveRenderedCaptures(
     preview: PreviewInfo,
     rendersDir: File,
-  ): List<Pair<Int, File>> {
+    siblingOutputs: Set<String> = emptySet(),
+  ): List<RenderedCapture> {
     val pngCaptures = preview.captures.filter { it.renderOutput.endsWith(".png") }
     if (pngCaptures.isEmpty()) return emptyList()
     if (pngCaptures.size > 1) {
       return pngCaptures.mapIndexed { idx, capture ->
-        idx to File(rendersDir, capture.renderOutput.removePrefix("renders/"))
+        RenderedCapture(
+          index = idx,
+          rowToken = null,
+          file = File(rendersDir, capture.renderOutput.removePrefix("renders/")),
+        )
       }
     }
     val primary = pngCaptures.single()
-    val rel = primary.renderOutput.removePrefix("renders/")
+    val templateOutput = primary.renderOutput
+    val rel = templateOutput.removePrefix("renders/")
     val exact = File(rendersDir, rel)
-    if (exact.isFile) return listOf(0 to exact)
+    if (exact.isFile) return listOf(RenderedCapture(index = 0, rowToken = null, file = exact))
 
     val stem = exact.nameWithoutExtension
     val parent = exact.parentFile ?: rendersDir
-    val fanoutRegex = Regex("^${Regex.escape(stem)}_(\\d+)\\.png$")
-    val siblings =
+    val dirPrefix =
+      templateOutput.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+    val prefix = "${stem}_"
+    val ext = ".png"
+
+    val rawRows =
       parent
         .listFiles()
-        ?.mapNotNull { file ->
-          if (!file.isFile) return@mapNotNull null
-          val idx = fanoutRegex.matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()
-          idx?.let { it to file }
-        }
-        ?.sortedBy { it.first }
         .orEmpty()
-    return if (siblings.isNotEmpty()) siblings else listOf(0 to exact)
+        .asSequence()
+        .filter { file ->
+          file.isFile &&
+            file.name.startsWith(prefix) &&
+            file.name.endsWith(ext) &&
+            file.name.length > prefix.length + ext.length
+        }
+        .map { file ->
+          val token = file.name.substring(prefix.length, file.name.length - ext.length)
+          val candidateOutput = dirPrefix + file.name
+          Triple(token, candidateOutput, file)
+        }
+        .filter { (_, candidateOutput, _) ->
+          candidateOutput !in siblingOutputs &&
+            siblingOutputs.none { sibling ->
+              isOwnedByMoreSpecificSibling(
+                templateOutput = templateOutput,
+                siblingOutput = sibling,
+                candidateOutput = candidateOutput,
+              )
+            }
+        }
+        .distinctBy { (token, _, _) -> token }
+        .sortedWith(compareBy(rowTokenOrder) { (token, _, _) -> token })
+        .toList()
+
+    if (rawRows.isEmpty()) {
+      return listOf(RenderedCapture(index = 0, rowToken = null, file = exact))
+    }
+
+    var labelOrdinal = 0
+    return rawRows.map { (token, _, file) ->
+      val paramIdx =
+        token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
+          token.startsWith(PARAM_INDEX_PREFIX)
+        }
+      if (paramIdx != null) {
+        RenderedCapture(index = paramIdx, rowToken = null, file = file)
+      } else {
+        val idx = labelOrdinal++
+        RenderedCapture(index = idx, rowToken = token, file = file)
+      }
+    }
+  }
+
+  private fun isOwnedByMoreSpecificSibling(
+    templateOutput: String,
+    siblingOutput: String,
+    candidateOutput: String,
+  ): Boolean {
+    if (siblingOutput == templateOutput) return false
+    val templateDir = templateOutput.substringBeforeLast('/', "")
+    val siblingDir = siblingOutput.substringBeforeLast('/', "")
+    if (templateDir != siblingDir) return false
+    val templateLeaf = templateOutput.substringAfterLast('/')
+    val siblingLeaf = siblingOutput.substringAfterLast('/')
+    val candidateLeaf = candidateOutput.substringAfterLast('/')
+    val templateDot = templateLeaf.lastIndexOf('.')
+    val siblingDot = siblingLeaf.lastIndexOf('.')
+    if (templateDot <= 0 || siblingDot <= 0) return false
+    val templateStem = templateLeaf.substring(0, templateDot)
+    val siblingStem = siblingLeaf.substring(0, siblingDot)
+    return siblingStem.startsWith("${templateStem}_") && candidateLeaf.startsWith("${siblingStem}_")
+  }
+
+  /**
+   * Deterministic 8-hex-character configuration digest distinguishing multiple `@Preview`
+   * configurations on the same function (e.g. multiple unnamed previews or same-named previews
+   * differing by `uiMode`, `device`, `fontScale`, `locale`, etc.).
+   */
+  internal fun configHash(preview: PreviewInfo): String {
+    val canonical =
+      listOf(
+          preview.id,
+          preview.className,
+          preview.functionName,
+          json.encodeToString(
+            ee.schimke.composeai.discovery.PreviewParams.serializer(),
+            preview.params,
+          ),
+        )
+        .joinToString("\u0000")
+    val digest =
+      java.security.MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(Charsets.UTF_8))
+    return digest.take(4).joinToString("") { "%02x".format(it) }
   }
 
   /**
    * Resolves the reference PNG path under [referenceDir] matching `com.android.compose.screenshot`
    * directory conventions (`<package/path>/<ClassName>/...`).
    *
-   * Existing Layoutlib references (`<fn>_<previewName>_<hex8>_<index>.png` or
-   * `<fn>_<hex8>_<index>.png`) are matched in place so teams can share one golden directory across
-   * Google's screenshot plugin and Compose Preview. When no reference exists yet, returns the
-   * deterministic path `<fn>[_<sanitizedName>]_<index>.png`.
+   * When [ambiguousName] is `false` (unique `(className, functionName, sanitizedName)` among
+   * selected previews), existing Layoutlib references (`<fn>_<previewName>_<hex8>_<index>.png` or
+   * `<fn>_<hex8>_<index>.png`) and unhashed legacy files are matched in place so teams can share
+   * one golden directory across Google's screenshot plugin and Compose Preview. When
+   * [ambiguousName] is `true` (multiple configurations on the same function share the same or empty
+   * name) or no existing reference matches, includes [configHash] so distinct configurations never
+   * overwrite or compare against one another's golden.
    */
   internal fun resolveReferenceFile(
     referenceDir: File,
@@ -271,29 +385,52 @@ internal object ScreenshotTestInterop {
     functionName: String,
     previewName: String,
     index: Int,
+    configHash: String = "",
+    rowToken: String? = null,
+    ambiguousName: Boolean = false,
   ): File {
     val classDir = File(referenceDir, className.replace('.', File.separatorChar))
     val sanitizedName = sanitizeSegment(previewName)
-    val defaultFile =
-      if (sanitizedName.isNotEmpty()) {
-        File(classDir, "${functionName}_${sanitizedName}_${index}.png")
-      } else {
-        File(classDir, "${functionName}_${index}.png")
-      }
-    if (defaultFile.isFile) return defaultFile
+    val sanitizedRow = rowToken?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
+    val normalizedHash = configHash.trim().lowercase()
+
+    val tail = if (sanitizedRow != null) "${sanitizedRow}_${index}.png" else "${index}.png"
+    val hashedParts = buildList {
+      add(functionName)
+      if (sanitizedName.isNotEmpty()) add(sanitizedName)
+      if (normalizedHash.isNotEmpty()) add(normalizedHash)
+    }
+    val hashedFile = File(classDir, "${hashedParts.joinToString("_")}_$tail")
+    if (hashedFile.isFile) return hashedFile
+
+    val unhashedParts = buildList {
+      add(functionName)
+      if (sanitizedName.isNotEmpty()) add(sanitizedName)
+    }
+    val unhashedFile = File(classDir, "${unhashedParts.joinToString("_")}_$tail")
+
+    // When multiple preview configurations on the same function share this name (or are both
+    // unnamed), require the configHash-qualified filename so distinct configs never collapse.
+    if (ambiguousName) {
+      return hashedFile
+    }
+
+    if (unhashedFile.isFile) return unhashedFile
 
     val existing =
       classDir.listFiles()?.filter { it.isFile && it.extension.equals("png", ignoreCase = true) }
-        ?: return defaultFile
+        ?: return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
 
-    val suffix = "_${index}.png"
+    val suffix = "_$tail"
     val candidates = existing.filter { file ->
       file.name.startsWith("${functionName}_") && file.name.endsWith(suffix)
     }
-    if (candidates.isEmpty()) return defaultFile
+    if (candidates.isEmpty()) {
+      return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
+    }
 
     if (sanitizedName.isNotEmpty()) {
-      // Match `<functionName>_<previewName>_<hexHash>_<index>.png` (Google Layoutlib convention).
+      // Match `<functionName>_<previewName>_<hexHash>_<tail>` (Google Layoutlib convention).
       val hashSuffixRegex = Regex("^(.*?)_[0-9a-fA-F]{6,12}$")
       val byPreviewName = candidates.filter { file ->
         val middle = file.name.removePrefix("${functionName}_").removeSuffix(suffix)
@@ -302,7 +439,7 @@ internal object ScreenshotTestInterop {
       }
       if (byPreviewName.size == 1) return byPreviewName.single()
     } else {
-      // Unnamed @Preview: `<functionName>_<hexHash>_<index>.png`.
+      // Unnamed @Preview: `<functionName>_<hexHash>_<tail>`.
       val bareHashRegex = Regex("^[0-9a-fA-F]{6,12}$")
       val byBareHash = candidates.filter { file ->
         val middle = file.name.removePrefix("${functionName}_").removeSuffix(suffix)
@@ -311,7 +448,7 @@ internal object ScreenshotTestInterop {
       if (byBareHash.size == 1) return byBareHash.single()
     }
 
-    return defaultFile
+    return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
   }
 
   internal fun sanitizeSegment(raw: String): String =
@@ -556,11 +693,40 @@ constructor(
     var failedCount = 0
     var missingCount = 0
 
+    val nameCounts =
+      selected
+        .groupingBy { preview ->
+          Triple(
+            preview.className,
+            preview.functionName,
+            ScreenshotTestInterop.sanitizeSegment(preview.params.name.orEmpty()),
+          )
+        }
+        .eachCount()
+
     try {
       for (preview in selected) {
         val previewName = preview.params.name.orEmpty()
-        val captures = ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot)
-        for ((index, actualFile) in captures) {
+        val nameKey =
+          Triple(
+            preview.className,
+            preview.functionName,
+            ScreenshotTestInterop.sanitizeSegment(previewName),
+          )
+        val ambiguousName = (nameCounts[nameKey] ?: 0) > 1
+        val hash = ScreenshotTestInterop.configHash(preview)
+        val siblingOutputs =
+          manifest.previews
+            .asSequence()
+            .filter { it.id != preview.id }
+            .flatMap { it.captures.asSequence().map { capture -> capture.renderOutput } }
+            .toSet()
+        val captures =
+          ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot, siblingOutputs)
+        for (capture in captures) {
+          val index = capture.index
+          val rowToken = capture.rowToken
+          val actualFile = capture.file
           val startedAt = Instant.now()
           val refFile =
             ScreenshotTestInterop.resolveReferenceFile(
@@ -569,11 +735,19 @@ constructor(
               functionName = preview.functionName,
               previewName = previewName,
               index = index,
+              configHash = hash,
+              rowToken = rowToken,
+              ambiguousName = ambiguousName,
             )
           val testDisplayName = buildString {
             append(preview.functionName)
             if (previewName.isNotBlank()) append("[$previewName]")
-            if (index > 0 || captures.size > 1) append("#$index")
+            if (ambiguousName) append("[$hash]")
+            if (rowToken != null) {
+              append("#$rowToken")
+            } else if (index > 0 || captures.size > 1) {
+              append("#$index")
+            }
           }
 
           if (!actualFile.isFile) {
@@ -842,16 +1016,45 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
         requirePreviewTestAnnotation = requirePreviewTestAnnotation.get(),
       )
 
+    val nameCounts =
+      selected
+        .groupingBy { preview ->
+          Triple(
+            preview.className,
+            preview.functionName,
+            ScreenshotTestInterop.sanitizeSegment(preview.params.name.orEmpty()),
+          )
+        }
+        .eachCount()
+
     var created = 0
     var updated = 0
     var skipped = 0
     for (preview in selected) {
       val previewName = preview.params.name.orEmpty()
-      val captures = ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot)
-      for ((index, actualFile) in captures) {
+      val nameKey =
+        Triple(
+          preview.className,
+          preview.functionName,
+          ScreenshotTestInterop.sanitizeSegment(previewName),
+        )
+      val ambiguousName = (nameCounts[nameKey] ?: 0) > 1
+      val hash = ScreenshotTestInterop.configHash(preview)
+      val siblingOutputs =
+        manifest.previews
+          .asSequence()
+          .filter { it.id != preview.id }
+          .flatMap { it.captures.asSequence().map { capture -> capture.renderOutput } }
+          .toSet()
+      val captures =
+        ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot, siblingOutputs)
+      for (capture in captures) {
+        val index = capture.index
+        val rowToken = capture.rowToken
+        val actualFile = capture.file
         if (!actualFile.isFile) {
           logger.warn(
-            "Skipping ${preview.className}.${preview.functionName}#$index: rendered PNG missing (${actualFile.name})",
+            "Skipping ${preview.className}.${preview.functionName}#${rowToken ?: index}: rendered PNG missing (${actualFile.name})",
           )
           skipped++
           continue
@@ -863,6 +1066,9 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
             functionName = preview.functionName,
             previewName = previewName,
             index = index,
+            configHash = hash,
+            rowToken = rowToken,
+            ambiguousName = ambiguousName,
           )
         val existed = target.isFile
         target.parentFile?.mkdirs()
