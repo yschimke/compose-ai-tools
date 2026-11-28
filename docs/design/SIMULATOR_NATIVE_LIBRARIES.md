@@ -373,16 +373,10 @@ to Canvas wherever its GPU renderer does not start, emulators included.
   checked for a drawn frame, with a screenshot kept.
 - **Not covered.**
   - Rive's GPU renderer, and so the newer Compose API (`app.rive.Rive` with a `CommandQueue`),
-<<<<<<< HEAD
     which has no Canvas path. Its render context fails as on a device without OpenGL ES: the host
     build's `RenderContextGL` and `RenderContextVulkan` throw `RiveRenderException`, so
     `rememberRiveWorkerOrNull` returns null (and `rememberRiveWorker` throws) instead of the
     simulator crashing on an EGL that was never loaded. `samples/rive` checks it.
-  - macOS: the recipe builds Linux only for now. The same layer should build there (no GL, no
-    `objcopy` step), but needs `ld64`'s alternative to `--wrap` for stdout.
-=======
-    which has no Canvas path.
->>>>>>> origin/main
   - System fallback fonts. Rive finds them by parsing `/system/etc/fonts.xml` and reading
     `/system/fonts`, which a host doesn't have, so text that needs glyphs its `.riv` doesn't embed
     is unverified.
