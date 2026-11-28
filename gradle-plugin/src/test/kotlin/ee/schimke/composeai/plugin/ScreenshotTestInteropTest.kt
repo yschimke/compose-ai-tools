@@ -479,4 +479,170 @@ class ScreenshotTestInteropTest {
     assertThat(partialValidateErr.message).contains("full, unfiltered render")
     assertThat(partialValidateErr.message).contains("tier=fast")
   }
+
+  @Test
+  fun `labelled parameter rows match existing Google numeric goldens and avoid PARAM index collisions`() {
+    val projectDir = tempDir.newFolder("labelled-google")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val refDir = File(projectDir, "src/screenshotTestDebug/reference")
+    val classRefDir = File(refDir, "com/example/BadgesKt").apply { mkdirs() }
+
+    // Existing Google Layoutlib numeric goldens for a 2-row @PreviewParameter preview.
+    val google0 = File(classRefDir, "BadgePreview_a1b2c3d4_0.png")
+    val google1 = File(classRefDir, "BadgePreview_a1b2c3d4_1.png")
+    writeSolidPng(google0, 16, 16, Color(20, 100, 200, 255))
+    writeSolidPng(google1, 16, 16, Color(200, 100, 20, 255))
+
+    // Mixed fan-out: PARAM_0 (index 0) and labelled "Dark" (must take unused index 1, not 0).
+    writeSolidPng(
+      File(rendersDir, "BadgePreview-11112222_PARAM_0.png"),
+      16,
+      16,
+      Color(20, 100, 200, 255),
+    )
+    writeSolidPng(
+      File(rendersDir, "BadgePreview-11112222_Dark.png"),
+      16,
+      16,
+      Color(200, 100, 20, 255),
+    )
+
+    val manifest =
+      PreviewManifest(
+        module = ":app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.BadgesKt.BadgePreview",
+              functionName = "BadgePreview",
+              className = "com.example.BadgesKt",
+              sourceFile = "src/screenshotTest/kotlin/com/example/Badges.kt",
+              params = PreviewParams(previewParameterProviderClassName = "com.example.BadgeProv"),
+              captures = listOf(Capture(renderOutput = "renders/BadgePreview-11112222.png")),
+              previewTest = true,
+            ),
+          ),
+      )
+    val manifestFile = File(projectDir, "build/compose-previews/manifest.json")
+    manifestFile.parentFile.mkdirs()
+    manifestFile.writeText(json.encodeToString(manifest))
+
+    val reportFile = File(projectDir, "build/reports/labelled/report.json")
+    val validateTask =
+      project.tasks
+        .register("validateLabelled", ValidateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDir.set(refDir)
+          this.referenceDirFallbackPath.set(refDir.absolutePath)
+          this.imageDifferenceThreshold.set(0.01)
+          this.channelTolerance.set(2)
+          this.failOnMissingReferences.set(true)
+          this.requirePreviewTestAnnotation.set(true)
+          this.modulePath.set(":app")
+          this.variantName.set("debug")
+          this.reportFile.set(reportFile)
+          this.diffsDir.set(File(projectDir, "build/reports/labelled/diffs"))
+          this.testBinaryResultsDir.set(File(projectDir, "build/test-results/l/binary"))
+          this.testHtmlReportDir.set(File(projectDir, "build/reports/tests/l"))
+        }
+        .get()
+    validateTask.validate()
+    assertThat(reportFile.readText()).contains("\"passed\": 2")
+
+    // Updating refreshes the existing Google goldens in place without creating extra files.
+    val updateTask =
+      project.tasks
+        .register("updateLabelled", UpdateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDirPath.set(refDir.absolutePath)
+          this.requirePreviewTestAnnotation.set(true)
+        }
+        .get()
+    updateTask.update()
+    assertThat(classRefDir.listFiles()?.map { it.name }).containsExactly(google0.name, google1.name)
+  }
+
+  @Test
+  fun `multi-capture previews resolve @PreviewParameter fan-outs per capture`() {
+    val projectDir = tempDir.newFolder("multi-capture-param")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val refDir = File(projectDir, "src/screenshotTestDebug/reference")
+
+    writeSolidPng(File(rendersDir, "Scroll-aaaa1111_t0_PARAM_0.png"), 16, 16, Color.RED)
+    writeSolidPng(File(rendersDir, "Scroll-aaaa1111_t0_PARAM_1.png"), 16, 16, Color.GREEN)
+    writeSolidPng(File(rendersDir, "Scroll-aaaa1111_t500_PARAM_0.png"), 16, 16, Color.BLUE)
+    writeSolidPng(File(rendersDir, "Scroll-aaaa1111_t500_PARAM_1.png"), 16, 16, Color.YELLOW)
+
+    val preview =
+      PreviewInfo(
+        id = "com.example.ScrollKt.ScrollPreview",
+        functionName = "ScrollPreview",
+        className = "com.example.ScrollKt",
+        sourceFile = "src/screenshotTest/kotlin/com/example/Scroll.kt",
+        params = PreviewParams(previewParameterProviderClassName = "com.example.ScrollProv"),
+        captures =
+          listOf(
+            Capture(renderOutput = "renders/Scroll-aaaa1111_t0.png"),
+            Capture(renderOutput = "renders/Scroll-aaaa1111_t500.png"),
+          ),
+        previewTest = true,
+      )
+    val resolved = ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersDir)
+    assertThat(resolved).hasSize(4)
+    assertThat(resolved.map { Triple(it.captureKey, it.index, it.file.name) })
+      .containsExactly(
+        Triple("t0", 0, "Scroll-aaaa1111_t0_PARAM_0.png"),
+        Triple("t0", 1, "Scroll-aaaa1111_t0_PARAM_1.png"),
+        Triple("t500", 0, "Scroll-aaaa1111_t500_PARAM_0.png"),
+        Triple("t500", 1, "Scroll-aaaa1111_t500_PARAM_1.png"),
+      )
+      .inOrder()
+
+    val manifest = PreviewManifest(module = ":app", variant = "debug", previews = listOf(preview))
+    val manifestFile = File(projectDir, "build/compose-previews/manifest.json")
+    manifestFile.parentFile.mkdirs()
+    manifestFile.writeText(json.encodeToString(manifest))
+
+    val updateTask =
+      project.tasks
+        .register("updateMultiCap", UpdateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDirPath.set(refDir.absolutePath)
+          this.requirePreviewTestAnnotation.set(true)
+        }
+        .get()
+    updateTask.update()
+
+    val created = File(refDir, "com/example/ScrollKt").listFiles().orEmpty()
+    assertThat(created).hasLength(4)
+
+    val reportFile = File(projectDir, "build/reports/multicap/report.json")
+    val validateTask =
+      project.tasks
+        .register("validateMultiCap", ValidateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDir.set(refDir)
+          this.referenceDirFallbackPath.set(refDir.absolutePath)
+          this.imageDifferenceThreshold.set(0.01)
+          this.channelTolerance.set(2)
+          this.failOnMissingReferences.set(true)
+          this.requirePreviewTestAnnotation.set(true)
+          this.modulePath.set(":app")
+          this.variantName.set("debug")
+          this.reportFile.set(reportFile)
+          this.diffsDir.set(File(projectDir, "build/reports/multicap/diffs"))
+          this.testBinaryResultsDir.set(File(projectDir, "build/test-results/mc/binary"))
+          this.testHtmlReportDir.set(File(projectDir, "build/reports/tests/mc"))
+        }
+        .get()
+    validateTask.validate()
+    assertThat(reportFile.readText()).contains("\"passed\": 4")
+  }
 }

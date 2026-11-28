@@ -227,6 +227,7 @@ internal object ScreenshotTestInterop {
     val index: Int,
     val rowToken: String?,
     val file: File,
+    val captureKey: String? = null,
   )
 
   private const val PARAM_INDEX_PREFIX = "PARAM_"
@@ -246,8 +247,9 @@ internal object ScreenshotTestInterop {
 
   /**
    * Resolves rendered PNG files for [preview]. Handles single-capture previews (`<stem>.png`),
-   * multi-capture manifests, and `@PreviewParameter` fan-outs (`<stem>_PARAM_<idx>.png` and
-   * labelled `<stem>_<label>.png`), excluding files claimed by sibling previews.
+   * multi-capture manifests (resolving `@PreviewParameter` fan-outs per capture), and
+   * `@PreviewParameter` fan-outs (`<stem>_PARAM_<idx>.png` and labelled `<stem>_<label>.png`),
+   * excluding files claimed by sibling previews or other captures.
    */
   internal fun resolveRenderedCaptures(
     preview: PreviewInfo,
@@ -256,20 +258,68 @@ internal object ScreenshotTestInterop {
   ): List<RenderedCapture> {
     val pngCaptures = preview.captures.filter { it.renderOutput.endsWith(".png") }
     if (pngCaptures.isEmpty()) return emptyList()
-    if (pngCaptures.size > 1) {
-      return pngCaptures.mapIndexed { idx, capture ->
-        RenderedCapture(
-          index = idx,
-          rowToken = null,
-          file = File(rendersDir, capture.renderOutput.removePrefix("renders/")),
+
+    val multiCapture = pngCaptures.size > 1
+    val captureKeys =
+      if (multiCapture) deriveCaptureKeys(pngCaptures.map { it.renderOutput })
+      else listOf<String?>(null)
+
+    val resolved = mutableListOf<RenderedCapture>()
+    for ((captureIdx, capture) in pngCaptures.withIndex()) {
+      val templateOutput = capture.renderOutput
+      val captureKey = captureKeys[captureIdx]
+      val captureSiblings =
+        if (multiCapture) {
+          siblingOutputs +
+            pngCaptures.filterIndexed { i, _ -> i != captureIdx }.map { it.renderOutput }
+        } else {
+          siblingOutputs
+        }
+      resolved +=
+        resolveSingleCaptureFanout(
+          templateOutput = templateOutput,
+          rendersDir = rendersDir,
+          siblingOutputs = captureSiblings,
+          captureKey = captureKey,
         )
-      }
     }
-    val primary = pngCaptures.single()
-    val templateOutput = primary.renderOutput
+    return resolved
+  }
+
+  private fun deriveCaptureKeys(renderOutputs: List<String>): List<String> {
+    val stems = renderOutputs.map { File(it.removePrefix("renders/")).nameWithoutExtension }
+    val rawCommon = stems.reduce { acc, s -> acc.commonPrefixWith(s) }
+    val boundaryIdx = rawCommon.lastIndexOfAny(charArrayOf('_', '-'))
+    val commonPrefix = if (boundaryIdx >= 0) rawCommon.substring(0, boundaryIdx + 1) else ""
+    val rawKeys = stems.mapIndexed { idx, stem ->
+      val suffix =
+        if (commonPrefix.isNotEmpty() && stem.length > commonPrefix.length) {
+          stem.removePrefix(commonPrefix).trimStart('_', '-')
+        } else {
+          ""
+        }
+      sanitizeSegment(suffix).ifEmpty { "cap$idx" }
+    }
+    return if (rawKeys.distinct().size == rawKeys.size) {
+      rawKeys
+    } else {
+      rawKeys.mapIndexed { idx, key -> "${key}_$idx" }
+    }
+  }
+
+  private fun resolveSingleCaptureFanout(
+    templateOutput: String,
+    rendersDir: File,
+    siblingOutputs: Set<String>,
+    captureKey: String?,
+  ): List<RenderedCapture> {
     val rel = templateOutput.removePrefix("renders/")
     val exact = File(rendersDir, rel)
-    if (exact.isFile) return listOf(RenderedCapture(index = 0, rowToken = null, file = exact))
+    if (exact.isFile) {
+      return listOf(
+        RenderedCapture(index = 0, rowToken = null, file = exact, captureKey = captureKey),
+      )
+    }
 
     val stem = exact.nameWithoutExtension
     val parent = exact.parentFile ?: rendersDir
@@ -309,20 +359,34 @@ internal object ScreenshotTestInterop {
         .toList()
 
     if (rawRows.isEmpty()) {
-      return listOf(RenderedCapture(index = 0, rowToken = null, file = exact))
+      return listOf(
+        RenderedCapture(index = 0, rowToken = null, file = exact, captureKey = captureKey),
+      )
     }
 
-    var labelOrdinal = 0
+    // Reserve explicit PARAM_<idx> indices so mixed [null, "Label"] fan-outs never collide on 0.
+    val usedIndices =
+      rawRows
+        .mapNotNull { (token, _, _) ->
+          token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
+            token.startsWith(PARAM_INDEX_PREFIX)
+          }
+        }
+        .toMutableSet()
+
+    var nextLabelIndex = 0
     return rawRows.map { (token, _, file) ->
       val paramIdx =
         token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
           token.startsWith(PARAM_INDEX_PREFIX)
         }
       if (paramIdx != null) {
-        RenderedCapture(index = paramIdx, rowToken = null, file = file)
+        RenderedCapture(index = paramIdx, rowToken = null, file = file, captureKey = captureKey)
       } else {
-        val idx = labelOrdinal++
-        RenderedCapture(index = idx, rowToken = token, file = file)
+        while (nextLabelIndex in usedIndices) nextLabelIndex++
+        val idx = nextLabelIndex++
+        usedIndices += idx
+        RenderedCapture(index = idx, rowToken = token, file = file, captureKey = captureKey)
       }
     }
   }
@@ -376,11 +440,12 @@ internal object ScreenshotTestInterop {
    *
    * When [ambiguousName] is `false` (unique `(className, functionName, sanitizedName)` among
    * selected previews), existing Layoutlib references (`<fn>_<previewName>_<hex8>_<index>.png` or
-   * `<fn>_<hex8>_<index>.png`) and unhashed legacy files are matched in place so teams can share
-   * one golden directory across Google's screenshot plugin and Compose Preview. When
-   * [ambiguousName] is `true` (multiple configurations on the same function share the same or empty
-   * name) or no existing reference matches, includes [configHash] so distinct configurations never
-   * overwrite or compare against one another's golden.
+   * `<fn>_<hex8>_<index>.png`, including numeric goldens for labelled `@PreviewParameter` rows) and
+   * unhashed legacy files are matched in place so teams can share one golden directory across
+   * Google's screenshot plugin and Compose Preview. When [ambiguousName] is `true` (multiple
+   * configurations on the same function share the same or empty name) or no existing reference
+   * matches, includes [configHash] (and [captureKey] for multi-capture previews) so distinct
+   * configurations/captures never overwrite or compare against one another's golden.
    */
   internal fun resolveReferenceFile(
     referenceDir: File,
@@ -390,17 +455,20 @@ internal object ScreenshotTestInterop {
     index: Int,
     configHash: String = "",
     rowToken: String? = null,
+    captureKey: String? = null,
     ambiguousName: Boolean = false,
   ): File {
     val classDir = File(referenceDir, className.replace('.', File.separatorChar))
     val sanitizedName = sanitizeSegment(previewName)
     val sanitizedRow = rowToken?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
+    val sanitizedCapture = captureKey?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
     val normalizedHash = configHash.trim().lowercase()
 
     val tail = if (sanitizedRow != null) "${sanitizedRow}_${index}.png" else "${index}.png"
     val hashedParts = buildList {
       add(functionName)
       if (sanitizedName.isNotEmpty()) add(sanitizedName)
+      if (sanitizedCapture != null) add(sanitizedCapture)
       if (normalizedHash.isNotEmpty()) add(normalizedHash)
     }
     val hashedFile = File(classDir, "${hashedParts.joinToString("_")}_$tail")
@@ -409,6 +477,7 @@ internal object ScreenshotTestInterop {
     val unhashedParts = buildList {
       add(functionName)
       if (sanitizedName.isNotEmpty()) add(sanitizedName)
+      if (sanitizedCapture != null) add(sanitizedCapture)
     }
     val unhashedFile = File(classDir, "${unhashedParts.joinToString("_")}_$tail")
 
@@ -420,38 +489,61 @@ internal object ScreenshotTestInterop {
 
     if (unhashedFile.isFile) return unhashedFile
 
+    val fallbackFile = if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
+    if (sanitizedCapture != null) {
+      // Multi-capture previews don't have a Google Layoutlib single-capture equivalent; keep
+      // each capture isolated by its captureKey.
+      return fallbackFile
+    }
+
     val existing =
       classDir.listFiles()?.filter { it.isFile && it.extension.equals("png", ignoreCase = true) }
-        ?: return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
+        ?: return fallbackFile
 
-    val suffix = "_$tail"
+    matchLayoutlibGolden(existing, functionName, sanitizedName, "_$tail")?.let {
+      return it
+    }
+
+    // For labelled `@PreviewParameter` rows, also match Google Layoutlib's numeric golden
+    // (`<fn>[_<previewName>]_<hexHash>_<index>.png`) when one exists unambiguously on disk.
+    if (sanitizedRow != null) {
+      matchLayoutlibGolden(existing, functionName, sanitizedName, "_${index}.png")?.let {
+        return it
+      }
+    }
+
+    return fallbackFile
+  }
+
+  private fun matchLayoutlibGolden(
+    existing: List<File>,
+    functionName: String,
+    sanitizedName: String,
+    suffix: String,
+  ): File? {
     val candidates = existing.filter { file ->
       file.name.startsWith("${functionName}_") && file.name.endsWith(suffix)
     }
-    if (candidates.isEmpty()) {
-      return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
-    }
+    if (candidates.isEmpty()) return null
 
-    if (sanitizedName.isNotEmpty()) {
-      // Match `<functionName>_<previewName>_<hexHash>_<tail>` (Google Layoutlib convention).
+    return if (sanitizedName.isNotEmpty()) {
+      // Match `<functionName>_<previewName>_<hexHash><suffix>` (Google Layoutlib convention).
       val hashSuffixRegex = Regex("^(.*?)_[0-9a-fA-F]{6,12}$")
       val byPreviewName = candidates.filter { file ->
         val middle = file.name.removePrefix("${functionName}_").removeSuffix(suffix)
         val stripped = hashSuffixRegex.matchEntire(middle)?.groupValues?.get(1) ?: middle
         sanitizeSegment(stripped) == sanitizedName
       }
-      if (byPreviewName.size == 1) return byPreviewName.single()
+      byPreviewName.singleOrNull()
     } else {
-      // Unnamed @Preview: `<functionName>_<hexHash>_<tail>`.
+      // Unnamed @Preview: `<functionName>_<hexHash><suffix>`.
       val bareHashRegex = Regex("^[0-9a-fA-F]{6,12}$")
       val byBareHash = candidates.filter { file ->
         val middle = file.name.removePrefix("${functionName}_").removeSuffix(suffix)
         bareHashRegex.matches(middle)
       }
-      if (byBareHash.size == 1) return byBareHash.single()
+      byBareHash.singleOrNull()
     }
-
-    return if (normalizedHash.isNotEmpty()) hashedFile else unhashedFile
   }
 
   internal fun sanitizeSegment(raw: String): String =
@@ -781,6 +873,7 @@ constructor(
         for (capture in captures) {
           val index = capture.index
           val rowToken = capture.rowToken
+          val captureKey = capture.captureKey
           val actualFile = capture.file
           val startedAt = Instant.now()
           val refFile =
@@ -792,11 +885,13 @@ constructor(
               index = index,
               configHash = hash,
               rowToken = rowToken,
+              captureKey = captureKey,
               ambiguousName = ambiguousName,
             )
           val testDisplayName = buildString {
             append(preview.functionName)
             if (previewName.isNotBlank()) append("[$previewName]")
+            if (captureKey != null) append("[$captureKey]")
             if (ambiguousName) append("[$hash]")
             if (rowToken != null) {
               append("#$rowToken")
@@ -944,11 +1039,22 @@ constructor(
             )
           } else {
             failedCount++
-            val diffFile =
-              File(
-                diffsRoot,
-                "${ScreenshotTestInterop.sanitizeSegment(preview.id)}_${index}_diff.png",
-              )
+            val diffName =
+              buildList {
+                  add(ScreenshotTestInterop.sanitizeSegment(preview.id))
+                  captureKey
+                    ?.let(ScreenshotTestInterop::sanitizeSegment)
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let(::add)
+                  rowToken
+                    ?.let(ScreenshotTestInterop::sanitizeSegment)
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let(::add)
+                  add(index.toString())
+                  add("diff")
+                }
+                .joinToString("_") + ".png"
+            val diffFile = File(diffsRoot, diffName)
             ScreenshotTestInterop.writeDiffComposite(diffFile, refImg, actualImg, tolerance)
             val msg =
               if (cmp.sizeMismatch) {
@@ -1131,10 +1237,13 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
       for (capture in captures) {
         val index = capture.index
         val rowToken = capture.rowToken
+        val captureKey = capture.captureKey
         val actualFile = capture.file
         if (!actualFile.isFile) {
+          val suffixLabel =
+            listOfNotNull(captureKey, rowToken ?: index.toString()).joinToString("#")
           logger.warn(
-            "Skipping ${preview.className}.${preview.functionName}#${rowToken ?: index}: rendered PNG missing (${actualFile.name})",
+            "Skipping ${preview.className}.${preview.functionName}#$suffixLabel: rendered PNG missing (${actualFile.name})",
           )
           skipped++
           continue
@@ -1148,6 +1257,7 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
             index = index,
             configHash = hash,
             rowToken = rowToken,
+            captureKey = captureKey,
             ambiguousName = ambiguousName,
           )
         val existed = target.isFile
