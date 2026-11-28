@@ -197,6 +197,13 @@ public final class MediaStoreProvider extends ContentProvider {
       relativePath = dirPath.isEmpty() ? "" : dirPath + "/";
       File dir = dirPath.isEmpty() ? DocumentsStore.root() : new File(DocumentsStore.root(), dirPath);
       dir.mkdirs();
+      displayName =
+          DocumentIds.unique(
+              displayName,
+              candidate -> {
+                File f = new File(dir, candidate);
+                return f.exists() || BY_PATH.containsKey(f.getAbsolutePath());
+              });
       file = new File(dir, displayName);
     }
     if (file.getParentFile() != null) file.getParentFile().mkdirs();
@@ -329,21 +336,52 @@ public final class MediaStoreProvider extends ContentProvider {
     return out;
   }
 
+  /** Evaluates AND-joined {@code col = ?} / {@code col = 'val'} predicates; rejects others. */
   private static boolean matchesSelection(Entry entry, String selection, String[] selectionArgs) {
     if (selection == null || selection.isBlank()) return true;
-    String trimmed = selection.trim();
-    if (trimmed.equals(MediaStore.MediaColumns.DATA + "=?")
-        || trimmed.equals(MediaStore.MediaColumns.DATA + " = ?")) {
-      return selectionArgs != null
-          && selectionArgs.length > 0
-          && (entry.file.getAbsolutePath().equals(selectionArgs[0])
-              || deviceDataPath(entry.file).equals(selectionArgs[0]));
-    }
-    if (trimmed.equals(MediaStore.MediaColumns.DISPLAY_NAME + "=?")
-        || trimmed.equals(MediaStore.MediaColumns.DISPLAY_NAME + " = ?")) {
-      return selectionArgs != null
-          && selectionArgs.length > 0
-          && entry.displayName.equals(selectionArgs[0]);
+    String[] parts = selection.split("(?i)\\s+AND\\s+");
+    int argIdx = 0;
+    for (String raw : parts) {
+      String clause = raw.trim();
+      while (clause.startsWith("(") && clause.endsWith(")")) {
+        clause = clause.substring(1, clause.length() - 1).trim();
+      }
+      int eq = clause.indexOf('=');
+      if (eq <= 0
+          || clause.indexOf('=', eq + 1) >= 0
+          || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
+        throw new IllegalArgumentException("Unsupported MediaStore selection: " + selection);
+      }
+      String col = clause.substring(0, eq).trim();
+      String rhs = clause.substring(eq + 1).trim();
+      String expected;
+      if ("?".equals(rhs)) {
+        if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
+        expected = selectionArgs[argIdx++];
+      } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
+        expected = rhs.substring(1, rhs.length() - 1);
+      } else {
+        expected = rhs;
+      }
+      boolean matched =
+          switch (col) {
+            case MediaStore.MediaColumns._ID -> String.valueOf(entry.id).equals(expected);
+            case MediaStore.MediaColumns.DATA ->
+                entry.file.getAbsolutePath().equals(expected)
+                    || deviceDataPath(entry.file).equals(expected);
+            case MediaStore.MediaColumns.DISPLAY_NAME ->
+                entry.displayName != null && entry.displayName.equals(expected);
+            case MediaStore.MediaColumns.MIME_TYPE ->
+                entry.mimeType != null && entry.mimeType.equals(expected);
+            case MediaStore.MediaColumns.RELATIVE_PATH ->
+                entry.relativePath != null && entry.relativePath.equals(expected);
+            case MediaStore.MediaColumns.TITLE ->
+                stripExtension(entry.displayName).equals(expected);
+            default ->
+                throw new IllegalArgumentException(
+                    "Unsupported MediaStore selection column '" + col + "' in: " + selection);
+          };
+      if (!matched) return false;
     }
     return true;
   }
