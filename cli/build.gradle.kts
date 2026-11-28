@@ -179,15 +179,6 @@ dependencies {
 
   implementation(libs.kotlinx.serialization.json)
 
-  // `launch --adb`: the emulator gRPC service Android Studio streams the display and input over.
-  // The artifact's own transport is unshaded Netty; the shaded one keeps Netty off the classpath.
-  implementation(libs.android.emulator.proto) { exclude(group = "io.grpc", module = "grpc-netty") }
-  implementation(libs.grpc.netty.shaded)
-  // Its POM scopes these to runtime; the service implementation compiles against them.
-  implementation(libs.grpc.stub)
-  implementation(libs.grpc.protobuf)
-  implementation(libs.protobuf.java)
-
   // Semantics text-diff engine + payload model for the `diff-semantics` command (issue #1785).
   implementation(libs.composeai.data.layoutinspector.core)
 
@@ -244,6 +235,7 @@ dependencies {
   // third-party tooling can do anything the CLI can.
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
+  implementation(project(":simulator-cli"))
 
   // The CMP Remote Compose render worker for `lib-rcjvm/`. Skiko natives aren't bundled; the host's
   // is fetched at run time by `SkikoNativeProvision`.

@@ -14,7 +14,12 @@ internal class LaunchCommand(private val args: List<String>) {
       println(USAGE)
       return
     }
-    AndroidSimulatorCommand(args, invokedAs = "launch").run()
+    AndroidSimulatorCommand(
+        args,
+        invokedAs = "launch",
+        environment = cliSimulatorHostEnvironment(),
+      )
+      .run()
   }
 
   companion object {

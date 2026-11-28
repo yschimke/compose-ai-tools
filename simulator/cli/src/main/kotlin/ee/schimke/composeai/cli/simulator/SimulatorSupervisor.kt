@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli.simulator
 
-import ee.schimke.composeai.cli.destroyTree
 import java.io.BufferedWriter
 import java.io.File
 import java.io.OutputStreamWriter

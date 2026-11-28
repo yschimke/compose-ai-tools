@@ -3,14 +3,7 @@ package ee.schimke.composeai.cli.simulator
 import ee.schimke.composeai.bundle.AndroidBundleLaunch
 import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
-import ee.schimke.composeai.cli.CliFlags
-import ee.schimke.composeai.cli.DaemonSidecarProvision
 import ee.schimke.composeai.cli.HostNativesProvision
-import ee.schimke.composeai.cli.RobolectricDepsProvision
-import ee.schimke.composeai.cli.flagValue
-import ee.schimke.composeai.cli.flagValuesAll
-import ee.schimke.composeai.cli.robolectricOfflineProperties
-import ee.schimke.composeai.cli.runTiedToLauncher
 import ee.schimke.composeai.cli.simulator.device.DeviceHost
 import ee.schimke.composeai.cli.simulator.device.VirtualDevice
 import ee.schimke.composeai.io.composeAiCacheDir
@@ -32,16 +25,16 @@ import kotlinx.serialization.json.put
 
 /**
  * `compose-preview android-simulator <app.apk>` (and its original name, `launch`, now a trampoline
- * to it — see [ee.schimke.composeai.cli.LaunchCommand]): runs an APK in Robolectric's simulator — a
- * desktop window showing the app, driven by mouse and keyboard — and, with `--control stdio`, a
- * line-oriented JSON control channel on stdin/stdout for agents and the MCP server
- * (`docs/SIMULATOR.md`, and the feature pages at preview.coo.ee/start/simulator/).
+ * to it): runs an APK in Robolectric's simulator — a desktop window showing the app, driven by
+ * mouse and keyboard — and, with `--control stdio`, a line-oriented JSON control channel on
+ * stdin/stdout for agents and the MCP server (`docs/SIMULATOR.md`, and the feature pages at
+ * preview.coo.ee/start/simulator/).
  *
  * The pieces, all cached so a second launch of the same APK starts in seconds:
  * - the APK's dex, converted to JVM classes by `:simulator-host`'s `ApkClassConverter` in its own
  *   JVM ([ApkConversionCache]);
- * - Robolectric and its native graphics runtime: the Android daemon sidecar
- *   ([DaemonSidecarProvision]), the same one Android previews render with;
+ * - Robolectric and its native graphics runtime: the Android daemon sidecar, the same one Android
+ *   previews render with;
  * - `lib-simulator/` (Robolectric's `simulator` and `:simulator-host`) and `lib-dex2jar/`, staged
  *   in the CLI distribution;
  * - `android.jar` from a local SDK, which Robolectric's configuration classes link against.
@@ -49,10 +42,11 @@ import kotlinx.serialization.json.put
  * The APK itself is Robolectric's resource APK: its compiled resources and binary manifest are read
  * as-is.
  */
-internal class AndroidSimulatorCommand(
+class AndroidSimulatorCommand(
   private val args: List<String>,
   /** The verb that reached this command: `android-simulator`, or its `launch` trampoline. */
   private val invokedAs: String = NAME,
+  private val environment: SimulatorHostEnvironment = SimulatorHostEnvironment.STANDALONE,
 ) {
 
   fun run() {
@@ -66,7 +60,7 @@ internal class AndroidSimulatorCommand(
     // `android-simulator dwf-runtime …`: the simulator's one setup verb, also flat as
     // `dwf-runtime`.
     if (args.firstOrNull() == "dwf-runtime") {
-      DwfRuntimeCommand(args.drop(1)).run()
+      DwfRuntimeCommand(args.drop(1), positionalsOf = environment.positionals).run()
       return
     }
     if ("--help" in args || "-h" in args) {
@@ -140,7 +134,7 @@ internal class AndroidSimulatorCommand(
           .getOrElse { fail(it.message ?: "bad --app $spec") }
           .also { if (!it.apk.isFile) fail("no such APK for --app: ${it.apk}") }
       }
-    val positional = CliFlags.firstPositional(args)?.let { File(it).absoluteFile }
+    val positional = environment.firstPositional(args)?.let { File(it).absoluteFile }
     val apk =
       positional
         ?: appSpecs.firstOrNull()?.apk
@@ -230,8 +224,8 @@ internal class AndroidSimulatorCommand(
     }
 
     // Before provisioning: under the network switch Robolectric needs pre-provisioned android-all.
-    val offline = robolectricOfflineProperties()
-    if (!DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)) {
+    val offline = environment.robolectricOfflineProperties(null)
+    if (!environment.ensureAndroidSidecar()) {
       fail("could not provision the Android daemon sidecar, which carries Robolectric")
     }
     val robolectricJars = locateBundleSidecarJars("lib-daemon-android")
@@ -601,6 +595,7 @@ internal class AndroidSimulatorCommand(
               robolectricJars = robolectricJars,
               cacheRoot = simulatorCacheDir,
               verbose = verbose,
+              prepareSkikoNative = environment.prepareSkikoNative,
             ),
           )
         }
@@ -1210,7 +1205,7 @@ internal class AndroidSimulatorCommand(
   }
 
   /** An APK's converted classes, and what getting them cost: a cache hit, or a conversion. */
-  data class Conversion(val apk: File, val entry: ApkConversionCache.Entry, val ms: Long) {
+  internal data class Conversion(val apk: File, val entry: ApkConversionCache.Entry, val ms: Long) {
     fun toJson(): JsonObject = buildJsonObject {
       put("apk", apk.path)
       put("cached", entry.cached)
@@ -1319,7 +1314,13 @@ internal class AndroidSimulatorCommand(
     if (options.jvmOptions.any { it.startsWith("-Djava.library.path=") }) {
       return HostNatives(emptyList(), emptyMap())
     }
-    val resolved = HostNativesProvision.resolve(apk, options.sdk)
+    val resolved =
+      HostNativesProvision.resolve(
+        apk = apk,
+        sdk = options.sdk,
+        fetcher = HostNativesProvision.fetcherFor(environment.httpClientFactory),
+        noNetwork = environment.isOffline(),
+      )
     if (resolved.dirs.isEmpty()) return HostNatives(emptyList(), emptyMap())
     return HostNatives(
       withJvmLibraryPath(resolved.dirs, System.getProperty("java.library.path")),
@@ -1385,14 +1386,7 @@ internal class AndroidSimulatorCommand(
    */
   private fun provisionAndroidAll(robolectricJars: List<File>, sdk: Int): Map<String, String> =
     try {
-      val artifact = RobolectricDepsProvision.artifactFor(robolectricJars, sdk).artifact
-      val directory = RobolectricDepsProvision.defaultDir()
-      RobolectricDepsProvision.ensure(
-        artifact,
-        directory,
-        seed = RobolectricDepsProvision.mavenLocalCopy(artifact),
-      )
-      robolectricOfflineProperties(directory.path)
+      environment.provisionAndroidAll(robolectricJars, sdk)
     } catch (e: Exception) {
       System.err.println(
         "compose-preview android-simulator: could not provision android-all for SDK $sdk ($e); " +

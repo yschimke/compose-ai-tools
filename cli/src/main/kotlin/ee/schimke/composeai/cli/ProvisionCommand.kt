@@ -361,7 +361,12 @@ internal interface ProvisionSteps {
 
     override fun xr(): File? = XrCompositeProvision.ensureCached(XR_COMPOSITE_VERSION)
 
-    override fun hostNatives(apks: List<File>): File? = HostNativesProvision.provisionAll(apks)
+    override fun hostNatives(apks: List<File>): File? =
+      HostNativesProvision.provisionAll(
+        apks = apks,
+        fetcher = HostNativesProvision.fetcherFor { ktorOkHttpClient() },
+        noNetwork = NetworkPolicy.disabled,
+      )
 
     override fun cacheRoot(): File = DaemonSidecarProvision.defaultCacheRoot().parentFile
   }

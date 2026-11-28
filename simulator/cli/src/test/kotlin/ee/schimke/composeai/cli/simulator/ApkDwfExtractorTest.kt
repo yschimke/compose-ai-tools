@@ -1,9 +1,5 @@
 package ee.schimke.composeai.cli.simulator
 
-import ee.schimke.composeai.cli.PreviewPermutationsCli
-import ee.schimke.composeai.previewdata.Capture
-import ee.schimke.composeai.previewdata.PreviewInfo
-import ee.schimke.composeai.previewdata.PreviewParams
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -129,41 +125,6 @@ class ApkDwfExtractorTest {
         root.deleteRecursively()
       }
     }
-  }
-
-  @Test
-  fun `PreviewPermutationsCli skips DWF watch face entries when expanding accessibility`() {
-    val previews =
-      listOf(
-        PreviewInfo(
-          id = "dwf__raw_sample_dwf_watchface",
-          functionName = "sample_dwf_watchface",
-          className = "",
-          includeInA11y = false,
-          params = PreviewParams(name = "sample_dwf_watchface", kind = "COMPOSE"),
-          captures =
-            listOf(Capture(renderOutput = "dwf-renders/dwf__raw_sample_dwf_watchface.png")),
-        ),
-        PreviewInfo(
-          id = "com.example.WearKt.CardPreview",
-          functionName = "CardPreview",
-          className = "com.example.WearKt",
-          params = PreviewParams(name = "CardPreview", kind = "COMPOSE"),
-          captures = listOf(Capture(renderOutput = "renders/CardPreview.png")),
-        ),
-      )
-
-    val expanded = PreviewPermutationsCli.expand(previews, listOf("accessibility"))
-    assertEquals(
-      listOf(
-        "dwf__raw_sample_dwf_watchface",
-        "com.example.WearKt.CardPreview",
-        "com.example.WearKt.CardPreview_dark",
-        "com.example.WearKt.CardPreview_rtl",
-        "com.example.WearKt.CardPreview_fontscale-2x",
-      ),
-      expanded.map { it.id },
-    )
   }
 
   private fun buildMinimalVectorBinaryXml(

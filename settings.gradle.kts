@@ -231,6 +231,10 @@ include(":simulator-host")
 
 project(":simulator-host").projectDir = file("simulator/host")
 
+include(":simulator-cli")
+
+project(":simulator-cli").projectDir = file("simulator/cli")
+
 include(":notification-preview-runtime")
 
 project(":notification-preview-runtime").projectDir = file("runtimes/notification")

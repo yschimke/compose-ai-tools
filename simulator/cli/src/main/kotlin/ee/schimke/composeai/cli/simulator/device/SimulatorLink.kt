@@ -1,6 +1,6 @@
 package ee.schimke.composeai.cli.simulator.device
 
-import ee.schimke.composeai.cli.destroyTree
+import ee.schimke.composeai.cli.simulator.destroyTree
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets

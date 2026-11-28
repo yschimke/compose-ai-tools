@@ -17,7 +17,10 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "render-matrix" to { a -> RenderMatrixCommand(a).run() },
     "render-cases" to { a -> RenderCasesCommand(a).run() },
     "record" to { a -> RecordPreviewCommand(a).run() },
-    "android-simulator" to { a -> AndroidSimulatorCommand(a).run() },
+    "android-simulator" to
+      { a ->
+        AndroidSimulatorCommand(a, environment = cliSimulatorHostEnvironment()).run()
+      },
     // The original name of `android-simulator`, kept as a trampoline to it.
     "launch" to { a -> LaunchCommand(a).run() },
     "a11y" to { a -> A11yCommand(a).run() },
@@ -51,7 +54,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
     "provision" to { a -> ProvisionCommand(a).run() },
-    "dwf-runtime" to { a -> DwfRuntimeCommand(a).run() },
+    "dwf-runtime" to { a -> DwfRuntimeCommand(a, positionalsOf = CliFlags::positionals).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
     "pin" to { a -> PinCommand(a).run() },
     "auth" to { a -> AuthCommand(a).run() },
