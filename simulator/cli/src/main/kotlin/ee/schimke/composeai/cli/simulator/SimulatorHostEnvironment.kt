@@ -3,10 +3,21 @@ package ee.schimke.composeai.cli.simulator
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import java.io.File
+import java.util.ServiceLoader
+
+/**
+ * Service-loader SPI implemented by an enclosing host (such as `:cli`) so out-of-process helper
+ * entrypoints in `:simulator-cli` (like [ApkDwfCompilerMain]) automatically inherit host
+ * provisioning hooks without a compile dependency on the host.
+ */
+interface SimulatorHostEnvironmentProvider {
+  fun create(): SimulatorHostEnvironment
+}
 
 /**
  * Host callbacks supplied by the enclosing CLI (`compose-preview`) when running
- * [AndroidSimulatorCommand] or [ee.schimke.composeai.cli.HostNativesProvision].
+ * [AndroidSimulatorCommand], [ApkDwfCompilerMain], or
+ * [ee.schimke.composeai.cli.HostNativesProvision].
  *
  * Isolates `:simulator-cli` from `:cli`'s daemon sidecar, Robolectric-deps, Skiko, and network
  * policy implementations so the simulator host orchestration can be moved to its own repository
@@ -31,7 +42,7 @@ data class SimulatorHostEnvironment(
       emptyMap()
     },
   /** Prepares host Skiko natives for `lib-rcjvm` DWF extraction, or null if unavailable. */
-  val prepareSkikoNative: (rcJvmJars: List<File>) -> File? = { null },
+  val prepareSkikoNative: (rcJvmJars: List<File>) -> File? = { defaultPrepareSkikoNative() },
   /** Whether softer offline mode (`COMPOSE_PREVIEW_OFFLINE=1` or hard no-network) is active. */
   val isOffline: () -> Boolean = ::defaultIsOffline,
   /** Whether hard no-network mode (`COMPOSE_PREVIEW_NO_NETWORK=1`) is active. */
@@ -46,12 +57,37 @@ data class SimulatorHostEnvironment(
   companion object {
     const val DEFAULT_REPO: String = "yschimke/compose-ai-tools"
     private const val ROBOLECTRIC_DEPS_DIR_ENV = "COMPOSE_PREVIEW_ROBOLECTRIC_DEPS_DIR"
+    private const val SKIKO_DIR_PROPERTY = "composeai.cli.skikoDir"
     private const val NO_NETWORK_ENV = "COMPOSE_PREVIEW_NO_NETWORK"
     private const val NO_NETWORK_PROPERTY = "composeai.network"
     private const val OFFLINE_ENV = "COMPOSE_PREVIEW_OFFLINE"
     private const val OFFLINE_PROPERTY = "composeai.bundle.offline"
 
     val STANDALONE: SimulatorHostEnvironment = SimulatorHostEnvironment()
+
+    /**
+     * Discovers a host-supplied [SimulatorHostEnvironment] via [ServiceLoader], falling back to
+     * [STANDALONE] when `:simulator-cli` runs without an enclosing host on the classpath.
+     */
+    fun discover(
+      classLoader: ClassLoader = SimulatorHostEnvironment::class.java.classLoader,
+    ): SimulatorHostEnvironment =
+      ServiceLoader.load(SimulatorHostEnvironmentProvider::class.java, classLoader)
+        .firstOrNull()
+        ?.create() ?: STANDALONE
+
+    internal fun defaultPrepareSkikoNative(
+      skikoDir: String? = System.getProperty(SKIKO_DIR_PROPERTY),
+    ): File? {
+      val dir = skikoDir?.takeIf { it.isNotBlank() }?.let(::File) ?: return null
+      if (!dir.isDirectory) return null
+      return dir
+        .listFiles { f ->
+          f.isFile && f.name.startsWith("skiko-awt-runtime-") && f.name.endsWith(".jar")
+        }
+        ?.sortedBy { it.name }
+        ?.firstOrNull()
+    }
 
     internal fun defaultIsNetworkDisabled(
       env: (String) -> String? = System::getenv,
