@@ -550,6 +550,8 @@ public final class Session {
         && "auth".equals(name)
         && ee.schimke.composeai.simulator.gms.auth.GmsAuth.current() != null) {
       emulated = ee.schimke.composeai.simulator.gms.auth.GmsAuth.current().command(c);
+    }
+    if (emulated == null
         && "gmsLocation".equals(name)
         && ee.schimke.composeai.simulator.gms.location.GmsLocation.current() != null) {
       emulated = ee.schimke.composeai.simulator.gms.location.GmsLocation.current().command(c);

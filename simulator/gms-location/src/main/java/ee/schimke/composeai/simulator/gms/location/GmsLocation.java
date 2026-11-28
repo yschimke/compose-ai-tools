@@ -51,7 +51,7 @@ public final class GmsLocation {
 
   private static volatile GmsLocation active;
 
-  private final Context context;
+  private volatile Context context;
   private final Executor main;
 
   private volatile Location lastLocation;
@@ -98,6 +98,7 @@ public final class GmsLocation {
     final float radiusMeters;
     final int transitionTypes;
     final PendingIntent pendingIntent;
+    final Object rawGeofence;
     boolean inside;
 
     GeofenceEntry(
@@ -106,13 +107,15 @@ public final class GmsLocation {
         double longitude,
         float radiusMeters,
         int transitionTypes,
-        PendingIntent pendingIntent) {
+        PendingIntent pendingIntent,
+        Object rawGeofence) {
       this.requestId = requestId;
       this.latitude = latitude;
       this.longitude = longitude;
       this.radiusMeters = radiusMeters;
       this.transitionTypes = transitionTypes;
       this.pendingIntent = pendingIntent;
+      this.rawGeofence = rawGeofence;
     }
   }
 
@@ -121,8 +124,19 @@ public final class GmsLocation {
     this.main = main;
   }
 
-  /** Installs a fresh {@link GmsLocation} instance for the running simulator session. */
+  /**
+   * Installs or attaches {@link GmsLocation} for the running simulator session. Preserves any
+   * instance already created during {@code Application.onCreate()} so startup-registered location
+   * clients and listeners keep receiving fixes.
+   */
   public static GmsLocation install(Application app) {
+    GmsLocation existing = active;
+    if (existing != null) {
+      if (app != null) existing.context = app;
+      SimulatorHooks.setLocationObserver(existing::onLocationUpdate);
+      PlayServices.registerSimulatedApi(GmsLocationClients::isLocationClient);
+      return existing;
+    }
     Handler handler = new Handler(Looper.getMainLooper());
     GmsLocation instance = new GmsLocation(app, handler::post);
     active = instance;
@@ -278,10 +292,23 @@ public final class GmsLocation {
     for (ListenerEntry entry : locationListeners) {
       entry.executor.execute(() -> invokeOnLocationChanged(entry.listener, fix));
     }
-    for (PendingIntent pi : locationPendingIntents) {
-      Intent fill = new Intent();
-      fill.putExtra("com.google.android.gms.location.EXTRA_LOCATION_RESULT_BYTES", fix);
-      sendPendingIntent(pi, fill);
+    if (!locationPendingIntents.isEmpty()) {
+      ClassLoader loader =
+          context != null ? context.getClassLoader() : getClass().getClassLoader();
+      Object result = createLocationResult(loader, fix);
+      for (PendingIntent pi : locationPendingIntents) {
+        Intent fill = new Intent();
+        if (result instanceof android.os.Parcelable) {
+          fill.putExtra(
+              "com.google.android.gms.location.EXTRA_LOCATION_RESULT",
+              (android.os.Parcelable) result);
+          byte[] bytes = marshallParcelable((android.os.Parcelable) result);
+          if (bytes != null) {
+            fill.putExtra("com.google.android.gms.location.EXTRA_LOCATION_RESULT_BYTES", bytes);
+          }
+        }
+        sendPendingIntent(pi, fill);
+      }
     }
   }
 
@@ -361,6 +388,14 @@ public final class GmsLocation {
     Intent fill = new Intent();
     fill.putExtra("com.google.android.location.intent.extra.transition", transitionType);
     fill.putExtra("com.google.android.location.intent.extra.geofence_request_id", gf.requestId);
+    if (gf.rawGeofence instanceof android.os.Parcelable) {
+      byte[] serialized = marshallParcelable((android.os.Parcelable) gf.rawGeofence);
+      if (serialized != null) {
+        ArrayList<byte[]> geofenceBytes = new ArrayList<>();
+        geofenceBytes.add(serialized);
+        fill.putExtra("com.google.android.location.intent.extra.geofence_list", geofenceBytes);
+      }
+    }
     if (triggering != null) {
       fill.putExtra("com.google.android.location.intent.extra.triggering_location", triggering);
     }
@@ -393,19 +428,32 @@ public final class GmsLocation {
     int prev = this.currentActivityType;
     this.currentActivityType = activityType;
     this.currentActivityConfidence = Math.max(0, Math.min(100, confidence));
-    for (PendingIntent pi : activityUpdateIntents) {
-      Intent fill = new Intent();
-      fill.putExtra("com.google.android.location.internal.EXTRA_ACTIVITY_TYPE", activityType);
-      fill.putExtra(
-          "com.google.android.location.internal.EXTRA_ACTIVITY_CONFIDENCE",
-          this.currentActivityConfidence);
-      sendPendingIntent(pi, fill);
+    ClassLoader loader = context != null ? context.getClassLoader() : getClass().getClassLoader();
+    if (!activityUpdateIntents.isEmpty()) {
+      Object recResult =
+          createActivityRecognitionResult(loader, activityType, this.currentActivityConfidence);
+      for (PendingIntent pi : activityUpdateIntents) {
+        Intent fill = new Intent();
+        if (recResult instanceof android.os.Parcelable) {
+          fill.putExtra(
+              "com.google.android.location.internal.EXTRA_ACTIVITY_RESULT",
+              (android.os.Parcelable) recResult);
+        }
+        sendPendingIntent(pi, fill);
+      }
     }
-    if (prev != activityType) {
+    if (prev != activityType && !activityTransitionIntents.isEmpty()) {
+      Object transResult = createActivityTransitionResult(loader, prev, activityType);
+      byte[] transBytes =
+          transResult instanceof android.os.Parcelable
+              ? marshallParcelable((android.os.Parcelable) transResult)
+              : null;
       for (PendingIntent pi : activityTransitionIntents) {
         Intent fill = new Intent();
-        fill.putExtra("com.google.android.location.internal.EXTRA_PREV_ACTIVITY_TYPE", prev);
-        fill.putExtra("com.google.android.location.internal.EXTRA_ACTIVITY_TYPE", activityType);
+        if (transBytes != null) {
+          fill.putExtra(
+              "com.google.android.location.internal.EXTRA_ACTIVITY_TRANSITION_RESULT", transBytes);
+        }
         sendPendingIntent(pi, fill);
       }
     }
@@ -581,41 +629,121 @@ public final class GmsLocation {
     }
   }
 
-  private static void invokeOnLocationResult(Object callback, Object result) {
+  private static byte[] marshallParcelable(android.os.Parcelable value) {
+    if (value == null) return null;
+    android.os.Parcel parcel = android.os.Parcel.obtain();
     try {
-      for (Method m : callback.getClass().getMethods()) {
-        if ("onLocationResult".equals(m.getName()) && m.getParameterCount() == 1) {
-          m.invoke(callback, result);
-          return;
-        }
-      }
-    } catch (ReflectiveOperationException ignored) {
+      value.writeToParcel(parcel, 0);
+      return parcel.marshall();
+    } catch (RuntimeException e) {
+      return null;
+    } finally {
+      parcel.recycle();
     }
+  }
+
+  static Object createActivityRecognitionResult(
+      ClassLoader loader, int activityType, int confidence) {
+    try {
+      Class<?> detectedCls =
+          Class.forName("com.google.android.gms.location.DetectedActivity", false, loader);
+      Constructor<?> detectedCtor = detectedCls.getDeclaredConstructor(int.class, int.class);
+      detectedCtor.setAccessible(true);
+      Object detected = detectedCtor.newInstance(activityType, confidence);
+
+      Class<?> resCls =
+          Class.forName("com.google.android.gms.location.ActivityRecognitionResult", false, loader);
+      long now = SimulatorHooks.currentTimeMillis();
+      Constructor<?> resCtor =
+          resCls.getDeclaredConstructor(detectedCls, long.class, long.class);
+      resCtor.setAccessible(true);
+      return resCtor.newInstance(detected, now, now);
+    } catch (ReflectiveOperationException e) {
+      return null;
+    }
+  }
+
+  static Object createActivityTransitionResult(ClassLoader loader, int prevType, int newType) {
+    try {
+      Class<?> eventCls =
+          Class.forName("com.google.android.gms.location.ActivityTransitionEvent", false, loader);
+      Constructor<?> eventCtor =
+          eventCls.getDeclaredConstructor(int.class, int.class, long.class);
+      eventCtor.setAccessible(true);
+      long nowNs = SimulatorHooks.currentTimeMillis() * 1_000_000L;
+      List<Object> events = new ArrayList<>();
+      events.add(eventCtor.newInstance(prevType, 1 /* ACTIVITY_TRANSITION_EXIT */, nowNs));
+      events.add(eventCtor.newInstance(newType, 0 /* ACTIVITY_TRANSITION_ENTER */, nowNs));
+
+      Class<?> resCls =
+          Class.forName("com.google.android.gms.location.ActivityTransitionResult", false, loader);
+      Constructor<?> resCtor = resCls.getDeclaredConstructor(List.class);
+      resCtor.setAccessible(true);
+      return resCtor.newInstance(events);
+    } catch (ReflectiveOperationException e) {
+      return null;
+    }
+  }
+
+  private static void invokeOnLocationResult(Object callback, Object result) {
+    invokeAccessibleCallback(
+        callback, "com.google.android.gms.location.LocationCallback", "onLocationResult", result);
   }
 
   private static void invokeOnLocationAvailability(Object callback, Object availability) {
+    invokeAccessibleCallback(
+        callback,
+        "com.google.android.gms.location.LocationCallback",
+        "onLocationAvailability",
+        availability);
+  }
+
+  private static void invokeOnLocationChanged(Object listener, Location fix) {
+    invokeAccessibleCallback(
+        listener, "com.google.android.gms.location.LocationListener", "onLocationChanged", fix);
+  }
+
+  private static void invokeAccessibleCallback(
+      Object target, String baseTypeName, String methodName, Object arg) {
+    if (target == null) return;
     try {
-      for (Method m : callback.getClass().getMethods()) {
-        if ("onLocationAvailability".equals(m.getName()) && m.getParameterCount() == 1) {
-          m.invoke(callback, availability);
-          return;
-        }
+      Method resolved = findPublicOrDeclaredMethod(target.getClass(), baseTypeName, methodName);
+      if (resolved != null) {
+        resolved.setAccessible(true);
+        resolved.invoke(target, arg);
       }
     } catch (ReflectiveOperationException ignored) {
     }
   }
 
-  private static void invokeOnLocationChanged(Object listener, Location fix) {
-    try {
-      Method m = listener.getClass().getMethod("onLocationChanged", Location.class);
-      m.invoke(listener, fix);
-    } catch (ReflectiveOperationException ignored) {
+  private static Method findPublicOrDeclaredMethod(
+      Class<?> runtimeClass, String baseTypeName, String methodName) {
+    // Prefer the public GMS base class / interface declaration so anonymous or non-public
+    // subclasses are always invocable without IllegalAccessException.
+    for (Class<?> c = runtimeClass; c != null; c = c.getSuperclass()) {
+      if (baseTypeName.equals(c.getName())) {
+        for (Method m : c.getMethods()) {
+          if (methodName.equals(m.getName()) && m.getParameterCount() == 1) return m;
+        }
+      }
+      for (Class<?> iface : c.getInterfaces()) {
+        if (baseTypeName.equals(iface.getName())) {
+          for (Method m : iface.getMethods()) {
+            if (methodName.equals(m.getName()) && m.getParameterCount() == 1) return m;
+          }
+        }
+      }
     }
+    for (Method m : runtimeClass.getMethods()) {
+      if (methodName.equals(m.getName()) && m.getParameterCount() == 1) return m;
+    }
+    return null;
   }
 
   private static List<?> extractGeofences(Object request) {
     try {
       Method m = request.getClass().getMethod("getGeofences");
+      m.setAccessible(true);
       Object res = m.invoke(request);
       if (res instanceof List<?>) return (List<?>) res;
     } catch (ReflectiveOperationException ignored) {
@@ -632,7 +760,7 @@ public final class GmsLocation {
     float radius = (float) readDouble(gf, "getRadius", "zzf", 100.0);
     int transitions =
         readInt(gf, "getTransitionTypes", "zzg", GEOFENCE_TRANSITION_ENTER | GEOFENCE_TRANSITION_EXIT);
-    return new GeofenceEntry(id, lat, lng, radius, transitions, pi);
+    return new GeofenceEntry(id, lat, lng, radius, transitions, pi, gf);
   }
 
   private static String readString(Object target, String method, String field) {

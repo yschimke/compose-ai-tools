@@ -132,4 +132,26 @@ public class GmsLocationTest {
     double oneDegLat = GmsLocation.haversineMeters(0.0, 0.0, 1.0, 0.0);
     assertEquals(111_195.0, oneDegLat, 200.0);
   }
+
+  @Test
+  public void installPreservesExistingStartupEngine() {
+    GmsLocation before = GmsLocation.current();
+    assertNotNull(before);
+    GmsLocation after = GmsLocation.install(null);
+    assertEquals("Session install must preserve startup-created engine", before, after);
+  }
+
+  @Test
+  public void nonPublicCallbackSubclassReceivesAvailabilityUpdates() throws Exception {
+    java.util.concurrent.atomic.AtomicBoolean received =
+        new java.util.concurrent.atomic.AtomicBoolean(true);
+    // Anonymous subclass of package-private test LocationCallback.
+    Object callback =
+        Class.forName("com.google.android.gms.location.TestLocationApi", true, loader)
+            .getMethod("newAvailabilityCallback", java.util.function.Consumer.class)
+            .invoke(null, (java.util.function.Consumer<Boolean>) received::set);
+    location.registerLocationCallback(callback, Runnable::run);
+    location.command(new JSONObject().put("available", false));
+    assertFalse("Non-public LocationCallback subclass must receive availability update", received.get());
+  }
 }

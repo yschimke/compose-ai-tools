@@ -10,6 +10,15 @@ import java.util.concurrent.Executor;
 /** Test-only mirrors of {@code play-services-location} 21.x interfaces and value classes. */
 public final class TestLocationApi {
   private TestLocationApi() {}
+
+  public static Object newAvailabilityCallback(java.util.function.Consumer<Boolean> onAvail) {
+    return new LocationCallback() {
+      @Override
+      public void onLocationAvailability(LocationAvailability availability) {
+        onAvail.accept(availability.isLocationAvailable());
+      }
+    };
+  }
 }
 
 interface FusedLocationProviderClient {
