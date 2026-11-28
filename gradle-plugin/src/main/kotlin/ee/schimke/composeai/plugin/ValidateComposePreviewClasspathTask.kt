@@ -1,8 +1,10 @@
 package ee.schimke.composeai.plugin
 
+import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.problems.Problems
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
@@ -17,6 +19,8 @@ import org.gradle.api.tasks.TaskAction
  */
 @CacheableTask
 abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
+
+  @get:Inject abstract val problems: Problems
 
   @get:Input abstract val platform: Property<String>
 
@@ -60,25 +64,39 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
     val offenders = androidxComposeArtifactsOnDesktopClasspath(classpathPaths)
     if (offenders.isEmpty()) return
 
-    throw GradleException(
-      buildString {
-        appendLine(
-          "Compose Preview desktop classpath contains AndroidX Compose UI artifacts. " +
-            "Use org.jetbrains.compose UI artifacts for Compose Multiplatform desktop classpaths.",
-        )
-        offenders.take(8).forEach { appendLine(" - $it") }
-        if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
-        // Usually a KMP-Android module without `jvm("desktop")`, falling back to
-        // `androidRuntimeClasspath`; the fix is a JVM-flavoured runtime classpath.
-        appendLine()
-        appendLine(
-          "If this is a com.android.kotlin.multiplatform.library (:shared) module, add a " +
-            "`jvm(\"desktop\")` target to its `kotlin { }` block so androidMain previews render " +
-            "through the Compose Multiplatform Desktop pipeline. See " +
-            "compose-preview/references/cmp-shared.md.",
-        )
-      },
+    val message = buildString {
+      appendLine(
+        "Compose Preview desktop classpath contains AndroidX Compose UI artifacts. " +
+          "Use org.jetbrains.compose UI artifacts for Compose Multiplatform desktop classpaths.",
+      )
+      offenders.take(8).forEach { appendLine(" - $it") }
+      if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
+      // Usually a KMP-Android module without `jvm("desktop")`, falling back to
+      // `androidRuntimeClasspath`; the fix is a JVM-flavoured runtime classpath.
+      appendLine()
+      appendLine(
+        "If this is a com.android.kotlin.multiplatform.library (:shared) module, add a " +
+          "`jvm(\"desktop\")` target to its `kotlin { }` block so androidMain previews render " +
+          "through the Compose Multiplatform Desktop pipeline. See " +
+          "compose-preview/references/cmp-shared.md.",
+      )
+    }
+    val failure = GradleException(message)
+    ComposePreviewProblems.reportValidationFailure(
+      problems = problems,
+      id = "androidx-compose-on-desktop-classpath",
+      displayName = "AndroidX Compose UI artifacts on desktop preview classpath",
+      contextualLabel =
+        "Desktop preview classpath contains ${offenders.size} AndroidX Compose UI artifact(s)",
+      details = message,
+      solutions =
+        listOf(
+          "Use org.jetbrains.compose UI artifacts for Compose Multiplatform desktop classpaths.",
+          "For com.android.kotlin.multiplatform.library modules, add a `jvm(\"desktop\")` target so previews render via the desktop pipeline.",
+        ),
+      exception = failure,
     )
+    throw failure
   }
 
   /**
@@ -97,19 +115,32 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
   private fun reportSkiko(scopes: List<SkikoScope>) {
     val skewed = scopes.filter { it.versions.size > 1 }
     if (skewed.isNotEmpty()) {
-      throw GradleException(
-        buildString {
-          skewed.forEach { scope ->
-            appendLine(
-              "The ${scope.label} classpath resolved more than one skiko version " +
-                "(${scope.versions.joinToString()}). The skiko API jar and its platform native " +
-                "runtime must match — a skew loads a libskiko whose exports the API does not " +
-                "declare, and every render fails at draw time.",
-            )
-          }
-          append("Align them through a single Compose Multiplatform version.")
-        },
+      val message = buildString {
+        skewed.forEach { scope ->
+          appendLine(
+            "The ${scope.label} classpath resolved more than one skiko version " +
+              "(${scope.versions.joinToString()}). The skiko API jar and its platform native " +
+              "runtime must match — a skew loads a libskiko whose exports the API does not " +
+              "declare, and every render fails at draw time.",
+          )
+        }
+        append("Align them through a single Compose Multiplatform version.")
+      }
+      val failure = GradleException(message)
+      ComposePreviewProblems.reportValidationFailure(
+        problems = problems,
+        id = "skiko-version-skew",
+        displayName = "Mismatched Skiko versions on desktop preview classpath",
+        contextualLabel =
+          skewed.joinToString("; ") { "${it.label}: ${it.versions.joinToString()}" },
+        details = message,
+        solutions =
+          listOf(
+            "Align the Skiko API jar and native runtime through a single Compose Multiplatform version.",
+          ),
+        exception = failure,
       )
+      throw failure
     }
     val resolved = scopes.filter { it.versions.isNotEmpty() }
     when (resolved.map { it.versions.single() }.distinct().size) {

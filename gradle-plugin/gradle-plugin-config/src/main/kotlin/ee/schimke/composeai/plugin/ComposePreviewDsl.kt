@@ -45,6 +45,12 @@ object ComposePreviewDsl {
         .map { it.toBooleanStrictOrNull() ?: false }
         .orElse(false),
     )
+    extension.simulatorManagedDevice.convention(
+      project.providers
+        .gradleProperty("composePreview.simulatorManagedDevice")
+        .map { it.toBooleanStrictOrNull() ?: true }
+        .orElse(true),
+    )
     // `addAll`, not `convention`: the property and the DSL are additive, whereas a convention would
     // be replaced by the first DSL `add`.
     extension.renderGraph.excludes.addAll(

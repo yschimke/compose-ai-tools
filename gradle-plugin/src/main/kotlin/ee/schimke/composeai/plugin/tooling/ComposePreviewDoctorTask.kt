@@ -1,6 +1,8 @@
 package ee.schimke.composeai.plugin.tooling
 
+import ee.schimke.composeai.plugin.ComposePreviewProblems
 import java.io.File
+import javax.inject.Inject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -11,6 +13,7 @@ import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.problems.Problems
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
@@ -31,6 +34,8 @@ import org.gradle.work.DisableCachingByDefault
     "Doctor findings depend on the live configuration resolution, not on a declared input set — caching across a version bump would silently stale-surface fixed issues.",
 )
 abstract class ComposePreviewDoctorTask : DefaultTask() {
+
+  @get:Inject abstract val problems: Problems
 
   @get:Input abstract val variant: Property<String>
 
@@ -119,6 +124,20 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
           },
         injectedDependencies = injections,
       )
+    for (f in report.findings) {
+      ComposePreviewProblems.reportDoctorFinding(
+        problems = problems,
+        modulePath = report.module,
+        variant = report.variant,
+        id = f.id,
+        severity = f.severity,
+        message = f.message,
+        detail = f.detail,
+        remediationSummary = f.remediationSummary,
+        remediationCommands = f.remediationCommands,
+        docsUrl = f.docsUrl,
+      )
+    }
     val out = outputFile.get().asFile
     out.parentFile.mkdirs()
     out.writeText(JSON.encodeToString(report))

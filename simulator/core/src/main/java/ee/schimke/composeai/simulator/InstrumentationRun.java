@@ -84,6 +84,13 @@ public final class InstrumentationRun {
    */
   static final String SHARD_PROPERTY = "composeai.simulator.instrument.shard";
 
+  /** Directory where JaCoCo {@code .ec} coverage execution data is written when coverage is on. */
+  static final String COVERAGE_DIR_PROPERTY = "composeai.simulator.instrument.coverageDir";
+
+  /** Directory for additional test outputs (benchmarks, screenshots, custom artifacts). */
+  static final String ADDITIONAL_OUTPUT_DIR_PROPERTY =
+      "composeai.simulator.instrument.additionalOutputDir";
+
   static final String DEVICE_RUNNER =
       "androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner";
 
@@ -333,6 +340,13 @@ public final class InstrumentationRun {
     if (System.getProperty("android.junit.runner") == null) {
       System.setProperty("android.junit.runner", DEVICE_RUNNER);
     }
+    String additionalOutputDir = System.getProperty(ADDITIONAL_OUTPUT_DIR_PROPERTY);
+    if (additionalOutputDir != null && !additionalOutputDir.isEmpty()) {
+      Path dir = Path.of(additionalOutputDir);
+      Files.createDirectories(dir);
+      System.setProperty("android.test.additionalTestOutputDir", dir.toAbsolutePath().toString());
+      System.setProperty("androidx.test.additionalTestOutputDir", dir.toAbsolutePath().toString());
+    }
     Selection selection = Selection.parse(System.getProperty(TESTS_PROPERTY));
     List<Class<?>> classes = new ArrayList<>();
     if (selection.classes.isEmpty()) {
@@ -397,6 +411,10 @@ public final class InstrumentationRun {
     if (shard != null) {
       System.err.println("instrument: shard " + shard + ": " + runCount + " test(s)");
     }
+    String coverageDir = System.getProperty(COVERAGE_DIR_PROPERTY);
+    if (coverageDir != null && !coverageDir.isEmpty()) {
+      dumpJacocoCoverage(sandbox, Path.of(coverageDir), shard);
+    }
     String report = System.getProperty(REPORT_PROPERTY);
     if (report != null && !report.isEmpty()) {
       reporter.writeXml(Path.of(report), millis);
@@ -411,6 +429,35 @@ public final class InstrumentationRun {
     }
     System.err.println("\nFAILURES!!!\nTests run: " + runCount + ",  Failures: " + failures);
     return 1;
+  }
+
+  /**
+   * Dumps JaCoCo execution data ({@code .ec}) into {@code coverageDir} when JaCoCo runtime classes
+   * are present in the instrumented APK or JVM. AGP's {@code JacocoReportTask} reads all {@code
+   * *.ec} files from its managed-device coverage output directory.
+   */
+  static void dumpJacocoCoverage(ClassLoader sandbox, Path coverageDir, Shard shard) {
+    try {
+      Class<?> rtClass = null;
+      try {
+        rtClass = Class.forName("org.jacoco.agent.rt.RT", false, sandbox);
+      } catch (ClassNotFoundException ignored) {
+        try {
+          rtClass = Class.forName("org.jacoco.agent.rt.RT");
+        } catch (ClassNotFoundException ignoredToo) {
+          return;
+        }
+      }
+      Object agent = rtClass.getMethod("getAgent").invoke(null);
+      if (agent == null) return;
+      byte[] data = (byte[]) agent.getClass().getMethod("getExecutionData", boolean.class).invoke(agent, false);
+      if (data == null || data.length == 0) return;
+      Files.createDirectories(coverageDir);
+      String fileName = shard != null ? "coverage-shard-" + shard.index + ".ec" : "coverage.ec";
+      Files.write(coverageDir.resolve(fileName), data);
+    } catch (Throwable t) {
+      System.err.println("instrument: could not dump JaCoCo coverage: " + t);
+    }
   }
 
   /**

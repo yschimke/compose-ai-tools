@@ -92,7 +92,7 @@
       "cli/**",
       "samples/surface-view/**",
       "samples/android-instrumented/**",
-      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/SimulatorAndroidTestTask.kt",
+      "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/SimulatorManagedDevice.kt",
       "samples/host-natives/**",
       "host-natives/index.json",
       ".github/scripts/simulator_smoke.py"

@@ -2045,23 +2045,71 @@ Robolectric supports from API 33, so `--sdk` takes 33 to the newest level and an
 refused before the simulator starts, with that range in the message (and in `--test-json`'s
 `error`). A suite whose CI runs an emulator below 33 runs here at 33 or above.
 
-### From Gradle (the way to hand it to an agent)
+### From Gradle (Gradle Managed Device)
 
-The preview plugin registers `simulator<Variant>AndroidTest` in every application module, for each
-variant with an `androidTest` component (`debug` by default). It does not need the module to have
-previews, and nothing depends on it, so it runs only when asked for:
+The preview plugin registers `SimulatorManagedDevice` with AGP's Gradle Managed Devices
+(`managedDeviceRegistry`) on every Android application, library, standalone `com.android.test`,
+and KMP-Android module with `withDeviceTest {}` enabled, and registers a default `"simulator"`
+device automatically in `managedDevices.allDevices` (unless a device with that name already exists,
+or `composePreview { simulatorManagedDevice = false }` /
+`-PcomposePreview.simulatorManagedDevice=false` opts out). It does not need the module to have
+previews, and `check` does not depend on it, so it runs only when asked for:
 
 ```sh
 ./gradlew :app:simulatorDebugAndroidTest
-./gradlew :app:simulatorDebugAndroidTest --tests com.example.LoginTest --tests 'com.example.CartTest#checkout'
+./gradlew :app:simulatorDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.example.LoginTest,com.example.CartTest#checkout
+./gradlew :app:simulatorCheck
+./gradlew :lib:simulatorDebugAndroidTest
 ```
 
-It builds the app and test APKs and runs `compose-preview android-simulator --instrument` on them.
-Like the connected task it is never up to date, and it fails the build when a test fails, naming
-each failed test. The results land beside AGP's connected ones:
+Because it hooks into AGP's managed device framework, you can also declare additional
+prefix-named simulator devices and device groups in `android.testOptions.managedDevices`:
 
-- `build/outputs/androidTest-results/simulator/<variant>/TEST-simulator.xml`: JUnit XML;
-- `build/outputs/androidTest-results/simulator/<variant>/results.json`: the same for agents.
+```kotlin
+import ee.schimke.composeai.plugin.SimulatorManagedDevice
+
+android {
+  testOptions {
+    managedDevices {
+      allDevices {
+        register<SimulatorManagedDevice>("pixelApi35") {
+          apiLevel.set(35)
+          device.set("phone") // or qualifiers.set("w411dp-h914dp-xxhdpi") instead of device
+          shards.set(2)
+          pool.set(true)
+        }
+      }
+      groups {
+        create("fast") {
+          targetDevices.add(allDevices.getByName("pixelApi35"))
+        }
+      }
+    }
+  }
+}
+```
+
+AGP generates `<device>Setup` (which validates Java/SDK and pre-provisions the Android daemon
+sidecar + `android-all` via `android-simulator --prepare-runtime`),
+`<device><Variant>AndroidTest` (e.g. `pixelApi35DebugAndroidTest`), `<device>Check`,
+`<group>Group<Variant>AndroidTest`, `allDevices<Variant>AndroidTest`, and `allDevicesCheck`.
+Library modules instrument their own `androidTest` APK automatically, and concurrent simulator
+JVMs across multi-module builds are bounded by a shared `BuildService`
+(`-PcomposePreview.simulatorMaxParallel`). Tasks are cacheable under AGP's `ManagedDeviceTestTask`;
+pass `--rerun` to force a fresh run.
+
+When `enableAndroidTestCoverage = true` is enabled on a build type, the managed device task passes
+`--coverage-out` so JaCoCo `.ec` execution data lands in AGP's managed-device coverage directory
+for `createManagedDevice<Variant>AndroidTestCoverageReport`. When
+`-Pandroid.enableAdditionalTestOutput=true` is enabled, `--additional-test-output-dir` is wired
+through to `android.test.additionalTestOutputDir`.
+
+Results and reports land in AGP's standard managed-device locations:
+
+- `build/outputs/androidTest-results/managedDevice/<variant>/<device>/TEST-<device>.xml`: JUnit XML;
+- `build/outputs/androidTest-results/managedDevice/<variant>/<device>/results.json`: the same for agents;
+- `build/reports/androidTests/managedDevice/<variant>/<device>/index.html`: AGP's HTML test report.
 
 ```json
 {"tests":3,"passed":2,"failed":1,"skipped":0,"durationMs":5210,"cases":[
@@ -2072,15 +2120,29 @@ each failed test. The results land beside AGP's connected ones:
 A run that cannot start its tests (no such class, a crash before the first test) writes
 `{"tests":0,…,"error":"…"}` instead, so the report alone says why there are no results.
 
-Gradle properties:
+Gradle properties (used as conventions on every `SimulatorManagedDevice`, overridden by explicit
+DSL values):
 
 | Property | Default |
 | --- | --- |
+| `composePreview.simulatorManagedDevice` | `true`: auto-register the default `"simulator"` managed device |
+| `composePreview.simulatorMaxParallel` | half of host CPUs, clamped to `1..4` (build-wide `BuildService` concurrency limit) |
 | `composePreview.cli` | `COMPOSE_PREVIEW_CLI`, else `compose-preview` on `PATH` |
 | `composePreview.simulatorJava` | a JDK 21 toolchain Gradle knows; else the CLI looks for one |
 | `composePreview.simulatorSdk` | the CLI's default Android SDK level |
-| `composePreview.simulatorShards` | 1: every test in one simulator ([Sharding](#sharding)) |
+| `composePreview.simulatorDevice` | unset (uses form-factor default; e.g. `phone`, `tablet`) |
+| `composePreview.simulatorFormFactor` | auto-detected from the APK (`phone`, `wear`, `glimmer`, `xr`) |
+| `composePreview.simulatorQualifiers` | unset (uses device/form-factor default) |
+| `composePreview.simulatorShards` | `android.experimental.androidTest.numManagedDeviceShards`, else 1 ([Sharding](#sharding)) |
 | `composePreview.simulatorPool` | false: each run boots its own simulator ([A pool of started simulators](#a-pool-of-started-simulators)) |
+
+**Note on app launch / Android Studio's Run device picker:** AGP's Managed Devices API only covers
+instrumented test execution (`<device><Variant>AndroidTest`, `<device>Check`, `allDevicesCheck`);
+AGP and Android Studio do not use managed devices as targets for `installDebug` or Studio's Run
+deployment dropdown. To make the simulator appear as a live device in `adb devices` and Android
+Studio's Running Devices / Run dropdown, start it with `compose-preview android-simulator --adb`
+([As a device: adb and Android Studio](#as-a-device-adb-and-android-studio)) or install the
+`compose-preview-ide` plugin (which registers a lazy `DeviceProvisionerPlugin` in Android Studio).
 
 ### From the CLI
 
