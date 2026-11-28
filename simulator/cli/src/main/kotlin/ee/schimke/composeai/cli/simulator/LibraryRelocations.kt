@@ -89,14 +89,24 @@ internal object LibraryRelocations {
    * writes the relocated jar to the file it is given (only when something moves) and returns
    * `LibraryRelocation`'s summary line.
    */
-  fun ensure(classesJar: File, stamp: String, run: (out: File) -> String): Outcome {
+  fun ensure(
+    classesJar: File,
+    stamp: String,
+    now: Long = System.currentTimeMillis(),
+    run: (out: File) -> String,
+  ): Outcome {
     val dir = classesJar.absoluteFile.parentFile
     val decision = File(dir, "relocation-$stamp.json")
     val relocated = File(dir, "classes-relocated-$stamp.jar")
     if (decision.isFile) {
       val known = parse(decision.readText())
-      if (known.isEmpty()) return Outcome(null, known, decision.readText().trim())
-      if (relocated.isFile) return Outcome(relocated, known, decision.readText().trim())
+      if (known.isEmpty() || relocated.isFile) {
+        // In use: another simulator's pruning leaves it alone.
+        decision.setLastModified(now)
+        if (known.isNotEmpty()) relocated.setLastModified(now)
+        pruneStale(dir, stamp, now)
+        return Outcome(relocated.takeIf { known.isNotEmpty() }, known, decision.readText().trim())
+      }
     }
     val partial = File(dir, "${relocated.name}.partial-${ProcessHandle.current().pid()}")
     partial.delete()
@@ -121,15 +131,28 @@ internal object LibraryRelocations {
       decision.toPath(),
       StandardCopyOption.REPLACE_EXISTING,
     )
-    // Decisions for runtimes no longer in use.
+    pruneStale(dir, stamp, now)
+    return Outcome(relocated.takeIf { packages.isNotEmpty() }, packages, summary)
+  }
+
+  /**
+   * How long another runtime's relocation outlives its last use. Not deleted on sight: another
+   * version of the simulator may be launching this APK at the same moment, from its own variant (or
+   * still writing it). Each use refreshes a variant, so only one no launch has used for a day goes;
+   * the whole entry goes with the APK's conversion when the cache prunes it.
+   */
+  const val STALE_MS = 24L * 60 * 60 * 1000
+
+  /** Other runtimes' decisions, relocated jars and partial outputs unused for [STALE_MS]. */
+  fun pruneStale(dir: File, stamp: String, now: Long) {
     dir
       .listFiles { f ->
         (f.name.startsWith("relocation-") || f.name.startsWith("classes-relocated-")) &&
-          !f.name.contains(stamp)
+          !f.name.contains(stamp) &&
+          now - f.lastModified() > STALE_MS
       }
       .orEmpty()
       .forEach { it.delete() }
-    return Outcome(relocated.takeIf { packages.isNotEmpty() }, packages, summary)
   }
 
   /** The `relocated` packages of a summary line; empty when there are none or it is unreadable. */

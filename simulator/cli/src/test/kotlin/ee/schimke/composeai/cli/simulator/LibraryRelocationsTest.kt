@@ -23,8 +23,8 @@ class LibraryRelocationsTest {
       """{"relocated":["com/google/common/base"],"relocatedClasses":3}"""
     }
 
-    val first = LibraryRelocations.ensure(classesJar, "aaaa", relocate)
-    val second = LibraryRelocations.ensure(classesJar, "aaaa", relocate)
+    val first = LibraryRelocations.ensure(classesJar, "aaaa", run = relocate)
+    val second = LibraryRelocations.ensure(classesJar, "aaaa", run = relocate)
 
     assertEquals(1, runs)
     assertEquals(listOf("com/google/common/base"), first.packages)
@@ -52,12 +52,22 @@ class LibraryRelocationsTest {
   }
 
   @Test
-  fun anotherRuntimeDecidesAgainAndDropsTheOldDecision() {
-    LibraryRelocations.ensure(classesJar, "old0") { out ->
+  fun anotherRuntimesDecisionStaysWhileInUseAndGoesOnceStale() {
+    val start = 1_000_000_000_000L
+    LibraryRelocations.ensure(classesJar, "old0", now = start) { out ->
       out.writeText("x")
       """{"relocated":["lib"]}"""
     }
-    LibraryRelocations.ensure(classesJar, "new0") { """{"relocated":[]}""" }
+    // Another simulator version, launching at the same time: the old variant may be in use.
+    LibraryRelocations.ensure(classesJar, "new0", now = start) { """{"relocated":[]}""" }
+    assertTrue(File(dir, "relocation-old0.json").exists())
+    assertTrue(File(dir, "classes-relocated-old0.jar").exists())
+
+    // A day after its last use, it goes; the current one and the converted jar stay.
+    File(dir, "relocation-old0.json").setLastModified(start)
+    File(dir, "classes-relocated-old0.jar").setLastModified(start)
+    val later = start + LibraryRelocations.STALE_MS + 1
+    LibraryRelocations.ensure(classesJar, "new0", now = later) { error("decided already") }
 
     assertFalse(File(dir, "relocation-old0.json").exists())
     assertFalse(File(dir, "classes-relocated-old0.jar").exists())
