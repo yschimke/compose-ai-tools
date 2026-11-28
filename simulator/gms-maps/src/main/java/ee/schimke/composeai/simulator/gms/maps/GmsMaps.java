@@ -258,7 +258,7 @@ public final class GmsMaps {
     float zoomX = dx > 1e-9 ? (float) (Math.log(w / (256.0 * dx)) / Math.log(2.0)) : 21f;
     float zoomY = dy > 1e-9 ? (float) (Math.log(h / (256.0 * dy)) / Math.log(2.0)) : 21f;
     float zoom = Math.max(0f, Math.min(21f, Math.min(zoomX, zoomY)));
-    setCamera(centerLat, centerLng, zoom, cameraTilt, cameraBearing);
+    setCamera(centerLat, centerLng, zoom, 0f, 0f);
   }
 
   public MarkerRecord addMarker(double lat, double lng, String title, String snippet) {
