@@ -183,12 +183,17 @@ jobs:
           echo "LDFLAGS=$toolchain" >> "$GITHUB_ENV"
 
       # Homebrew has glslang, SPIRV-Tools and Ninja; llvm-objcopy (LLVM) renames the stdout writers
-      # in each object, as Apple's linker has no --wrap (build.sh).
+      # in each object, as Apple's linker has no --wrap (build.sh). Only llvm-objcopy goes on PATH:
+      # all of Homebrew's LLVM would make its newer clang the compiler, which deprecates builtins
+      # rive-runtime builds with -Werror; the build uses Apple's clang.
       - name: Install the Rive toolchain (macOS)
         if: matrix.recipe == 'rive' && runner.os == 'macOS'
         run: |
           brew install glslang spirv-tools ninja llvm
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          tools="$RUNNER_TEMP/llvm-tools"
+          mkdir -p "$tools"
+          ln -sf "$(brew --prefix llvm)/bin/llvm-objcopy" "$tools/llvm-objcopy"
+          echo "$tools" >> "$GITHUB_PATH"
 
       - name: Build
         env:
