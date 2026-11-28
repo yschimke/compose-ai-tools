@@ -190,4 +190,17 @@ public class GmsMapsTest {
     while (!queue.isEmpty()) queue.poll().run();
     assertEquals(1, calls.get());
   }
+
+  @Test
+  public void projectPolylineStaysContinuousAcrossAntimeridian() {
+    maps.setCamera(0.0, 0.0, 0f, 0f, 0f);
+    List<float[]> projected =
+        maps.projectPolyline(
+            java.util.Arrays.asList(new double[] {0.0, 179.0}, new double[] {0.0, -179.0}),
+            800,
+            800);
+    assertEquals(2, projected.size());
+    float dx = projected.get(1)[0] - projected.get(0)[0];
+    assertTrue("Expected short ~1.4px segment across antimeridian, got dx=" + dx, dx > 0f && dx < 3f);
+  }
 }

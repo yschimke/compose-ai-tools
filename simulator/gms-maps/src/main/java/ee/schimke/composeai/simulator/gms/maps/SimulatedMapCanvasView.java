@@ -142,10 +142,10 @@ final class SimulatedMapCanvasView extends View {
       if (!p.visible || p.points.size() < 2 || p.color == Color.TRANSPARENT) continue;
       linePaint.setColor(p.color);
       linePaint.setStrokeWidth(p.width > 0 ? p.width : 6f);
+      List<float[]> projected = engine.projectPolyline(p.points, w, h);
       Path path = new Path();
-      for (int i = 0; i < p.points.size(); i++) {
-        double[] ll = p.points.get(i);
-        float[] pt = engine.latLngToScreen(ll[0], ll[1], w, h);
+      for (int i = 0; i < projected.size(); i++) {
+        float[] pt = projected.get(i);
         if (i == 0) path.moveTo(pt[0], pt[1]);
         else path.lineTo(pt[0], pt[1]);
       }

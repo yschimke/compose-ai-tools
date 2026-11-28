@@ -371,14 +371,34 @@ public final class GmsMaps {
   /** Projects (lat, lng) into pixel (x, y) within a viewport of (width, height). */
   public float[] latLngToScreen(double lat, double lng, int width, int height) {
     double scale = 256.0 * Math.pow(2.0, cameraZoom);
-    double cx = mercatorX(cameraLng) * scale;
+    double dx = shortestDeltaLng(cameraLng, lng) / 360.0 * scale;
+    double dy = (mercatorY(lat) - mercatorY(cameraLat)) * scale;
+    return projectOffset(dx, dy, width, height);
+  }
+
+  /**
+   * Projects a polyline's vertices into screen coordinates while unwrapping consecutive longitudes
+   * so segments crossing the antimeridian stay continuous rather than jumping across the viewport.
+   */
+  List<float[]> projectPolyline(List<double[]> points, int width, int height) {
+    List<float[]> out = new ArrayList<>(points.size());
+    if (points.isEmpty()) return out;
+    double scale = 256.0 * Math.pow(2.0, cameraZoom);
     double cy = mercatorY(cameraLat) * scale;
-    double px = mercatorX(lng) * scale;
-    double py = mercatorY(lat) * scale;
-    double dx = px - cx;
-    if (dx > scale / 2.0) dx -= scale;
-    else if (dx < -scale / 2.0) dx += scale;
-    double dy = py - cy;
+    double unwrappedLng = cameraLng + shortestDeltaLng(cameraLng, points.get(0)[1]);
+    for (int i = 0; i < points.size(); i++) {
+      double[] ll = points.get(i);
+      if (i > 0) {
+        unwrappedLng += shortestDeltaLng(unwrappedLng, ll[1]);
+      }
+      double dx = (unwrappedLng - cameraLng) / 360.0 * scale;
+      double dy = mercatorY(ll[0]) * scale - cy;
+      out.add(projectOffset(dx, dy, width, height));
+    }
+    return out;
+  }
+
+  private float[] projectOffset(double dx, double dy, int width, int height) {
     if (cameraBearing != 0f) {
       double rad = Math.toRadians(-cameraBearing);
       double cos = Math.cos(rad);
@@ -389,6 +409,10 @@ public final class GmsMaps {
       dy = ry;
     }
     return new float[] {(float) (width / 2.0 + dx), (float) (height / 2.0 + dy)};
+  }
+
+  private static double shortestDeltaLng(double fromLng, double toLng) {
+    return ((toLng - fromLng + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
   }
 
   /** Unprojects pixel (x, y) within (width, height) back to (lat, lng). */
