@@ -40,6 +40,15 @@ dependencies {
   api(project(":simulator-firebase-emulator"))
   api(project(":simulator-firebase-messaging"))
   api(project(":simulator-firebase-telemetry"))
+  val robolectricSlices: List<Provider<MinimalExternalModuleDependency>> =
+    listOf(
+      libs.robolectricAnnotations,
+      libs.robolectricShadowapi,
+      libs.robolectricUtils,
+    )
+  for (slice in robolectricSlices) {
+    compileOnly(slice) { isTransitive = false }
+  }
   compileOnly(files(androidJar))
 
   testCompileOnly(files(androidJar))

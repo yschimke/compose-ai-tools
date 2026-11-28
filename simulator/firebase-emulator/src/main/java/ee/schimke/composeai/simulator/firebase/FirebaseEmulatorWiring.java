@@ -40,7 +40,45 @@ public final class FirebaseEmulatorWiring {
     SDK_CLASSES = Collections.unmodifiableMap(map);
   }
 
+  private static volatile FirebaseEmulatorConfig.HostPort activeFunctionsEndpoint;
+  private static final Map<Object, String> wiredFunctionsInstances =
+      Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
   private FirebaseEmulatorWiring() {}
+
+  public static FirebaseEmulatorConfig.HostPort activeFunctionsEndpoint() {
+    return activeFunctionsEndpoint;
+  }
+
+  public static void setActiveFunctionsEndpoint(FirebaseEmulatorConfig.HostPort endpoint) {
+    activeFunctionsEndpoint = endpoint;
+  }
+
+  /**
+   * Wires a {@code FirebaseFunctions} instance (including regional instances obtained via {@code
+   * FirebaseFunctions.getInstance("europe-west1")}) to the active Functions emulator endpoint if
+   * configured. Idempotent per instance and target authority.
+   */
+  public static void wireFunctionsInstance(Object instance) {
+    FirebaseEmulatorConfig.HostPort hp = activeFunctionsEndpoint;
+    if (instance == null || hp == null) return;
+    String authority = hp.authority();
+    synchronized (wiredFunctionsInstances) {
+      if (authority.equals(wiredFunctionsInstances.get(instance))) return;
+    }
+    try {
+      Method useEmulator =
+          instance.getClass().getMethod("useEmulator", String.class, int.class);
+      useEmulator.invoke(instance, hp.host, hp.port);
+      wiredFunctionsInstances.put(instance, authority);
+    } catch (InvocationTargetException e) {
+      if (e.getCause() instanceof IllegalStateException) {
+        wiredFunctionsInstances.put(instance, authority);
+      }
+    } catch (Throwable ignored) {
+      // Non-standard or unavailable Functions SDK.
+    }
+  }
 
   /** Reads {@code FirebaseOptions} from the app's default {@code FirebaseApp}, if initialized. */
   public static JSONObject readAppOptions(Context context, ClassLoader loader) {
@@ -70,6 +108,8 @@ public final class FirebaseEmulatorWiring {
   public static JSONObject wireAll(
       Context context, ClassLoader loader, FirebaseEmulatorConfig config) {
     JSONObject results = new JSONObject();
+    activeFunctionsEndpoint =
+        config == null ? null : config.service(FirebaseEmulatorConfig.Service.FUNCTIONS);
     if (loader == null || config == null || config.services().isEmpty()) return results;
 
     Object defaultApp = null;

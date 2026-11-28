@@ -158,7 +158,8 @@ public final class SimulatorSandbox {
                 ShadowDisplayControlLock.class,
                 // Dynamic Material 3 system colors derived from the active watch face palette.
                 SimulatorShadowResources.class,
-                // Firebase Remote Config, Analytics and Crashlytics local capture (inert if SDK is absent).
+                // Firebase Functions, Remote Config, Analytics and Crashlytics (inert if SDK is absent).
+                ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseFunctions.class,
                 ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseRemoteConfig.class,
                 ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseAnalytics.class,
                 ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseCrashlytics.class);
@@ -359,6 +360,8 @@ public final class SimulatorSandbox {
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
     builder.addInstrumentedClass(ShadowDisplayOffloadManager.TARGET);
     builder.addInstrumentedClass(ShadowDisplayControlLock.TARGET);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseFunctions.TARGET);
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseRemoteConfig.TARGET);
     builder.addInstrumentedClass(

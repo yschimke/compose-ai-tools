@@ -73,6 +73,8 @@ public final class FirebaseServices {
     messaging.install();
     if (!config.isEmpty()) {
       resolveAndWire(config);
+    } else {
+      FirebaseEmulatorWiring.setActiveFunctionsEndpoint(null);
     }
   }
 
