@@ -272,7 +272,9 @@ public final class GmsLocationClients {
     }
 
     private Object handleRequestUpdates(Object[] args) {
-      int maxUpdates = readMaxUpdates(args.length > 0 ? args[0] : null);
+      Object req = args.length > 0 ? args[0] : null;
+      int maxUpdates = readMaxUpdates(req);
+      long durationMs = readRequestDurationMillis(req);
       Executor exec = engine.mainExecutor();
       for (Object arg : args) {
         if (arg instanceof Executor) {
@@ -285,19 +287,36 @@ public final class GmsLocationClients {
       for (Object arg : args) {
         if (arg == null) continue;
         if (arg instanceof PendingIntent) {
-          engine.registerLocationPendingIntent((PendingIntent) arg, maxUpdates);
+          engine.registerLocationPendingIntent((PendingIntent) arg, maxUpdates, durationMs);
           return ok(null);
         }
         if (isLocationCallback(arg)) {
-          engine.registerLocationCallback(arg, exec, maxUpdates);
+          engine.registerLocationCallback(arg, exec, maxUpdates, durationMs);
           return ok(null);
         }
         if (isLocationListener(arg)) {
-          engine.registerLocationListener(arg, exec, maxUpdates);
+          engine.registerLocationListener(arg, exec, maxUpdates, durationMs);
           return ok(null);
         }
       }
       return ok(null);
+    }
+
+    private static long readRequestDurationMillis(Object request) {
+      if (request == null) return Long.MAX_VALUE;
+      for (String method : new String[] {"getDurationMillis", "getExpirationDuration"}) {
+        try {
+          Method m = request.getClass().getMethod(method);
+          m.setAccessible(true);
+          Object val = m.invoke(request);
+          if (val instanceof Number) {
+            long d = ((Number) val).longValue();
+            if (d > 0) return d;
+          }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+      }
+      return Long.MAX_VALUE;
     }
 
     private static int readMaxUpdates(Object request) {
