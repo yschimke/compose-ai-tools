@@ -127,8 +127,9 @@ public final class GmsLocationClients {
     Object handle(String name, Method method, Object[] args) {
       switch (name) {
         case "getLastLocation":
-        case "getCurrentLocation":
           return ok(engine.effectiveLastLocation());
+        case "getCurrentLocation":
+          return handleGetCurrentLocation(args);
         case "getLocationAvailability":
           return ok(GmsLocation.createLocationAvailability(loader, engine.isLocationAvailable()));
         case "requestLocationUpdates":
@@ -150,6 +151,54 @@ public final class GmsLocationClients {
           return ok(null);
         default:
           return ok(null);
+      }
+    }
+
+    private Object handleGetCurrentLocation(Object[] args) {
+      Location cached = engine.effectiveLastLocation();
+      if (cached != null) return ok(cached);
+      try {
+        Class<?> tcsClass =
+            Class.forName("com.google.android.gms.tasks.TaskCompletionSource", false, loader);
+        Object tcs = tcsClass.getDeclaredConstructor().newInstance();
+        Method trySetResult = tcsClass.getMethod("trySetResult", Object.class);
+        Object task = tcsClass.getMethod("getTask").invoke(tcs);
+        java.util.function.Consumer<Location> waiter =
+            fix ->
+                engine
+                    .mainExecutor()
+                    .execute(
+                        () -> {
+                          try {
+                            trySetResult.invoke(tcs, fix);
+                          } catch (ReflectiveOperationException ignored) {
+                          }
+                        });
+        engine.awaitNextLocation(waiter);
+        // Wire CancellationToken if supplied as the last argument.
+        Object token = args.length >= 2 ? args[1] : null;
+        if (token != null) {
+          try {
+            Class<?> listenerIface =
+                Class.forName("com.google.android.gms.tasks.OnTokenCanceledListener", false, loader);
+            Object cancelListener =
+                Proxy.newProxyInstance(
+                    loader,
+                    new Class<?>[] {listenerIface},
+                    (p, m, a) -> {
+                      if ("onCanceled".equals(m.getName())) {
+                        engine.cancelPendingLocation(waiter);
+                        waiter.accept(null);
+                      }
+                      return null;
+                    });
+            token.getClass().getMethod("onCanceledRequested", listenerIface).invoke(token, cancelListener);
+          } catch (ReflectiveOperationException ignored) {
+          }
+        }
+        return task;
+      } catch (ReflectiveOperationException e) {
+        return ok(null);
       }
     }
 

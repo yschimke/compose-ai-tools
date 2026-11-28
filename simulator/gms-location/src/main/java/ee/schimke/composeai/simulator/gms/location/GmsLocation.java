@@ -66,6 +66,8 @@ public final class GmsLocation {
   private final List<CallbackEntry> locationCallbacks = new CopyOnWriteArrayList<>();
   private final List<ListenerEntry> locationListeners = new CopyOnWriteArrayList<>();
   private final List<PendingIntent> locationPendingIntents = new CopyOnWriteArrayList<>();
+  private final List<java.util.function.Consumer<Location>> pendingCurrentLocations =
+      new CopyOnWriteArrayList<>();
   private final Map<String, GeofenceEntry> geofences =
       Collections.synchronizedMap(new LinkedHashMap<>());
   private final List<PendingIntent> activityUpdateIntents = new CopyOnWriteArrayList<>();
@@ -290,14 +292,32 @@ public final class GmsLocation {
     }
   }
 
+  void awaitNextLocation(java.util.function.Consumer<Location> consumer) {
+    if (consumer != null) pendingCurrentLocations.add(consumer);
+  }
+
+  void cancelPendingLocation(java.util.function.Consumer<Location> consumer) {
+    pendingCurrentLocations.remove(consumer);
+  }
+
   /** Receives a simulated location fix (from {@code location} or {@code gmsLocation} commands). */
   public void onLocationUpdate(Location fix) {
     if (fix == null) return;
     this.lastLocation = fix;
     if (!mockMode && locationAvailable) {
+      completePendingCurrentLocations(fix);
       deliverLocation(fix);
     }
     evaluateGeofences(fix);
+  }
+
+  private void completePendingCurrentLocations(Location fix) {
+    if (pendingCurrentLocations.isEmpty()) return;
+    List<java.util.function.Consumer<Location>> snapshot = new ArrayList<>(pendingCurrentLocations);
+    pendingCurrentLocations.removeAll(snapshot);
+    for (java.util.function.Consumer<Location> c : snapshot) {
+      c.accept(fix);
+    }
   }
 
   public void setLocationAvailable(boolean available) {
@@ -528,6 +548,7 @@ public final class GmsLocation {
       if (c.has("bearing")) fix.setBearing((float) c.getDouble("bearing"));
       if (c.has("speed")) fix.setSpeed((float) c.getDouble("speed"));
       fix.setTime(SimulatorHooks.currentTimeMillis());
+      fix.setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos());
       onLocationUpdate(fix);
     }
     if (c.has("activity")) {
