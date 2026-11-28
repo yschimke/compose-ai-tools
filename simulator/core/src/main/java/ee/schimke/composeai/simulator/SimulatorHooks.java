@@ -46,8 +46,19 @@ public final class SimulatorHooks {
       startServiceInterceptors = new java.util.concurrent.CopyOnWriteArrayList<>();
   private static volatile LongSupplier clockSource;
   private static volatile WatchStateObserver watchStateObserver;
+  private static volatile java.util.function.Consumer<android.location.Location> locationObserver;
 
   private SimulatorHooks() {}
+
+  public static void setLocationObserver(
+      java.util.function.Consumer<android.location.Location> observer) {
+    locationObserver = observer;
+  }
+
+  public static void notifyLocation(android.location.Location location) {
+    java.util.function.Consumer<android.location.Location> obs = locationObserver;
+    if (obs != null && location != null) obs.accept(location);
+  }
 
   public static void setBindIntentCanonicalizer(UnaryOperator<Intent> canonicalizer) {
     if (canonicalizer != null && !bindIntentCanonicalizers.contains(canonicalizer)) {

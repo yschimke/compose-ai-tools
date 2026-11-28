@@ -164,14 +164,15 @@ final class DeviceState {
 
   /**
    * A fix at {@code lat}/{@code lng} ({@code accuracy} metres, {@code altitude}, {@code bearing},
-   * {@code speed} optional), delivered to the platform's GPS, network and fused providers: their
-   * listeners hear it and {@code getLastKnownLocation} returns it. Play services' fused location is
-   * not present, so only apps on the platform API (or {@code LocationManagerCompat}) see it.
+   * {@code speed} optional), delivered to the platform's GPS, network and fused providers (and to
+   * any registered GMS fused location observer via {@link SimulatorHooks#notifyLocation}): their
+   * listeners hear it and {@code getLastKnownLocation} returns it.
    */
   private JSONObject location(JSONObject c) throws JSONException {
     LocationManager manager = app.getSystemService(LocationManager.class);
     ShadowLocationManager shadow = Shadow.extract(manager);
     shadow.setLocationEnabled(true);
+    Location fusedFix = null;
     for (String provider :
         new String[] {
           LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, "fused"
@@ -187,7 +188,9 @@ final class DeviceState {
       fix.setTime(SimulatorHooks.currentTimeMillis());
       fix.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
       shadow.simulateLocation(provider, fix);
+      if ("fused".equals(provider)) fusedFix = fix;
     }
+    if (fusedFix != null) SimulatorHooks.notifyLocation(fusedFix);
     Location last = manager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
     return new Protocol.Json()
         .put("lat", last == null ? null : last.getLatitude())

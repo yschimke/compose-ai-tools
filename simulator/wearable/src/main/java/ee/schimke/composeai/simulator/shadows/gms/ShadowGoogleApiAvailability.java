@@ -129,8 +129,9 @@ public class ShadowGoogleApiAvailability {
 
   private static boolean simulated(Object api) {
     // DataLayerClients names the app's Play services Wearable classes: loaded only when the launch
-    // simulates the Data Layer.
-    return DataLayerLink.enabled() && DataLayerClients.simulated(api);
+    // simulates the Data Layer. Modular GMS simulators register themselves via PlayServices.
+    return (DataLayerLink.enabled() && DataLayerClients.simulated(api))
+        || PlayServices.isSimulatedApi(api);
   }
 
   /**

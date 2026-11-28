@@ -151,6 +151,27 @@ public final class PlayServices {
     return state != State.DISABLED;
   }
 
+  private static final java.util.concurrent.CopyOnWriteArrayList<
+          java.util.function.Predicate<Object>>
+      simulatedApis = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+  /**
+   * Registers a predicate matching client instances belonging to a simulated GMS API module so
+   * {@code GoogleApiAvailability.checkApiAvailability} reports them available.
+   */
+  public static void registerSimulatedApi(java.util.function.Predicate<Object> predicate) {
+    if (predicate != null) simulatedApis.addIfAbsent(predicate);
+  }
+
+  /** Whether any modular GMS simulator registered a predicate matching {@code api}. */
+  public static boolean isSimulatedApi(Object api) {
+    if (api == null) return false;
+    for (java.util.function.Predicate<Object> predicate : simulatedApis) {
+      if (predicate.test(api)) return true;
+    }
+    return false;
+  }
+
   /**
    * {@code checkApiAvailability}'s answer for one API: Play services' own status when it is not
    * {@code SUCCESS}; otherwise success for an API the simulator implements ([simulated]) and

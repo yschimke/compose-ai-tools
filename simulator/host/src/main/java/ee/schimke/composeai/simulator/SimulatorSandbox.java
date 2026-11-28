@@ -145,6 +145,9 @@ public final class SimulatorSandbox {
                 ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.class,
+                // Play services Location (FusedLocation, Geofencing, Settings, ActivityRecognition).
+                ee.schimke.composeai.simulator.shadows.gms.ShadowLocationServices.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowActivityRecognition.class,
                 // androidx.appsearch's storages, in memory (AppSearchSessions).
                 ShadowLocalStorage.class,
                 // Cross-app App Functions calls, over the device bus of --install.
@@ -355,6 +358,10 @@ public final class SimulatorSandbox {
         ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.SMS_RETRIEVER);
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.FIDO2_API_CLIENT);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.gms.ShadowLocationServices.LOCATION_SERVICES);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.gms.ShadowActivityRecognition.ACTIVITY_RECOGNITION);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
     builder.addInstrumentedClass(ShadowDisplayOffloadManager.TARGET);
