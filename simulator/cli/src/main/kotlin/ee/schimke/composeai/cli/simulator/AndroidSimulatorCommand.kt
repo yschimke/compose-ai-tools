@@ -7,6 +7,11 @@ import ee.schimke.composeai.cli.HostNativesProvision
 import ee.schimke.composeai.cli.simulator.device.DeviceHost
 import ee.schimke.composeai.cli.simulator.device.VirtualDevice
 import ee.schimke.composeai.io.composeAiCacheDir
+import ee.schimke.composeai.simulator.launch.ApkConversionCache
+import ee.schimke.composeai.simulator.launch.ApkConverter
+import ee.schimke.composeai.simulator.launch.DataLayerHub
+import ee.schimke.composeai.simulator.launch.FileFacts
+import ee.schimke.composeai.simulator.launch.SimulatorJvm
 import java.awt.GraphicsEnvironment
 import java.io.Closeable
 import java.io.File
@@ -1337,40 +1342,22 @@ class AndroidSimulatorCommand(
     previous: File?,
     context: List<File> = emptyList(),
     provided: List<File> = emptyList(),
-  ): String {
-    for ((attempt, heap) in CONVERTER_HEAPS.withIndex()) {
-      val process =
-        ProcessBuilder(
-            converterCommand(
-              java.binary,
-              converterJars,
-              apk,
-              out,
-              androidJar,
-              heap,
-              previous,
-              context,
-              provided,
-            ),
-          )
-          .redirectError(ProcessBuilder.Redirect.INHERIT)
-          .start()
-      val summary = process.inputStream.bufferedReader().readText()
-      val exit = process.waitFor()
-      if (exit == 0) return summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
-      val next = CONVERTER_HEAPS.getOrNull(attempt + 1)
-      check(exit == OUT_OF_MEMORY_EXIT && next != null) { "the APK converter exited $exit" }
-      // The converter's temporary jars, which an exit on OutOfMemoryError leaves behind.
-      out.absoluteFile.parentFile
-        .listFiles { f -> f.name.startsWith("dex2jar-") && f.name.endsWith(".jar") }
-        .orEmpty()
-        .forEach { it.delete() }
-      System.err.println(
-        "compose-preview android-simulator: the converter ran out of its $heap heap; retrying with $next",
-      )
-    }
-    error("unreachable")
-  }
+  ): String =
+    ApkConverter.convert(
+      java.binary,
+      converterJars,
+      apk,
+      out,
+      androidJar,
+      previous,
+      context,
+      provided,
+      onRetry = { heap, next ->
+        System.err.println(
+          "compose-preview android-simulator: the converter ran out of its $heap heap; retrying with $next",
+        )
+      },
+    )
 
   /**
    * Robolectric's system properties for an online launch: SDK [sdk]'s `android-all` provisioned
@@ -1559,32 +1546,21 @@ class AndroidSimulatorCommand(
       return null
     }
 
-    const val LAUNCH_MAIN = "ee.schimke.composeai.simulator.LaunchMain"
+    const val LAUNCH_MAIN = SimulatorJvm.LAUNCH_MAIN
 
     /**
      * Jars whose classes the converter looks types up in after the APK's own (`ApkClassConverter`).
      */
-    const val CONVERTER_CONTEXT_PROPERTY = "composeai.simulator.converter.context"
+    const val CONVERTER_CONTEXT_PROPERTY = ApkConverter.CONTEXT_PROPERTY
 
     /** `:simulator-host`'s `ApkClassConverter.PROVIDED_PROPERTY`. */
-    const val CONVERTER_PROVIDED_PROPERTY = "composeai.simulator.converter.provided"
+    const val CONVERTER_PROVIDED_PROPERTY = ApkConverter.PROVIDED_PROPERTY
 
     /** Whether [jar] has androidx.test classes; remembered per jar ([FileFacts]). */
-    fun carriesAndroidxTest(jar: File): Boolean =
-      FileFacts.remember(jar, "androidx-test-1") {
-        runCatching {
-            java.util.zip.ZipFile(jar).use { zip ->
-              zip.entries().asSequence().any {
-                it.name.startsWith("androidx/test/") && it.name.endsWith(".class")
-              }
-            }
-          }
-          .getOrDefault(false)
-          .toString()
-      } == "true"
+    fun carriesAndroidxTest(jar: File): Boolean = ApkConverter.carriesAndroidxTest(jar)
 
     /** The name `:simulator-host`'s jar starts with in `lib-simulator/`. */
-    const val SIMULATOR_HOST_JAR = "simulator-host"
+    const val SIMULATOR_HOST_JAR = SimulatorJvm.HOST_JAR_PREFIX
 
     /** The name `:simulator-core`'s jar starts with in `lib-simulator/`. */
     const val SIMULATOR_CORE_JAR = "simulator-core"
@@ -1613,7 +1589,7 @@ class AndroidSimulatorCommand(
 
     /** `1`: every `--instrument` run uses the pool, as `--pool` does. */
     const val POOL_ENV = "COMPOSE_PREVIEW_SIMULATOR_POOL"
-    const val CONVERTER_MAIN = "ee.schimke.composeai.simulator.ApkClassConverter"
+    const val CONVERTER_MAIN = ApkConverter.MAIN
 
     /**
      * Whether a launch outlives its app exiting: only with a project and something that can reload
@@ -1645,17 +1621,15 @@ class AndroidSimulatorCommand(
      * with 116 MB of live heap, and to 5.4 GB in longer runs whatever its `-Xmx`. A periodic
      * collection, only when none has run for that long, keeps it flat (990 MB).
      */
-    val SIMULATOR_JVM_ARGS = listOf("-XX:G1PeriodicGCInterval=5000")
+    val SIMULATOR_JVM_ARGS = SimulatorJvm.JVM_ARGS
 
     /**
      * The simulator's heap without `--max-heap`: an eighth of the machine, between 768 MB and 2 GB.
      * The JVM's own default, a quarter of the machine, lets G1 grow far past an app's live set
      * (about 120 MB for Confetti and Now in Android) before it collects, and `--pair` runs two.
      */
-    fun defaultMaxHeap(physicalMemoryBytes: Long?): String {
-      val mb = (physicalMemoryBytes ?: 0L) / (1L shl 20) / 8
-      return "${mb.coerceIn(768L, 2048L)}m"
-    }
+    fun defaultMaxHeap(physicalMemoryBytes: Long?): String =
+      SimulatorJvm.defaultMaxHeap(physicalMemoryBytes)
 
     private fun physicalMemoryBytes(): Long? =
       (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
@@ -1668,10 +1642,10 @@ class AndroidSimulatorCommand(
      * Assistant's 61,000 classes. Without a cap the JVM's default heap, a quarter of the machine,
      * lets G1 grow to twice that before it collects.
      */
-    val CONVERTER_HEAPS = listOf("1g", "3g")
+    val CONVERTER_HEAPS = ApkConverter.HEAPS
 
     /** `-XX:+ExitOnOutOfMemoryError`'s exit status. */
-    const val OUT_OF_MEMORY_EXIT = 3
+    const val OUT_OF_MEMORY_EXIT = ApkConverter.OUT_OF_MEMORY_EXIT
 
     /** The converter JVM's command line. Pure, for tests. */
     fun converterCommand(
@@ -1685,30 +1659,16 @@ class AndroidSimulatorCommand(
       context: List<File> = emptyList(),
       provided: List<File> = emptyList(),
     ): List<String> =
-      listOfNotNull(
-        java.path,
-        "-Xmx$heap",
-        context
-          .takeIf { it.isNotEmpty() }
-          ?.let { jars ->
-            "-D$CONVERTER_CONTEXT_PROPERTY=" + jars.joinToString(File.pathSeparator) { it.path }
-          },
-        provided
-          .takeIf { it.isNotEmpty() }
-          ?.let { jars ->
-            "-D$CONVERTER_PROVIDED_PROPERTY=" + jars.joinToString(File.pathSeparator) { it.path }
-          },
-        // A single-threaded batch job: the serial collector's footprint is the smallest, and it
-        // spends no threads on concurrent marking.
-        "-XX:+UseSerialGC",
-        "-XX:+ExitOnOutOfMemoryError",
-        "-cp",
-        converterJars.joinToString(File.pathSeparator) { it.path },
-        CONVERTER_MAIN,
-        apk.path,
-        out.path,
-        androidJar.path,
-        previous?.path,
+      ApkConverter.command(
+        java,
+        converterJars,
+        apk,
+        out,
+        androidJar,
+        heap,
+        previous,
+        context,
+        provided,
       )
 
     /**
@@ -1803,35 +1763,9 @@ class AndroidSimulatorCommand(
       options: Options,
       robolectricProperties: Map<String, String>,
       robolectricJvmArgs: List<String>,
-    ): List<String> = buildList {
-      add(java.path)
-      addAll(robolectricJvmArgs)
-      options.maxHeap?.let { add("-Xmx$it") }
-      addAll(SIMULATOR_JVM_ARGS)
-      if (options.libraryPath.isNotEmpty()) {
-        add("-Djava.library.path=${options.libraryPath.joinToString(File.pathSeparator)}")
-      }
-      addAll(options.jvmOptions)
-      add("--enable-native-access=ALL-UNNAMED")
-      // The host jar is also the simulator's agent: it lets a reload redefine changed classes in
-      // the running app (`hotswap`) instead of restarting it.
-      classpath
-        .firstOrNull { it.name.startsWith(SIMULATOR_HOST_JAR) }
-        ?.let { add("-javaagent:${it.path}") }
-      // NetworkGate wraps java.net's socket and resolver, so the simulated network decides what
-      // the app's real traffic reaches.
-      add("--add-opens=java.base/java.net=ALL-UNNAMED")
-      if (options.headless) add("-Djava.awt.headless=true")
+    ): List<String> {
       val properties =
-        linkedMapOf(
-          "robolectric.logging.enabled" to "true",
-          "robolectric.logging" to "stdout",
-          "robolectric.createActivityContexts" to "true",
-          "robolectric.useEmbeddedViewRoot" to "true",
-          "robolectric.deviceconfig.sdk" to options.sdk.toString(),
-          "composeai.simulator.qualifiers" to options.qualifiers,
-        )
-      properties["composeai.simulator.formFactor"] = options.formFactor
+        SimulatorJvm.baseProperties(options.sdk, options.qualifiers, options.formFactor)
       options.launchActivity?.let { properties["composeai.simulator.launchActivity"] = it }
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.network?.let { properties["composeai.simulator.network"] = it }
@@ -1867,12 +1801,18 @@ class AndroidSimulatorCommand(
       }
       properties.putAll(options.properties)
       properties.putAll(robolectricProperties)
-      for ((key, value) in properties) add("-D$key=$value")
-      add("-cp")
-      add(classpath.joinToString(File.pathSeparator) { it.path })
-      add(LAUNCH_MAIN)
-      add(apk.path)
-      classes.forEach { add(it.path) }
+      return SimulatorJvm.command(
+        java = java,
+        classpath = classpath,
+        apk = apk,
+        classes = classes,
+        robolectricJvmArgs = robolectricJvmArgs,
+        properties = properties,
+        maxHeap = options.maxHeap,
+        libraryPath = options.libraryPath,
+        jvmOptions = options.jvmOptions,
+        headless = options.headless,
+      )
     }
 
     internal fun deviceOptions(

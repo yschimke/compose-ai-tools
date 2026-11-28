@@ -38,6 +38,9 @@ dependencies {
   api(libs.composeai.data.preview.overrides.core)
 
   implementation(libs.composeai.common.io)
+  // `AppSimulatorLauncher`: the converted-APK cache, converter, simulator JVM command line and Data
+  // Layer hub `compose-preview android-simulator` uses, so the two share conversions and behaviour.
+  implementation(project(":simulator-launch"))
   implementation(project(":common-image-crop"))
   // `DwfSimulatorConnection.command` takes and returns kotlinx.serialization `JsonObject` /
   // `JsonElement`.

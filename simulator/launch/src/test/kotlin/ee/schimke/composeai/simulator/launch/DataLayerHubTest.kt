@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.simulator
+package ee.schimke.composeai.simulator.launch
 
 import java.io.DataInputStream
 import java.io.DataOutputStream

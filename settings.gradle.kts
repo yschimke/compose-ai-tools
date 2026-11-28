@@ -235,6 +235,12 @@ include(":simulator-cli")
 
 project(":simulator-cli").projectDir = file("simulator/cli")
 
+// The converted-APK cache, converter, simulator JVM command line and Data Layer hub, shared by
+// `:simulator-cli` and `:render-host`'s `AppSimulatorLauncher`; published as `simulator-launch`.
+include(":simulator-launch")
+
+project(":simulator-launch").projectDir = file("simulator/launch")
+
 include(":notification-preview-runtime")
 
 project(":notification-preview-runtime").projectDir = file("runtimes/notification")

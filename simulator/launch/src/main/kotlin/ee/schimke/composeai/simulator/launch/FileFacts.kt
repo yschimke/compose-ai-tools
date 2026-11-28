@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.simulator
+package ee.schimke.composeai.simulator.launch
 
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit
  * the same size, is worked out again. Hashing and scanning a large APK every launch was most of the
  * CLI's start-up: Cadence's 104 MB debug APK took 3.4 s before the simulator JVM started.
  */
-internal object FileFacts {
+public object FileFacts {
 
   private val root: File by lazy { File(composeAiCacheDir("simulator"), "facts") }
 
   /** [kind] of [file] as [compute] works it out, from the store while [file] is unchanged. */
-  fun remember(file: File, kind: String, compute: () -> String): String {
+  public fun remember(file: File, kind: String, compute: () -> String): String {
     val stamp = stampOf(file) ?: return compute()
     val record = File(File(root, kind), key(file))
     runCatching {

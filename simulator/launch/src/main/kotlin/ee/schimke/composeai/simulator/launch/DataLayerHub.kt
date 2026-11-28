@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.simulator
+package ee.schimke.composeai.simulator.launch
 
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -25,16 +25,16 @@ import kotlinx.serialization.json.contentOrNull
  * app's simulator goes away (a device of several apps, `--app`, is one node with an app per
  * simulator); everything else a frame means is the simulators' business.
  */
-internal class DataLayerHub(private val log: (String) -> Unit = NO_LOG) : AutoCloseable {
+public class DataLayerHub(private val log: (String) -> Unit = NO_LOG) : AutoCloseable {
 
   private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
   private val connections = CopyOnWriteArrayList<Connection>()
 
-  val port: Int
+  public val port: Int
     get() = server.localPort
 
   /** The simulators connected now. */
-  internal val connected: Int
+  public val connected: Int
     get() = connections.size
 
   private inner class Connection(val socket: Socket) {
@@ -55,7 +55,7 @@ internal class DataLayerHub(private val log: (String) -> Unit = NO_LOG) : AutoCl
     }
   }
 
-  fun start(): DataLayerHub {
+  public fun start(): DataLayerHub {
     thread("datalayer-hub") {
       while (!server.isClosed) {
         val socket =
@@ -113,11 +113,11 @@ internal class DataLayerHub(private val log: (String) -> Unit = NO_LOG) : AutoCl
     for (connection in connections) runCatching { connection.socket.close() }
   }
 
-  companion object {
+  public companion object {
     private val NO_LOG: (String) -> Unit = {}
 
     /** As the simulator side's `DataLayerLink.MAX_FRAME`. */
-    const val MAX_FRAME = 64 * 1024 * 1024
+    public const val MAX_FRAME: Int = 64 * 1024 * 1024
 
     private fun parse(bytes: ByteArray): JsonObject? = runCatching {
       Json.parseToJsonElement(bytes.decodeToString()) as? JsonObject

@@ -103,6 +103,37 @@ surfaces can evolve independently while `:simulator-host` stages them together i
 - `:simulator-host` — thin composition root (`Session`, `SimulatorControl`, `SimulatorSandbox`,
   `LaunchMain`, `-javaagent` hot swap, and `META-INF/services`) that exports all four modules.
 
+Two more run on the host, not in the simulator JVM:
+
+- `:simulator-cli` — `compose-preview android-simulator` itself: the supervisor, `--pair` and
+  `--app` topologies, live reload, the virtual adb device, scenarios, host natives.
+- `:simulator-launch` (published) — what launching a simulator JVM takes, shared by the CLI and by
+  hosts that launch simulators themselves: the converted-APK cache (`ApkConversionCache`), the
+  converter's invocation (`ApkConverter`), the simulator JVM's command line (`SimulatorJvm`), and
+  the Data Layer hub that pairs two (`DataLayerHub`). No Tooling API, gRPC or Ktor, so a server can
+  link it.
+
+**From a host process.** `AppSimulatorLauncher` in `:render-host` starts a phone, a watch, or both
+paired, one simulator JVM per device and no CLI JVM between them (the CLI's own is about 85 MB a
+session), and hands back an `AppSimulatorSession`: the same JSON-lines commands, answered by id
+from any thread, the unasked events with their device, `awaitReady`, the JVMs' pids, and `pause` /
+`resume` (`SIGSTOP` / `SIGCONT`). It converts through the same cache and stamp as the CLI, so a
+conversion either makes serves the other. What it leaves out: host natives, live reload, the adb
+device and scenarios. The preview server's simulator sessions are its first user.
+
+```kotlin
+AppSimulatorLauncher.start(
+  AppSimulatorLaunch(
+    apks = mapOf(AppSimulatorDevice.PHONE to phoneApk, AppSimulatorDevice.WATCH to watchApk),
+    network = "offline",
+  ),
+) { device, event -> println("$device $event") }
+  .use { session ->
+    session.awaitReady(timeoutMillis = 120_000)
+    session.command(AppSimulatorDevice.WATCH, buildJsonObject { put("cmd", "screenshot") })
+  }
+```
+
 **Converting dex.** `ApkClassConverter` runs [dex2jar](https://github.com/ThexXTURBOXx/dex2jar)
 over every `classes*.dex`, with two repairs of its own:
 

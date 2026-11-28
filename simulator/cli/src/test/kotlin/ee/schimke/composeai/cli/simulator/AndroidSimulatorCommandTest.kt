@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.simulator
 
+import ee.schimke.composeai.simulator.launch.ApkConversionCache
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test

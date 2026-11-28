@@ -1,4 +1,4 @@
-package ee.schimke.composeai.cli.simulator
+package ee.schimke.composeai.simulator.launch
 
 import java.io.Closeable
 import java.io.File
@@ -45,16 +45,20 @@ import java.util.zip.ZipFile
  * result instead of converting again. Output lands in a temporary file and is moved into place, so
  * an interrupted conversion never leaves a partial `classes.jar` behind.
  */
-internal class ApkConversionCache(
+public class ApkConversionCache(
   private val root: File,
   private val keepApks: Int = DEFAULT_KEEP_APKS,
   private val maxBytes: Long = DEFAULT_MAX_BYTES,
 ) {
 
   /** What [ensure] returns. */
-  data class Entry(val classesJar: File, val summary: String, val cached: Boolean) {
+  public data class Entry(
+    public val classesJar: File,
+    public val summary: String,
+    public val cached: Boolean,
+  ) {
     /** The `<apk sha256>` directory. */
-    val apkDir: File
+    public val apkDir: File
       get() = classesJar.parentFile.parentFile
   }
 
@@ -64,7 +68,7 @@ internal class ApkConversionCache(
    * ([indexOf]), and returns the converter's summary; its second argument is the previous build's
    * converted jar, when there is one to reuse classes from.
    */
-  fun ensure(
+  public fun ensure(
     apk: File,
     converterStamp: String,
     convert: (out: File, previous: File?) -> String,
@@ -132,7 +136,7 @@ internal class ApkConversionCache(
    * Marks [entry] in use until closed: pruning, from this process or another, leaves it alone. A
    * launch holds it for as long as its simulator runs from the entry's jar.
    */
-  fun use(entry: Entry): Closeable = use(entry.apkDir)
+  public fun use(entry: Entry): Closeable = use(entry.apkDir)
 
   private fun use(apkDir: File?): Closeable {
     if (apkDir == null) return Closeable {}
@@ -268,19 +272,19 @@ internal class ApkConversionCache(
 
   private fun inUseFile(name: String) = File(root, "$name.inuse")
 
-  companion object {
+  public companion object {
     private class InUseHold(val file: RandomAccessFile, val lock: FileLock, var refs: Int)
 
     private val jvmEnsureLocks =
       java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock>()
     private val jvmInUseLocks = HashMap<String, InUseHold>()
 
-    const val CLASSES_JAR = "classes.jar"
-    const val SUMMARY_JSON = "conversion.json"
-    const val SOURCE_TXT = "source.txt"
-    const val DEFAULT_KEEP_APKS = 8
+    public const val CLASSES_JAR: String = "classes.jar"
+    public const val SUMMARY_JSON: String = "conversion.json"
+    public const val SOURCE_TXT: String = "source.txt"
+    public const val DEFAULT_KEEP_APKS: Int = 8
     /** A converted jar is about as large as its APK's dex; Home Assistant's is 96 MB. */
-    const val DEFAULT_MAX_BYTES = 2L shl 30
+    public const val DEFAULT_MAX_BYTES: Long = 2L shl 30
     private const val SHA256_HEX_LENGTH = 64
 
     /**
@@ -288,11 +292,12 @@ internal class ApkConversionCache(
      * library classes the simulator provides, which the converter drops from the APK
      * (`ApkClassConverter.SHARED_LIBRARY_PACKAGES`).
      */
-    const val CONVERTER_CLASSES = "ee/schimke/composeai/simulator/ApkClassConverter"
-    val SHARED_LIBRARY_PACKAGES = listOf("com/google/android/wearable/", "com/google/wear/")
+    public const val CONVERTER_CLASSES: String = "ee/schimke/composeai/simulator/ApkClassConverter"
+    public val SHARED_LIBRARY_PACKAGES: List<String> =
+      listOf("com/google/android/wearable/", "com/google/wear/")
 
     /** The index the converter writes beside [jar] (`ApkClassConverter.indexOf`). */
-    fun indexOf(jar: File): File = File(jar.parentFile, "${jar.name}.index")
+    public fun indexOf(jar: File): File = File(jar.parentFile, "${jar.name}.index")
 
     /**
      * A stamp for the converter: the converter's own classes and the shared-library classes in the
@@ -300,7 +305,7 @@ internal class ApkConversionCache(
      * every other jar it runs from (dex2jar), and the platform jar's name and size (its content is
      * large and changes only with a new platform).
      */
-    fun converterStamp(converterJars: List<File>, platformJar: File): String {
+    public fun converterStamp(converterJars: List<File>, platformJar: File): String {
       val digest = MessageDigest.getInstance("SHA-256")
       for (jar in converterJars.sortedBy { it.name }) {
         digest.update(jar.name.toByteArray())
@@ -348,9 +353,10 @@ internal class ApkConversionCache(
     }
 
     /** [sha256] of [file], remembered while it is unchanged ([FileFacts]). */
-    fun rememberedSha256(file: File): String = FileFacts.remember(file, "sha256") { sha256(file) }
+    public fun rememberedSha256(file: File): String =
+      FileFacts.remember(file, "sha256") { sha256(file) }
 
-    fun sha256(file: File): String {
+    public fun sha256(file: File): String {
       val digest = MessageDigest.getInstance("SHA-256")
       file.inputStream().use { digest.update(it) }
       return digest.digest().toHex()

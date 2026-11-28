@@ -12,6 +12,9 @@ plugins {
 }
 
 dependencies {
+  // The converted-APK cache, converter, simulator JVM command line and Data Layer hub, shared with
+  // `:render-host`'s `AppSimulatorLauncher`.
+  implementation(project(":simulator-launch"))
   // Sidecar lookup (`locateBundleSidecarJars`) and Robolectric JVM args (`AndroidBundleLaunch`).
   implementation(project(":bundle-format"))
   implementation(libs.composeai.common.io)

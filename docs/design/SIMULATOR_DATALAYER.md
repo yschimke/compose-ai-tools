@@ -38,7 +38,7 @@ everything that already works. The CLI hosts the relay. **Chosen**, combined wit
 
 ```
 compose-preview launch phone.apk --pair wear.apk --control stdio
- ├─ DataLayerHub (CLI)            localhost socket; relays frames, says "bye" for a node that leaves
+ ├─ DataLayerHub (:simulator-launch, in the CLI or AppSimulatorLauncher) localhost socket; relays frames, says "bye" for a node that leaves
  ├─ PairedLaunch (CLI)            stdin → the "device" a command names; stdout lines tagged "device"
  ├─ simulator JVM: phone.apk      -Dcomposeai.simulator.datalayer.{hub,node=phone-sim,name}
  │    Wearable.getXClient ─► ShadowWearable ─► DataLayer ─► DataLayerLink ─┐

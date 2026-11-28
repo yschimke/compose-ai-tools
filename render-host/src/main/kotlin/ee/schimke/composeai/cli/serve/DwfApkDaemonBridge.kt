@@ -928,7 +928,7 @@ internal object DwfApkDaemonBridge : DwfApkSessionBridge {
     }
   }
 
-  private fun locateAndroidJar(): File? {
+  internal fun locateAndroidJar(): File? {
     val roots =
       listOfNotNull(
         System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() },
