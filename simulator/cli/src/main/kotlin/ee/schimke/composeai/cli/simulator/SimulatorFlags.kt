@@ -79,6 +79,8 @@ private val SIMULATOR_VALUE_FLAGS: Set<String> =
     "--display",
     "--dwf-renderer-apk",
     "--fingerprint",
+    "--firebase-emulator",
+    "--firebase-project",
     "--font-scale",
     "--form-factor",
     "--gradle-arg",

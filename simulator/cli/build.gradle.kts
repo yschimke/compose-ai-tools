@@ -1,19 +1,35 @@
 // Host-side controller, virtual ADB/gRPC device, live reload, pool, paired launch, scenario runner,
-// DWF runtime resolver, and host-natives provisioning for `compose-preview android-simulator`.
+// DWF runtime resolver, and host-natives provisioning for `android-simulator`.
 //
-// Kept separate from `:cli` so the simulator's host orchestration has no compile dependency on
-// preview discovery, bundle rendering, or the rest of the CLI; `:cli` wires in the few host
-// provisioning callbacks through `SimulatorHostEnvironment`.
+// Self-contained: zero project dependencies on `:cli` or `:bundle-format`. Packages a standalone
+// `android-simulator` distribution (`installDist` / `distTar`) with `lib-simulator/` and
+// `lib-dex2jar/` staged alongside its `bin/` and `lib/`.
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
+  application
 }
 
+application {
+  applicationName = "android-simulator"
+  mainClass.set("ee.schimke.composeai.cli.simulator.SimulatorMainKt")
+}
+
+val simulatorSidecar =
+  configurations.create("simulatorSidecar") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
+val simulatorDex2jar =
+  configurations.create("simulatorDex2jar") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
-  // Sidecar lookup (`locateBundleSidecarJars`) and Robolectric JVM args (`AndroidBundleLaunch`).
-  implementation(project(":bundle-format"))
   implementation(libs.composeai.common.io)
 
   implementation(libs.kotlinx.serialization.json)
@@ -33,15 +49,34 @@ dependencies {
   implementation(libs.grpc.protobuf)
   implementation(libs.protobuf.java)
 
+  add("simulatorSidecar", project(":simulator-host"))
+  addProvider<MinimalExternalModuleDependency, ExternalModuleDependency>(
+    "simulatorSidecar",
+    libs.robolectricSimulator,
+  ) {
+    isTransitive = false
+  }
+  add("simulatorDex2jar", libs.dex2jar.tools)
+
   constraints {
     implementation("org.slf4j:slf4j-api") {
       version { strictly("2.0.17") }
-      because(
-        "gradle-tooling-api strictly requires slf4j-api 2.0.17; ktor client pulls 2.0.18",
-      )
+      because("gradle-tooling-api strictly requires slf4j-api 2.0.17; ktor client pulls 2.0.18")
     }
   }
 
   testImplementation(kotlin("test"))
   testImplementation(libs.junit)
 }
+
+distributions {
+  main {
+    distributionBaseName.set("android-simulator")
+    contents {
+      into("lib-simulator") { from(simulatorSidecar) }
+      into("lib-dex2jar") { from(simulatorDex2jar) }
+    }
+  }
+}
+
+tasks.named<Tar>("distTar") { compression = Compression.GZIP }

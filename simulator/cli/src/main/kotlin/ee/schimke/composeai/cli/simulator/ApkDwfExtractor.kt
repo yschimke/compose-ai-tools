@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli.simulator
 
-import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -133,7 +132,7 @@ internal object ApkDwfExtractor {
     verbose: Boolean = false,
     prepareSkikoNative: (List<File>) -> File? = { null },
   ): File? {
-    val rcJvmJars = locateBundleSidecarJars("lib-rcjvm")
+    val rcJvmJars = SimulatorRuntimeSupport.locateSidecarJars("lib-rcjvm")
     if (rcJvmJars.isEmpty()) return null
     val skikoNative = runCatching { prepareSkikoNative(rcJvmJars) }.getOrNull()
 
@@ -202,7 +201,7 @@ internal object ApkDwfExtractor {
     if (extractedInputs.isEmpty()) return null
     File(workDir, "watchfaces-input.json").writeText(json.encodeToString(extractedInputs))
 
-    val desktopJars = locateBundleSidecarJars("lib-daemon-desktop")
+    val desktopJars = SimulatorRuntimeSupport.locateSidecarJars("lib-daemon-desktop")
     val runtimeSidecar =
       desktopJars.ifEmpty { robolectricJars }.filterNot { it.name.startsWith("skiko-awt") }
     val classpath =

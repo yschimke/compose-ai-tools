@@ -1,8 +1,5 @@
 package ee.schimke.composeai.cli.simulator
 
-import ee.schimke.composeai.bundle.AndroidBundleLaunch
-import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
-import ee.schimke.composeai.bundle.locateBundleSidecarJars
 import ee.schimke.composeai.cli.HostNativesProvision
 import ee.schimke.composeai.cli.simulator.device.DeviceHost
 import ee.schimke.composeai.cli.simulator.device.VirtualDevice
@@ -228,11 +225,11 @@ class AndroidSimulatorCommand(
     if (!environment.ensureAndroidSidecar()) {
       fail("could not provision the Android daemon sidecar, which carries Robolectric")
     }
-    val robolectricJars = locateBundleSidecarJars("lib-daemon-android")
+    val robolectricJars = SimulatorRuntimeSupport.locateSidecarJars("lib-daemon-android")
     if (robolectricJars.isEmpty()) {
       fail(
         "the Android daemon sidecar is missing; looked in " +
-          bundleSidecarSearchDescription("lib-daemon-android"),
+          SimulatorRuntimeSupport.sidecarSearchDescription("lib-daemon-android"),
       )
     }
     robolectricMismatch(simulatorJars, robolectricJars)?.let {
@@ -243,9 +240,9 @@ class AndroidSimulatorCommand(
       val requestedSdk =
         args.flagValue("--sdk")?.let { value ->
           val parsed = value.toIntOrNull() ?: fail("--sdk takes an API level, e.g. 35")
-          if (parsed !in SIMULATOR_MIN_SDK..AndroidBundleLaunch.MAX_SDK) {
+          if (parsed !in SIMULATOR_MIN_SDK..SimulatorRuntimeSupport.MAX_SDK) {
             fail(
-              "the simulator runs API $SIMULATOR_MIN_SDK to ${AndroidBundleLaunch.MAX_SDK} " +
+              "the simulator runs API $SIMULATOR_MIN_SDK to ${SimulatorRuntimeSupport.MAX_SDK} " +
                 "(Robolectric's simulator draws with real draw traversals, which need API " +
                 "$SIMULATOR_MIN_SDK); --sdk $parsed is outside that",
             )
@@ -253,9 +250,9 @@ class AndroidSimulatorCommand(
           parsed
         }
       val sdk =
-        (requestedSdk ?: AndroidBundleLaunch.DEFAULT_SDK).coerceIn(
+        (requestedSdk ?: SimulatorRuntimeSupport.DEFAULT_SDK).coerceIn(
           SIMULATOR_MIN_SDK,
-          AndroidBundleLaunch.MAX_SDK,
+          SimulatorRuntimeSupport.MAX_SDK,
         )
       if (offline.isEmpty()) {
         provisionAndroidAll(robolectricJars, sdk)
@@ -495,15 +492,15 @@ class AndroidSimulatorCommand(
     }
     val defaultSdk =
       maxOf(
-        AndroidBundleLaunch.DEFAULT_SDK,
+        SimulatorRuntimeSupport.DEFAULT_SDK,
         detected.minSdkVersion ?: 0,
         if (globalStatusBar) GLOBAL_STATUS_BAR_MIN_SDK else 0,
       )
     args.flagValue("--sdk")?.let { value ->
       val requested = value.toIntOrNull() ?: fail("--sdk takes an API level, e.g. 35")
-      if (requested !in SIMULATOR_MIN_SDK..AndroidBundleLaunch.MAX_SDK) {
+      if (requested !in SIMULATOR_MIN_SDK..SimulatorRuntimeSupport.MAX_SDK) {
         val reason =
-          "the simulator runs API $SIMULATOR_MIN_SDK to ${AndroidBundleLaunch.MAX_SDK} " +
+          "the simulator runs API $SIMULATOR_MIN_SDK to ${SimulatorRuntimeSupport.MAX_SDK} " +
             "(Robolectric's simulator draws with real draw traversals, which need API " +
             "$SIMULATOR_MIN_SDK); --sdk $requested is outside that"
         // An --instrument run still says why it has no results, where its results would be.
@@ -522,7 +519,7 @@ class AndroidSimulatorCommand(
         sdk =
           (args.flagValue("--sdk")?.toIntOrNull() ?: defaultSdk).coerceIn(
             SIMULATOR_MIN_SDK,
-            AndroidBundleLaunch.MAX_SDK,
+            SimulatorRuntimeSupport.MAX_SDK,
           ),
         qualifiers = args.flagValue("--qualifiers") ?: formFactor.qualifiers,
         formFactor = formFactor.id,
@@ -662,7 +659,7 @@ class AndroidSimulatorCommand(
             libraryPath = natives.libraryPath,
           ),
         robolectricProperties = robolectricProperties,
-        robolectricJvmArgs = AndroidBundleLaunch().jvmArgs(),
+        robolectricJvmArgs = SimulatorRuntimeSupport.robolectricJvmArgs(),
       )
     }
 
@@ -1414,10 +1411,10 @@ class AndroidSimulatorCommand(
     }
 
   private fun sidecar(name: String): List<File> =
-    locateBundleSidecarJars(name).ifEmpty {
+    SimulatorRuntimeSupport.locateSidecarJars(name).ifEmpty {
       fail(
         "this CLI install has no `$name/`, which `android-simulator` runs from. Looked in " +
-          bundleSidecarSearchDescription(name),
+          SimulatorRuntimeSupport.sidecarSearchDescription(name),
       )
     }
 
@@ -1560,8 +1557,8 @@ class AndroidSimulatorCommand(
       (near + cwd)
         .mapNotNull { localPropertiesAbove(it) }
         .distinctBy { it.absoluteFile }
-        .firstNotNullOfOrNull { AndroidBundleLaunch.resolveAndroidJar(it, env = { null }) }
-        ?: AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null, env = env)
+        .firstNotNullOfOrNull { SimulatorRuntimeSupport.resolveAndroidJar(it, env = { null }) }
+        ?: SimulatorRuntimeSupport.resolveAndroidJar(localPropertiesFile = null, env = env)
 
     private fun localPropertiesAbove(from: File): File? {
       var dir: File? = from.absoluteFile.let { if (it.isFile) it.parentFile else it }
@@ -2079,7 +2076,7 @@ class AndroidSimulatorCommand(
                               of the machine's memory, 768m to 2g, for each of a pair).
         --fingerprint <f>     Build.FINGERPRINT (default Robolectric's "robolectric", which some
                               apps check to skip real work under tests; MeshCore's watch does).
-        --sdk <n>             Android API level to simulate (default ${AndroidBundleLaunch.DEFAULT_SDK}).
+        --sdk <n>             Android API level to simulate (default ${SimulatorRuntimeSupport.DEFAULT_SDK}).
         --jar <path>          Extra classes jar ahead of Robolectric (repeatable).
         --no-providers        Do not create the manifest's content providers at startup.
         --pair <watch.apk>    Also run a Wear OS APK in a second simulator, paired with this
