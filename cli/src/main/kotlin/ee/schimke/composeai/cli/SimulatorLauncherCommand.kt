@@ -28,7 +28,7 @@ internal class SimulatorLauncherCommand(
     }
     val forwarded = stripLauncherFlag(args)
     val pb = ProcessBuilder(listOf(choice.binary) + forwarded).inheritIO()
-    forwardSidecarEnv(pb, forwarded)
+    forwardSidecarEnv(pb)
     val exit =
       try {
         pb.runTiedToLauncher()
@@ -108,22 +108,8 @@ internal class SimulatorLauncherCommand(
       }
     }
 
-    internal fun needsAndroidSidecar(args: List<String>): Boolean {
-      val first = args.firstOrNull()
-      if (first == "dwf-runtime" || first == "host-natives") return false
-      if ("--pool-stop" in args || "--help" in args || "-h" in args) return false
-      return true
-    }
-
-    private fun forwardSidecarEnv(pb: ProcessBuilder, forwarded: List<String>) {
+    private fun forwardSidecarEnv(pb: ProcessBuilder) {
       val opts = mutableListOf<String>()
-      if (needsAndroidSidecar(forwarded)) {
-        DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
-      }
-      val androidDaemonDir = locateBundleSidecarJars("lib-daemon-android").firstOrNull()?.parentFile
-      if (androidDaemonDir != null) {
-        opts += "-Dcomposeai.cli.libDaemonAndroidDir=${androidDaemonDir.absolutePath}"
-      }
       val rcJvmDir = locateBundleSidecarJars("lib-rcjvm").firstOrNull()?.parentFile
       if (rcJvmDir != null) {
         opts += "-Dcomposeai.cli.libRcjvmDir=${rcJvmDir.absolutePath}"
