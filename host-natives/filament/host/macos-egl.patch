@@ -65,3 +65,21 @@ index 309f2990..a057f513 100644
                  return new PlatformOSMesa();
              #else
                  return new PlatformCocoaGL();
+diff --git a/filament/backend/src/opengl/platforms/PlatformEGL.cpp b/filament/backend/src/opengl/platforms/PlatformEGL.cpp
+index db792adbd..412300058 100644
+--- a/filament/backend/src/opengl/platforms/PlatformEGL.cpp
++++ b/filament/backend/src/opengl/platforms/PlatformEGL.cpp
+@@ -655,7 +655,12 @@ void PlatformEGL::commit(SwapChain* swapChain) noexcept {
+ // -----------------------------------------------------------------------------------------------
+ 
+ bool PlatformEGL::canCreateFence() noexcept {
+-    return true;
++    // compose-ai-tools host-natives: no EGL fences on macOS. OpenGLDriver::fenceWait waits on a
++    // platform fence from the calling thread (Engine::flushAndWait on the app's), which has no
++    // current context, and ANGLE's Metal backend dereferences the current context in
++    // eglClientWaitSync (EGLSyncMtl::clientWait). Without them the driver falls back to GL fences,
++    // which it signals on its own thread.
++    return false;
+ }
+ 
+ Platform::Fence* PlatformEGL::createFence() noexcept {

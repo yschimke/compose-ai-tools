@@ -9,8 +9,9 @@
 # shipped beside the library (libEGL.dylib, libGLESv2.dylib; host-natives.properties `extra`).
 #
 # Same Filament, JNI layer and host stand-ins as Linux (see build.sh), plus host/macos-egl.patch:
-# Filament's headless EGL platform, otherwise Linux-only, on macOS, and OpenGL rather than Metal as
-# the default backend. The rest is macOS's tools for the same steps: llvm-objcopy for the renamed
+# Filament's headless EGL platform, otherwise Linux-only, on macOS, OpenGL rather than Metal as
+# the default backend, and no EGL fences (ANGLE's Metal backend needs a current context to wait on
+# one, and Filament waits from threads without one). The rest is macOS's tools for the same steps: llvm-objcopy for the renamed
 # entry points, an exported-symbols list for the version script, lipo for the two architectures.
 set -euo pipefail
 
