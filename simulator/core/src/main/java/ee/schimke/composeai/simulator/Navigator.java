@@ -1424,7 +1424,7 @@ public final class Navigator {
    * Hands [requester] the result of an activity the system ran for it (a dialog it showed), as
    * {@code onActivityResult} and androidx's {@code ActivityResultRegistry} expect it.
    */
-  void deliverResult(Activity requester, int requestCode, int resultCode, Intent data) {
+  public void deliverResult(Activity requester, int requestCode, int resultCode, Intent data) {
     dispatchResult(requester, null, requestCode, resultCode, data);
   }
 
@@ -1448,14 +1448,14 @@ public final class Navigator {
    * Answers intents only the system handles (its dialogs, pickers and settings screens, and other
    * apps' screens): {@link Radios}, {@link SystemPickers}, {@link Handoffs}.
    */
-  interface SystemUi {
+  public interface SystemUi {
     boolean handle(Intent intent, int requestCode, Activity requester);
   }
 
   private final List<SystemUi> systemUis = new ArrayList<>();
 
   /** Adds [ui] after those already added; the first to handle an intent takes it. */
-  void addSystemUi(SystemUi ui) {
+  public void addSystemUi(SystemUi ui) {
     systemUis.add(ui);
   }
 

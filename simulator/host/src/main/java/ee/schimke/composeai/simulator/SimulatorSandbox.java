@@ -26,7 +26,10 @@ import ee.schimke.composeai.simulator.shadows.SimulatorShadowRemoteViewsAdapter;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResources;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResultReceiver;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSettings;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurface;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceTexture;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextureView;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTelephonyManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextToSpeech;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowWifiManager;
@@ -117,6 +120,11 @@ public final class SimulatorSandbox {
                 SimulatorShadowAppWidgetHostView.class,
                 // SurfaceView with a surface its app can draw into, shown on screen.
                 SimulatorShadowSurfaceView.class,
+                // TextureView with a texture its app can draw into (Rive's Canvas renderer), and
+                // the Surface a texture makes.
+                SimulatorShadowTextureView.class,
+                SimulatorShadowSurface.class,
+                SimulatorShadowSurfaceTexture.class,
                 SimulatorShadowRemoteViewsAdapter.class,
                 SimulatorShadowCompanionDeviceManager.class,
                 SimulatorShadowTextToSpeech.class,
@@ -135,7 +143,7 @@ public final class SimulatorSandbox {
                 // Play services Auth & Identity (Identity, GoogleSignIn, SmsRetriever, FIDO2).
                 ee.schimke.composeai.simulator.shadows.gms.ShadowIdentity.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.class,
-                ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.class,
                 // androidx.appsearch's storages, in memory (AppSearchSessions).
                 ShadowLocalStorage.class,
@@ -340,7 +348,7 @@ public final class SimulatorSandbox {
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.GOOGLE_SIGN_IN);
     builder.addInstrumentedClass(
-        ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.SMS_RETRIEVER_CLIENT);
+        ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.SMS_RETRIEVER);
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.FIDO2_API_CLIENT);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);

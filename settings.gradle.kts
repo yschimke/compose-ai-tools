@@ -231,6 +231,10 @@ include(":simulator-host")
 
 project(":simulator-host").projectDir = file("simulator/host")
 
+include(":simulator-cli")
+
+project(":simulator-cli").projectDir = file("simulator/cli")
+
 include(":notification-preview-runtime")
 
 project(":notification-preview-runtime").projectDir = file("runtimes/notification")
@@ -345,6 +349,8 @@ include(":samples:remotecompose")
 include(":samples:host-natives")
 // A SurfaceView drawn with lockCanvas, for the simulator's SurfaceView surfaces (#6428).
 include(":samples:surface-view")
+// Rive's Canvas renderer in TextureViews, over the host build of librive-android (host-natives/rive).
+include(":samples:rive")
 // An androidTest suite run inside the simulator (`android-simulator --instrument`).
 include(":samples:android-instrumented")
 

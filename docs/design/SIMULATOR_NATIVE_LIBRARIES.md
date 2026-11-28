@@ -23,6 +23,9 @@ of four fixes applies to it. Then it describes the mechanism that now serves hos
   ([how it works](#how-launch-serves-host-builds)). It covers graphics-path, AndroidX sqlite-bundled
   and Ink, zstd-jni, JNA and libsignal. `samples/host-natives` exercises all of them: 7 of 7 checks
   pass in the simulator (see [the test app](#the-test-app)).
+- **Rive draws, through its Canvas renderer.** `host-natives/rive` builds `librive-android` from
+  rive-android's sources with the GPU renderer off, and the simulator's `TextureView` takes the
+  frames Rive draws with `Surface.lockCanvas` ([the rive-android host build](#the-rive-android-host-build)).
 - **Several more libraries have an upstream host build at the same version**: Realm Kotlin,
   ObjectBox and ONNX Runtime. Each has an open issue for what stands in the way.
 - **Conscrypt needs nothing.** The simulator never loads the APK's `org.conscrypt` classes;
@@ -166,7 +169,7 @@ All four crash reporters degrade: the app runs, and only native crash capture is
 | Library | Natives | Load site and handler | Strategy |
 | --- | --- | --- | --- |
 | Fresco (`imagepipeline-native`, `animated-gif`, `nativeimagetranscoder` 3.9.0) | `libimagepipeline.so` and others | Through SoLoader, whose 0.12.1 `loadLibraryOnNonAndroid` calls `System.loadLibrary` | Not checked whether Fresco's default pipeline needs them |
-| Rive (`app.rive:rive-android` 11.16.0) | `librive-android.so`, `libc++_shared.so` | `Rive.NativeLoader` catches `UnsatisfiedLinkError`, but nothing renders without it | Out of scope (GPU renderer) |
+| Rive (`app.rive:rive-android` 11.17.0) | `librive-android.so`, `libc++_shared.so` (a dependency, never loaded by name) | `Rive.NativeLoader` logs, then rethrows `UnsatisfiedLinkError` from `Rive.init` | **C: built here** (`host-natives/rive`, Linux and macOS), Canvas renderer only |
 | Filament (`filament-android`, `gltfio-android` 1.77.3), SceneView 4.65.0 | `libfilament-jni.so`, `libgltfio-jni.so` | `Filament.<clinit>`, no handler | Out of scope (GPU) |
 | MapLibre (`org.maplibre.gl:android-sdk` 2026.11.2-globe) | `libmaplibre.so` | `SystemLibraryLoader.load`, no handler | Out of scope (GPU) |
 | WebRTC (`io.getstream:stream-webrtc-android` 1.3.10) | `libjingle_peerconnection_so.so` | `NativeLibrary.DefaultLoader.load`, no handler | Out of scope (camera, audio) |
@@ -332,6 +335,50 @@ This section records the one library built here.
 - **actionlint:** it flags the `macos-15-intel` runner label because its built-in list is stale.
   GitHub accepts the label.
 
+## The rive-android host build
+
+Rive's Android runtime is C++ behind JNI: the `.riv` file, artboards, state machines, data binding,
+text (HarfBuzz) and scripting (Luau) all live in `librive-android`. It has two renderers. The Rive
+renderer draws with OpenGL ES or Vulkan into the view's surface; the Canvas renderer calls back into
+`android.graphics.Path`, `Paint` and `Canvas`, and draws with `Surface.lockCanvas`. Rive falls back
+to Canvas wherever its GPU renderer does not start, emulators included.
+
+- **The library.** [`host-natives/rive/`](../../host-natives/rive) builds rive-android's
+  `kotlin/src/main/cpp` and the rive-runtime it pins, with Rive's own premake flow and the options
+  rive-android's CMake passes it, into one host library. Its sources are unchanged except for
+  `host/host.patch` (OpenJDK's `<jni.h>` signatures at two call sites, and OpenGL switched off so
+  every renderer is Canvas) and a rewrite of `->FindClass(` to the runtime's own ClassLoader-based
+  lookup, as Rive's worker threads see only the boot class path and the framework's classes live in
+  the sandbox. The NDK pieces it calls (logging, `AndroidBitmap_*`, the API level, native windows)
+  are written in `host/HostAndroid.cpp` over the device's Java API. GL and EGL go through glad and
+  Vulkan through its loader, both resolved at run time and never reached, so the library needs only
+  glibc. Its exported JNI surface is the Android library's, symbol for symbol (310 at 11.17.0).
+- **stdout.** On a device stdout goes nowhere, so the runtime prints there (Luau's `print`, Yoga's
+  logger); in the simulator stdout is the control channel. `printf`, `puts`, `putchar`, `vprintf`
+  and `stdout` are linked with `--wrap` to stderr on Linux; on macOS, whose linker has no `--wrap`,
+  `llvm-objcopy --redefine-sym` renames them in every object. `build.sh` checks none is left.
+- **macOS.** One universal library: the runtime and the JNI layer are built once per architecture
+  (arm64, x86_64) and joined with `lipo`. Rive's Metal and Objective-C sources are left out
+  (`--nop-obj-c`; Metal is a GPU backend the host build never starts), and so is the renderer's
+  Metal shader library, which would otherwise need Xcode's Metal toolchain.
+- **The TextureView.** `RiveAnimationView` is a `TextureView`, and Robolectric gives one no texture
+  (`ShadowTextureView`), and a `Surface` made from a `SurfaceTexture` no native surface. The
+  simulator's `SimulatorShadowTextureView` makes the texture at the view's first draw, as the
+  framework's `getTextureLayer` does, and `SimulatorShadowSurface` gives a surface made from it a
+  `lockCanvas` over a bitmap, which `unlockCanvasAndPost` hands to the view to draw. Any app that
+  draws a `TextureView` with a canvas benefits, not only Rive.
+- **Verification.** `host-natives.yml`'s `verify-rive` jobs (Linux, and macOS on arm64) add the
+  fresh build to a local index and run [`samples/rive`](../../samples/rive) in the simulator
+  (`simulator_smoke.py --check rive`): vector animation, embedded images and an embedded font, each
+  checked for a drawn frame, with a screenshot kept.
+- **Not covered.**
+  - Rive's GPU renderer, and so the newer Compose API (`app.rive.Rive` with a `CommandQueue`),
+    which has no Canvas path.
+  - System fallback fonts. Rive finds them by parsing `/system/etc/fonts.xml` and reading
+    `/system/fonts`, which a host doesn't have, so text that needs glyphs its `.riv` doesn't embed
+    is unverified.
+  - Audio: miniaudio loads the host's audio backend at run time; not exercised.
+
 ## Strategy C candidates beyond graphics-path
 
 | Library | Why it might work | Why it might not |
@@ -349,7 +396,9 @@ index entry whose `release.recipe` names it.
 A host library loads, but these apps then need something the simulator does not have.
 
 - **Surfaces and GL.** Robolectric only shapes the API: `ShadowSurfaceView`'s holder returns `null`
-  from `getSurface()` and `lockCanvas()`, `ShadowTextureView` returns a stub texture layer,
+  from `getSurface()` and `lockCanvas()`, `ShadowTextureView` returns a stub texture layer (the
+  simulator now gives a `TextureView` a texture a canvas can draw into; see
+  [Rive](#the-rive-android-host-build)),
   `ShadowGLSurfaceView` starts no GL thread, and there is no EGL or GLES. The simulator now gives a
   `SurfaceView` a real surface (`SimulatorShadowSurfaceView`): an `ImageReader` behind
   `getSurface()`, read back once per frame it posts, and composited under or over its window.
