@@ -61,9 +61,9 @@ public final class PlayBillingService {
   public static final int RESULT_ITEM_ALREADY_OWNED = 7;
   public static final int RESULT_ITEM_NOT_OWNED = 8;
 
-  // PurchaseState constants.
+  // Purchase JSON wire purchaseState constants (BillingClient parses 4 as PurchaseState.PENDING).
   public static final int PURCHASE_STATE_PURCHASED = 0;
-  public static final int PURCHASE_STATE_PENDING = 2;
+  public static final int PURCHASE_STATE_PENDING = 4;
 
   // Standard IInAppBillingService AIDL wire transaction codes (FIRST_CALL_TRANSACTION + id).
   static final int TX_IS_BILLING_SUPPORTED = 1;
@@ -288,10 +288,11 @@ public final class PlayBillingService {
   private void registerWithRobolectric() {
     if (app == null || binder == null) return;
     ComponentName component = new ComponentName(VENDING_PACKAGE, SERVICE_CLASS);
-    Intent bindIntent = new Intent(ACTION_BIND).setPackage(VENDING_PACKAGE);
+    Intent byPackage = new Intent(ACTION_BIND).setPackage(VENDING_PACKAGE);
+    Intent byComponent = new Intent(ACTION_BIND).setComponent(component);
     ShadowApplication shadowApp = Shadows.shadowOf(app);
-    shadowApp.setComponentNameAndServiceForBindServiceForIntent(bindIntent, component, binder);
-    shadowApp.setComponentNameAndServiceForBindService(component, binder);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(byPackage, component, binder);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(byComponent, component, binder);
 
     ShadowPackageManager pm = Shadows.shadowOf(app.getPackageManager());
     ServiceInfo info = new ServiceInfo();
@@ -300,7 +301,8 @@ public final class PlayBillingService {
     info.exported = true;
     ResolveInfo resolveInfo = new ResolveInfo();
     resolveInfo.serviceInfo = info;
-    pm.addResolveInfoForIntent(bindIntent, resolveInfo);
+    pm.addResolveInfoForIntent(byPackage, resolveInfo);
+    pm.addResolveInfoForIntent(byComponent, resolveInfo);
   }
 
   // ---- Core billing operations (used by both AIDL binder and unit tests) ----

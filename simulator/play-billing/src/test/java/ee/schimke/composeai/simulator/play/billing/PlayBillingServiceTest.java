@@ -108,9 +108,8 @@ public class PlayBillingServiceTest {
     assertEquals(
         PlayBillingService.RESULT_OK,
         billing.executeBuy("com.example.app", "pro_monthly", "subs"));
-    assertEquals(
-        PlayBillingService.PURCHASE_STATE_PENDING,
-        billing.activePurchases("subs").get(0).purchaseState);
+    PlayBillingService.PurchaseRecord pendingRec = billing.activePurchases("subs").get(0);
+    assertEquals(4, pendingRec.toPurchaseJson().getInt("purchaseState"));
   }
 
   @Test
