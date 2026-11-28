@@ -378,7 +378,17 @@ public final class GmsMaps {
     double dx = px - cx;
     if (dx > scale / 2.0) dx -= scale;
     else if (dx < -scale / 2.0) dx += scale;
-    return new float[] {(float) (width / 2.0 + dx), (float) (height / 2.0 + (py - cy))};
+    double dy = py - cy;
+    if (cameraBearing != 0f) {
+      double rad = Math.toRadians(-cameraBearing);
+      double cos = Math.cos(rad);
+      double sin = Math.sin(rad);
+      double rx = dx * cos - dy * sin;
+      double ry = dx * sin + dy * cos;
+      dx = rx;
+      dy = ry;
+    }
+    return new float[] {(float) (width / 2.0 + dx), (float) (height / 2.0 + dy)};
   }
 
   /** Unprojects pixel (x, y) within (width, height) back to (lat, lng). */
@@ -386,8 +396,19 @@ public final class GmsMaps {
     double scale = 256.0 * Math.pow(2.0, cameraZoom);
     double cx = mercatorX(cameraLng) * scale;
     double cy = mercatorY(cameraLat) * scale;
-    double nx = (cx + (x - width / 2.0)) / scale;
-    double ny = (cy + (y - height / 2.0)) / scale;
+    double dx = x - width / 2.0;
+    double dy = y - height / 2.0;
+    if (cameraBearing != 0f) {
+      double rad = Math.toRadians(cameraBearing);
+      double cos = Math.cos(rad);
+      double sin = Math.sin(rad);
+      double rx = dx * cos - dy * sin;
+      double ry = dx * sin + dy * cos;
+      dx = rx;
+      dy = ry;
+    }
+    double nx = (cx + dx) / scale;
+    double ny = (cy + dy) / scale;
     double lng = ((nx * 360.0) % 360.0 + 360.0) % 360.0 - 180.0;
     return new double[] {inverseMercatorY(ny), lng};
   }

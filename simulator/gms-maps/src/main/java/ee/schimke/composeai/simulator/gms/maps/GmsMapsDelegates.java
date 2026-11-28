@@ -430,6 +430,41 @@ public final class GmsMapsDelegates {
             switch (m.getName()) {
               case "getId":
                 return rec.id;
+              case "getPoints":
+                {
+                  List<Object> out = new ArrayList<>();
+                  synchronized (rec.points) {
+                    for (double[] ll : rec.points) {
+                      out.add(buildLatLng(loader, ll[0], ll[1]));
+                    }
+                  }
+                  return out;
+                }
+              case "setPoints":
+                if (a != null && a.length > 0 && a[0] instanceof List<?>) {
+                  synchronized (rec.points) {
+                    rec.points.clear();
+                    for (Object item : (List<?>) a[0]) rec.points.add(readLatLng(item));
+                  }
+                  engine.notifyChanged();
+                }
+                return null;
+              case "getColor":
+                return rec.color;
+              case "setColor":
+                if (a != null && a.length > 0 && a[0] instanceof Integer) {
+                  rec.color = (Integer) a[0];
+                  engine.notifyChanged();
+                }
+                return null;
+              case "getWidth":
+                return rec.width;
+              case "setWidth":
+                if (a != null && a.length > 0 && a[0] instanceof Number) {
+                  rec.width = ((Number) a[0]).floatValue();
+                  engine.notifyChanged();
+                }
+                return null;
               case "remove":
                 engine.removePolyline(rec.id);
                 return null;
@@ -468,6 +503,40 @@ public final class GmsMapsDelegates {
             switch (m.getName()) {
               case "getId":
                 return rec.id;
+              case "getCenter":
+                return buildLatLng(loader, rec.lat, rec.lng);
+              case "setCenter":
+                if (a != null && a.length > 0) {
+                  double[] pos = readLatLng(a[0]);
+                  rec.lat = pos[0];
+                  rec.lng = pos[1];
+                  engine.notifyChanged();
+                }
+                return null;
+              case "getRadius":
+                return rec.radiusMeters;
+              case "setRadius":
+                if (a != null && a.length > 0 && a[0] instanceof Number) {
+                  rec.radiusMeters = ((Number) a[0]).doubleValue();
+                  engine.notifyChanged();
+                }
+                return null;
+              case "getStrokeColor":
+                return rec.strokeColor;
+              case "setStrokeColor":
+                if (a != null && a.length > 0 && a[0] instanceof Integer) {
+                  rec.strokeColor = (Integer) a[0];
+                  engine.notifyChanged();
+                }
+                return null;
+              case "getFillColor":
+                return rec.fillColor;
+              case "setFillColor":
+                if (a != null && a.length > 0 && a[0] instanceof Integer) {
+                  rec.fillColor = (Integer) a[0];
+                  engine.notifyChanged();
+                }
+                return null;
               case "remove":
                 engine.removeCircle(rec.id);
                 return null;
