@@ -643,6 +643,21 @@ jobs:
           :samples:host-natives:assembleDebug
           :samples:android-instrumented:assembleDebug
           :samples:android-instrumented:assembleDebugAndroidTest
+      # `compose-preview android-simulator` runs the standalone simulator from
+      # yschimke/android-simulator, which it otherwise fetches from that repository's latest
+      # release. Build it from its main instead, so this job tests the simulator the CLI will run
+      # and works before and between its releases. COMPOSE_PREVIEW_SIMULATOR reaches the smoke runs
+      # and the instrumentation task's CLI alike.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/android-simulator
+          path: .android-simulator
+          persist-credentials: false
+      - name: Build the Android simulator
+        working-directory: .android-simulator
+        run: |
+          ./gradlew :simulator-cli:installDist
+          echo "COMPOSE_PREVIEW_SIMULATOR=$PWD/simulator/cli/build/install/android-simulator/bin/android-simulator" >> "$GITHUB_ENV"
       - name: SurfaceView sample
         run: >-
           python3 .github/scripts/simulator_smoke.py
