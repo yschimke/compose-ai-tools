@@ -205,35 +205,8 @@ project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 include(":bundle-viewer")
 
-// `compose-preview android-simulator`: modular Java plugin and APK converter that run beside
-// Robolectric's simulator in the launched JVM, staged into the CLI distribution as `lib-simulator/`.
-include(":simulator-core")
-
-project(":simulator-core").projectDir = file("simulator/core")
-
-include(":simulator-wearable")
-
-project(":simulator-wearable").projectDir = file("simulator/wearable")
-
-include(":simulator-mobile")
-
-project(":simulator-mobile").projectDir = file("simulator/mobile")
-
-include(":simulator-wear")
-
-project(":simulator-wear").projectDir = file("simulator/wear")
-
-include(":simulator-gms-auth")
-
-project(":simulator-gms-auth").projectDir = file("simulator/gms-auth")
-
-include(":simulator-host")
-
-project(":simulator-host").projectDir = file("simulator/host")
-
-include(":simulator-cli")
-
-project(":simulator-cli").projectDir = file("simulator/cli")
+// The Android simulator (`:simulator-*`) moved to `yschimke/android-simulator`; `compose-preview
+// android-simulator` / `launch` execs its released distribution (or `COMPOSE_PREVIEW_SIMULATOR`).
 
 include(":notification-preview-runtime")
 
@@ -349,8 +322,6 @@ include(":samples:remotecompose")
 include(":samples:host-natives")
 // A SurfaceView drawn with lockCanvas, for the simulator's SurfaceView surfaces (#6428).
 include(":samples:surface-view")
-// Rive's Canvas renderer in TextureViews, over the host build of librive-android (host-natives/rive).
-include(":samples:rive")
 // An androidTest suite run inside the simulator (`android-simulator --instrument`).
 include(":samples:android-instrumented")
 

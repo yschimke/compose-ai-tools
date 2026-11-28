@@ -230,6 +230,12 @@ The [reference][ref] covers each of these in detail:
 - **Live reload.** `--project <dir>` builds the app. `reload` hot-swaps a
   composable edit into the running app, and `--live` reloads on every save.
   `restart` and `update` replace the app in a fresh JVM and keep its data.
+- **Firebase.** `--firebase-emulator` connects Auth, Firestore, Realtime
+  Database, Storage and Functions to a real Firebase Local Emulator Suite
+  (`auto`, explicit ports, or a `firebase.json` that starts and tears down
+  `firebase emulators:start`), `10.0.2.2` routes to host loopback, and the
+  `firebase` command drives emulator seeding/clearing, local FCM push/token
+  delivery, Remote Config overrides, Analytics and Crashlytics.
 - **Other form factors.** Wear OS (see [Wear OS](./wear/)), Jetpack Compose
   Glimmer glasses, and Android XR in Home Space.
 

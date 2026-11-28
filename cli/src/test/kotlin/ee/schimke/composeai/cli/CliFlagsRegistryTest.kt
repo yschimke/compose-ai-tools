@@ -122,13 +122,8 @@ class CliFlagsRegistryTest {
   private val sourceDir: File
     get() = File(repoRoot(), "cli/src/main/kotlin/ee/schimke/composeai/cli")
 
-  private val simulatorCliSourceDir: File
-    get() = File(repoRoot(), "simulator/cli/src/main/kotlin/ee/schimke/composeai/cli")
-
   private fun mainSources(): List<File> =
-    listOf(sourceDir, simulatorCliSourceDir).flatMap { dir ->
-      dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
-    }
+    sourceDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
 
   /** Walk up from the test working dir (the `:cli` project dir) to the repo root. */
   private fun repoRoot(): File {

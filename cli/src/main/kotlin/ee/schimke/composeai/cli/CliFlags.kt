@@ -253,6 +253,9 @@ internal object CliFlags {
       "--data-layer",
       "--grpc-port",
       "--play-services",
+      "--firebase-emulator",
+      "--firebase-project",
+      "--simulator-binary",
       // bundle externalize
       "--res-out",
       "--ext",

@@ -1,5 +1,11 @@
 # Running an APK in the Robolectric simulator
 
+> **Moved:** The Android simulator (`simulator/*`, `host-natives/` recipes, and `docs/SIMULATOR.md`)
+> now lives in [`yschimke/android-simulator`](https://github.com/yschimke/android-simulator).
+> `compose-preview android-simulator` / `launch` delegates to the standalone `android-simulator`
+> binary (`--simulator-binary`, `COMPOSE_PREVIEW_SIMULATOR`, `PATH`, or auto-provisioned from
+> `yschimke/android-simulator` releases). Do not open new simulator PRs here.
+
 > The user-facing guide — what the simulator can test and where its gaps are — is the
 > [simulator site](https://preview.coo.ee/start/simulator/) (source: `site/simulator/`). This file
 > is the full reference.
@@ -89,19 +95,29 @@ compose-preview android-simulator app.apk
                           └─ Session     --control stdio commands
 ```
 
-**Module layout.** The simulator is split into five Gradle modules under `simulator/` so platform
+**Module layout.** The simulator is split into Gradle modules under `simulator/` so platform
 surfaces can evolve independently while `:simulator-host` stages them together into `lib-simulator/`:
 
 - `:simulator-core` — device framework, lifecycle (`Navigator`), protocol, displays, inputs,
-  networking, media, permissions, notifications, `ApkClassConverter`, and core shadows.
+  networking (including `10.0.2.2` → `127.0.0.1` host-alias routing), media, permissions,
+  notifications, `ApkClassConverter`, and core shadows.
 - `:simulator-wearable` — shared mobile + Wear companion surfaces (Play Services Wearable Data
   Layer, channels, remote intents, peer presence, `WearCompanion` / `PhoneCompanion`, GMS shadows).
 - `:simulator-mobile` — phone launcher (`PhoneHome`, `HomeScreen`), lock screen, navigation bar,
   app widgets, shortcuts, picture-in-picture, and soft keyboard.
 - `:simulator-wear` — Wear OS launcher (`WearHome`, `WearSystemUi`), watch state, Wear Platform
   Services, Wear Health Services, tiles, Wear widgets, watch faces (DWF/WFF), and complications.
+- `:simulator-firebase-emulator` — real Firebase Local Emulator Suite integration (Hub discovery,
+  `firebase.json` parsing, Firestore/Auth/RTDB REST admin client, reflective SDK `useEmulator()`
+  auto-wiring).
+- `:simulator-firebase-messaging` — local Android IPC emulation for Firebase Cloud Messaging (GMS
+  C2DM token registration and `FirebaseMessagingService` push/data/token-rotation delivery).
+- `:simulator-firebase-telemetry` — local Remote Config overrides, Analytics event/property
+  capture, and Crashlytics non-fatal/log/key capture.
+- `:simulator-firebase` — thin composition root (`FirebaseServices`) wiring the three Firebase
+  modules into the `firebase` control-channel command.
 - `:simulator-host` — thin composition root (`Session`, `SimulatorControl`, `SimulatorSandbox`,
-  `LaunchMain`, `-javaagent` hot swap, and `META-INF/services`) that exports all four modules.
+  `LaunchMain`, `-javaagent` hot swap, and `META-INF/services`) that exports all modules.
 
 **Converting dex.** `ApkClassConverter` runs [dex2jar](https://github.com/ThexXTURBOXx/dex2jar)
 over every `classes*.dex`, with two repairs of its own:
@@ -2391,6 +2407,35 @@ Not yet: video codecs, other audio codecs (an AAC decoder, Opus, FLAC), asynchro
 (`setCallback`) codecs, `MediaMuxer` (Media3 writes MP4 with its own muxer), and playback through
 `AudioTrack` to the host's speakers.
 
+## Firebase
+
+The simulator supports both **real Firebase Local Emulator Suite backends** and **local platform
+emulation** for Firebase services that have no official emulator:
+
+- **`10.0.2.2` host-alias routing.** `NetworkGate` rewrites connections to `10.0.2.2` (the Android
+  Emulator host alias) to `127.0.0.1` automatically, so APKs that already call
+  `useEmulator("10.0.2.2", ...)` reach a running local emulator suite directly.
+- **Firebase Local Emulator Suite (`--firebase-emulator`).** Pass:
+  - `--firebase-emulator auto` (discover running emulators via Emulator Hub `127.0.0.1:4400/emulators`),
+  - `--firebase-emulator hub=host:port` or `--firebase-emulator auth=9099,firestore=8080,database=9000,storage=9199,functions=5001`, or
+  - `--firebase-emulator path/to/firebase.json` (reuses a running Hub on its configured port, or
+    starts `firebase emulators:start` and tears it down automatically when the simulator exits).
+  Use `--firebase-project <id>` to override the project ID (defaults to `.firebaserc`, the app's
+  `FirebaseOptions`, or `demo-simulator`). On launch, `:simulator-firebase-emulator` reflectively
+  wires bundled `FirebaseAuth`, `FirebaseFirestore`, `FirebaseDatabase`, `FirebaseStorage`, and
+  `FirebaseFunctions` instances via `useEmulator(host, port)`.
+- **Control channel (`firebase`).**
+  - Emulator admin: `status`, `connect`, `clear` (`service: all|firestore|auth|database`),
+    `authCreateUser`, `authListUsers`, `authOobCodes`, `authVerificationCodes`, `firestoreGet`,
+    `firestoreSet`, `firestoreDelete`, `databaseGet`, `databaseSet`.
+  - **FCM (local IPC):** handles GMS `com.google.android.c2dm.intent.REGISTER`/`UNREGISTER` with a
+    deterministic simulator token, and delivers `com.google.android.c2dm.intent.RECEIVE` /
+    `NEW_TOKEN` to the app's manifest `FirebaseMessagingService` via `fcmToken`, `fcmRotateToken`,
+    `fcmSend`, `fcmMessages`, `fcmClear`.
+  - **Remote Config, Analytics, Crashlytics (local capture/override):** `remoteConfigSet`,
+    `remoteConfigGet`, `remoteConfigClear`, `analyticsEvents`, `analyticsClear`, `crashlytics`,
+    `crashlyticsClear`.
+
 ## Constraints
 
 What runs: apps whose UI is Compose or Views over the framework Robolectric shadows, with their
@@ -2429,8 +2474,9 @@ What does not, or not yet:
   [`design/SIMULATOR_NATIVE_LIBRARIES.md`](design/SIMULATOR_NATIVE_LIBRARIES.md).
 - **Google Play services APIs, Maps, billing, DRM** — Play services is reported installed
   ([above](#google-play-services)), but only the Wearable Data Layer is simulated (under `--pair`
-  or `--data-layer agent`); every other API reports `API_UNAVAILABLE`. Firebase starts, and its backends answer as they would any
-  unregistered client.
+  or `--data-layer agent`); every other Play services API reports `API_UNAVAILABLE`. Firebase works
+  against the real Local Emulator Suite (`--firebase-emulator`) plus local FCM, Remote Config,
+  Analytics and Crashlytics support ([above](#firebase)).
 - **GPU content.** No video, camera or GL producer for a `TextureView`. A `TextureView` does get a
   texture: its first draw makes it and calls `onSurfaceTextureAvailable`, as on a device, and a
   `Surface` made from it draws with `lockCanvas` (or `lockHardwareCanvas`); each frame posted is
