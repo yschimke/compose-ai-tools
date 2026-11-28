@@ -1871,6 +1871,7 @@ public final class ApkClassConverter {
     reader.accept(
         new ClassVisitor(Opcodes.ASM9, writer) {
           private String superInternalName;
+          private String[] directInterfaces = new String[0];
 
           @Override
           public void visit(
@@ -1881,6 +1882,7 @@ public final class ApkClassConverter {
               String superName,
               String[] interfaces) {
             this.superInternalName = superName;
+            this.directInterfaces = interfaces != null ? interfaces : new String[0];
             // Frames need class file version 50+; dex2jar may write older.
             super.visit(
                 Math.max(version, Opcodes.V1_8),
@@ -1935,7 +1937,42 @@ public final class ApkClassConverter {
                   itf = true;
                   fixed[0]++;
                 }
+                if (opcode == Opcodes.INVOKESPECIAL && itf && !"<init>".equals(method)) {
+                  String target = superCallTarget(owner);
+                  if (target != null) {
+                    fixed[0]++;
+                    super.visitMethodInsn(
+                        opcode, target, method, descriptor, hierarchy.isInterface(target));
+                    return;
+                  }
+                }
                 super.visitMethodInsn(opcode, owner, method, descriptor, itf);
+              }
+
+              /**
+               * Where a {@code super} call to [owner]'s default method must point for HotSpot, or
+               * null if it already may. The JVM accepts an {@code invokespecial} of an interface
+               * method only from a class that implements that interface directly; dex's {@code
+               * invoke-super} has no such rule, and R8's member rebinding writes the interface
+               * that declares the method rather than the supertype the source named (an {@code
+               * AbstractMap} subclass's {@code super.getOrDefault} becomes {@code
+               * Map.getOrDefault}). The call is pointed back at the direct superinterface that
+               * extends [owner], or else the superclass, from which the JVM resolves the same
+               * default: R8 rebinds only to the method the call already resolved to.
+               */
+              private String superCallTarget(String owner) {
+                for (String direct : directInterfaces) {
+                  if (direct.equals(owner)) return null;
+                }
+                for (String direct : directInterfaces) {
+                  if (hierarchy.isSubtypeOf(direct, owner)) return direct;
+                }
+                if (superInternalName != null
+                    && !"java/lang/Object".equals(superInternalName)
+                    && hierarchy.isSubtypeOf(superInternalName, owner)) {
+                  return superInternalName;
+                }
+                return null;
               }
             };
           }
@@ -1989,15 +2026,23 @@ public final class ApkClassConverter {
     static final class Header {
       final String superName;
       final boolean isInterface;
+      final String[] interfaces;
 
       Header(String superName, boolean isInterface) {
+        this(superName, isInterface, NO_INTERFACES);
+      }
+
+      Header(String superName, boolean isInterface, String[] interfaces) {
         this.superName = superName;
         this.isInterface = isInterface;
+        this.interfaces = interfaces;
       }
 
       static Header of(ClassReader reader) {
         return new Header(
-            reader.getSuperName(), (reader.getAccess() & Opcodes.ACC_INTERFACE) != 0);
+            reader.getSuperName(),
+            (reader.getAccess() & Opcodes.ACC_INTERFACE) != 0,
+            reader.getInterfaces());
       }
     }
 
@@ -2036,8 +2081,13 @@ public final class ApkClassConverter {
     private String resolution(String type) {
       Header header = header(type);
       if (header == null) return "?";
-      return (header.isInterface ? "I:" : "C:") + header.superName;
+      StringBuilder out =
+          new StringBuilder(header.isInterface ? "I:" : "C:").append(header.superName);
+      for (String iface : header.interfaces) out.append(',').append(iface);
+      return out.toString();
     }
+
+    private static final String[] NO_INTERFACES = new String[0];
 
     private static final Header MISSING = new Header(null, false);
 
@@ -2097,6 +2147,23 @@ public final class ApkClassConverter {
     boolean isInterface(String name) {
       Header header = header(name);
       return header != null && header.isInterface;
+    }
+
+    /** Whether [type] is [ancestor] or extends or implements it, through any path. */
+    boolean isSubtypeOf(String type, String ancestor) {
+      return isSubtypeOf(type, ancestor, new HashSet<>());
+    }
+
+    private boolean isSubtypeOf(String type, String ancestor, Set<String> seen) {
+      if (type == null || !seen.add(type)) return false;
+      if (type.equals(ancestor)) return true;
+      Header header = header(type);
+      if (header == null) return false;
+      if (isSubtypeOf(header.superName, ancestor, seen)) return true;
+      for (String iface : header.interfaces) {
+        if (isSubtypeOf(iface, ancestor, seen)) return true;
+      }
+      return false;
     }
 
     /**

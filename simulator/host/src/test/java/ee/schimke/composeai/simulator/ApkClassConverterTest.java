@@ -78,6 +78,50 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void superCallsToAnIndirectSuperinterfaceDefaultArePointedAtADirectSupertype()
+      throws Exception {
+    // R8's member rebinding writes `invoke-super` against the interface declaring a default
+    // method, even when the calling class only reaches it through its superclass (an
+    // `AbstractMap` subclass's `super.getOrDefault` became `Map.getOrDefault`) or through another
+    // interface. ART runs that; HotSpot's verifier rejects it ("interface method reference is in
+    // an indirect superinterface").
+    byte[] api = defaultIface("test/Api", null);
+    byte[] base = plainClass("test/Base", "java/lang/Object", new String[] {"test/Api"});
+    byte[] viaClass = superCaller("test/ViaClass", "test/Base", null);
+    byte[] sub = defaultIface("test/SubApi", "test/Api");
+    byte[] viaIface = superCaller("test/ViaIface", "java/lang/Object", new String[] {"test/SubApi"});
+    byte[] direct = superCaller("test/Direct", "java/lang/Object", new String[] {"test/Api"});
+    ApkClassConverter.ClassHierarchy hierarchy =
+        hierarchy(api, base, viaClass, sub, viaIface, direct);
+
+    ApkClassConverter.Summary summary = new ApkClassConverter.Summary();
+    byte[] fixedViaClass = ApkClassConverter.rewrite(viaClass, hierarchy, summary);
+    byte[] fixedViaIface = ApkClassConverter.rewrite(viaIface, hierarchy, summary);
+    byte[] fixedDirect = ApkClassConverter.rewrite(direct, hierarchy, summary);
+
+    MethodInsnNode toClass = calls(fixedViaClass, "value").get(0);
+    assertEquals("test/Base", toClass.owner);
+    assertFalse(toClass.itf);
+    MethodInsnNode toIface = calls(fixedViaIface, "value").get(0);
+    assertEquals("test/SubApi", toIface.owner);
+    assertTrue(toIface.itf);
+    assertEquals("test/Api", calls(fixedDirect, "value").get(0).owner);
+    assertEquals(2, summary.interfaceCallsFixed);
+
+    Map<String, byte[]> classes =
+        Map.of(
+            "test/Api", api,
+            "test/Base", base,
+            "test/SubApi", sub,
+            "test/ViaClass", fixedViaClass,
+            "test/ViaIface", fixedViaIface,
+            "test/Direct", fixedDirect);
+    assertEquals(43, invoke(classes, "test.ViaClass"));
+    assertEquals(43, invoke(classes, "test.ViaIface"));
+    assertEquals(43, invoke(classes, "test.Direct"));
+  }
+
+  @Test
   public void framesAndMaximaAreComputedForAVerifyingJvm() throws Exception {
     // `run` merges an ArrayList and a LinkedList into one local (needing a frame whose type is
     // their common superclass) and declares a max stack of 1 for code that needs 3.
@@ -463,6 +507,80 @@ public class ApkClassConverterTest {
     mv.visitMaxs(0, 0);
     mv.visitEnd();
     writer.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** An interface with a default `int value()` returning 42, extending [parent] if given. */
+  private static byte[] defaultIface(String name, String parent) {
+    ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+    writer.visit(
+        Opcodes.V1_8,
+        Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT,
+        name,
+        null,
+        "java/lang/Object",
+        parent != null ? new String[] {parent} : null);
+    if (parent == null) {
+      MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "value", "()I", null, null);
+      mv.visitCode();
+      mv.visitIntInsn(Opcodes.BIPUSH, 42);
+      mv.visitInsn(Opcodes.IRETURN);
+      mv.visitMaxs(0, 0);
+      mv.visitEnd();
+    }
+    writer.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** A public class with a no-argument constructor. */
+  private static byte[] plainClass(String name, String superName, String[] interfaces) {
+    ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+    writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, name, null, superName, interfaces);
+    MethodVisitor init = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+    init.visitCode();
+    init.visitVarInsn(Opcodes.ALOAD, 0);
+    init.visitMethodInsn(Opcodes.INVOKESPECIAL, superName, "<init>", "()V", false);
+    init.visitInsn(Opcodes.RETURN);
+    init.visitMaxs(0, 0);
+    init.visitEnd();
+    writer.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /**
+   * As dex2jar writes R8's rebound super call: `value()` is `super.value() + 1` against `test/Api`,
+   * and `static int run()` returns `new [name]().value()`.
+   */
+  private static byte[] superCaller(String name, String superName, String[] interfaces) {
+    ClassNode node = new ClassNode();
+    new ClassReader(plainClass(name, superName, interfaces)).accept(node, 0);
+    ClassWriter writer = new ClassWriter(0);
+    node.accept(
+        new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, writer) {
+          @Override
+          public void visitEnd() {
+            MethodVisitor value = visitMethod(Opcodes.ACC_PUBLIC, "value", "()I", null, null);
+            value.visitCode();
+            value.visitVarInsn(Opcodes.ALOAD, 0);
+            value.visitMethodInsn(Opcodes.INVOKESPECIAL, "test/Api", "value", "()I", true);
+            value.visitInsn(Opcodes.ICONST_1);
+            value.visitInsn(Opcodes.IADD);
+            value.visitInsn(Opcodes.IRETURN);
+            value.visitMaxs(2, 1);
+            value.visitEnd();
+            MethodVisitor run =
+                visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run", "()I", null, null);
+            run.visitCode();
+            run.visitTypeInsn(Opcodes.NEW, name);
+            run.visitInsn(Opcodes.DUP);
+            run.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "<init>", "()V", false);
+            run.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "value", "()I", false);
+            run.visitInsn(Opcodes.IRETURN);
+            run.visitMaxs(2, 0);
+            run.visitEnd();
+            super.visitEnd();
+          }
+        });
     return writer.toByteArray();
   }
 
