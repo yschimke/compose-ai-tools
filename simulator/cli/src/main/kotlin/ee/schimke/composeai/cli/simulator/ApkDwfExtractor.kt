@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli.simulator
 
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
-import ee.schimke.composeai.cli.SkikoNativeProvision
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -132,10 +131,11 @@ internal object ApkDwfExtractor {
     robolectricJars: List<File>,
     cacheRoot: File,
     verbose: Boolean = false,
+    prepareSkikoNative: (List<File>) -> File? = { null },
   ): File? {
     val rcJvmJars = locateBundleSidecarJars("lib-rcjvm")
     if (rcJvmJars.isEmpty()) return null
-    val skikoNative = runCatching { SkikoNativeProvision.prepare(rcJvmJars) }.getOrNull()
+    val skikoNative = runCatching { prepareSkikoNative(rcJvmJars) }.getOrNull()
 
     val key = cacheKey(apk, rcJvmJars, skikoNative)
     val workDir = cacheRoot.resolve("dwf/$key")

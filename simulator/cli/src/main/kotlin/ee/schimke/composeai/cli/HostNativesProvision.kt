@@ -36,7 +36,7 @@ object HostNativesProvision {
   const val INDEX_ENV = "COMPOSE_PREVIEW_HOST_NATIVES_INDEX"
 
   internal const val DEFAULT_INDEX_URL =
-    "https://raw.githubusercontent.com/$REPO/main/host-natives/index.json"
+    "https://raw.githubusercontent.com/${ee.schimke.composeai.cli.simulator.SimulatorHostEnvironment.DEFAULT_REPO}/main/host-natives/index.json"
 
   /**
    * How long a fetched index is used before it is fetched again. An hour, not a day: the index is
@@ -363,16 +363,22 @@ object HostNativesProvision {
     fun fetchTo(url: String, dest: File)
   }
 
-  internal val defaultFetcher = Fetcher { url, dest ->
-    ktorOkHttpClient().use { client ->
-      runBlocking {
-        client.prepareGet(url).execute { response ->
-          if (!response.status.isSuccess()) error("HTTP ${response.status.value}")
-          dest.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+  fun fetcherFor(httpClientFactory: () -> io.ktor.client.HttpClient): Fetcher =
+    Fetcher { url, dest ->
+      httpClientFactory().use { client ->
+        runBlocking {
+          client.prepareGet(url).execute { response ->
+            if (!response.status.isSuccess()) error("HTTP ${response.status.value}")
+            dest.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+          }
         }
       }
     }
-  }
+
+  internal val defaultFetcher: Fetcher =
+    fetcherFor(
+      ee.schimke.composeai.cli.simulator.SimulatorHostEnvironment.STANDALONE.httpClientFactory,
+    )
 
   private val json = Json { ignoreUnknownKeys = true }
 
@@ -519,7 +525,7 @@ object HostNativesProvision {
   internal fun extract(file: File, url: String, entry: String, stage: File): File {
     stage.mkdirs()
     if (url.endsWith(".tar.gz") || url.endsWith(".tgz")) {
-      XrCompositeProvision.unpackTarGz(file, stage)
+      unpackTarGz(file, stage)
       return File(stage, entry).takeIf { it.isFile } ?: error("$url has no $entry")
     }
     val out = File(stage, entry.substringAfterLast('/'))
@@ -528,6 +534,17 @@ object HostNativesProvision {
       zip.getInputStream(zipEntry).use { input -> out.outputStream().use { input.copyTo(it) } }
     }
     return out
+  }
+
+  private fun unpackTarGz(tarGz: File, destDir: File) {
+    destDir.mkdirs()
+    val proc =
+      ProcessBuilder("tar", "-xzf", tarGz.absolutePath, "-C", destDir.absolutePath)
+        .redirectErrorStream(true)
+        .start()
+    val output = proc.inputStream.bufferedReader().readText()
+    val code = proc.waitFor()
+    if (code != 0) error("tar exited $code: ${output.trim().takeLast(300)}")
   }
 
   /** What a launch adds for an APK: library directories, and the libraries' system properties. */
@@ -552,7 +569,8 @@ object HostNativesProvision {
     log: (String) -> Unit = { System.err.println(it) },
     // `offline`, not `disabled`: the softer COMPOSE_PREVIEW_OFFLINE=1 that `provision` prints
     // must also keep a launch to its cache (a stale index included) rather than fetch.
-    noNetwork: Boolean = NetworkPolicy.offline,
+    noNetwork: Boolean =
+      ee.schimke.composeai.cli.simulator.SimulatorHostEnvironment.defaultIsOffline(),
     platform: String? = currentPlatformToken(),
   ): Resolution {
     val natives = readApk(apk) ?: return Resolution.NONE
@@ -589,7 +607,8 @@ object HostNativesProvision {
     env: (String) -> String? = System::getenv,
     userHome: String = System.getProperty("user.home") ?: ".",
     log: (String) -> Unit = { System.err.println(it) },
-    noNetwork: Boolean = NetworkPolicy.disabled,
+    noNetwork: Boolean =
+      ee.schimke.composeai.cli.simulator.SimulatorHostEnvironment.defaultIsNetworkDisabled(),
     platform: String? = currentPlatformToken(),
   ): File? {
     if (platform == null) {
