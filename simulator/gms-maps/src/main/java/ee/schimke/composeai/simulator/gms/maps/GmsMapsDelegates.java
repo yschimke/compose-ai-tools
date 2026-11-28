@@ -34,6 +34,8 @@ public final class GmsMapsDelegates {
 
   private static final Map<ViewGroup, GmsMaps> enginesByView =
       Collections.synchronizedMap(new WeakHashMap<>());
+  private static final Map<ViewGroup, Object> mapsByView =
+      Collections.synchronizedMap(new WeakHashMap<>());
   private static final Map<Object, Consumer<GmsMaps>> cameraUpdates =
       Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -119,7 +121,7 @@ public final class GmsMapsDelegates {
         .mainExecutor()
         .execute(
             () -> {
-              Object googleMap = createGoogleMap(engine, loader);
+              Object googleMap = getOrCreateGoogleMap(mapView, engine, loader);
               if (googleMap == null) return;
               try {
                 for (Method m : callback.getClass().getMethods()) {
@@ -132,6 +134,18 @@ public final class GmsMapsDelegates {
               } catch (ReflectiveOperationException ignored) {
               }
             });
+  }
+
+  private static Object getOrCreateGoogleMap(
+      ViewGroup mapView, GmsMaps engine, ClassLoader loader) {
+    if (mapView == null) return createGoogleMap(engine, loader);
+    synchronized (mapsByView) {
+      Object existing = mapsByView.get(mapView);
+      if (existing != null) return existing;
+      Object created = createGoogleMap(engine, loader);
+      if (created != null) mapsByView.put(mapView, created);
+      return created;
+    }
   }
 
   // ---- CameraUpdateFactory helpers ----

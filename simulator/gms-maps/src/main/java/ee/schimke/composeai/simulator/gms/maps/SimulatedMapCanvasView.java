@@ -113,14 +113,16 @@ final class SimulatedMapCanvasView extends View {
         circleFillPaint.setColor(c.fillColor);
         canvas.drawCircle(pt[0], pt[1], rPx, circleFillPaint);
       }
-      circleStrokePaint.setColor(c.strokeColor != 0 ? c.strokeColor : 0xFF1A73E8);
-      canvas.drawCircle(pt[0], pt[1], rPx, circleStrokePaint);
+      if (c.strokeColor != Color.TRANSPARENT) {
+        circleStrokePaint.setColor(c.strokeColor);
+        canvas.drawCircle(pt[0], pt[1], rPx, circleStrokePaint);
+      }
     }
 
     // 4. Polylines.
     for (GmsMaps.PolylineRecord p : engine.polylinesSnapshot()) {
-      if (!p.visible || p.points.size() < 2) continue;
-      linePaint.setColor(p.color != 0 ? p.color : 0xFF1A73E8);
+      if (!p.visible || p.points.size() < 2 || p.color == Color.TRANSPARENT) continue;
+      linePaint.setColor(p.color);
       linePaint.setStrokeWidth(p.width > 0 ? p.width : 6f);
       Path path = new Path();
       for (int i = 0; i < p.points.size(); i++) {
