@@ -333,8 +333,8 @@ of them, and the CLI carries no versions of them.
     `org.conscrypt` classes, and Robolectric's own desktop Conscrypt serves the app instead.
   - **Built here:** a recipe, `host-natives/<recipe>/`, for a library with no upstream host build
     (graphics-path 1.0.1, which every stable Compose UI up to 1.12.x pins and which loads its
-    library unconditionally; Filament's filament-jni; and rive-android's librive-android, Linux
-    only, whose build `verify-rive` also runs in the simulator through `samples/rive`).
+    library unconditionally; Filament's filament-jni; and rive-android's librive-android, whose
+    build `verify-rive` also runs in the simulator through `samples/rive`).
 - **Releases follow the library's version, not this repository's.** Each recipe releases as
   `host-natives-<recipe>-<library version>`, a prerelease never marked latest. Nothing that picks a
   compose-ai-tools release (the bootstrap installer, the install action, `/releases/latest`) can

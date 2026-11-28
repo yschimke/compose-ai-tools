@@ -170,7 +170,7 @@ All four crash reporters degrade: the app runs, and only native crash capture is
 | Library | Natives | Load site and handler | Strategy |
 | --- | --- | --- | --- |
 | Fresco (`imagepipeline-native`, `animated-gif`, `nativeimagetranscoder` 3.9.0) | `libimagepipeline.so` and others | Through SoLoader, whose 0.12.1 `loadLibraryOnNonAndroid` calls `System.loadLibrary` | Not checked whether Fresco's default pipeline needs them |
-| Rive (`app.rive:rive-android` 11.17.0) | `librive-android.so`, `libc++_shared.so` (a dependency, never loaded by name) | `Rive.NativeLoader` logs, then rethrows `UnsatisfiedLinkError` from `Rive.init` | **C: built here** (`host-natives/rive`, Linux), Canvas renderer only |
+| Rive (`app.rive:rive-android` 11.17.0) | `librive-android.so`, `libc++_shared.so` (a dependency, never loaded by name) | `Rive.NativeLoader` logs, then rethrows `UnsatisfiedLinkError` from `Rive.init` | **C: built here** (`host-natives/rive`, Linux and macOS), Canvas renderer only |
 | Filament (`filament-android`, `gltfio-android` 1.77.3), SceneView 4.65.0 | `libfilament-jni.so`, `libgltfio-jni.so` | `Filament.<clinit>`, no handler | Out of scope (GPU) |
 | MapLibre (`org.maplibre.gl:android-sdk` 2026.11.2-globe) | `libmaplibre.so` | `SystemLibraryLoader.load`, no handler | Out of scope (GPU) |
 | WebRTC (`io.getstream:stream-webrtc-android` 1.3.10) | `libjingle_peerconnection_so.so` | `NativeLibrary.DefaultLoader.load`, no handler | Out of scope (camera, audio) |
@@ -357,7 +357,12 @@ to Canvas wherever its GPU renderer does not start, emulators included.
   loader, all resolved at run time, so the library needs only glibc. Its exported JNI surface is the Android library's, symbol for symbol (310 at 11.17.0).
 - **stdout.** On a device stdout goes nowhere, so the runtime prints there (Luau's `print`, Yoga's
   logger); in the simulator stdout is the control channel. `printf`, `puts`, `putchar`, `vprintf`
-  and `stdout` are linked with `--wrap` to stderr, and `build.sh` checks none is left.
+  and `stdout` are linked with `--wrap` to stderr on Linux; on macOS, whose linker has no `--wrap`,
+  `llvm-objcopy --redefine-sym` renames them in every object. `build.sh` checks none is left.
+- **macOS.** One universal library: the runtime and the JNI layer are built once per architecture
+  (arm64, x86_64) and joined with `lipo`. Rive's Metal and Objective-C sources are left out
+  (`--nop-obj-c`; Metal is a GPU backend the host build never starts), and so is the renderer's
+  Metal shader library, which would otherwise need Xcode's Metal toolchain.
 - **The TextureView.** `RiveAnimationView` is a `TextureView`, and Robolectric gives one no texture
   (`ShadowTextureView`), and a `Surface` made from a `SurfaceTexture` no native surface. The
   simulator's `SimulatorShadowTextureView` makes the texture at the view's first draw, as the
@@ -376,17 +381,16 @@ to Canvas wherever its GPU renderer does not start, emulators included.
   the host has no EGL, `RenderContextGL` throws `RiveRenderException`, as on a device without
   OpenGL ES, so `rememberRiveWorkerOrNull` returns null instead of the simulator crashing;
   `RenderContextVulkan` always does.
-- **Verification.** `host-natives.yml`'s `verify-rive` job adds the fresh build to a local index
-  and runs [`samples/rive`](../../samples/rive) in the simulator
-  (`simulator_smoke.py --check rive`) with Mesa installed: vector animation, embedded images and an
-  embedded font on Canvas, and the same embedded-image file through the Compose API on the GPU
-  renderer, each checked for a drawn frame, with a screenshot kept.
+- **Verification.** `host-natives.yml`'s `verify-rive` jobs (Linux, and macOS on arm64) add the
+  fresh build to a local index and run [`samples/rive`](../../samples/rive) in the simulator
+  (`simulator_smoke.py --check rive`): vector animation, embedded images and an embedded font on
+  Canvas, each checked for a drawn frame, with a screenshot kept. On Linux, with Mesa installed,
+  the same embedded-image file also draws through the Compose API on the GPU renderer; on macOS
+  the Compose API must fail cleanly with `RiveRenderException`.
 - **Not covered.**
   - The GPU renderer on macOS, which has no EGL or OpenGL ES of its own; it would need ANGLE, as
     Filament's macOS build ships. There the Compose API fails with `RiveRenderException`.
   - `RiveAnimationView` on the GPU renderer: it stays on Canvas, which is cheaper and needs no EGL.
-  - macOS: the recipe builds Linux only for now. The same layer should build there (no GL, no
-    `objcopy` step), but needs `ld64`'s alternative to `--wrap` for stdout.
   - System fallback fonts. Rive finds them by parsing `/system/etc/fonts.xml` and reading
     `/system/fonts`, which a host doesn't have, so text that needs glyphs its `.riv` doesn't embed
     is unverified.
