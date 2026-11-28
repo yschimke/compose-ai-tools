@@ -229,6 +229,7 @@ formatter rule means, just run through `build-brief`.
 | Invoking an agent from an issue or PR | [`docs/AGENT_INVOCATION.md`](docs/AGENT_INVOCATION.md) |
 | Which agent reads which file, and what it costs | [`docs/AGENT_ENTRYPOINTS.md`](docs/AGENT_ENTRYPOINTS.md) |
 | Consumer docs for the published plugin and CLI | [`yschimke/skills`](https://github.com/yschimke/skills) |
+| The Android simulator (split out; `android-simulator` / `launch` execs it) | [`yschimke/android-simulator`](https://github.com/yschimke/android-simulator) |
 | The VS Code extension (split out; consumes this repo's published plugin) | [`yschimke/compose-preview-vscode`](https://github.com/yschimke/compose-preview-vscode) |
 
 Claude Code sessions additionally get on-demand procedures under

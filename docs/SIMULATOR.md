@@ -1,5 +1,11 @@
 # Running an APK in the Robolectric simulator
 
+> **Moved:** The Android simulator (`simulator/*`, `host-natives/` recipes, and `docs/SIMULATOR.md`)
+> now lives in [`yschimke/android-simulator`](https://github.com/yschimke/android-simulator).
+> `compose-preview android-simulator` / `launch` delegates to the standalone `android-simulator`
+> binary (`--simulator-binary`, `COMPOSE_PREVIEW_SIMULATOR`, `PATH`, or auto-provisioned from
+> `yschimke/android-simulator` releases). Do not open new simulator PRs here.
+
 > The user-facing guide — what the simulator can test and where its gaps are — is the
 > [simulator site](https://preview.coo.ee/start/simulator/) (source: `site/simulator/`). This file
 > is the full reference.

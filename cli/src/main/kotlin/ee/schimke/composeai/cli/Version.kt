@@ -82,6 +82,12 @@ internal const val PREVIEW_SERVER_REPO = "yschimke/compose-preview-server"
 internal const val PREVIEW_MCP_REPO = "yschimke/compose-preview-mcp"
 
 /**
+ * Repo whose release assets carry the standalone Android simulator distribution
+ * (`android-simulator` / `launch` / `dwf-runtime`).
+ */
+internal const val ANDROID_SIMULATOR_REPO = "yschimke/android-simulator"
+
+/**
  * compose-preview-daemon release whose sidecars the CLI fetches (`lib-renderer/`,
  * `lib-daemon-desktop/`, `lib-daemon-android/`; see [DaemonSidecarProvision]). The
  * `composeai-preview-daemon` catalog pin, also baked into the plugin as `PreviewDaemonVersion`, so
