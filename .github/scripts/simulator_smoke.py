@@ -13,9 +13,10 @@ the app reaches `ready`. Then, per sample:
                  behind its window, the hardware one on top).
   host-natives   samples/host-natives logs `HostNatives: DONE n/n passed` and no `FAIL`: every
                  native library in host-natives/index.json loaded and worked.
-  rive           samples/rive logs `RiveSample: DONE n/n passed` and no `FAIL`: each of its
-                 RiveAnimationViews drew through the host build of librive-android and the
-                 simulator's TextureView; a screenshot is kept beside the logs.
+  rive           samples/rive (now in yschimke/android-simulator) logs `RiveSample: DONE n/n
+                 passed` and no `FAIL`: each of its RiveAnimationViews drew through the host build
+                 of librive-android and the simulator's TextureView; a screenshot is kept beside
+                 the logs.
 
 Exits 0 on success, 1 with the reason (and the simulator's stderr tail) otherwise. Standard
 library only: the PNG is decoded here, not with Pillow.
