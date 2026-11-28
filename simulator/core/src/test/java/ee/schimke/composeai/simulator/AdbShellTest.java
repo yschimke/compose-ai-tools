@@ -439,6 +439,25 @@ public class AdbShellTest {
   }
 
   @Test
+  public void appopsAndDumpsysAccessibility() {
+    Map<String, Object> set = t("appops set com.example GET_USAGE_STATS allow");
+    assertEquals("appops", set.get("cmd"));
+    assertEquals("set", set.get("action"));
+    assertEquals("com.example", set.get("package"));
+    assertEquals("GET_USAGE_STATS", set.get("op"));
+    assertEquals("allow", set.get("mode"));
+
+    Map<String, Object> get = t("appops get --user 0 com.example MANAGE_EXTERNAL_STORAGE");
+    assertEquals("appops", get.get("cmd"));
+    assertEquals("get", get.get("action"));
+    assertEquals("com.example", get.get("package"));
+    assertEquals("MANAGE_EXTERNAL_STORAGE", get.get("op"));
+
+    Map<String, Object> a11y = t("dumpsys accessibility");
+    assertEquals("accessibility", a11y.get("cmd"));
+  }
+
+  @Test
   public void unknownCommandsSaySo() {
     AdbShell.UnsupportedException e =
         assertThrows(AdbShell.UnsupportedException.class, () -> t("reboot"));

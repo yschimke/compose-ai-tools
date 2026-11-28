@@ -1,9 +1,11 @@
 package ee.schimke.composeai.simulator.shadows;
 
+import android.app.UiAutomation;
 import android.graphics.Bitmap;
 import android.view.Display;
 import android.view.InputEvent;
 import android.view.KeyEvent;
+import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import ee.schimke.composeai.simulator.Displays;
 import ee.schimke.composeai.simulator.MainThread;
@@ -11,6 +13,11 @@ import ee.schimke.composeai.simulator.SimulatorHooks;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowUiAutomation;
@@ -34,6 +41,48 @@ import org.robolectric.shadows.ShadowUiAutomation;
  */
 @Implements(className = "android.app.UiAutomation")
 public class SimulatorShadowUiAutomation extends ShadowUiAutomation {
+
+  private static final List<LinkedBlockingQueue<AccessibilityEvent>> EVENT_QUEUES =
+      new CopyOnWriteArrayList<>();
+
+  /** Delivers an {@link AccessibilityEvent} (e.g. a Toast notification) to active waiters. */
+  public static void postAccessibilityEvent(AccessibilityEvent event) {
+    if (event == null) return;
+    for (LinkedBlockingQueue<AccessibilityEvent> queue : EVENT_QUEUES) {
+      queue.offer(AccessibilityEvent.obtain(event));
+    }
+  }
+
+  @Implementation
+  protected AccessibilityEvent executeAndWaitForEvent(
+      Runnable command, UiAutomation.AccessibilityEventFilter filter, long timeoutMillis)
+      throws TimeoutException {
+    LinkedBlockingQueue<AccessibilityEvent> queue = new LinkedBlockingQueue<>();
+    EVENT_QUEUES.add(queue);
+    try {
+      if (command != null) command.run();
+      long deadline = System.nanoTime() + Math.max(0L, timeoutMillis) * 1_000_000L;
+      while (true) {
+        long remainingMs = (deadline - System.nanoTime()) / 1_000_000L;
+        if (remainingMs <= 0) {
+          throw new TimeoutException(
+              "Expected event not received within: " + timeoutMillis + " ms");
+        }
+        AccessibilityEvent event;
+        try {
+          event = queue.poll(Math.min(remainingMs, 50L), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new TimeoutException("Interrupted while waiting for accessibility event");
+        }
+        if (event != null && (filter == null || filter.accept(event))) {
+          return event;
+        }
+      }
+    } finally {
+      EVENT_QUEUES.remove(queue);
+    }
+  }
 
   @Implementation
   @Override

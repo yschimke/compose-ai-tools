@@ -59,8 +59,24 @@ public final class DocumentsStore extends DocumentsProvider {
     Document.COLUMN_FLAGS,
   };
 
+  private static final String[] DEFAULT_PUBLIC_DIRS = {
+    Environment.DIRECTORY_DOCUMENTS,
+    Environment.DIRECTORY_DOWNLOADS,
+    Environment.DIRECTORY_PICTURES,
+    Environment.DIRECTORY_MOVIES,
+    Environment.DIRECTORY_MUSIC,
+    Environment.DIRECTORY_DCIM,
+  };
+
   /** Creates the provider and registers it for {@link #AUTHORITY}. */
   static void install(Context context) {
+    File rootDir = root();
+    if (rootDir != null) {
+      rootDir.mkdirs();
+      for (String name : DEFAULT_PUBLIC_DIRS) {
+        new File(rootDir, name).mkdirs();
+      }
+    }
     ProviderInfo info = new ProviderInfo();
     info.authority = AUTHORITY;
     info.packageName = "com.android.externalstorage";
