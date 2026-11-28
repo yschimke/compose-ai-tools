@@ -77,7 +77,7 @@ public final class FirebaseEmulatorClient {
       String documentPath)
       throws IOException {
     String db = (databaseId == null || databaseId.isEmpty()) ? "(default)" : databaseId;
-    String path = stripLeadingSlash(documentPath);
+    String path = encodePath(documentPath);
     String url =
         firestore.httpOrigin()
             + "/v1/projects/"
@@ -104,7 +104,7 @@ public final class FirebaseEmulatorClient {
       JSONObject body)
       throws IOException {
     String db = (databaseId == null || databaseId.isEmpty()) ? "(default)" : databaseId;
-    String path = stripLeadingSlash(documentPath);
+    String path = encodePath(documentPath);
     String url =
         firestore.httpOrigin()
             + "/v1/projects/"
@@ -127,7 +127,7 @@ public final class FirebaseEmulatorClient {
       String documentPath)
       throws IOException {
     String db = (databaseId == null || databaseId.isEmpty()) ? "(default)" : databaseId;
-    String path = stripLeadingSlash(documentPath);
+    String path = encodePath(documentPath);
     String url =
         firestore.httpOrigin()
             + "/v1/projects/"
@@ -216,7 +216,7 @@ public final class FirebaseEmulatorClient {
   /** Reads JSON at {@code path} from the Realtime Database Emulator. */
   public static String getDatabase(
       FirebaseEmulatorConfig.HostPort database, String namespace, String path) throws IOException {
-    String cleanPath = stripLeadingSlash(path == null ? "" : path);
+    String cleanPath = encodePath(path == null ? "" : path);
     String url =
         database.httpOrigin()
             + "/"
@@ -232,7 +232,7 @@ public final class FirebaseEmulatorClient {
   public static String setDatabase(
       FirebaseEmulatorConfig.HostPort database, String namespace, String path, String jsonValue)
       throws IOException {
-    String cleanPath = stripLeadingSlash(path == null ? "" : path);
+    String cleanPath = encodePath(path == null ? "" : path);
     String url =
         database.httpOrigin()
             + "/"
@@ -389,10 +389,15 @@ public final class FirebaseEmulatorClient {
     }
   }
 
-  private static String stripLeadingSlash(String path) {
-    String p = path;
-    while (p.startsWith("/")) p = p.substring(1);
-    return p;
+  static String encodePath(String path) {
+    if (path == null || path.isEmpty()) return "";
+    StringBuilder out = new StringBuilder();
+    for (String segment : path.split("/")) {
+      if (segment.isEmpty()) continue;
+      if (out.length() > 0) out.append('/');
+      out.append(encodeSegment(segment));
+    }
+    return out.toString();
   }
 
   private static String encodeSegment(String s) {

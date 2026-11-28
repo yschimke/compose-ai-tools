@@ -96,7 +96,10 @@ public class FirebaseEmulatorClientTest {
     JSONObject doc =
         FirebaseEmulatorClient.getFirestoreDocument(endpoint, "demo-app", null, "users/alice");
     assertNotNull(doc);
-    FirebaseEmulatorClient.deleteFirestoreDocument(endpoint, "demo-app", null, "users/alice");
+    FirebaseEmulatorClient.deleteFirestoreDocument(endpoint, "demo-app", null, "rooms/room#1");
+    assertTrue(
+        seenRequests.contains(
+            "DELETE /v1/projects/demo-app/databases/%28default%29/documents/rooms/room%231"));
 
     // Auth clear, create, list, oobCodes, verificationCodes
     FirebaseEmulatorClient.clearAuth(endpoint, "demo-app");
