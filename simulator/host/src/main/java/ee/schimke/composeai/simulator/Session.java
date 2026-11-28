@@ -193,6 +193,7 @@ public final class Session {
     if (phoneUi != null) screen.lockScreen(phoneUi.lockScreen);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
+    ee.schimke.composeai.simulator.gms.auth.GmsAuth.install(app);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
     this.prompts = new SystemPrompts(app, protocol, navigator);
@@ -524,6 +525,7 @@ public final class Session {
       case "appfunctions":
       case "setprop":
       case "sysprops":
+      case "auth":
         return true;
       default:
         return false;
@@ -539,6 +541,11 @@ public final class Session {
     if (emulated == null && wearStatusBar != null) emulated = wearStatusBar.command(name, c);
     if (emulated == null && "whs".equals(name) && WearHealthServices.current() != null) {
       emulated = WearHealthServices.current().command(c);
+    }
+    if (emulated == null
+        && "auth".equals(name)
+        && ee.schimke.composeai.simulator.gms.auth.GmsAuth.current() != null) {
+      emulated = ee.schimke.composeai.simulator.gms.auth.GmsAuth.current().command(c);
     }
     if (emulated == null && "health".equals(name) && fallbackSystemData != null) {
       emulated = fallbackSystemData.command(c);
