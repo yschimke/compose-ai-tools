@@ -695,9 +695,23 @@ public final class GmsLocation {
 
       Class<?> respCls =
           Class.forName("com.google.android.gms.location.LocationSettingsResponse", false, loader);
-      Constructor<?> respCtor = respCls.getDeclaredConstructor(resultCls);
-      respCtor.setAccessible(true);
-      return respCtor.newInstance(result);
+      try {
+        Constructor<?> respCtor = respCls.getDeclaredConstructor(resultCls);
+        respCtor.setAccessible(true);
+        return respCtor.newInstance(result);
+      } catch (NoSuchMethodException ignored) {
+        Constructor<?> noArg = respCls.getDeclaredConstructor();
+        noArg.setAccessible(true);
+        Object resp = noArg.newInstance();
+        for (Method m : respCls.getMethods()) {
+          if ("setResult".equals(m.getName()) && m.getParameterCount() == 1) {
+            m.setAccessible(true);
+            m.invoke(resp, result);
+            break;
+          }
+        }
+        return resp;
+      }
     } catch (ReflectiveOperationException e) {
       return null;
     }
