@@ -1,0 +1,637 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    .site-nav > ul.nav-list:first-child > li > a,
+    
+    .site-nav > ul.nav-list:first-child > li > ul > li:not(:nth-child(8)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(8) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(3) > button svg,
+    .site-nav > ul.nav-list:first-child > li:nth-child(3) > ul > li:nth-child(8) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list,
+    .site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(3) > ul.nav-list > li.nav-list-item:nth-child(8) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Pseudolocale | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Pseudolocale" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/reference/pseudolocale/" />
+<meta property="og:url" content="https://preview.coo.ee/start/reference/pseudolocale/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Pseudolocale" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Pseudolocale","url":"https://preview.coo.ee/start/reference/pseudolocale/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      <nav aria-label="Breadcrumb" class="breadcrumb-nav">
+  <ol class="breadcrumb-nav-list">
+    <li class="breadcrumb-nav-list-item"><a href="/start/reference/">Reference</a></li>
+    <li class="breadcrumb-nav-list-item"><span>Pseudolocale</span></li>
+  </ol>
+</nav>
+
+
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="pseudolocale">
+  
+  
+    <a href="#pseudolocale" class="anchor-heading" aria-labelledby="pseudolocale"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Pseudolocale
+  
+  
+</h1>
+    
+
+<p>Render any preview through the <code class="language-plaintext highlighter-rouge">en-XA</code> (accent / expansion) or
+<code class="language-plaintext highlighter-rouge">ar-XB</code> (bidi / RTL) pseudolocale at runtime, without
+<code class="language-plaintext highlighter-rouge">pseudoLocalesEnabled</code> or <code class="language-plaintext highlighter-rouge">resConfigs</code> build-time configuration on the
+consumer. Drop <code class="language-plaintext highlighter-rouge">locale = "en-XA"</code> (or <code class="language-plaintext highlighter-rouge">"ar-XB"</code>) onto a <code class="language-plaintext highlighter-rouge">@Preview</code>,
+or set <code class="language-plaintext highlighter-rouge">localeTag</code> in <code class="language-plaintext highlighter-rouge">renderNow.overrides</code>, and the renderer
+pseudolocalises every <code class="language-plaintext highlighter-rouge">stringResource(...)</code> lookup on the fly.</p>
+<h2 id="at-a-glance">
+  
+  
+    <a href="#at-a-glance" class="anchor-heading" aria-labelledby="at-a-glance"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> At a glance
+  
+  
+</h2>
+    
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Trigger</td>
+      <td><code class="language-plaintext highlighter-rouge">localeTag</code> in <code class="language-plaintext highlighter-rouge">{en-XA, ar-XB}</code> (BCP-47) — same field as any other locale override.</td>
+    </tr>
+    <tr>
+      <td>Modules</td>
+      <td><code class="language-plaintext highlighter-rouge">:data-pseudolocale-core</code> (published) · <code class="language-plaintext highlighter-rouge">:data-pseudolocale-connector</code></td>
+    </tr>
+    <tr>
+      <td>Render mode</td>
+      <td>default</td>
+    </tr>
+    <tr>
+      <td>Cost</td>
+      <td>low</td>
+    </tr>
+    <tr>
+      <td>Token usage</td>
+      <td>n/a — visual-only effect, no JSON payload.</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td>Platforms</td>
+      <td>Android (full) · CMP Desktop (full)</td>
+    </tr>
+  </tbody>
+</table></div>
+<h2 id="what-it-answers">
+  
+  
+    <a href="#what-it-answers" class="anchor-heading" aria-labelledby="what-it-answers"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it answers
+  
+  
+</h2>
+    
+
+<ul>
+  <li><strong>Layout expansion</strong> (<code class="language-plaintext highlighter-rouge">en-XA</code>) — does the UI still hold together when every translation is ~30 % longer? Buttons that fit <code class="language-plaintext highlighter-rouge">Save</code> but break on <code class="language-plaintext highlighter-rouge">[Šàʌê ··]</code> show up immediately.</li>
+  <li><strong>RTL correctness</strong> (<code class="language-plaintext highlighter-rouge">ar-XB</code>) — does the layout flip cleanly to right-to-left, do start/end paddings switch sides, do icons mirror? No real Arabic translations needed; the framework’s <code class="language-plaintext highlighter-rouge">LocalLayoutDirection = Rtl</code> plus per-word RLO/PDF marks is enough to surface ordering bugs.</li>
+  <li><strong>Hard-coded strings</strong> — text that <em>doesn’t</em> appear pseudolocalised in the render is text that didn’t go through <code class="language-plaintext highlighter-rouge">Resources.getString*</code> (or the Compose <code class="language-plaintext highlighter-rouge">stringResource</code> wrapper) and won’t be translated either.</li>
+</ul>
+<h2 id="what-it-does-not-answer">
+  
+  
+    <a href="#what-it-does-not-answer" class="anchor-heading" aria-labelledby="what-it-does-not-answer"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What it does NOT answer
+  
+  
+</h2>
+    
+
+<ul>
+  <li>It does not pseudolocalise hard-coded Kotlin string literals (<code class="language-plaintext highlighter-rouge">Text("Hi")</code>) — same limitation Android Studio’s pseudolocale dropdown has. Use the gap as a checklist of strings that need extracting to <code class="language-plaintext highlighter-rouge">strings.xml</code>.</li>
+  <li>It does not score copy expansion against a per-language budget. Pair with the <code class="language-plaintext highlighter-rouge">text/strings</code> data product’s <code class="language-plaintext highlighter-rouge">didOverflowWidth</code> / <code class="language-plaintext highlighter-rouge">truncated</code> fields if you want a CI gate.</li>
+</ul>
+<h2 id="use-cases">
+  
+  
+    <a href="#use-cases" class="anchor-heading" aria-labelledby="use-cases"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Use cases
+  
+  
+</h2>
+    
+
+<ul>
+  <li>Catch text overflow before it ships: render every <code class="language-plaintext highlighter-rouge">@Preview</code> at <code class="language-plaintext highlighter-rouge">locale = "en-XA"</code> in CI and diff the resulting PNGs against a baseline.</li>
+  <li>Verify RTL layouts on a screen-by-screen basis without translating to a real RTL language first.</li>
+  <li>Sanity-check that a new feature’s strings actually go through <code class="language-plaintext highlighter-rouge">stringResource</code> — anything left unchanged in the <code class="language-plaintext highlighter-rouge">en-XA</code> render is suspect.</li>
+</ul>
+<h2 id="how-to-use">
+  
+  
+    <a href="#how-to-use" class="anchor-heading" aria-labelledby="how-to-use"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> How to use
+  
+  
+</h2>
+    
+<h3 id="static-preview">
+  
+  
+    <a href="#static-preview" class="anchor-heading" aria-labelledby="static-preview"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Static <code class="language-plaintext highlighter-rouge">@Preview</code>
+  
+  
+</h3>
+    
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Preview</span><span class="p">(</span><span class="n">name</span> <span class="p">=</span> <span class="s">"accent"</span><span class="p">,</span> <span class="n">locale</span> <span class="p">=</span> <span class="s">"en-XA"</span><span class="p">,</span> <span class="n">widthDp</span> <span class="p">=</span> <span class="mi">320</span><span class="p">,</span> <span class="n">heightDp</span> <span class="p">=</span> <span class="mi">180</span><span class="p">)</span>
+<span class="nd">@Composable</span>
+<span class="k">fun</span> <span class="nf">MyScreenAccent</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nc">MyScreen</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="nd">@Preview</span><span class="p">(</span><span class="n">name</span> <span class="p">=</span> <span class="s">"bidi"</span><span class="p">,</span> <span class="n">locale</span> <span class="p">=</span> <span class="s">"ar-XB"</span><span class="p">,</span> <span class="n">widthDp</span> <span class="p">=</span> <span class="mi">320</span><span class="p">,</span> <span class="n">heightDp</span> <span class="p">=</span> <span class="mi">180</span><span class="p">)</span>
+<span class="nd">@Composable</span>
+<span class="k">fun</span> <span class="nf">MyScreenBidi</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nc">MyScreen</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">./gradlew :app:composePreviewRenderAll</code> produces <code class="language-plaintext highlighter-rouge">MyScreenAccent_accent.png</code>
+and <code class="language-plaintext highlighter-rouge">MyScreenBidi_bidi.png</code> alongside the default render. No app-level
+config required: no <code class="language-plaintext highlighter-rouge">pseudoLocalesEnabled = true</code>, no <code class="language-plaintext highlighter-rouge">resConfigs</code>,
+no AAPT2 flag.</p>
+<h3 id="daemon--rendernowoverrides">
+  
+  
+    <a href="#daemon--rendernowoverrides" class="anchor-heading" aria-labelledby="daemon--rendernowoverrides"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Daemon / <code class="language-plaintext highlighter-rouge">renderNow.overrides</code>
+  
+  
+</h3>
+    
+
+<div class="language-jsonc highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"renderNow"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"previewId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"com.example.MyScreenKt#MyScreen"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"overrides"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nl">"localeTag"</span><span class="p">:</span><span class="w"> </span><span class="s2">"en-XA"</span><span class="w"> </span><span class="p">}</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The same planner runs in the daemon path. Drop the override, render
+again, and you’re back to the default locale. The daemon doesn’t need
+to be restarted between locales.</p>
+<h3 id="samples">
+  
+  
+    <a href="#samples" class="anchor-heading" aria-labelledby="samples"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Samples
+  
+  
+</h3>
+    
+
+<ul>
+  <li><strong>Android</strong> — <a href="https://github.com/yschimke/compose-ai-tools/blob/main/samples/android/src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt"><code class="language-plaintext highlighter-rouge">samples/android/.../PseudolocalePreviews.kt</code></a>
+ships three previews — <code class="language-plaintext highlighter-rouge">default</code>, <code class="language-plaintext highlighter-rouge">accent</code>, <code class="language-plaintext highlighter-rouge">bidi</code> — driven from the
+same body. Run <code class="language-plaintext highlighter-rouge">./gradlew :samples:android:composePreviewRenderAll</code> and
+compare the three PNGs in <code class="language-plaintext highlighter-rouge">samples/android/build/compose-previews/renders/</code>.</li>
+  <li><strong>CMP Desktop</strong> — <a href="https://github.com/yschimke/compose-ai-tools/blob/main/samples/cmp/src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt"><code class="language-plaintext highlighter-rouge">samples/cmp/.../PseudolocalePreviews.kt</code></a>
+ships <code class="language-plaintext highlighter-rouge">default</code> and <code class="language-plaintext highlighter-rouge">bidi</code> previews. Run <code class="language-plaintext highlighter-rouge">./gradlew :samples:cmp:composePreviewRenderAll</code>
+and compare — the <code class="language-plaintext highlighter-rouge">bidi</code> PNG flips the row layout. Text resolved through
+<code class="language-plaintext highlighter-rouge">org.jetbrains.compose.resources.stringResource(Res.string.foo)</code> is also
+pseudolocalised: the connector wraps <code class="language-plaintext highlighter-rouge">LocalResourceReader</code>, so byte-level
+reads of the binary Compose Resources records get accent / RLO-PDF wrapped
+before they reach the composable.</li>
+</ul>
+<h2 id="how-it-works">
+  
+  
+    <a href="#how-it-works" class="anchor-heading" aria-labelledby="how-it-works"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> How it works
+  
+  
+</h2>
+    
+
+<p>The override mechanism reuses <code class="language-plaintext highlighter-rouge">localeTag</code> rather than a new field, so
+it slots into Studio’s locale dropdown convention. Two pieces on
+Android, one piece on Desktop:</p>
+
+<ol>
+  <li><strong>Qualifier / locale-list rewrite.</strong> Pseudolocale tags aren’t real
+BCP-47 locales — <code class="language-plaintext highlighter-rouge">values-en-rXA/</code> doesn’t exist, and
+<code class="language-plaintext highlighter-rouge">LocaleList("en-XA")</code> either throws or silently degrades depending
+on the JVM’s ICU build. Both renderers detect the pseudo tag,
+substitute the base locale (<code class="language-plaintext highlighter-rouge">en</code> / <code class="language-plaintext highlighter-rouge">ar</code>), and pass that along:
+    <ul>
+      <li><strong>Android</strong> — emits <code class="language-plaintext highlighter-rouge">values-en/</code> resources via the Robolectric
+resource qualifier, plus <code class="language-plaintext highlighter-rouge">ldrtl</code> for <code class="language-plaintext highlighter-rouge">ar-XB</code> so <code class="language-plaintext highlighter-rouge">Configuration</code>
+reports an RTL layout direction. Lives in
+<code class="language-plaintext highlighter-rouge">RenderEngine.applyPreviewQualifiers</code> (daemon) and
+<code class="language-plaintext highlighter-rouge">RobolectricRenderTest.applyPreviewQualifiers</code> (plugin path).</li>
+      <li><strong>Desktop</strong> — emits the rewritten tag through the <code class="language-plaintext highlighter-rouge">LocaleList</code>
+<code class="language-plaintext highlighter-rouge">CompositionLocal</code>. Lives in <code class="language-plaintext highlighter-rouge">RenderEngine.localeProviders</code>
+(daemon) and <code class="language-plaintext highlighter-rouge">DesktopRendererMain</code> (plugin path).</li>
+    </ul>
+
+    <p><strong>RTL is not pseudolocale-only.</strong> A <em>real</em> RTL locale (<code class="language-plaintext highlighter-rouge">ar</code>, <code class="language-plaintext highlighter-rouge">he</code>,
+<code class="language-plaintext highlighter-rouge">fa</code>, <code class="language-plaintext highlighter-rouge">ur</code>, …) flips layout direction on every path too — <code class="language-plaintext highlighter-rouge">ldrtl</code> on
+Android, <code class="language-plaintext highlighter-rouge">LocalLayoutDirection = Rtl</code> on Desktop — decided by
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/data/pseudolocale/core/src/main/kotlin/ee/schimke/composeai/data/pseudolocale/LocaleDirection.kt"><code class="language-plaintext highlighter-rouge">LocaleDirection.isRtl</code></a>
+from the tag’s language subtag. <code class="language-plaintext highlighter-rouge">ar-XB</code> is the <em>translation-free</em> way
+to test RTL, not the only way to get it. Without this a
+<code class="language-plaintext highlighter-rouge">@Preview(locale = "ar")</code> renders shaped Arabic inside an unmirrored
+container, which looks like passing RTL and isn’t.</p>
+  </li>
+  <li><strong>Around-composable wrap.</strong> Each platform has a
+<code class="language-plaintext highlighter-rouge">PreviewOverrideExtension</code> planner that maps <code class="language-plaintext highlighter-rouge">localeTag</code> to an
+around-composable:
+    <ul>
+      <li><strong>Android</strong> (<a href="https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector"><code class="language-plaintext highlighter-rouge">:data-pseudolocale-connector</code></a>)
+— wraps <code class="language-plaintext highlighter-rouge">LocalContext</code> with a <code class="language-plaintext highlighter-rouge">ContextWrapper</code> whose
+<code class="language-plaintext highlighter-rouge">getResources()</code> returns a <code class="language-plaintext highlighter-rouge">Resources</code> subclass that
+pseudolocalises return values from <code class="language-plaintext highlighter-rouge">getText(int)</code> /
+<code class="language-plaintext highlighter-rouge">getQuantityText(int, int)</code>. <code class="language-plaintext highlighter-rouge">androidx.compose.ui.res.stringResource</code>
+walks <code class="language-plaintext highlighter-rouge">LocalContext.current.resources.getString(id)</code>, which
+routes through <code class="language-plaintext highlighter-rouge">getText(int)</code> — every <code class="language-plaintext highlighter-rouge">stringResource(R.string.foo)</code>
+callsite picks up the wrapped path automatically. Also provides
+<code class="language-plaintext highlighter-rouge">LocalLayoutDirection = Rtl</code> for <code class="language-plaintext highlighter-rouge">ar-XB</code>.</li>
+      <li><strong>Desktop</strong> (<a href="https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector-desktop"><code class="language-plaintext highlighter-rouge">:data-pseudolocale-connector-desktop</code></a>)
+— wraps <code class="language-plaintext highlighter-rouge">LocalResourceReader</code> (the <code class="language-plaintext highlighter-rouge">@ExperimentalResourceApi</code>
+interceptor from <code class="language-plaintext highlighter-rouge">org.jetbrains.compose.resources</code>) with a
+decorator that pseudolocalises every string-shaped record
+coming out of <code class="language-plaintext highlighter-rouge">readPart(...)</code>. Strings, string-arrays and
+plurals are decoded from the <code class="language-plaintext highlighter-rouge">&lt;type&gt;|...|&lt;base64&gt;</code> binary
+record format, run through <code class="language-plaintext highlighter-rouge">Pseudolocalizer.transform(...)</code> and
+re-encoded. Other resource types (drawables, fonts) pass
+through unchanged. The intended <code class="language-plaintext highlighter-rouge">ComposeEnvironment</code> swap path
+isn’t reachable at CMP 1.10.x — both the interface and its
+<code class="language-plaintext highlighter-rouge">LocalComposeEnvironment</code> are <code class="language-plaintext highlighter-rouge">internal</code> to
+<code class="language-plaintext highlighter-rouge">org.jetbrains.compose.resources</code>. Also provides
+<code class="language-plaintext highlighter-rouge">LocalLayoutDirection = Rtl</code> for <code class="language-plaintext highlighter-rouge">ar-XB</code>.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Pure transform code (<code class="language-plaintext highlighter-rouge">Pseudolocalizer.accent</code>, <code class="language-plaintext highlighter-rouge">Pseudolocalizer.bidi</code>)
+lives in <code class="language-plaintext highlighter-rouge">:data-pseudolocale-core</code> with no Android or Compose
+dependency, so it can be unit-tested directly and reused by other
+tooling. The transform follows AAPT2’s <code class="language-plaintext highlighter-rouge">Pseudolocalizer.cpp</code>:
+ASCII-letter accent map, ~30 % bracket-padded expansion, placeholder
+preservation (<code class="language-plaintext highlighter-rouge">%1$s</code>, <code class="language-plaintext highlighter-rouge">{name}</code>, <code class="language-plaintext highlighter-rouge">&lt;b&gt;…&lt;/b&gt;</code>).</p>
+<h3 id="platform-support-matrix">
+  
+  
+    <a href="#platform-support-matrix" class="anchor-heading" aria-labelledby="platform-support-matrix"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Platform support matrix
+  
+  
+</h3>
+    
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th>Android</th>
+      <th>CMP Desktop</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">localeTag</code> rewrite to base locale</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">LayoutDirection.Rtl</code> for <code class="language-plaintext highlighter-rouge">ar-XB</code></td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[Ĥêļļö ···]</code> accent transform of <code class="language-plaintext highlighter-rouge">stringResource(...)</code></td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>RLO / PDF bidi wrap of <code class="language-plaintext highlighter-rouge">stringResource(...)</code></td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Hard-coded literal strings (<code class="language-plaintext highlighter-rouge">Text("Hi")</code>)</td>
+      <td>n/a — never pseudolocalised</td>
+      <td>n/a</td>
+    </tr>
+  </tbody>
+</table></div>
+<h2 id="comparison-to-agp-pseudolocalesenabled">
+  
+  
+    <a href="#comparison-to-agp-pseudolocalesenabled" class="anchor-heading" aria-labelledby="comparison-to-agp-pseudolocalesenabled"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Comparison to AGP <code class="language-plaintext highlighter-rouge">pseudoLocalesEnabled</code>
+  
+  
+</h2>
+    
+
+<p>AGP can build pseudolocalised <code class="language-plaintext highlighter-rouge">values-en-rXA/strings.xml</code> resources
+into the consumer’s APK at compile time, then load them at runtime via
+the standard locale qualifier path. This data product takes the
+opposite tack: leave <code class="language-plaintext highlighter-rouge">strings.xml</code> alone, intercept the lookup. The
+trade-offs:</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th>This product</th>
+      <th>AGP <code class="language-plaintext highlighter-rouge">pseudoLocalesEnabled</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Consumer config</td>
+      <td>none</td>
+      <td><code class="language-plaintext highlighter-rouge">buildTypes.&lt;type&gt;.pseudoLocalesEnabled = true</code></td>
+    </tr>
+    <tr>
+      <td>APK size</td>
+      <td>unchanged (renderer-only)</td>
+      <td>grows with pseudo resources</td>
+    </tr>
+    <tr>
+      <td>Runtime cost</td>
+      <td><code class="language-plaintext highlighter-rouge">Resources.getText</code> wrap, ~free</td>
+      <td>none (resources resolved by framework)</td>
+    </tr>
+    <tr>
+      <td>Off-by-default</td>
+      <td>yes — only triggers when <code class="language-plaintext highlighter-rouge">localeTag</code> in <code class="language-plaintext highlighter-rouge">{en-XA, ar-XB}</code></td>
+      <td>yes — opt-in per build type</td>
+    </tr>
+    <tr>
+      <td>Works in production app</td>
+      <td>no — preview / render only</td>
+      <td>yes</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>For preview rendering specifically — which is what this tool is for —
+the runtime path is strictly cheaper and simpler. Production apps that
+ship pseudolocalised resources for QA still want AGP.</p>
+
+          
+
+          
+            
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+

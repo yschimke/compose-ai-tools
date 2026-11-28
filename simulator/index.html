@@ -1,0 +1,676 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-default.css">
+
+  <link rel="stylesheet" href="/start/assets/css/just-the-docs-head-nav.css" id="jtd-head-nav-stylesheet">
+
+  <style id="jtd-nav-activation">
+  
+
+    
+    .site-nav > ul.nav-list:first-child > li:not(:nth-child(5)) > a,
+    .site-nav > ul.nav-list:first-child > li > ul > li a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:not(:first-child) a,
+    .site-nav li.external a {
+      background-image: none;
+    }
+
+    .site-nav > ul.nav-list:first-child > li:nth-child(5) > a {
+      font-weight: 600;
+      text-decoration: none;
+    }.site-nav > ul.nav-list:first-child > li:nth-child(5) > button svg {
+      transform: rotate(-90deg);
+    }.site-nav > ul.nav-list:first-child > li.nav-list-item:nth-child(5) > ul.nav-list {
+      display: block;
+    }
+  </style>
+
+  
+
+  
+    <script src="/start/assets/js/vendor/lunr.min.js"></script>
+  
+
+  <script src="/start/assets/js/just-the-docs.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+
+
+
+  <!-- Begin Jekyll SEO tag v2.9.1 -->
+<title>Android simulator | compose-ai-tools</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Android simulator" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<meta name="twitter:description" property="og:description" content="Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing." />
+<link rel="canonical" href="https://preview.coo.ee/start/simulator/" />
+<meta property="og:url" content="https://preview.coo.ee/start/simulator/" />
+<meta property="og:site_name" content="compose-ai-tools" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Android simulator" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Render @Preview composables to PNG outside Android Studio, plus per-render structured data products (a11y, layout, theme, recomposition…) so AI coding agents can see and reason about the UI they’re changing.","headline":"Android simulator","url":"https://preview.coo.ee/start/simulator/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+  <script>
+  if (location.hostname === "yschimke.github.io") {
+    location.replace("https://preview.coo.ee/start" +
+      location.pathname.replace(/^\/compose-ai-tools(?=\/|$)/, "") + location.search + location.hash);
+  }
+</script>
+
+
+
+</head>
+
+<body>
+  <a class="skip-to-main" href="#main-content">Skip to main content</a>
+  <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
+  <symbol id="svg-link" viewBox="0 0 24 24">
+  <title>Link</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+  </svg>
+</symbol>
+
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+  <title>Menu</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu">
+    <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</symbol>
+
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+  <title>Expand</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+</symbol>
+
+  <!-- Feather. MIT License: https://github.com/feathericons/feather/blob/master/LICENSE -->
+<symbol id="svg-external-link" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-external-link">
+  <title id="svg-external-link-title">(external link)</title>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+</symbol>
+
+  
+    <symbol id="svg-doc" viewBox="0 0 24 24">
+  <title>Document</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+</symbol>
+
+    <symbol id="svg-search" viewBox="0 0 24 24">
+  <title>Search</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-search">
+    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+</symbol>
+
+  
+  
+    <!-- Bootstrap Icons. MIT License: https://github.com/twbs/icons/blob/main/LICENSE.md -->
+<symbol id="svg-copy" viewBox="0 0 16 16">
+  <title>Copy</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+  </svg>
+</symbol>
+<symbol id="svg-copied" viewBox="0 0 16 16">
+  <title>Copied</title>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-check-fill" viewBox="0 0 16 16">
+    <path d="M6.5 0A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Zm3 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Z"/>
+    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1A2.5 2.5 0 0 1 9.5 5h-3A2.5 2.5 0 0 1 4 2.5v-1Zm6.854 7.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708.708Z"/>
+  </svg>
+</symbol>
+
+  
+</svg>
+
+  
+    <header class="side-bar">
+  <div class="site-header">
+    <a href="/start/" class="site-title lh-tight">
+  compose-ai-tools
+
+</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Main" id="site-nav" class="site-nav">
+  
+  
+    <ul class="nav-list"><li class="nav-list-item"><a href="/start/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="/start/install/" class="nav-list-link">Install</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Reference submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/reference/" class="nav-list-link">Reference</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/reference/a11y/" class="nav-list-link">Accessibility</a></li><li class="nav-list-item"><a href="/start/reference/ambient/" class="nav-list-link">Ambient (Wear)</a></li><li class="nav-list-item"><a href="/start/reference/focus/" class="nav-list-link">Focus</a></li><li class="nav-list-item"><a href="/start/reference/fonts/" class="nav-list-link">Fonts</a></li><li class="nav-list-item"><a href="/start/reference/history/" class="nav-list-link">History diff</a></li><li class="nav-list-item"><a href="/start/reference/layout-inspector/" class="nav-list-link">Layout inspector</a></li><li class="nav-list-item"><a href="/start/reference/recomposition/" class="nav-list-link">Recomposition</a></li><li class="nav-list-item"><a href="/start/reference/pseudolocale/" class="nav-list-link">Pseudolocale</a></li><li class="nav-list-item"><a href="/start/reference/render/" class="nav-list-link">Render trace</a></li><li class="nav-list-item"><a href="/start/reference/resources/" class="nav-list-link">Resources</a></li><li class="nav-list-item"><a href="/start/reference/scroll/" class="nav-list-link">Scroll captures</a></li><li class="nav-list-item"><a href="/start/reference/strings/" class="nav-list-link">Strings & i18n</a></li><li class="nav-list-item"><a href="/start/reference/theme/" class="nav-list-link">Theme</a></li><li class="nav-list-item"><a href="/start/reference/uiautomator/" class="nav-list-link">UIAutomator hierarchy</a></li><li class="nav-list-item"><a href="/start/reference/wallpaper/" class="nav-list-link">Wallpaper</a></li><li class="nav-list-item"><a href="/start/reference/displayfilter/" class="nav-list-link">Display filters</a></li><li class="nav-list-item"><a href="/start/reference/test-failure/" class="nav-list-link">Test failure</a></li><li class="nav-list-item"><a href="/start/reference/motion/" class="nav-list-link">Motion captures</a></li></ul></li><li class="nav-list-item"><a href="/start/mcp/" class="nav-list-link">Agents & MCP</a></li><li class="nav-list-item"><button class="nav-list-expander btn-reset" aria-label="Android simulator submenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use xlink:href="#svg-arrow-right"></use></svg>
+      </button><a href="/start/simulator/" class="nav-list-link">Android simulator</a><ul class="nav-list"><li class="nav-list-item"><a href="/start/simulator/wear/" class="nav-list-link">Wear OS</a></li></ul></li><li class="nav-list-item"><a href="/start/daemon/" class="nav-list-link">Daemon</a></li></ul>
+  
+</nav>
+
+
+<div class="d-md-block d-none site-footer">
+  
+  
+    This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+  
+  </div>
+</header>
+
+  
+  <div class="main" id="top">
+    <div id="main-header" class="main-header">
+  
+    
+
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" id="search-input" class="search-input" tabindex="0" placeholder="Search compose-ai-tools" autocomplete="off">
+    <label for="search-input" class="search-label">
+      <span class="sr-only">Search compose-ai-tools</span>
+      <svg viewBox="0 0 24 24" class="search-icon" aria-hidden="true"><use xlink:href="#svg-search"></use></svg>
+    </label>
+  </div>
+  <div id="search-results" class="search-results"></div>
+</div>
+
+  
+  
+  
+    <nav aria-label="Auxiliary" class="aux-nav">
+  <ul class="aux-nav-list">
+    
+      <li class="aux-nav-list-item">
+        <a href="https://github.com/yschimke/compose-ai-tools" class="site-button"
+          
+        >
+          GitHub
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin" class="site-button"
+          
+        >
+          Maven Central
+        </a>
+      </li>
+    
+      <li class="aux-nav-list-item">
+        <a href="https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview" class="site-button"
+          
+        >
+          VS Code Marketplace
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+  
+</div>
+
+    <div class="main-content-wrap">
+      
+      <div id="main-content" class="main-content">
+        <main>
+          
+            <h1 id="android-simulator">
+  
+  
+    <a href="#android-simulator" class="anchor-heading" aria-labelledby="android-simulator"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Android simulator
+  
+  
+</h1>
+    
+
+<p><code class="language-plaintext highlighter-rouge">compose-preview android-simulator</code> runs a whole Android app — a debug APK, as
+you’d install it on a device — in <a href="https://github.com/robolectric/robolectric/tree/master/simulator">Robolectric’s simulator</a>. You get a
+desktop window you drive with the mouse and keyboard, or a JSON-lines control
+channel an agent drives. No emulator, no device, no <code class="language-plaintext highlighter-rouge">adb</code>, no GPU. It boots in
+seconds, runs headless in CI and cloud sandboxes, and its system UI answers
+questions an emulator would make you click through by hand.</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>compose-preview android-simulator app-debug.apk                      <span class="c"># a window</span>
+compose-preview android-simulator app-debug.apk <span class="nt">--control</span> stdio      <span class="c"># an agent drives it</span>
+compose-preview android-simulator app-debug.apk <span class="nt">--launcher</span>           <span class="c"># over a home screen</span>
+compose-preview android-simulator phone.apk <span class="nt">--pair</span> watch.apk         <span class="c"># a phone and its watch</span>
+compose-preview android-simulator <span class="nt">--adb</span>                              <span class="c"># a device adb and Studio see</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">compose-preview launch</code> is the command’s original name. It’s still there as
+an alias that takes the same flags, so existing scripts and MCP hosts keep
+working.</p>
+
+<p class="warning">The simulator is a prototype that grows quickly. This page says what you can
+test with it today and where the gaps are. The flag-by-flag and
+command-by-command reference is
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md"><code class="language-plaintext highlighter-rouge">docs/SIMULATOR.md</code></a>.</p>
+<h2 id="requirements">
+  
+  
+    <a href="#requirements" class="anchor-heading" aria-labelledby="requirements"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Requirements
+  
+  
+</h2>
+    
+
+<ul>
+  <li><strong>Java 21+</strong> for the simulator JVM (<code class="language-plaintext highlighter-rouge">--java &lt;jdk&gt;</code> or
+<code class="language-plaintext highlighter-rouge">COMPOSE_PREVIEW_SIMULATOR_JAVA</code>). The CLI itself still runs on Java 17.</li>
+  <li><strong>An Android SDK platform</strong> for its <code class="language-plaintext highlighter-rouge">android.jar</code>: <code class="language-plaintext highlighter-rouge">ANDROID_HOME</code>, or
+<code class="language-plaintext highlighter-rouge">sdk.dir</code> in <code class="language-plaintext highlighter-rouge">local.properties</code>.</li>
+  <li><strong>A debug APK.</strong> The first run converts the APK’s dex to JVM classes once and
+caches it by content, so later runs start in seconds. <code class="language-plaintext highlighter-rouge">--prepare</code> converts
+and caches without starting the app.</li>
+</ul>
+
+<p>Robolectric and its native graphics come from the same Android daemon sidecar
+that Android previews render with, at the same pinned version.</p>
+<h2 id="driving-it">
+  
+  
+    <a href="#driving-it" class="anchor-heading" aria-labelledby="driving-it"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Driving it
+  
+  
+</h2>
+    
+
+<p><strong>By hand.</strong> Clicks are taps, drags are swipes, and right-click is Back. The
+window can be resized and zoomed (⌘/Ctrl <code class="language-plaintext highlighter-rouge">=</code> / <code class="language-plaintext highlighter-rouge">-</code> / <code class="language-plaintext highlighter-rouge">0</code>).</p>
+
+<p><strong>From an agent.</strong> <code class="language-plaintext highlighter-rouge">--control stdio</code> reads one JSON command per line on stdin
+and writes one JSON object per line on stdout: <code class="language-plaintext highlighter-rouge">tap</code> (by text, resource id or
+coordinates), <code class="language-plaintext highlighter-rouge">swipe</code>, <code class="language-plaintext highlighter-rouge">type</code>, <code class="language-plaintext highlighter-rouge">key</code>, <code class="language-plaintext highlighter-rouge">screenshot</code>, <code class="language-plaintext highlighter-rouge">hierarchy</code>, <code class="language-plaintext highlighter-rouge">find</code>,
+starting activities and services, sending broadcasts, querying providers, and
+much more. The window stays up while the agent works: every tap is drawn as a
+ring and every swipe as a trail, on an overlay that never shows up in the
+agent’s own screenshots. Pass <code class="language-plaintext highlighter-rouge">--headless</code> to drop the window. It’s also the
+default when there’s no display.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>→ {"id":1,"cmd":"tap","text":"Open Now Playing"}
+← {"event":"activity","state":"resumed","activity":"com.example.NowPlayingActivity",…}
+← {"id":1,"ok":true,"result":{"x":183.5,"y":348,"node":{…}}}
+→ {"id":2,"cmd":"screenshot","path":"/tmp/now-playing.png"}
+← {"id":2,"ok":true,"result":{"width":540,"height":960,"path":"/tmp/now-playing.png"}}
+</code></pre></div></div>
+
+<p><img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/docs/design/evidence/simulator-launch/agent-tap.png" alt="An agent's tap and swipe drawn over the window" /></p>
+
+<p><strong>From an MCP host.</strong> The local MCP server (<code class="language-plaintext highlighter-rouge">compose-preview mcp serve</code>, see
+<a href="../mcp/">Agents &amp; MCP</a>) wraps the control channel as its own set of tools,
+each titled “Android simulator: …” so they read apart from the preview tools:</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_launch</code></td>
+      <td>starts an APK (or a Gradle <code class="language-plaintext highlighter-rouge">project</code>, a watch face, a pair) and returns a simulator id</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_command</code></td>
+      <td>sends one control-channel command and returns its result and events</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_screenshot</code></td>
+      <td>the display as an image</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_watchface_snapshot</code></td>
+      <td>a watch face’s status and a frame</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_logs</code></td>
+      <td>the tail of the app’s logcat and Robolectric’s log</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_restart</code> / <code class="language-plaintext highlighter-rouge">_update</code> / <code class="language-plaintext highlighter-rouge">_reload</code></td>
+      <td>a fresh JVM, a rebuilt APK, or a hot-swapped edit</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_adb</code></td>
+      <td>adb against a simulator launched with <code class="language-plaintext highlighter-rouge">adb</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">android_simulator_stop</code></td>
+      <td>ends one</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>Earlier MCP releases called these <code class="language-plaintext highlighter-rouge">simulator_*</code>. Those names still work but
+are no longer listed.</p>
+
+<p><strong>As a device.</strong> <code class="language-plaintext highlighter-rouge">--adb</code> makes the simulator a device that <code class="language-plaintext highlighter-rouge">adb</code> and Android
+Studio see, the way they see an emulator (<code class="language-plaintext highlighter-rouge">emulator-5554</code>): <code class="language-plaintext highlighter-rouge">adb install</code>,
+<code class="language-plaintext highlighter-rouge">shell</code>, <code class="language-plaintext highlighter-rouge">push</code> / <code class="language-plaintext highlighter-rouge">pull</code>, the emulator console, and the gRPC endpoint that
+Studio’s Running Devices window streams over.</p>
+
+<p><strong>From a script.</strong> <code class="language-plaintext highlighter-rouge">--scenario &lt;file&gt;</code> replays a JSON or YAML list of control
+commands headlessly. Each step can save a snapshot and assert on the result.
+The run writes <code class="language-plaintext highlighter-rouge">report.json</code> and exits <code class="language-plaintext highlighter-rouge">2</code> if any step fails, so you can run it
+as a CI check.</p>
+<h2 id="what-you-can-test">
+  
+  
+    <a href="#what-you-can-test" class="anchor-heading" aria-labelledby="what-you-can-test"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> What you can test
+  
+  
+</h2>
+    
+<h3 id="runtime-permissions">
+  
+  
+    <a href="#runtime-permissions" class="anchor-heading" aria-labelledby="runtime-permissions"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Runtime permissions
+  
+  
+</h3>
+    
+
+<p>Every way an app asks — <code class="language-plaintext highlighter-rouge">ActivityResultContracts.RequestPermission</code> /
+<code class="language-plaintext highlighter-rouge">RequestMultiplePermissions</code>, <code class="language-plaintext highlighter-rouge">requestPermissions</code>, <code class="language-plaintext highlighter-rouge">ActivityCompat</code>,
+Accompanist — is answered in place of the system dialog. The result reaches
+the app the same way the dialog’s does. The permission controller’s own rules
+apply as they do on a device:</p>
+
+<ul>
+  <li>not in the manifest → denied;</li>
+  <li>denied twice → “don’t ask again” until <code class="language-plaintext highlighter-rouge">grant</code> or <code class="language-plaintext highlighter-rouge">reset</code>;</li>
+  <li>group grants (contacts, calendar, nearby devices, …);</li>
+  <li><code class="language-plaintext highlighter-rouge">POST_NOTIFICATIONS</code> below Android 13 → ignored;</li>
+  <li>fine location without coarse → ignored;</li>
+  <li>background location before foreground → ignored.</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">shouldShowRequestPermissionRationale</code> follows the deny count.</p>
+
+<p>With the <code class="language-plaintext highlighter-rouge">ask</code> policy, the request waits for your answer, so you can test each
+branch of the app’s permission flow: <code class="language-plaintext highlighter-rouge">grant</code>, <code class="language-plaintext highlighter-rouge">deny</code>, <code class="language-plaintext highlighter-rouge">dismiss</code>,
+<code class="language-plaintext highlighter-rouge">approximate</code> (coarse location only) and <code class="language-plaintext highlighter-rouge">selected</code> (Android 14’s partial
+photo access).</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>→ {"cmd":"permissions","policy":"ask"}
+← {"event":"permissions","state":"waiting","ask":["…ACCESS_FINE_LOCATION","…ACCESS_COARSE_LOCATION"],…}
+→ {"cmd":"permissions","answer":"approximate"}
+← {"event":"permissions","state":"answered","granted":["…ACCESS_COARSE_LOCATION"],"denied":["…ACCESS_FINE_LOCATION"],…}
+</code></pre></div></div>
+
+<p>Biometric and device-credential prompts, Credential Manager, voice input, the
+document and photo pickers, and the share sheet are answered the same way:
+each one raises an event and waits for a policy or an answer.</p>
+<h3 id="notifications">
+  
+  
+    <a href="#notifications" class="anchor-heading" aria-labelledby="notifications"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Notifications
+  
+  
+</h3>
+    
+
+<p>With <code class="language-plaintext highlighter-rouge">--launcher</code>, a phone gets a <strong>status bar</strong>, a <strong>notification shade</strong> and
+<strong>heads-up</strong> cards. Each is a system window above the app, so screenshots show
+it and it takes touches. Notifications are inflated from their own
+<code class="language-plaintext highlighter-rouge">RemoteViews</code>, so <code class="language-plaintext highlighter-rouge">MessagingStyle</code>, <code class="language-plaintext highlighter-rouge">BigPictureStyle</code>, progress, actions and
+custom views draw as they do on a device. In the shade you can:</p>
+
+<ul>
+  <li>tap a notification to send its content intent (auto-cancel is honored);</li>
+  <li>press its actions;</li>
+  <li>type an inline reply that fills the <code class="language-plaintext highlighter-rouge">RemoteInput</code>;</li>
+  <li>expand or collapse it;</li>
+  <li>swipe to dismiss it, or Clear all.</li>
+</ul>
+
+<p>A <code class="language-plaintext highlighter-rouge">MediaStyle</code> notification shows as the Android 13+ media player, and its
+buttons send the player’s actions.</p>
+
+<p><img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/docs/design/evidence/simulator-launch/phone-shade.png" alt="Status bar, heads-up, the shade, an inline reply and an expanded picture" /></p>
+
+<p>The notification stream is also on the control channel for every app, with or
+without <code class="language-plaintext highlighter-rouge">--launcher</code>:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">notification</code> events report each post, update and removal;</li>
+  <li><code class="language-plaintext highlighter-rouge">notifications</code> lists them, and each entry says whether a device would hide
+it (blocked channel, <code class="language-plaintext highlighter-rouge">POST_NOTIFICATIONS</code> denied);</li>
+  <li><code class="language-plaintext highlighter-rouge">notification</code> acts on one by key: <code class="language-plaintext highlighter-rouge">tap</code>, <code class="language-plaintext highlighter-rouge">action</code>, <code class="language-plaintext highlighter-rouge">reply</code>, <code class="language-plaintext highlighter-rouge">dismiss</code> or
+<code class="language-plaintext highlighter-rouge">snooze</code>.</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>→ {"cmd":"permissions","grant":["android.permission.POST_NOTIFICATIONS"]}
+→ {"cmd":"broadcast","intent":{"action":"com.example.POST_NOTIFICATIONS","component":".NotificationDemoReceiver"}}
+← {"event":"headsUp","key":"1"}
+→ {"cmd":"notification","key":"1","op":"reply","text":"Sounds good"}
+</code></pre></div></div>
+<h3 id="launcher-widgets-and-shortcuts">
+  
+  
+    <a href="#launcher-widgets-and-shortcuts" class="anchor-heading" aria-labelledby="launcher-widgets-and-shortcuts"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Launcher widgets and shortcuts
+  
+  
+</h3>
+    
+
+<p><code class="language-plaintext highlighter-rouge">--launcher</code> also puts a <strong>home screen</strong> under the app. HOME and Back from the
+app’s root go there, its icons bring the app’s task back, and a long press
+shows the app’s static and dynamic shortcuts. <code class="language-plaintext highlighter-rouge">--widget &lt;provider&gt;</code>
+(repeatable) starts with one of the app’s <strong>app widgets</strong> already placed.</p>
+
+<p>The home screen hosts widgets the way a launcher and <code class="language-plaintext highlighter-rouge">AppWidgetService</code> do
+between them:</p>
+
+<ol>
+  <li><strong>Bind</strong> — <code class="language-plaintext highlighter-rouge">APPWIDGET_ENABLED</code> and <code class="language-plaintext highlighter-rouge">APPWIDGET_UPDATE</code> reach the app’s receiver.
+<code class="language-plaintext highlighter-rouge">GlanceAppWidgetReceiver</code> takes the same path.</li>
+  <li><strong>Configure</strong> — runs the configure activity. <code class="language-plaintext highlighter-rouge">RESULT_OK</code> places the widget;
+anything else removes it.</li>
+  <li><strong>Size</strong> — sends <code class="language-plaintext highlighter-rouge">APPWIDGET_OPTIONS_CHANGED</code> with <code class="language-plaintext highlighter-rouge">OPTION_APPWIDGET_SIZES</code>, so
+responsive <code class="language-plaintext highlighter-rouge">RemoteViews</code> pick their layout.</li>
+  <li><strong>Draw</strong> — the framework’s own <code class="language-plaintext highlighter-rouge">AppWidgetHostView</code> draws the widget.</li>
+  <li><strong>Resize</strong> — resizing stays within <code class="language-plaintext highlighter-rouge">minResize*</code> / <code class="language-plaintext highlighter-rouge">maxResize*</code>.</li>
+  <li><strong>Pin</strong> — <code class="language-plaintext highlighter-rouge">requestPinAppWidget</code> and <code class="language-plaintext highlighter-rouge">requestPinShortcut</code> show a confirm sheet
+(<code class="language-plaintext highlighter-rouge">pin</code> <code class="language-plaintext highlighter-rouge">accept</code> / <code class="language-plaintext highlighter-rouge">reject</code>).</li>
+</ol>
+
+<p>Taps on a widget send its <code class="language-plaintext highlighter-rouge">setOnClickPendingIntent</code>, checked-change response
+or collection fill-in intent as the system does. That includes Glance’s
+<code class="language-plaintext highlighter-rouge">actionRunCallback</code>, which recomposes in its WorkManager session and arrives as
+an <code class="language-plaintext highlighter-rouge">updated</code> event. Collection widgets bind their <code class="language-plaintext highlighter-rouge">RemoteViewsService</code>, and the
+picker shows each provider’s generated preview, preview layout or preview
+image, the same fallback Launcher3 uses.</p>
+
+<p><img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/docs/design/evidence/simulator-launch/launcher-widget-resize.png" alt="A widget placed from the picker, its resize frame, and resized by its handle" /></p>
+
+<p><img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/docs/design/evidence/simulator-launch/launcher-glance-callback.png" alt="A Glance widget's actionRunCallback counting taps" /></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>→ {"cmd":"widget","action":"add","provider":"TaskListWidgetReceiver"}
+← {"event":"widget","state":"configuring","widgetId":1,…}
+→ {"cmd":"tap","textContains":"Work task 2"}
+← {"event":"widget","state":"updated","widgetId":1,"partial":true,"reason":"click",…}
+→ {"cmd":"widget","action":"resize","widgetId":1,"spanX":4,"spanY":4}
+</code></pre></div></div>
+<h3 id="and-more">
+  
+  
+    <a href="#and-more" class="anchor-heading" aria-labelledby="and-more"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> And more
+  
+  
+</h3>
+    
+
+<p>The <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md">reference</a> covers each of these in detail:</p>
+
+<ul>
+  <li><strong>Display and device state.</strong> Device presets (phone, foldable, tablet,
+desktop), fold postures, rotation, dark mode, font scale and locale.
+Secondary displays (<code class="language-plaintext highlighter-rouge">--display</code>) for <code class="language-plaintext highlighter-rouge">Presentation</code> and launch-display
+activities.</li>
+  <li><strong>Network.</strong> Wi-Fi, cellular, offline, captive portal and airplane mode, each
+as the app’s <code class="language-plaintext highlighter-rouge">ConnectivityManager</code> reports it. Bluetooth LE peripherals the
+agent puts in range. Google Play services availability states.</li>
+  <li><strong>Background work.</strong> Alarms, jobs, WorkManager and downloads, all on the
+simulated clock.</li>
+  <li><strong>System UI.</strong> The navigation bar, the lock screen, picture-in-picture, the
+on-screen keyboard and predictive back.</li>
+  <li><strong>Several apps on one device.</strong> <code class="language-plaintext highlighter-rouge">--install other.apk</code> adds apps that share
+broadcasts, providers, App Functions and App Actions.</li>
+  <li><strong>Live reload.</strong> <code class="language-plaintext highlighter-rouge">--project &lt;dir&gt;</code> builds the app. <code class="language-plaintext highlighter-rouge">reload</code> hot-swaps a
+composable edit into the running app, and <code class="language-plaintext highlighter-rouge">--live</code> reloads on every save.
+<code class="language-plaintext highlighter-rouge">restart</code> and <code class="language-plaintext highlighter-rouge">update</code> replace the app in a fresh JVM and keep its data.</li>
+  <li><strong>Firebase.</strong> <code class="language-plaintext highlighter-rouge">--firebase-emulator</code> connects Auth, Firestore, Realtime
+Database, Storage and Functions to a real Firebase Local Emulator Suite
+(<code class="language-plaintext highlighter-rouge">auto</code>, explicit ports, or a <code class="language-plaintext highlighter-rouge">firebase.json</code> that starts and tears down
+<code class="language-plaintext highlighter-rouge">firebase emulators:start</code>), <code class="language-plaintext highlighter-rouge">10.0.2.2</code> routes to host loopback, and the
+<code class="language-plaintext highlighter-rouge">firebase</code> command drives emulator seeding/clearing, local FCM push/token
+delivery, Remote Config overrides, Analytics and Crashlytics.</li>
+  <li><strong>Other form factors.</strong> Wear OS (see <a href="./wear/">Wear OS</a>), Jetpack Compose
+Glimmer glasses, and Android XR in Home Space.</li>
+</ul>
+<h2 id="gaps">
+  
+  
+    <a href="#gaps" class="anchor-heading" aria-labelledby="gaps"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Gaps
+  
+  
+</h2>
+    
+
+<p>What runs: Compose and View apps over the framework Robolectric shadows, with
+their real <code class="language-plaintext highlighter-rouge">Application.onCreate()</code>: Hilt, Koin, Metro, WorkManager, Room,
+<code class="language-plaintext highlighter-rouge">androidx.startup</code> and Firebase start-up. Now in Android, Confetti, Home
+Assistant, Cadence and MeshCore run from their debug APKs.</p>
+
+<p>What doesn’t, or not yet:</p>
+
+<div class="table-wrapper"><table>
+  <thead>
+    <tr>
+      <th>Area</th>
+      <th>Gap</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Native code</td>
+      <td>Android <code class="language-plaintext highlighter-rouge">.so</code> files don’t load. The exceptions are libraries with a host build in <a href="https://github.com/yschimke/compose-ai-tools/blob/main/host-natives/index.json"><code class="language-plaintext highlighter-rouge">host-natives</code></a>: graphics-path, sqlite-bundled, Ink, zstd-jni, JNA, libsignal and Filament.</td>
+    </tr>
+    <tr>
+      <td>GPU</td>
+      <td>No <code class="language-plaintext highlighter-rouge">TextureView</code>, video, camera or GL. <code class="language-plaintext highlighter-rouge">SurfaceView</code> works, for software and hardware canvases.</td>
+    </tr>
+    <tr>
+      <td>Play services</td>
+      <td>Reported as installed, but only the Wearable Data Layer is simulated. Maps, billing, fused location and the rest report <code class="language-plaintext highlighter-rouge">API_UNAVAILABLE</code>.</td>
+    </tr>
+    <tr>
+      <td>Processes and tasks</td>
+      <td>One process and one task. No recents or task switching, and <code class="language-plaintext highlighter-rouge">am kill</code> / <code class="language-plaintext highlighter-rouge">force-stop</code> / <code class="language-plaintext highlighter-rouge">pm clear</code> are only partial.</td>
+    </tr>
+    <tr>
+      <td>Permissions</td>
+      <td>No dialog on screen: the agent answers in its place. Groups are approximated, and the activity isn’t paused while a request waits.</td>
+    </tr>
+    <tr>
+      <td>Notifications</td>
+      <td>No notification history, per-channel settings, conversation or bubble sections, Do Not Disturb, sounds or vibration. Quick settings are four fixed tiles, not the app’s own <code class="language-plaintext highlighter-rouge">TileService</code>s.</td>
+    </tr>
+    <tr>
+      <td>Home screen</td>
+      <td>Only the app’s own widgets and shortcuts: one package. No wallpaper picker, keyguard or search widgets, or dragging a widget between cells. Network-backed widgets show their placeholder where the sandbox blocks the host.</td>
+    </tr>
+    <tr>
+      <td>Lock screen</td>
+      <td>No pattern or password lock, no fingerprint unlock, and no lock screen widgets or shortcuts.</td>
+    </tr>
+    <tr>
+      <td>Background work</td>
+      <td>No Doze, App Standby buckets or battery optimisation. Downloads have no notification.</td>
+    </tr>
+    <tr>
+      <td>Packaging</td>
+      <td>Split APKs and App Bundles must be merged into one APK first. Protected APKs are out, and hot reload and the Data Layer need a debug (non-R8) build.</td>
+    </tr>
+    <tr>
+      <td>Fidelity</td>
+      <td>Robolectric’s native graphics, not a device GPU: close, but not pixel-identical. Stack traces say <code class="language-plaintext highlighter-rouge">Unknown Source</code> for app frames.</td>
+    </tr>
+    <tr>
+      <td>SDK levels</td>
+      <td>One of Robolectric’s supported levels (<code class="language-plaintext highlighter-rouge">--sdk</code>, default 35), fetched on first use.</td>
+    </tr>
+  </tbody>
+</table></div>
+
+<p>The full list, with the reasons, is under
+<a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/SIMULATOR.md#constraints">Constraints</a> in the reference. Open gaps are tracked as
+<a href="https://github.com/yschimke/compose-ai-tools/issues">issues</a>.</p>
+
+          
+
+          
+            <hr>
+<h2 class="text-delta">Table of contents</h2>
+
+<ul>
+  
+  <li>
+    <a href="/start/simulator/wear/">Wear OS</a>
+  </li>
+  
+</ul>
+          
+        </main>
+        
+<hr>
+<footer>
+  
+
+  <p class="text-small mb-0">Apache 2.0 licensed. Source on <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.</p>
+
+  <div class="d-md-none mt-4 fs-2">
+    
+    
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    
+  </div>
+</footer>
+
+      </div>
+    </div>
+    
+      
+
+<div class="search-overlay"></div>
+
+    
+  </div>
+
+  
+</body>
+</html>
+
