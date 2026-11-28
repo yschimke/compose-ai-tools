@@ -456,7 +456,12 @@ public final class GmsMaps {
       default:
         break;
     }
-    if (c.has("lat") || c.has("lng") || c.has("lon") || c.has("zoom")) {
+    if (c.has("lat")
+        || c.has("lng")
+        || c.has("lon")
+        || c.has("zoom")
+        || c.has("tilt")
+        || c.has("bearing")) {
       double lat = c.optDouble("lat", cameraLat);
       double lng = c.has("lng") ? c.getDouble("lng") : c.optDouble("lon", cameraLng);
       float zoom = (float) c.optDouble("zoom", cameraZoom);
