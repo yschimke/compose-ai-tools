@@ -38,9 +38,10 @@ public class SimulatorSandboxClassLoader extends SimulatorClassLoader {
    * Class-resource prefixes served from the runtime classpath when it has the class. Only then:
    * D8 puts its global backport synthetics in whatever package it likes, so the APK can carry a
    * {@code com/google/common/…$$ExternalSyntheticBackport…} that kotlinx.coroutines needs and
-   * no Guava jar has.
+   * no Guava jar has. A release APK whose Guava R8 rewrote has it relocated out of the way instead
+   * ({@link LibraryRelocation}), which reads the same list.
    */
-  static final String[] RUNTIME_FIRST = {"com/google/common/", "com/google/thirdparty/"};
+  static final String[] RUNTIME_FIRST = LibraryRelocation.RUNTIME_FIRST;
 
   public SimulatorSandboxClassLoader(
       InstrumentationConfiguration config,

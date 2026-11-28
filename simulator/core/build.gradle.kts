@@ -70,6 +70,8 @@ dependencies {
   compileOnly(libs.dex2jar.tools)
   compileOnly(libs.junit)
   compileOnly(libs.asm)
+  // LibraryRelocation's ClassRemapper; on the converter's class path through lib-dex2jar/.
+  compileOnly(libs.asm.commons)
 
   testCompileOnly(files(androidJar))
   testImplementation(libs.junit)
@@ -80,6 +82,8 @@ dependencies {
   testImplementation(libs.guava.android)
   testImplementation(libs.json.org)
   testImplementation(libs.dex2jar.tools)
+  testImplementation(libs.asm)
+  testImplementation(libs.asm.commons)
 }
 
 tasks.withType<Test>().configureEach {

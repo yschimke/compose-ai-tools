@@ -294,12 +294,62 @@ class AndroidSimulatorCommand(
      * [apk] converted, cached by content. With [context] (the app a test APK runs against), the
      * app's classes answer the converter's type lookups too, and the cache entry is the pair's.
      */
+    val relocationRuntime = simulatorJars + robolectricJars
+    val relocationEnabled = System.getenv(LibraryRelocations.ENV) != "0"
+    /**
+     * [entry]'s classes with the libraries the runtime would break relocated
+     * ([LibraryRelocations]); [forced] packages, a test APK's app's, without analysis.
+     */
+    fun relocationOf(
+      entry: ApkConversionCache.Entry,
+      forced: List<String>?,
+    ): LibraryRelocations.Outcome {
+      if (!relocationEnabled) return LibraryRelocations.Outcome(null, emptyList(), "")
+      if (forced != null && forced.isEmpty()) {
+        return LibraryRelocations.Outcome(null, emptyList(), "")
+      }
+      return try {
+        LibraryRelocations.ensure(
+          entry.classesJar,
+          LibraryRelocations.stamp(relocationRuntime, forced),
+        ) { out ->
+          val process =
+            ProcessBuilder(
+                LibraryRelocations.command(
+                  java.binary,
+                  converterJars,
+                  entry.classesJar,
+                  out,
+                  androidJar,
+                  runtime = relocationRuntime,
+                  boundary = simulatorJars,
+                  forced = forced,
+                ),
+              )
+              .redirectError(ProcessBuilder.Redirect.INHERIT)
+              .start()
+          val summary = process.inputStream.bufferedReader().readText()
+          val exit = process.waitFor()
+          check(exit == 0) { "the library relocation exited $exit" }
+          summary.lineSequence().lastOrNull { it.startsWith("{") } ?: "{}"
+        }
+      } catch (e: Exception) {
+        // The app still runs, on the runtime's copies, as it did before relocation existed.
+        System.err.println(
+          "compose-preview android-simulator: warning: library relocation failed (${e.message}); " +
+            "running on the simulator's copies of shared libraries",
+        )
+        LibraryRelocations.Outcome(null, emptyList(), "")
+      }
+    }
     fun conversionOf(apk: File, context: Conversion? = null): Conversion {
       val start = System.nanoTime()
       val entryStamp =
         if (context == null) stamp
         else "$stamp-with-${ApkConversionCache.rememberedSha256(context.apk).take(16)}"
-      val contextJars = listOfNotNull(context?.entry?.classesJar)
+      // The app's classes as converted, not relocated: the test APK's code names them as the app's
+      // source did, and is relocated the same way after.
+      val contextJars = listOfNotNull(context?.baseJar)
       val entry =
         cache.ensure(apk, entryStamp) { out, previous ->
           System.err.println(
@@ -321,8 +371,24 @@ class AndroidSimulatorCommand(
       // Once per entry: a second lock on the same file from this process throws
       // (OverlappingFileLockException), as an update to an APK already running would.
       if (locked.add(entry.classesJar.absolutePath)) inUse += cache.use(entry)
+      val relocation = relocationOf(entry, forced = context?.relocated)
       val conversion =
-        Conversion(apk, entry, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))
+        Conversion(
+          apk,
+          relocation.jar?.let { entry.copy(classesJar = it) } ?: entry,
+          TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start),
+          baseJar = entry.classesJar,
+          relocated = relocation.packages,
+        )
+      if (relocation.packages.isNotEmpty() && (verbose || !entry.cached)) {
+        System.err.println(
+          "compose-preview android-simulator: ${apk.name} runs on its own copy of " +
+            "${relocation.packages.size} package(s) the simulator also carries " +
+            "(${relocation.packages.take(4).joinToString { it.replace('/', '.') }}" +
+            (if (relocation.packages.size > 4) ", …" else "") +
+            "): ${relocation.summary}",
+        )
+      }
       if (verbose || !entry.cached) {
         System.err.println(
           "compose-preview android-simulator: classes ${if (entry.cached) "cached" else "converted"} " +
@@ -1205,12 +1271,31 @@ class AndroidSimulatorCommand(
   }
 
   /** An APK's converted classes, and what getting them cost: a cache hit, or a conversion. */
-  internal data class Conversion(val apk: File, val entry: ApkConversionCache.Entry, val ms: Long) {
+  internal data class Conversion(
+    val apk: File,
+    /**
+     * The cache entry, whose [ApkConversionCache.Entry.classesJar] is the jar the app runs from.
+     */
+    val entry: ApkConversionCache.Entry,
+    val ms: Long,
+    /** The converted classes before relocation: the converter's input for a test APK's lookups. */
+    val baseJar: File = entry.classesJar,
+    /** The packages of the app's that run from its own copy ([LibraryRelocations]). */
+    val relocated: List<String> = emptyList(),
+  ) {
     fun toJson(): JsonObject = buildJsonObject {
       put("apk", apk.path)
       put("cached", entry.cached)
       put("ms", ms)
       put("classesJar", entry.classesJar.path)
+      if (relocated.isNotEmpty()) {
+        put(
+          "relocated",
+          kotlinx.serialization.json.JsonArray(
+            relocated.map { JsonPrimitive(it.replace('/', '.')) },
+          ),
+        )
+      }
       runCatching { Json.parseToJsonElement(entry.summary) }.getOrNull()?.let { put("summary", it) }
     }
 

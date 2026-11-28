@@ -154,6 +154,37 @@ Pruning never deletes an entry that a conversion holds (`<sha>.lock`) or a runni
 path is removed, the APK's other converter stamps go, and then the least recently used APKs beyond
 eight or 2 GB.
 
+### Release builds and the app's Guava
+
+The sandbox serves an app its own copy of each class, except Guava (see **Classes** below). An R8
+build's Guava has been rewritten for that app, and the app's code calls what only its copy has:
+before this pass Tasks.org stopped on `NoSuchFieldError: ImmutableSet … $r8$clinit`, NewPipe on
+`NoSuchMethodError: Joiner.<init>(String, int)`, and LibreTube on an `IllegalAccessError` reaching
+Guava's package-private `Splitter$Strategy` from OkHttp, into which R8 had merged it.
+
+After converting, `:simulator-core`'s `LibraryRelocation` checks every reference the app makes to a
+Guava class against the simulator's copy: that the class and member exist, are reachable with that
+access, and are static or not, an interface or not, as called. Each package with a reference that
+fails runs from the app's own copy, renamed under `composeai.relocated.` with every reference to
+it, while Robolectric keeps the simulator's. The check repeats until nothing more fails: a runtime
+method declared with a type the app now has its own copy of moves its package too. A debug APK's
+Guava passes, and nothing changes.
+
+Some Guava types are shared with the simulator's own code and keep their names — `ListenableFuture`,
+which the AppSearch stand-in returns to the app. They are found from `lib-simulator/`'s
+`ee.schimke.composeai` classes: what they shadow, extend, cast to, catch or name in a string, and
+the types of what they get from or give to such an object. A package that cannot move without
+splitting one of them from the rest stays the runtime's, and the summary says why.
+
+The decision is cached beside `classes.jar`, as `relocation-<stamp>.json`, and the relocated jar as
+`classes-relocated-<stamp>.jar`, keyed by the runtime jars' names and sizes rather than the
+converter stamp: a new simulator re-runs only this (seconds), not the conversion. The `conversion`
+event's `relocated` lists the packages. A test APK (`--instrument`) has its app's packages relocated,
+without analysis, so both refer to the same copy. `COMPOSE_PREVIEW_SIMULATOR_RELOCATION=0` turns it
+off. Not
+rewritten: Kotlin metadata, and class names a library builds at run time; a hot reload's overlay
+classes refer to the original names, which a release build does not reload against anyway.
+
 **Navigation.** `Navigator` drains Robolectric's recorded intents every loop turn and does what the
 system would: activities go onto a back stack through `ActivityController` (the one below is paused
 and stopped, so its window is neither drawn nor touchable), `setResult` reaches a
@@ -232,7 +263,11 @@ manifest's content providers are created after `attachBaseContext()` and before
   on a device (Firebase Sessions binds with an action of `"0"`).
 
 **Classes** come from the APK first, except Guava, which Robolectric's own code links against: an
-app's older copy is not served to it (Now in Android's lacks `toImmutableList`). A platform class
+app's older copy is not served to it (Now in Android's lacks `toImmutableList`). A release (R8)
+APK's Guava is no older copy but a rewritten one — members added (`$r8$clinit`), constructors
+changed, an interface merged into an unrelated class — and its code calls what only that copy has;
+those packages run from the app's own copy, relocated ([below](#release-builds-and-the-apps-guava)).
+A platform class
 the simulated SDK lacks comes from the SDK's `android.jar` stub, the newest platform installed:
 apps reference newer platform classes behind `SDK_INT` checks, which ART leaves unresolved and the
 JVM's verifier does not.
