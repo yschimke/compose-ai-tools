@@ -96,3 +96,28 @@ mask divergences are covered by the parity table and sample matrix tests.
 
 Adding a fixture without a matching expectation entry fails the gate, so a new mode can't be
 rendered by both engines and compared by neither.
+
+## Gradle interop tasks (`com.android.compose.screenshot`)
+
+When a module applies `com.android.compose.screenshot` (or carries committed references under
+`src/screenshotTest<Variant>/reference/`), the preview plugin also registers two interop tasks that
+speak Google's exact reference layout (`<package>/<Class>/<function>_*.png`) and recognise
+`@com.android.tools.screenshot.PreviewTest`:
+
+```bash
+# Validate rendered @PreviewTest PNGs against Layoutlib references in src/screenshotTestDebug/reference/
+./gradlew -Pandroid.experimental.enableScreenshotTest=true \
+  :samples:android-screenshot-test:composePreviewValidateScreenshotTest \
+  -PcomposePreview.screenshotDiffThreshold=0.03 \
+  -PcomposePreview.screenshotChannelTolerance=8
+
+# Refresh references in place from Compose Preview renders
+./gradlew -Pandroid.experimental.enableScreenshotTest=true \
+  :samples:android-screenshot-test:composePreviewUpdateScreenshotTest
+```
+
+`composePreviewValidateScreenshotTest` writes `build/reports/compose-previews/screenshot-test/report.json`,
+3-panel diff composites (`Reference | Actual | Diff`) on mismatches, Gradle HTML test reports via
+`TestEventReporterFactory`, and structured diagnostics via Gradle's `Problems` API. Configure defaults
+under `composePreview { screenshotTest { imageDifferenceThreshold.set(0.01); channelTolerance.set(2); validateInCheck.set(false) } }`
+(or override per run with `-PcomposePreview.screenshotDiffThreshold` and `-PcomposePreview.screenshotChannelTolerance`).

@@ -1111,7 +1111,18 @@ internal object AndroidPreviewSupport {
         extension,
         activeCompilationSourceFiles =
           project
-            .files(listOfNotNull(variant.sources.java?.all, variant.sources.kotlin?.all))
+            .files(
+              listOfNotNull(
+                variant.sources.java?.all,
+                variant.sources.kotlin?.all,
+                if (screenshotTestEnabled)
+                  project.layout.projectDirectory.dir("src/screenshotTest/kotlin")
+                else null,
+                if (screenshotTestEnabled)
+                  project.layout.projectDirectory.dir("src/screenshotTest/java")
+                else null,
+              ),
+            )
             .asFileTree
             .matching {
               include("**/*.kt")
@@ -2421,6 +2432,17 @@ internal object AndroidPreviewSupport {
           dependsOn(compileShardsTask)
         }
       }
+
+    ScreenshotTestInterop.registerTasks(
+      project = project,
+      extension = extension,
+      variantName = variantName,
+      capVariant = capVariant,
+      screenshotTestPluginApplied = screenshotTestEnabled,
+      manifestFileProvider = discoverTask.flatMap { it.outputFile },
+      rendersDirProvider = rendersDirectory,
+      renderTask = renderTask,
+    )
 
     // The JDK-aware Robolectric SDK ceiling must use the JVM the render actually forks into
     // ([renderJavaLauncher]), not `JavaVersion.current()`. Derived from AGP's launcher / toolchain

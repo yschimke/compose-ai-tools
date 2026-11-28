@@ -1052,6 +1052,11 @@ data class PreviewInfo(
   val componentTargets: List<PreviewTarget> = emptyList(),
   /** The widget this preview draws, if any; see [PreviewWidget]. */
   val widget: PreviewWidget? = null,
+  /**
+   * `@com.android.tools.screenshot.PreviewTest`: marks a `@Preview` discovered by AGP's Compose
+   * Preview Screenshot Testing plugin (`com.android.compose.screenshot`).
+   */
+  val previewTest: Boolean = false,
 )
 
 /**

@@ -253,6 +253,7 @@ object PreviewDiscovery {
   // `@CaptureGutter`'s per-edge "take `all`" sentinel (`INHERIT_GUTTER`).
   private const val INHERIT_GUTTER = -1
   private const val SETTLED_PREVIEW_FQN = "ee.schimke.composeai.preview.SettledPreview"
+  private const val PREVIEW_TEST_FQN = "com.android.tools.screenshot.PreviewTest"
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
   // Seeds Robolectric's grant set before `setContent` rather than wrapping the composition, because
   // permissions are read on the first composition. See `PermissionPreview.kt`.
@@ -4352,6 +4353,7 @@ object PreviewDiscovery {
       knobs = ComposableSignature.knobsOf(classInfo, method, scanResult),
       // Skipped for the same non-composable kinds as `targets`.
       componentTargets = if (skipTargetInference) emptyList() else inferredComponentTargets.value,
+      previewTest = method.allAnnotationInfo.any { it.name == PREVIEW_TEST_FQN },
     )
   }
 
