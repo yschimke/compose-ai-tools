@@ -290,9 +290,13 @@ public final class PlayBillingService {
     ComponentName component = new ComponentName(VENDING_PACKAGE, SERVICE_CLASS);
     Intent byPackage = new Intent(ACTION_BIND).setPackage(VENDING_PACKAGE);
     Intent byComponent = new Intent(ACTION_BIND).setComponent(component);
+    Intent byPackageAndComponent =
+        new Intent(ACTION_BIND).setPackage(VENDING_PACKAGE).setComponent(component);
     ShadowApplication shadowApp = Shadows.shadowOf(app);
     shadowApp.setComponentNameAndServiceForBindServiceForIntent(byPackage, component, binder);
     shadowApp.setComponentNameAndServiceForBindServiceForIntent(byComponent, component, binder);
+    shadowApp.setComponentNameAndServiceForBindServiceForIntent(
+        byPackageAndComponent, component, binder);
 
     ShadowPackageManager pm = Shadows.shadowOf(app.getPackageManager());
     ServiceInfo info = new ServiceInfo();
@@ -303,6 +307,7 @@ public final class PlayBillingService {
     resolveInfo.serviceInfo = info;
     pm.addResolveInfoForIntent(byPackage, resolveInfo);
     pm.addResolveInfoForIntent(byComponent, resolveInfo);
+    pm.addResolveInfoForIntent(byPackageAndComponent, resolveInfo);
   }
 
   // ---- Core billing operations (used by both AIDL binder and unit tests) ----
