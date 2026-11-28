@@ -1,15 +1,20 @@
 package ee.schimke.composeai.simulator.shadows;
 
 import android.app.Activity;
+import android.app.Application;
+import android.app.Instrumentation;
 import android.app.Instrumentation.ActivityResult;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.Display;
+import ee.schimke.composeai.simulator.TestRunnerApplication;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
+import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowInstrumentation;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 /**
  * Robolectric's {@code Instrumentation} shadow, launching on the caller's display. On a device an
@@ -17,13 +22,26 @@ import org.robolectric.shadows.ShadowInstrumentation;
  * so in-app navigation on a secondary display stays there; Robolectric records the start with no
  * display, and {@link Navigator} would put it on the default display. Here the caller's display is
  * written into the start's options, as {@code ActivityOptions.setLaunchDisplayId} would, unless
- * the caller named one. Added to the shadow map by name, by {@link SimulatorSandbox}.
+ * the caller named one. Also notifies {@link TestRunnerApplication} when a custom test runner calls
+ * static {@code Instrumentation.newApplication(Class, Context)}. Added to the shadow map by name,
+ * by {@link SimulatorSandbox}.
  */
 @Implements(className = "android.app.Instrumentation")
 public class SimulatorShadowInstrumentation extends ShadowInstrumentation {
 
   /** {@code ActivityOptions.KEY_LAUNCH_DISPLAY_ID}, hidden. */
   static final String LAUNCH_DISPLAY_ID = "android.activity.launchDisplayId";
+
+  @Implementation
+  protected static Application newApplication(Class<?> clazz, Context context)
+      throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+    TestRunnerApplication.recordApplicationClass(clazz);
+    return Shadow.directlyOn(
+        Instrumentation.class,
+        "newApplication",
+        ClassParameter.from(Class.class, clazz),
+        ClassParameter.from(Context.class, context));
+  }
 
   @Implementation
   @Override

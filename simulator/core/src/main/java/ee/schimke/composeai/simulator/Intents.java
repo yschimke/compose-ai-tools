@@ -168,6 +168,7 @@ final class Intents {
 
   static JSONObject toJson(Intent intent) {
     Protocol.Json json = new Protocol.Json();
+    if (intent == null) return json.object();
     if (intent.getAction() != null) json.put("action", intent.getAction());
     if (intent.getData() != null) json.put("data", intent.getData().toString());
     if (intent.getType() != null) json.put("type", intent.getType());

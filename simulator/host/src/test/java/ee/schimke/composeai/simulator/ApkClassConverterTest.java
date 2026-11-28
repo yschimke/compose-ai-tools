@@ -749,4 +749,511 @@ public class ApkClassConverterTest {
       org.junit.Assert.assertArrayEquals(new int[] {10, 110, 1110}, actual);
     }
   }
+
+  @Test
+  public void providedPropertyJarsResolveCommonSuperClass() throws Exception {
+    // Simulator-provided androidx.test classes are stripped from the test APK, so ASM's
+    // ClassHierarchy must also consult PROVIDED_PROPERTY jars when computing frames for multi-catch
+    // blocks like `catch (NoMatchingViewException | AssertionFailedError)`.
+    ClassWriter providedEx = new ClassWriter(0);
+    providedEx.visit(
+        Opcodes.V1_8,
+        Opcodes.ACC_PUBLIC,
+        "androidx/test/espresso/FakeNoMatchingViewException",
+        null,
+        "java/lang/RuntimeException",
+        null);
+    providedEx.visitEnd();
+
+    Path providedJar = temp.newFile("provided-espresso.jar").toPath();
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(providedJar))) {
+      zip.putNextEntry(new ZipEntry("androidx/test/espresso/FakeNoMatchingViewException.class"));
+      zip.write(providedEx.toByteArray());
+      zip.closeEntry();
+    }
+
+    ClassWriter apkErr = new ClassWriter(0);
+    apkErr.visit(
+        Opcodes.V1_8,
+        Opcodes.ACC_PUBLIC,
+        "junit/framework/FakeAssertionFailedError",
+        null,
+        "java/lang/AssertionError",
+        null);
+    apkErr.visitEnd();
+
+    Map<String, ApkClassConverter.ClassHierarchy.Header> appClasses =
+        Map.of(
+            "junit/framework/FakeAssertionFailedError",
+            ApkClassConverter.ClassHierarchy.Header.of(new ClassReader(apkErr.toByteArray())));
+
+    String prev = System.getProperty(ApkClassConverter.PROVIDED_PROPERTY);
+    System.setProperty(ApkClassConverter.PROVIDED_PROPERTY, providedJar.toString());
+    try (ZipFile platform = new ZipFile(emptyJar().toFile());
+        ApkClassConverter.ClassHierarchy hierarchy =
+            new ApkClassConverter.ClassHierarchy(appClasses, platform)) {
+      assertEquals(
+          "java/lang/Throwable",
+          hierarchy.commonSuperClass(
+              "androidx/test/espresso/FakeNoMatchingViewException",
+              "junit/framework/FakeAssertionFailedError"));
+    } finally {
+      if (prev == null) System.clearProperty(ApkClassConverter.PROVIDED_PROPERTY);
+      else System.setProperty(ApkClassConverter.PROVIDED_PROPERTY, prev);
+    }
+  }
+
+  @Test
+  public void javaClasspathResourcesAreCopiedAndDexmakerIsExcluded() throws Exception {
+    Path platform = emptyJar();
+    String simple =
+        """
+        .class public Lapp/Res;
+        .super Ljava/lang/Object;
+        .method public static ok()I
+          .registers 1
+          const/4 v0, 0x1
+          return v0
+        .end method
+        """;
+    Path baseApk = apk("res-base.apk", simple);
+    Path apkWithResources = temp.newFile("res-full.apk").toPath();
+    try (ZipFile in = new ZipFile(baseApk.toFile());
+        ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(apkWithResources))) {
+      var entries = in.entries();
+      while (entries.hasMoreElements()) {
+        ZipEntry e = entries.nextElement();
+        out.putNextEntry(new ZipEntry(e.getName()));
+        out.write(in.getInputStream(e).readAllBytes());
+        out.closeEntry();
+      }
+      Map<String, String> extras = new HashMap<>();
+      extras.put(
+          "org/mockito/internal/creation/bytebuddy/inject-MockMethodDispatcher.raw", "bytes");
+      extras.put("META-INF/services/com.example.Plugin", "com.example.PluginImpl\n");
+      extras.put(
+          "mockito-extensions/org.mockito.plugins.MockMaker",
+          "com.android.dx.mockito.inline.MockMakerMultiplexer\n");
+      extras.put(
+          "mockito-extensions/org.mockito.plugins.InstantiatorProvider2",
+          "com.linkedin.dexmaker.mockito.DexmakerInstantiator\n");
+      extras.put(
+          "mockito-extensions/org.mockito.plugins.StackTraceCleanerProvider",
+          "com.example.CustomCleaner\n");
+      extras.put("META-INF/services/androidx.test.platform.app.InstrumentationRegistry", "bad\n");
+      extras.put("AndroidManifest.xml", "<manifest/>");
+      extras.put("resources.arsc", "arsc");
+      extras.put("res/layout/main.xml", "<View/>");
+      extras.put("assets/hello.txt", "hi");
+      extras.put("lib/arm64-v8a/libfoo.so", "elf");
+      extras.put("META-INF/CERT.SF", "sig");
+      extras.put("META-INF/CERT.RSA", "rsa");
+      for (Map.Entry<String, String> e : extras.entrySet()) {
+        out.putNextEntry(new ZipEntry(e.getKey()));
+        out.write(e.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        out.closeEntry();
+      }
+    }
+
+    Path outJar = temp.getRoot().toPath().resolve("res-full.jar");
+    ApkClassConverter.convert(apkWithResources, outJar, platform, null);
+    try (ZipFile converted = new ZipFile(outJar.toFile())) {
+      assertTrue(
+          converted.getEntry(
+                  "org/mockito/internal/creation/bytebuddy/inject-MockMethodDispatcher.raw")
+              != null);
+      assertTrue(converted.getEntry("META-INF/services/com.example.Plugin") != null);
+      assertTrue(
+          converted.getEntry("mockito-extensions/org.mockito.plugins.StackTraceCleanerProvider")
+              != null);
+      assertTrue(
+          converted.getEntry("mockito-extensions/org.mockito.plugins.MockMaker") == null);
+      assertTrue(
+          converted.getEntry("mockito-extensions/org.mockito.plugins.InstantiatorProvider2")
+              == null);
+      assertTrue(
+          converted.getEntry("META-INF/services/androidx.test.platform.app.InstrumentationRegistry")
+              == null);
+      assertTrue(converted.getEntry("AndroidManifest.xml") == null);
+      assertTrue(converted.getEntry("resources.arsc") == null);
+      assertTrue(converted.getEntry("res/layout/main.xml") == null);
+      assertTrue(converted.getEntry("assets/hello.txt") == null);
+      assertTrue(converted.getEntry("lib/arm64-v8a/libfoo.so") == null);
+      assertTrue(converted.getEntry("META-INF/CERT.SF") == null);
+      assertTrue(converted.getEntry("META-INF/CERT.RSA") == null);
+    }
+  }
+
+  @Test
+  public void sparseUnssaAndRegisterAssignmentProduceVerifiableBytecode() throws Exception {
+    // Build an IR method with int + long parameters, conditional jump + fallthrough to a merge
+    // label with a PhiExpr, plus intra-block temporaries whose slots should be reused.
+    IrMethod ir = new IrMethod();
+    ir.isStatic = true;
+    ir.owner = "Ltest/Sparse;";
+    ir.name = "pick";
+    ir.args = new String[] {"I", "J"};
+    ir.ret = "J";
+
+    Local pFlag = Exprs.nLocal("flag");
+    pFlag.valueType = "I";
+    Local pBase = Exprs.nLocal("base");
+    pBase.valueType = "J";
+    Local tmp1 = Exprs.nLocal("tmp1");
+    tmp1.valueType = "J";
+    Local tmp2 = Exprs.nLocal("tmp2");
+    tmp2.valueType = "J";
+    Local branchA = Exprs.nLocal("branchA");
+    branchA.valueType = "J";
+    Local branchB = Exprs.nLocal("branchB");
+    branchB.valueType = "J";
+    Local merged = Exprs.nLocal("merged");
+    merged.valueType = "J";
+    ir.locals.addAll(List.of(pFlag, pBase, tmp1, tmp2, branchA, branchB, merged));
+
+    LabelStmt elseLabel = Stmts.nLabel();
+    LabelStmt mergeLabel = Stmts.nLabel();
+    com.googlecode.dex2jar.ir.expr.PhiExpr phi = Exprs.nPhi(branchA, branchB);
+    phi.valueType = "J";
+    mergeLabel.phis = new ArrayList<>(List.of(Stmts.nAssign(merged, phi)));
+    ir.phiLabels = new ArrayList<>(List.of(mergeLabel));
+
+    ir.stmts.add(Stmts.nIdentity(pFlag, Exprs.nParameterRef("I", 0)));
+    ir.stmts.add(Stmts.nIdentity(pBase, Exprs.nParameterRef("J", 1)));
+    ir.stmts.add(Stmts.nIf(Exprs.nEq(pFlag, Exprs.nInt(0), "I"), elseLabel));
+    // Then branch: uses two sequential intra-block long temporaries, then defines branchA.
+    ir.stmts.add(Stmts.nAssign(tmp1, Exprs.nAdd(pBase, Exprs.nLong(10L), "J")));
+    ir.stmts.add(Stmts.nAssign(tmp2, Exprs.nAdd(tmp1, Exprs.nLong(5L), "J")));
+    ir.stmts.add(Stmts.nAssign(branchA, tmp2));
+    ir.stmts.add(Stmts.nGoto(mergeLabel));
+    // Else branch: defines branchB and falls through to mergeLabel.
+    ir.stmts.add(elseLabel);
+    ir.stmts.add(Stmts.nAssign(branchB, Exprs.nAdd(pBase, Exprs.nLong(100L), "J")));
+    ir.stmts.add(mergeLabel);
+    ir.stmts.add(Stmts.nReturn(merged));
+
+    new com.googlecode.dex2jar.ir.ts.TypeTransformer().transform(ir);
+    ApkClassConverter.deconstructPhisSparse(ir);
+    ApkClassConverter.assignRegistersSparse(ir);
+
+    assertEquals(0, pFlag.lsIndex);
+    assertEquals(1, pBase.lsIndex);
+    assertTrue(ir.phiLabels.isEmpty());
+    assertEquals(null, mergeLabel.phis);
+
+    ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+    cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Sparse", null, "java/lang/Object", null);
+    MethodVisitor mv =
+        cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "pick", "(IJ)J", null, null);
+    mv.visitCode();
+    new com.googlecode.d2j.converter.IR2JConverter().ir(ir).asm(mv).convert();
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
+    cw.visitEnd();
+
+    byte[] raw = cw.toByteArray();
+    ApkClassConverter.Summary summary = new ApkClassConverter.Summary();
+    byte[] fixed = ApkClassConverter.rewrite(raw, hierarchy(raw), summary);
+    assertEquals(0, summary.unframedClasses);
+
+    Map<String, byte[]> map = Map.of("test/Sparse", fixed);
+    ClassLoader cl =
+        new ClassLoader(getClass().getClassLoader()) {
+          @Override
+          protected Class<?> findClass(String name) throws ClassNotFoundException {
+            byte[] b = map.get(name.replace('.', '/'));
+            if (b == null) throw new ClassNotFoundException(name);
+            return defineClass(name, b, 0, b.length);
+          }
+        };
+    Method pick = cl.loadClass("test.Sparse").getMethod("pick", int.class, long.class);
+    assertEquals(22L, pick.invoke(null, 1, 7L));
+    assertEquals(107L, pick.invoke(null, 0, 7L));
+  }
+
+  @Test
+  public void oversizedMethodStubsOnlyThatMethodAndPreservesSiblings() throws Exception {
+    // Dex allows methods whose JVM bytecode exceeds 65,535 bytes; the converter must stub only
+    // the un-emittable method and keep the rest of the class intact and verifiable.
+    StringBuilder smali = new StringBuilder();
+    smali.append(".class public Lapp/Huge;\n");
+    smali.append(".super Ljava/lang/Object;\n");
+    smali.append(".field public static sink:I\n");
+    smali.append(".method public static small()I\n");
+    smali.append("  .registers 1\n");
+    smali.append("  const/16 v0, 0x2a\n");
+    smali.append("  return v0\n");
+    smali.append(".end method\n");
+    smali.append(".method public static huge(I)I\n");
+    smali.append("  .registers 2\n");
+    smali.append("  move v0, p0\n");
+    // ~12,000 `sput` + `add-int/lit8` pairs (flat IR, ~72 KB of JVM bytecode > 65,535 limit).
+    for (int i = 0; i < 12_000; i++) {
+      smali.append("  sput v0, Lapp/Huge;->sink:I\n");
+      smali.append("  add-int/lit8 v0, v0, 0x1\n");
+    }
+    smali.append("  return v0\n");
+    smali.append(".end method\n");
+
+    Path outApk = apk("huge.apk", smali.toString());
+    Path outJar = temp.getRoot().toPath().resolve("huge.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(1, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      assertEquals(42, loader.loadClass("app.Huge").getMethod("small").invoke(null));
+    }
+  }
+
+  @Test
+  public void byteBuddyAdviceMethodDoesNotOverwriteParameterSlots() throws Exception {
+    // Mirrors Mockito's MockMethodAdvice.enter(@Advice.OnMethodEnter): dex2jar's default register
+    // allocator reuses dead parameter slot 0 with `astore_0`, which ByteBuddy rejects with
+    // "Cannot write to constant value".
+    String advice =
+        """
+        .class public Lapp/AdviceSample;
+        .super Ljava/lang/Object;
+        .method public static enter(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/String;
+          .registers 4
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          invoke-static {p0}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
+          move-result-object v0
+          if-eqz v0, :ret_null
+          invoke-virtual {v0}, Ljava/lang/String;->trim()Ljava/lang/String;
+          move-result-object v1
+          return-object v1
+          :ret_null
+          const/4 v0, 0x0
+          return-object v0
+        .end method
+        """;
+    Path outApk = apk("advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    try (ZipFile zip = new ZipFile(outJar.toFile())) {
+      byte[] bytes = zip.getInputStream(zip.getEntry("app/AdviceSample.class")).readAllBytes();
+      MethodNode enter = method(bytes, "enter");
+      for (org.objectweb.asm.tree.AbstractInsnNode insn : enter.instructions) {
+        if (insn instanceof org.objectweb.asm.tree.VarInsnNode varInsn) {
+          boolean isStore =
+              varInsn.getOpcode() >= Opcodes.ISTORE && varInsn.getOpcode() <= Opcodes.ASTORE;
+          if (isStore) {
+            assertTrue(
+                "Advice method must not overwrite parameter slot " + varInsn.var,
+                varInsn.var >= 2);
+          }
+        }
+      }
+    }
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      assertEquals(
+          "hi",
+          loader
+              .loadClass("app.AdviceSample")
+              .getMethod("enter", String.class, Object.class)
+              .invoke(null, " hi ", null));
+    }
+  }
+
+  @Test
+  public void byteBuddyWritableReturnAdvicePreservesStoreToParameterSlot() throws Exception {
+    // Mirrors MockK's JvmMockKProxyAdvice.exit and Mockito's MockMethodAdvice.exit:
+    // `if (mocked != null) returned = mocked.call();` where `returned` is @Advice.Return(readOnly=false).
+    // dex2jar's T_DEAD_CODE / T_VOID_INVOKE would otherwise turn `move-result-object p0` into `pop`.
+    String exitAdvice =
+        """
+        .class public Lapp/ExitAdvice;
+        .super Ljava/lang/Object;
+        .method public static exit(Ljava/lang/Object;Ljava/util/concurrent/Callable;)V
+          .registers 2
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodExit;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Return;
+              readOnly = false
+            .end annotation
+          .end param
+          .param p1
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Enter;
+            .end annotation
+          .end param
+          if-eqz p1, :done
+          invoke-interface {p1}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+          move-result-object p0
+          :done
+          return-void
+        .end method
+        """;
+    Path outApk = apk("exit-advice.apk", exitAdvice);
+    Path outJar = temp.getRoot().toPath().resolve("exit-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (ZipFile zip = new ZipFile(outJar.toFile())) {
+      byte[] bytes = zip.getInputStream(zip.getEntry("app/ExitAdvice.class")).readAllBytes();
+      MethodNode exit = method(bytes, "exit");
+      boolean storesSlot0 = false;
+      boolean popsReturn = false;
+      for (org.objectweb.asm.tree.AbstractInsnNode insn : exit.instructions) {
+        if (insn instanceof org.objectweb.asm.tree.VarInsnNode varInsn
+            && varInsn.getOpcode() == Opcodes.ASTORE
+            && varInsn.var == 0) {
+          storesSlot0 = true;
+        }
+        if (insn.getOpcode() == Opcodes.POP) {
+          popsReturn = true;
+        }
+      }
+      assertTrue("Exit advice must write mocked return value into slot 0", storesSlot0);
+      assertFalse("Exit advice must not discard Callable.call() with POP", popsReturn);
+    }
+  }
+
+  @Test
+  public void byteBuddyWritableAdvicePreservesReturnedOriginalParam() throws Exception {
+    // Writable advice that saves a parameter's original value, overwrites the parameter, and
+    // returns the original value. The pre-return store into slot 0 must not clobber the return.
+    String advice =
+        """
+        .class public Lapp/ReturnOrigAdvice;
+        .super Ljava/lang/Object;
+        .method public static enter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+          .registers 3
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 0
+              readOnly = false
+            .end annotation
+          .end param
+          move-object v0, p0
+          move-object p0, p1
+          return-object v0
+        .end method
+        """;
+    Path outApk = apk("return-orig-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("return-orig-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      assertEquals(
+          "original",
+          loader
+              .loadClass("app.ReturnOrigAdvice")
+              .getMethod("enter", String.class, String.class)
+              .invoke(null, "original", "updated"));
+    }
+  }
+
+  @Test
+  public void byteBuddyWritableAdviceSwappingTwoParamsDoesNotClobber() throws Exception {
+    // Two writable advice parameters swapped before return: writing slot 0 must not clobber the
+    // source read for slot 1.
+    String advice =
+        """
+        .class public Lapp/SwapAdvice;
+        .super Ljava/lang/Object;
+        .method public static swap(Ljava/lang/String;Ljava/lang/String;)V
+          .registers 3
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 0
+              readOnly = false
+            .end annotation
+          .end param
+          .param p1
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 1
+              readOnly = false
+            .end annotation
+          .end param
+          move-object v0, p0
+          move-object p0, p1
+          move-object p1, v0
+          return-void
+        .end method
+        """;
+    Path outApk = apk("swap-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("swap-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (ZipFile zip = new ZipFile(outJar.toFile())) {
+      byte[] bytes = zip.getInputStream(zip.getEntry("app/SwapAdvice.class")).readAllBytes();
+      MethodNode swap = method(bytes, "swap");
+      // Track slot values symbolically through ALOAD/ASTORE to verify slot 0 ends as initial p1
+      // and slot 1 ends as initial p0.
+      Map<Integer, String> slots = new HashMap<>();
+      slots.put(0, "p0");
+      slots.put(1, "p1");
+      String tos = null;
+      for (org.objectweb.asm.tree.AbstractInsnNode insn : swap.instructions) {
+        if (insn instanceof org.objectweb.asm.tree.VarInsnNode v) {
+          if (v.getOpcode() == Opcodes.ALOAD) {
+            tos = slots.get(v.var);
+          } else if (v.getOpcode() == Opcodes.ASTORE) {
+            slots.put(v.var, tos);
+            tos = null;
+          }
+        }
+      }
+      assertEquals("p1", slots.get(0));
+      assertEquals("p0", slots.get(1));
+    }
+  }
+
+  @Test
+  public void sparseUnssaPreservesValueBeforeThrowingAssignmentAcrossCatchEdge() throws Exception {
+    // Mirrors `v = input; try { v = callable.call(); } catch (Exception e) {} return v;` on the
+    // sparse UnSSA path (triggered here via @Advice.OnMethodEnter). On the catch path, the phi at
+    // the return merge must pick `input`, not the unassigned result of the throwing `call()`.
+    String advice =
+        """
+        .class public Lapp/CatchMergeAdvice;
+        .super Ljava/lang/Object;
+        .method public static run(Ljava/lang/String;Ljava/util/concurrent/Callable;)Ljava/lang/String;
+          .registers 4
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          move-object v0, p0
+          :try_start
+          invoke-interface {p1}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+          move-result-object v1
+          check-cast v1, Ljava/lang/String;
+          move-object v0, v1
+          :try_end
+          .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch_handler
+          goto :merge
+          :catch_handler
+          move-exception v1
+          :merge
+          return-object v0
+        .end method
+        """;
+    Path outApk = apk("catch-merge-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("catch-merge-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      java.lang.reflect.Method run =
+          loader
+              .loadClass("app.CatchMergeAdvice")
+              .getMethod("run", String.class, java.util.concurrent.Callable.class);
+      java.util.concurrent.Callable<Object> failing =
+          () -> {
+            throw new IllegalStateException("boom");
+          };
+      java.util.concurrent.Callable<Object> succeeding = () -> "updated";
+      assertEquals("fallback", run.invoke(null, "fallback", failing));
+      assertEquals("updated", run.invoke(null, "fallback", succeeding));
+    }
+  }
 }
