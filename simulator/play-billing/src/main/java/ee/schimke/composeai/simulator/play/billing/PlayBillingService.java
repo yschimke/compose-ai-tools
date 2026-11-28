@@ -609,9 +609,10 @@ public final class PlayBillingService {
             String type = data.readString();
             Bundle skusBundle = readNullableBundle(data);
             Bundle extraParams = readNullableBundle(data);
+            String responseFormat =
+                extraParams != null ? extraParams.getString("SKU_DETAILS_RESPONSE_FORMAT") : null;
             boolean productDetails =
-                apiVersion >= 17
-                    || (extraParams != null && extraParams.getBoolean("enablePendingPurchases"));
+                apiVersion >= 17 || "PRODUCT_DETAILS".equalsIgnoreCase(responseFormat);
             writeBundleReply(reply, buildDetailsBundle(type, skusBundle, productDetails));
             return true;
           }
@@ -720,7 +721,11 @@ public final class PlayBillingService {
           }
         }
         PendingIntent pi =
-            PendingIntent.getActivity(app, sku.hashCode(), flowIntent, PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent.getActivity(
+                app,
+                sku.hashCode(),
+                flowIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         out.putParcelable("BUY_INTENT", pi);
       }
       return out;
