@@ -178,13 +178,21 @@ public final class CalendarProvider extends ContentProvider {
 
   private static List<Map<String, Object>> matchingInstances(
       long rangeBegin, long rangeEnd, String selection, String[] selectionArgs) {
+    Map<Long, Map<String, Object>> calendars = tableMap("calendars");
     List<Map<String, Object>> out = new ArrayList<>();
     for (Map<String, Object> event : tableMap("events").values()) {
       long dtStart = asLong(event.get(CalendarContract.Events.DTSTART), Long.MIN_VALUE);
       long dtEnd = asLong(event.get(CalendarContract.Events.DTEND), dtStart);
       if (dtStart == Long.MIN_VALUE) continue;
       if (dtEnd < rangeBegin || dtStart > rangeEnd) continue;
-      Map<String, Object> instance = new LinkedHashMap<>(event);
+      Map<String, Object> instance = new LinkedHashMap<>();
+      long calId = asLong(event.get(CalendarContract.Events.CALENDAR_ID), -1L);
+      Map<String, Object> cal = calId >= 0 ? calendars.get(calId) : null;
+      if (cal != null) {
+        instance.putAll(cal);
+        instance.putIfAbsent(CalendarContract.Calendars.VISIBLE, 1);
+      }
+      instance.putAll(event);
       instance.put(CalendarContract.Instances.EVENT_ID, event.get(BaseColumns._ID));
       instance.put(CalendarContract.Instances.BEGIN, dtStart);
       instance.put(CalendarContract.Instances.END, dtEnd);
@@ -209,13 +217,43 @@ public final class CalendarProvider extends ContentProvider {
     return fallback;
   }
 
+  /** Splits an SQL selection on top-level {@code AND} tokens outside single-quoted literals. */
+  static List<String> splitAndClauses(String selection) {
+    List<String> clauses = new ArrayList<>();
+    int start = 0;
+    boolean inQuotes = false;
+    int len = selection.length();
+    for (int i = 0; i < len; i++) {
+      char c = selection.charAt(i);
+      if (c == '\'') {
+        if (inQuotes && i + 1 < len && selection.charAt(i + 1) == '\'') {
+          i++; // SQL escaped single quote ''
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (!inQuotes
+          && i > start
+          && Character.isWhitespace(selection.charAt(i - 1))
+          && i + 3 < len
+          && selection.regionMatches(true, i, "AND", 0, 3)
+          && Character.isWhitespace(selection.charAt(i + 3))) {
+        clauses.add(selection.substring(start, i).trim());
+        i += 3;
+        start = i + 1;
+      }
+    }
+    clauses.add(selection.substring(start).trim());
+    return clauses;
+  }
+
   /** Evaluates AND-joined {@code col = ?} / {@code col = 'val'} predicates; rejects others. */
   private static boolean matchesSelection(
       Map<String, Object> row, String selection, String[] selectionArgs) {
     if (selection == null || selection.isBlank()) return true;
-    String[] parts = selection.split("(?i)\\s+AND\\s+");
     int argIdx = 0;
-    for (String raw : parts) {
+    for (String raw : splitAndClauses(selection)) {
       String clause = raw.trim();
       while (clause.startsWith("(") && clause.endsWith(")")) {
         clause = clause.substring(1, clause.length() - 1).trim();
@@ -234,7 +272,7 @@ public final class CalendarProvider extends ContentProvider {
         if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
         expected = selectionArgs[argIdx++];
       } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
-        expected = rhs.substring(1, rhs.length() - 1);
+        expected = rhs.substring(1, rhs.length() - 1).replace("''", "'");
       } else if (rhs.indexOf('=') >= 0) {
         throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
       } else {
