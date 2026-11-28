@@ -138,6 +138,19 @@ public final class GmsMaps {
     return active;
   }
 
+  static void setCurrent(GmsMaps engine) {
+    if (engine != null) active = engine;
+  }
+
+  /** Creates a fresh per-MapView engine sharing the current main executor. */
+  static GmsMaps newInstance() {
+    GmsMaps cur = active;
+    Executor exec = cur != null ? cur.main : defaultMainExecutor();
+    GmsMaps created = new GmsMaps(exec);
+    active = created;
+    return created;
+  }
+
   public static void resetCurrent() {
     active = null;
   }
@@ -145,16 +158,16 @@ public final class GmsMaps {
   static GmsMaps getOrCreate() {
     GmsMaps cur = active;
     if (cur != null) return cur;
-    Executor exec;
+    return newInstance();
+  }
+
+  private static Executor defaultMainExecutor() {
     try {
       Handler h = new Handler(Looper.getMainLooper());
-      exec = h::post;
+      return h::post;
     } catch (RuntimeException e) {
-      exec = Runnable::run;
+      return Runnable::run;
     }
-    GmsMaps created = new GmsMaps(exec);
-    active = created;
-    return created;
   }
 
   Executor mainExecutor() {

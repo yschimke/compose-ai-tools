@@ -104,4 +104,43 @@ public class GmsMapsTest {
     assertEquals(0, cleared.getJSONArray("markers").length());
     assertEquals(0, cleared.getInt("polylineCount"));
   }
+
+  @Test
+  public void appDrivenCameraUpdatesAndMarkerClickListenerWork() {
+    GoogleMap map =
+        (GoogleMap) GmsMapsDelegates.createGoogleMap(maps, getClass().getClassLoader());
+    assertNotNull(map);
+
+    com.google.android.gms.maps.CameraUpdate update =
+        (com.google.android.gms.maps.CameraUpdate)
+            GmsMapsDelegates.cameraUpdateNewLatLngZoom(
+                new com.google.android.gms.maps.model.LatLng(35.6762, 139.6503), 16f);
+    assertNotNull(update);
+    map.delegate.moveCamera(update.remoteObject);
+    assertEquals(35.6762, map.getCameraPosition().target.latitude, 0.0001);
+    assertEquals(16f, map.getCameraPosition().zoom, 0.01f);
+
+    com.google.android.gms.maps.internal.IGoogleMapDelegate.IMarkerDelegate marker =
+        map.delegate.addMarker(
+            new com.google.android.gms.maps.model.MarkerOptions(
+                new com.google.android.gms.maps.model.LatLng(35.6762, 139.6503), "Tokyo", "JP"));
+    AtomicReference<String> clickedTitle = new AtomicReference<>();
+    map.delegate.setOnMarkerClickListener(
+        m -> {
+          clickedTitle.set(m.getTitle());
+          return true;
+        });
+
+    assertTrue(maps.dispatchMarkerClick(marker.getId()));
+    assertEquals("Tokyo", clickedTitle.get());
+  }
+
+  @Test
+  public void separateMapEnginesIsolateState() {
+    GmsMaps second = GmsMaps.newInstance();
+    maps.setMapType(GmsMaps.MAP_TYPE_SATELLITE);
+    second.setMapType(GmsMaps.MAP_TYPE_TERRAIN);
+    assertEquals(GmsMaps.MAP_TYPE_SATELLITE, maps.mapType());
+    assertEquals(GmsMaps.MAP_TYPE_TERRAIN, second.mapType());
+  }
 }

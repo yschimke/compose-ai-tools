@@ -9,15 +9,22 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.function.Consumer;
 
 /**
  * Reflection & dynamic-proxy bridge between Play services' {@code GoogleMap} / {@code MapView} /
- * {@code MapsInitializer} and {@link GmsMaps}.
+ * {@code MapsInitializer} / {@code CameraUpdateFactory} and per-view {@link GmsMaps} engines.
  */
 public final class GmsMapsDelegates {
 
   private static final String GOOGLE_MAP = "com.google.android.gms.maps.GoogleMap";
+  private static final String CAMERA_UPDATE = "com.google.android.gms.maps.CameraUpdate";
+  private static final String IOBJECT_WRAPPER = "com.google.android.gms.dynamic.IObjectWrapper";
   private static final String IGOOGLE_MAP_DELEGATE =
       "com.google.android.gms.maps.internal.IGoogleMapDelegate";
   private static final String IUI_SETTINGS_DELEGATE =
@@ -25,7 +32,27 @@ public final class GmsMapsDelegates {
   private static final String LAT_LNG = "com.google.android.gms.maps.model.LatLng";
   private static final String CAMERA_POSITION = "com.google.android.gms.maps.model.CameraPosition";
 
+  private static final Map<ViewGroup, GmsMaps> enginesByView =
+      Collections.synchronizedMap(new WeakHashMap<>());
+  private static final Map<Object, Consumer<GmsMaps>> cameraUpdates =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
   private GmsMapsDelegates() {}
+
+  /** Returns the dedicated {@link GmsMaps} engine for {@code mapView}, creating one if needed. */
+  static GmsMaps engineFor(ViewGroup mapView) {
+    if (mapView == null) return GmsMaps.getOrCreate();
+    synchronized (enginesByView) {
+      GmsMaps engine = enginesByView.get(mapView);
+      if (engine == null) {
+        engine = GmsMaps.newInstance();
+        enginesByView.put(mapView, engine);
+      } else {
+        GmsMaps.setCurrent(engine);
+      }
+      return engine;
+    }
+  }
 
   /** Answers {@code MapsInitializer.initialize} and invokes {@code callback} if provided. */
   public static int initialize(Context context, Object callback) {
@@ -56,11 +83,11 @@ public final class GmsMapsDelegates {
   /** Attaches a {@link SimulatedMapCanvasView} inside a shadowed {@code MapView}. */
   public static void attachCanvas(ViewGroup mapView) {
     if (mapView == null) return;
+    GmsMaps engine = engineFor(mapView);
     for (int i = 0; i < mapView.getChildCount(); i++) {
       if (mapView.getChildAt(i) instanceof SimulatedMapCanvasView) return;
     }
-    SimulatedMapCanvasView canvasView =
-        new SimulatedMapCanvasView(mapView.getContext(), GmsMaps.getOrCreate());
+    SimulatedMapCanvasView canvasView = new SimulatedMapCanvasView(mapView.getContext(), engine);
     canvasView.setLayoutParams(
         new ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -70,7 +97,7 @@ public final class GmsMapsDelegates {
   /** Dispatches {@code OnMapReadyCallback.onMapReady(GoogleMap)} on the main executor. */
   public static void getMapAsync(ViewGroup mapView, Object callback) {
     if (callback == null) return;
-    GmsMaps engine = GmsMaps.getOrCreate();
+    GmsMaps engine = engineFor(mapView);
     ClassLoader loader =
         mapView != null && mapView.getContext() != null
             ? mapView.getContext().getClassLoader()
@@ -94,6 +121,84 @@ public final class GmsMapsDelegates {
             });
   }
 
+  // ---- CameraUpdateFactory helpers ----
+
+  public static Object cameraUpdateNewLatLng(Object latLng) {
+    if (latLng == null) return null;
+    double[] ll = readLatLng(latLng);
+    return wrapCameraUpdate(
+        latLng.getClass().getClassLoader(),
+        e -> e.setCamera(ll[0], ll[1], e.cameraZoom(), e.cameraTilt(), e.cameraBearing()));
+  }
+
+  public static Object cameraUpdateNewLatLngZoom(Object latLng, float zoom) {
+    if (latLng == null) return null;
+    double[] ll = readLatLng(latLng);
+    return wrapCameraUpdate(
+        latLng.getClass().getClassLoader(),
+        e -> e.setCamera(ll[0], ll[1], zoom, e.cameraTilt(), e.cameraBearing()));
+  }
+
+  public static Object cameraUpdateNewCameraPosition(Object cameraPosition) {
+    if (cameraPosition == null) return null;
+    ClassLoader loader = cameraPosition.getClass().getClassLoader();
+    double[] ll = readLatLng(readField(cameraPosition, "target"));
+    float zoom = readFloat(readField(cameraPosition, "zoom"), 12f);
+    float tilt = readFloat(readField(cameraPosition, "tilt"), 0f);
+    float bearing = readFloat(readField(cameraPosition, "bearing"), 0f);
+    return wrapCameraUpdate(loader, e -> e.setCamera(ll[0], ll[1], zoom, tilt, bearing));
+  }
+
+  public static Object cameraUpdateNewLatLngBounds(Object bounds) {
+    if (bounds == null) return null;
+    ClassLoader loader = bounds.getClass().getClassLoader();
+    Object center = invokeNoArg(bounds, "getCenter");
+    double[] ll = readLatLng(center);
+    return wrapCameraUpdate(
+        loader, e -> e.setCamera(ll[0], ll[1], e.cameraZoom(), e.cameraTilt(), e.cameraBearing()));
+  }
+
+  public static Object cameraUpdateZoomTo(ClassLoader loader, float zoom) {
+    return wrapCameraUpdate(
+        loader,
+        e -> e.setCamera(e.cameraLat(), e.cameraLng(), zoom, e.cameraTilt(), e.cameraBearing()));
+  }
+
+  public static Object cameraUpdateZoomBy(ClassLoader loader, float delta) {
+    return wrapCameraUpdate(
+        loader,
+        e ->
+            e.setCamera(
+                e.cameraLat(),
+                e.cameraLng(),
+                e.cameraZoom() + delta,
+                e.cameraTilt(),
+                e.cameraBearing()));
+  }
+
+  static Object wrapCameraUpdate(ClassLoader loader, Consumer<GmsMaps> action) {
+    try {
+      Class<?> wrapperIface = Class.forName(IOBJECT_WRAPPER, false, loader);
+      Object wrapper =
+          Proxy.newProxyInstance(
+              loader,
+              new Class<?>[] {wrapperIface},
+              (p, m, a) -> {
+                if ("equals".equals(m.getName()) && a != null && a.length == 1) return p == a[0];
+                if ("hashCode".equals(m.getName())) return System.identityHashCode(p);
+                if ("toString".equals(m.getName())) return "SimulatedCameraUpdateWrapper";
+                return defaultReturn(m.getReturnType());
+              });
+      cameraUpdates.put(wrapper, action);
+      Class<?> updateCls = Class.forName(CAMERA_UPDATE, false, loader);
+      Constructor<?> ctor = updateCls.getDeclaredConstructor(wrapperIface);
+      ctor.setAccessible(true);
+      return ctor.newInstance(wrapper);
+    } catch (ReflectiveOperationException e) {
+      return null;
+    }
+  }
+
   /** Constructs a {@code GoogleMap} backed by a simulated {@code IGoogleMapDelegate} proxy. */
   public static Object createGoogleMap(GmsMaps engine, ClassLoader loader) {
     try {
@@ -114,6 +219,8 @@ public final class GmsMapsDelegates {
     private final GmsMaps engine;
     private final ClassLoader loader;
     private final Object uiSettingsProxy;
+    private final Map<String, Object> markerDelegates =
+        Collections.synchronizedMap(new HashMap<>());
 
     GoogleMapDelegateHandler(GmsMaps engine, ClassLoader loader) {
       this.engine = engine;
@@ -134,6 +241,12 @@ public final class GmsMapsDelegates {
           return safeArgs.length == 1 && proxy == safeArgs[0];
         case "getCameraPosition":
           return buildCameraPosition(loader, engine);
+        case "moveCamera":
+        case "animateCamera":
+        case "animateCameraWithCallback":
+        case "animateCameraWithDurationAndCallback":
+          handleCameraUpdate(safeArgs);
+          return null;
         case "getMapType":
           return engine.mapType();
         case "setMapType":
@@ -155,6 +268,7 @@ public final class GmsMapsDelegates {
         case "addCircle":
           return handleAddCircle(method.getReturnType(), safeArgs);
         case "clear":
+          markerDelegates.clear();
           engine.clearOverlays();
           return null;
         case "setOnMapClickListener":
@@ -171,6 +285,29 @@ public final class GmsMapsDelegates {
       }
     }
 
+    private void handleCameraUpdate(Object[] args) {
+      if (args.length == 0 || args[0] == null) return;
+      Consumer<GmsMaps> action = cameraUpdates.get(args[0]);
+      if (action != null) {
+        action.accept(engine);
+      }
+      // Invoke CancelableCallback.onFinish() if supplied (last argument).
+      Object last = args[args.length - 1];
+      if (last != null && last != args[0]) {
+        for (Method m : last.getClass().getMethods()) {
+          if (("onFinish".equals(m.getName()) || "zzc".equals(m.getName()))
+              && m.getParameterCount() == 0) {
+            try {
+              m.setAccessible(true);
+              m.invoke(last);
+              return;
+            } catch (ReflectiveOperationException ignored) {
+            }
+          }
+        }
+      }
+    }
+
     private Object handleAddMarker(Class<?> returnType, Object[] args) {
       if (args.length == 0 || args[0] == null) return null;
       Object opts = args[0];
@@ -179,52 +316,56 @@ public final class GmsMapsDelegates {
       String snippet = (String) invokeNoArg(opts, "getSnippet");
       GmsMaps.MarkerRecord rec = engine.addMarker(ll[0], ll[1], title, snippet);
       if (!returnType.isInterface()) return null;
-      return Proxy.newProxyInstance(
-          loader,
-          new Class<?>[] {returnType},
-          (p, m, a) -> {
-            switch (m.getName()) {
-              case "getId":
-                return rec.id;
-              case "getTitle":
-                return rec.title;
-              case "setTitle":
-                if (a != null && a.length > 0) rec.title = (String) a[0];
-                engine.notifyChanged();
-                return null;
-              case "getSnippet":
-                return rec.snippet;
-              case "getPosition":
-                return buildLatLng(loader, rec.lat, rec.lng);
-              case "setPosition":
-                if (a != null && a.length > 0) {
-                  double[] pos = readLatLng(a[0]);
-                  rec.lat = pos[0];
-                  rec.lng = pos[1];
-                  engine.notifyChanged();
+      Object markerProxy =
+          Proxy.newProxyInstance(
+              loader,
+              new Class<?>[] {returnType},
+              (p, m, a) -> {
+                switch (m.getName()) {
+                  case "getId":
+                    return rec.id;
+                  case "getTitle":
+                    return rec.title;
+                  case "setTitle":
+                    if (a != null && a.length > 0) rec.title = (String) a[0];
+                    engine.notifyChanged();
+                    return null;
+                  case "getSnippet":
+                    return rec.snippet;
+                  case "getPosition":
+                    return buildLatLng(loader, rec.lat, rec.lng);
+                  case "setPosition":
+                    if (a != null && a.length > 0) {
+                      double[] pos = readLatLng(a[0]);
+                      rec.lat = pos[0];
+                      rec.lng = pos[1];
+                      engine.notifyChanged();
+                    }
+                    return null;
+                  case "isVisible":
+                    return rec.visible;
+                  case "setVisible":
+                    if (a != null && a.length > 0 && a[0] instanceof Boolean) {
+                      rec.visible = (Boolean) a[0];
+                      engine.notifyChanged();
+                    }
+                    return null;
+                  case "remove":
+                    markerDelegates.remove(rec.id);
+                    engine.removeMarker(rec.id);
+                    return null;
+                  case "hashCode":
+                    return rec.id.hashCode();
+                  case "equals":
+                    return a != null && a.length == 1 && p == a[0];
+                  case "toString":
+                    return "SimulatedMarker(" + rec.id + ")";
+                  default:
+                    return defaultReturn(m.getReturnType());
                 }
-                return null;
-              case "isVisible":
-                return rec.visible;
-              case "setVisible":
-                if (a != null && a.length > 0 && a[0] instanceof Boolean) {
-                  rec.visible = (Boolean) a[0];
-                  engine.notifyChanged();
-                }
-                return null;
-              case "remove":
-                engine.removeMarker(rec.id);
-                return null;
-              case "hashCode":
-                return rec.id.hashCode();
-              case "equals":
-                return a != null && a.length == 1 && p == a[0];
-              case "toString":
-                return "SimulatedMarker(" + rec.id + ")";
-              default:
-                return defaultReturn(m.getReturnType());
-            }
-          });
+              });
+      markerDelegates.put(rec.id, markerProxy);
+      return markerProxy;
     }
 
     private Object handleAddPolyline(Class<?> returnType, Object[] args) {
@@ -316,7 +457,24 @@ public final class GmsMapsDelegates {
         engine.setMarkerClickBridge(null);
         return;
       }
-      engine.setMarkerClickBridge(marker -> true);
+      engine.setMarkerClickBridge(
+          marker -> {
+            Object markerDelegate = markerDelegates.get(marker.id);
+            if (markerDelegate == null) return false;
+            for (Method m : listener.getClass().getMethods()) {
+              if (m.getParameterCount() == 1
+                  && m.getParameterTypes()[0].isInstance(markerDelegate)
+                  && (m.getReturnType() == boolean.class || m.getReturnType() == Boolean.class)) {
+                try {
+                  m.setAccessible(true);
+                  Object result = m.invoke(listener, markerDelegate);
+                  return Boolean.TRUE.equals(result);
+                } catch (ReflectiveOperationException ignored) {
+                }
+              }
+            }
+            return false;
+          });
     }
 
     private void handleSetCameraIdleListener(Object listener) {
@@ -386,6 +544,17 @@ public final class GmsMapsDelegates {
       return new double[] {latF.getDouble(latLng), lngF.getDouble(latLng)};
     } catch (ReflectiveOperationException e) {
       return new double[] {0.0, 0.0};
+    }
+  }
+
+  private static Object readField(Object target, String fieldName) {
+    if (target == null) return null;
+    try {
+      Field f = target.getClass().getField(fieldName);
+      f.setAccessible(true);
+      return f.get(target);
+    } catch (ReflectiveOperationException e) {
+      return null;
     }
   }
 
