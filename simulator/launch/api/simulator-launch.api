@@ -72,6 +72,11 @@ public final class ee/schimke/composeai/simulator/launch/FileFacts {
 	public final fun remember (Ljava/io/File;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/simulator/launch/RobolectricAndroidAll {
+	public static final field INSTANCE Lee/schimke/composeai/simulator/launch/RobolectricAndroidAll;
+	public final fun fileName (Ljava/util/List;I)Ljava/lang/String;
+}
+
 public final class ee/schimke/composeai/simulator/launch/SimulatorJvm {
 	public static final field HOST_JAR_PREFIX Ljava/lang/String;
 	public static final field INSTANCE Lee/schimke/composeai/simulator/launch/SimulatorJvm;

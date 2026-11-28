@@ -7,6 +7,7 @@ import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.simulator.launch.ApkConversionCache
 import ee.schimke.composeai.simulator.launch.ApkConverter
 import ee.schimke.composeai.simulator.launch.DataLayerHub
+import ee.schimke.composeai.simulator.launch.RobolectricAndroidAll
 import ee.schimke.composeai.simulator.launch.SimulatorJvm
 import java.io.BufferedWriter
 import java.io.Closeable
@@ -271,7 +272,7 @@ public object AppSimulatorLauncher {
       conversions.values.forEach { held += cache.use(it) }
       val paired = launch.apks.size > 1
       hub = if (paired) DataLayerHub().start() else null
-      val robolectric = robolectricProperties()
+      val robolectric = robolectricProperties(environment, launch.sdk)
       for ((device, apk) in launch.apks.entries.sortedBy { it.key.ordinal }) {
         val command =
           command(
@@ -295,11 +296,24 @@ public object AppSimulatorLauncher {
     }
   }
 
-  /** Robolectric pointed at a provisioned `android-all` when there is one, else left to fetch. */
-  private fun robolectricProperties(): Map<String, String> =
-    DwfApkDaemonBridge.resolveRobolectricDepsDir()?.let {
-      mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to it.absolutePath)
-    } ?: emptyMap()
+  /**
+   * Robolectric pointed at a provisioned directory, offline, only when it holds [sdk]'s own
+   * `android-all` (a directory with another level's would leave the simulator unable to start);
+   * otherwise nothing, and Robolectric resolves the jar through Maven as it does by default.
+   */
+  private fun robolectricProperties(environment: Environment, sdk: Int): Map<String, String> =
+    offlineProperties(
+      DwfApkDaemonBridge.resolveRobolectricDepsDir(),
+      RobolectricAndroidAll.fileName(environment.robolectricJars, sdk),
+    )
+
+  /** Offline properties for [dir] when it holds [fileName]; none otherwise. Pure, for tests. */
+  internal fun offlineProperties(dir: File?, fileName: String?): Map<String, String> =
+    if (dir != null && fileName != null && File(dir, fileName).isFile) {
+      mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to dir.absolutePath)
+    } else {
+      emptyMap()
+    }
 
   /** [device]'s JVM command line. Pure, for tests. */
   internal fun command(
@@ -338,6 +352,13 @@ public object AppSimulatorLauncher {
     (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
         as? com.sun.management.OperatingSystemMXBean)
       ?.totalMemorySize
+
+  /**
+   * [command] as the line sent, with [id] as its correlation id: written last, so an `id` the
+   * caller left in the command can never stand in for it and misroute the reply. Pure, for tests.
+   */
+  internal fun commandLine(id: Long, command: JsonObject): String =
+    JsonObject(command + ("id" to JsonPrimitive(id))).toString()
 
   /** One device's JVM: its control channel, replies matched by id, events passed on. */
   private class DeviceProcess(
@@ -394,14 +415,7 @@ public object AppSimulatorLauncher {
       check(process.isAlive) { "the ${device.id} simulator is not running" }
       val future = CompletableFuture<JsonObject>()
       pending[id] = future
-      val line =
-        JsonObject(
-            buildMap {
-              put("id", JsonPrimitive(id))
-              putAll(command)
-            },
-          )
-          .toString()
+      val line = commandLine(id, command)
       try {
         synchronized(writer) {
           writer.write(line)

@@ -269,6 +269,48 @@ class AppSimulatorLauncherTest {
     .getOrDefault(0L)
 
   @Test
+  fun `the launcher's id is the one sent, whatever the command carried`() {
+    val line =
+      AppSimulatorLauncher.commandLine(
+        7,
+        buildJsonObject {
+          put("id", 1)
+          put("cmd", "tap")
+        },
+      )
+    assertEquals(
+      buildJsonObject {
+        put("id", 7)
+        put("cmd", "tap")
+      },
+      kotlinx.serialization.json.Json.parseToJsonElement(line).jsonObject,
+    )
+  }
+
+  @Test
+  fun `offline only with the requested level's own android-all`() {
+    val deps = File(dir.toFile(), "deps").apply { mkdirs() }
+    File(deps, "android-all-instrumented-15-robolectric-1-i7.jar").writeText("x")
+    assertEquals(
+      mapOf("robolectric.offline" to "true", "robolectric.dependency.dir" to deps.absolutePath),
+      AppSimulatorLauncher.offlineProperties(
+        deps,
+        "android-all-instrumented-15-robolectric-1-i7.jar",
+      ),
+    )
+    assertEquals(
+      emptyMap(),
+      AppSimulatorLauncher.offlineProperties(
+        deps,
+        "android-all-instrumented-16-robolectric-1-i7.jar",
+      ),
+      "another level's jar is not enough: Robolectric resolves through Maven instead",
+    )
+    assertEquals(emptyMap(), AppSimulatorLauncher.offlineProperties(deps, null))
+    assertEquals(emptyMap(), AppSimulatorLauncher.offlineProperties(null, "x.jar"))
+  }
+
+  @Test
   fun `a launch needs an apk`() {
     assertFalse(runCatching { AppSimulatorLaunch(emptyMap()) }.isSuccess)
   }

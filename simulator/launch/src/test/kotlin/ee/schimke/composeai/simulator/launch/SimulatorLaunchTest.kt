@@ -37,6 +37,26 @@ class SimulatorLaunchTest {
   }
 
   @Test
+  fun `no robolectric, no android-all name`() {
+    assertEquals(null, RobolectricAndroidAll.fileName(emptyList(), 35))
+    assertEquals(null, RobolectricAndroidAll.fileName(listOf(File("/no/such.jar")), 35))
+  }
+
+  /**
+   * Off unless `ROBOLECTRIC_SIDECAR_DIR` names a `lib-daemon-android/`: the name its Robolectric
+   * gives SDK 35 is an `android-all-instrumented` jar for Android 15.
+   */
+  @Test
+  fun `the sidecar's robolectric names each level's android-all`() {
+    val sidecar = System.getenv("ROBOLECTRIC_SIDECAR_DIR")?.let(::File)
+    org.junit.Assume.assumeTrue(sidecar != null && sidecar.isDirectory)
+    val jars = sidecar!!.listFiles { f -> f.name.endsWith(".jar") }!!.toList()
+    val name = RobolectricAndroidAll.fileName(jars, 35)
+    kotlin.test.assertTrue(name!!.startsWith("android-all-instrumented-15-robolectric-"), name)
+    kotlin.test.assertTrue(name != RobolectricAndroidAll.fileName(jars, 34))
+  }
+
+  @Test
   fun `the heap is an eighth of the machine between 768 MB and 2 GB`() {
     assertEquals("768m", SimulatorJvm.defaultMaxHeap(null))
     assertEquals("1024m", SimulatorJvm.defaultMaxHeap(8L shl 30))
