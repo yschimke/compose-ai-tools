@@ -4,6 +4,32 @@
 
 #include <sys/system_properties.h>
 
+// Thread affinity, which librive-android's helpers/thread.cpp sets with Linux's API; macOS has no
+// equivalent, and affinity is only a scheduling hint, so these record nothing and pin nothing.
+#if defined(__APPLE__)
+#include <pthread.h>
+#include <sys/types.h>
+#include <unistd.h>
+typedef struct { unsigned long long bits; } cpu_set_t;
+#define CPU_ZERO(set) ((set)->bits = 0)
+#define CPU_SET(cpu, set) ((set)->bits |= 1ULL << (cpu))
+#define CPU_ISSET(cpu, set) (((set)->bits >> (cpu)) & 1ULL)
+static inline pid_t gettid(void)
+{
+  uint64_t id = 0;
+  pthread_threadid_np(NULL, &id);
+  return (pid_t)id;
+}
+// Every CPU, as if unpinned.
+static inline int sched_getaffinity(pid_t, size_t, cpu_set_t* set)
+{
+  long count = sysconf(_SC_NPROCESSORS_ONLN);
+  set->bits = count >= 64 ? ~0ULL : ((1ULL << (count > 0 ? count : 1)) - 1);
+  return 0;
+}
+static inline int sched_setaffinity(pid_t, size_t, const cpu_set_t*) { return 0; }
+#endif
+
 #ifdef __cplusplus
 #include <algorithm>
 #include <cstring>
