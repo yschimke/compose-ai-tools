@@ -7,6 +7,7 @@ import org.gradle.api.Action
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
@@ -368,6 +369,18 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   fun daemon(action: Action<DaemonExtension>) {
     action.execute(daemon)
   }
+
+  /**
+   * Interop with AGP's Compose Preview Screenshot Testing plugin
+   * (`com.android.compose.screenshot`), validating or updating golden PNGs under
+   * `src/screenshotTest<Variant>/reference/` with our renderer. See [ScreenshotTestExtension].
+   */
+  val screenshotTest: ScreenshotTestExtension =
+    objects.newInstance(ScreenshotTestExtension::class.java)
+
+  fun screenshotTest(action: Action<ScreenshotTestExtension>) {
+    action.execute(screenshotTest)
+  }
 }
 
 /**
@@ -623,4 +636,59 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
    */
   val filmstripFractions: ListProperty<Float> =
     objects.listProperty(Float::class.java).convention(DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS)
+}
+
+/**
+ * `composePreview { screenshotTest { … } }` — interop with AGP's Compose Preview Screenshot Testing
+ * plugin (`com.android.compose.screenshot`).
+ *
+ * Registers `composePreviewValidateScreenshotTest` and `composePreviewUpdateScreenshotTest` using
+ * Google's `src/screenshotTest<Variant>/reference/<package>/<Class>/<fn>_*.png` layout so the same
+ * `@PreviewTest` suite and reference PNGs can be validated or refreshed with our renderer.
+ */
+abstract class ScreenshotTestExtension @Inject constructor(objects: ObjectFactory) {
+  /** Register the screenshot-test validate/update tasks when applicable. Default: `true`. */
+  val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Maximum allowed fraction of differing pixels (`0.0..1.0`). When unset, falls back to
+   * `-PcomposePreview.screenshotDiffThreshold`, then AGP's `com.android.compose.screenshot`
+   * `imageDifferenceThreshold` if configured, then `0.01` (1%).
+   */
+  val imageDifferenceThreshold: Property<Double> = objects.property(Double::class.java)
+
+  /**
+   * Per-channel RGB/alpha tolerance (`0..255`) before a pixel counts as different. When unset,
+   * falls back to `-PcomposePreview.screenshotChannelTolerance`, then `2` (suppressing 1-LSB
+   * anti-aliasing jitter across builds while catching real layout or colour regressions; set `8`
+   * when validating Robolectric renders against Layoutlib-generated references).
+   */
+  val channelTolerance: Property<Int> = objects.property(Int::class.java)
+
+  /**
+   * Reference PNG root directory. When unset, defaults to `src/screenshotTest<Variant>/reference`
+   * (matching `com.android.compose.screenshot`).
+   */
+  val referenceDir: DirectoryProperty = objects.directoryProperty()
+
+  /**
+   * When `true`, `composePreviewValidateScreenshotTest` fails if a selected `@PreviewTest` has no
+   * matching reference PNG on disk. Default: `true`.
+   */
+  val failOnMissingReferences: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * When `true`, only `@Preview` functions carrying `@com.android.tools.screenshot.PreviewTest` are
+   * validated/updated. When `false` (default), `@PreviewTest` previews are selected whenever any
+   * exist, falling back to previews whose `sourceFile` lives under `src/screenshotTest/`.
+   */
+  val requirePreviewTestAnnotation: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
+  /**
+   * Wire `composePreviewValidateScreenshotTest` into the module's `check` lifecycle task. Default:
+   * `false` (explicit invocation, matching `composePreviewRender`).
+   */
+  val validateInCheck: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 }

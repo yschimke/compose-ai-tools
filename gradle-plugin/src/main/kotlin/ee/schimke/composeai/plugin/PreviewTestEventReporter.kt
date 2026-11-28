@@ -59,6 +59,7 @@ private constructor(
       test.started(startTime)
       when (outcome) {
         is CaptureOutcome.Succeeded -> test.succeeded(endTime)
+        is CaptureOutcome.Skipped -> test.skipped(endTime)
         is CaptureOutcome.Failed -> {
           group.anyFailed = true
           if (outcome.stackTrace.isNullOrBlank()) {
@@ -119,6 +120,8 @@ private constructor(
 
   internal sealed interface CaptureOutcome {
     data object Succeeded : CaptureOutcome
+
+    data object Skipped : CaptureOutcome
 
     data class Failed(val message: String, val stackTrace: String? = null) : CaptureOutcome
   }

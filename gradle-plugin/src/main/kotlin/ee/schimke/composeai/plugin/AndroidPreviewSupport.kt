@@ -1111,7 +1111,18 @@ internal object AndroidPreviewSupport {
         extension,
         activeCompilationSourceFiles =
           project
-            .files(listOfNotNull(variant.sources.java?.all, variant.sources.kotlin?.all))
+            .files(
+              listOfNotNull(
+                variant.sources.java?.all,
+                variant.sources.kotlin?.all,
+                if (screenshotTestEnabled)
+                  project.layout.projectDirectory.dir("src/screenshotTest/kotlin")
+                else null,
+                if (screenshotTestEnabled)
+                  project.layout.projectDirectory.dir("src/screenshotTest/java")
+                else null,
+              ),
+            )
             .asFileTree
             .matching {
               include("**/*.kt")
@@ -2421,6 +2432,63 @@ internal object AndroidPreviewSupport {
           dependsOn(compileShardsTask)
         }
       }
+
+    val screenshotTier = resolveTier(project)
+    val screenshotNameFilters = ComposePreviewTasks.previewFilterProperty(project)
+    val screenshotIdFilters = ComposePreviewTasks.previewIdFilterProperty(project)
+    val screenshotIdExcludes = ComposePreviewTasks.previewIdExcludeProperty(project)
+    val screenshotRowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project)
+    val screenshotPermutations = ComposePreviewTasks.previewPermutationsProperty(project)
+    val screenshotPartialRenderReason = renderTask.map { render ->
+      val tier = screenshotTier.get()
+      val reasons = buildList {
+        if (!tier.equals("full", ignoreCase = true)) add("tier=$tier")
+        if (
+          render.previewFilters.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotNameFilters.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.filter")
+        }
+        if (
+          render.previewIdFilters.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotIdFilters.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.previewIds")
+        }
+        if (
+          render.previewIdExcludes.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotIdExcludes.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.excludePreviewIds")
+        }
+        if (
+          render.previewRowExcludes.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotRowExcludes.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.excludePreviewRows")
+        }
+        if (
+          PreviewPermutations.expandsAccessibility(render.permutations.getOrElse(emptyList())) ||
+            PreviewPermutations.expandsAccessibility(screenshotPermutations.getOrElse(emptyList()))
+        ) {
+          add("composePreview.permutations=accessibility")
+        }
+      }
+      reasons.joinToString(", ")
+    }
+
+    ScreenshotTestInterop.registerTasks(
+      project = project,
+      extension = extension,
+      variantName = variantName,
+      capVariant = capVariant,
+      screenshotTestPluginApplied = screenshotTestEnabled,
+      manifestFileProvider = discoverTask.flatMap { it.outputFile },
+      rendersDirProvider = rendersDirectory,
+      renderTask = renderTask,
+      partialRenderReasonProvider = screenshotPartialRenderReason,
+      renderTestResultsDirProvider = renderTask.flatMap { it.reports.junitXml.outputLocation },
+    )
 
     // The JDK-aware Robolectric SDK ceiling must use the JVM the render actually forks into
     // ([renderJavaLauncher]), not `JavaVersion.current()`. Derived from AGP's launcher / toolchain
