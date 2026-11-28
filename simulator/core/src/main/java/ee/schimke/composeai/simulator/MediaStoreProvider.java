@@ -339,9 +339,8 @@ public final class MediaStoreProvider extends ContentProvider {
   /** Evaluates AND-joined {@code col = ?} / {@code col = 'val'} predicates; rejects others. */
   private static boolean matchesSelection(Entry entry, String selection, String[] selectionArgs) {
     if (selection == null || selection.isBlank()) return true;
-    String[] parts = selection.split("(?i)\\s+AND\\s+");
     int argIdx = 0;
-    for (String raw : parts) {
+    for (String raw : CalendarProvider.splitAndClauses(selection)) {
       String clause = raw.trim();
       while (clause.startsWith("(") && clause.endsWith(")")) {
         clause = clause.substring(1, clause.length() - 1).trim();
@@ -360,7 +359,7 @@ public final class MediaStoreProvider extends ContentProvider {
         if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
         expected = selectionArgs[argIdx++];
       } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
-        expected = rhs.substring(1, rhs.length() - 1);
+        expected = rhs.substring(1, rhs.length() - 1).replace("''", "'");
       } else if (rhs.indexOf('=') >= 0) {
         throw new IllegalArgumentException("Unsupported MediaStore selection: " + selection);
       } else {
