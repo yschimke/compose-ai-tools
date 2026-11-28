@@ -1938,7 +1938,7 @@ public final class ApkClassConverter {
                   fixed[0]++;
                 }
                 if (opcode == Opcodes.INVOKESPECIAL && itf && !"<init>".equals(method)) {
-                  String target = superCallTarget(owner);
+                  String target = superCallTarget(owner, method + descriptor);
                   if (target != null) {
                     fixed[0]++;
                     super.visitMethodInsn(
@@ -1951,26 +1951,33 @@ public final class ApkClassConverter {
 
               /**
                * Where a {@code super} call to [owner]'s default method must point for HotSpot, or
-               * null if it already may. The JVM accepts an {@code invokespecial} of an interface
-               * method only from a class that implements that interface directly; dex's {@code
-               * invoke-super} has no such rule, and R8's member rebinding writes the interface
-               * that declares the method rather than the supertype the source named (an {@code
-               * AbstractMap} subclass's {@code super.getOrDefault} becomes {@code
-               * Map.getOrDefault}). The call is pointed back at the direct superinterface that
-               * extends [owner], or else the superclass, from which the JVM resolves the same
-               * default: R8 rebinds only to the method the call already resolved to.
+               * null if it already may (or no direct supertype can stand in). The JVM accepts an
+               * {@code invokespecial} of an interface method only from a class that implements
+               * that interface directly; dex's {@code invoke-super} has no such rule, and R8's
+               * member rebinding writes the interface that declares the method rather than the
+               * supertype the source named (an {@code AbstractMap} subclass's {@code
+               * super.getOrDefault} becomes {@code Map.getOrDefault}). The call is pointed at the
+               * superclass or a direct superinterface whose resolution of [method] selects the
+               * same declaration as [owner]'s, so the same code runs: a supertype that merely
+               * extends [owner] is not enough, since another path to it may override the method.
                */
-              private String superCallTarget(String owner) {
+              private String superCallTarget(String owner, String method) {
                 for (String direct : directInterfaces) {
                   if (direct.equals(owner)) return null;
                 }
-                for (String direct : directInterfaces) {
-                  if (hierarchy.isSubtypeOf(direct, owner)) return direct;
-                }
+                String declaration = hierarchy.resolve(owner, method);
+                if (declaration == null) return null;
                 if (superInternalName != null
                     && !"java/lang/Object".equals(superInternalName)
-                    && hierarchy.isSubtypeOf(superInternalName, owner)) {
+                    && hierarchy.isSubtypeOf(superInternalName, owner)
+                    && declaration.equals(hierarchy.resolve(superInternalName, method))) {
                   return superInternalName;
+                }
+                for (String direct : directInterfaces) {
+                  if (hierarchy.isSubtypeOf(direct, owner)
+                      && declaration.equals(hierarchy.resolve(direct, method))) {
+                    return direct;
+                  }
                 }
                 return null;
               }
@@ -2028,21 +2035,39 @@ public final class ApkClassConverter {
       final boolean isInterface;
       final String[] interfaces;
 
+      /** Instance methods the type declares, as {@code name + descriptor}. */
+      final Set<String> methods;
+
       Header(String superName, boolean isInterface) {
-        this(superName, isInterface, NO_INTERFACES);
+        this(superName, isInterface, NO_INTERFACES, Set.of());
       }
 
-      Header(String superName, boolean isInterface, String[] interfaces) {
+      Header(String superName, boolean isInterface, String[] interfaces, Set<String> methods) {
         this.superName = superName;
         this.isInterface = isInterface;
         this.interfaces = interfaces;
+        this.methods = methods;
       }
 
       static Header of(ClassReader reader) {
+        Set<String> methods = new HashSet<>();
+        reader.accept(
+            new ClassVisitor(Opcodes.ASM9) {
+              @Override
+              public MethodVisitor visitMethod(
+                  int access, String name, String desc, String signature, String[] exceptions) {
+                if ((access & Opcodes.ACC_STATIC) == 0 && !name.startsWith("<")) {
+                  methods.add(name + desc);
+                }
+                return null;
+              }
+            },
+            ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
         return new Header(
             reader.getSuperName(),
             (reader.getAccess() & Opcodes.ACC_INTERFACE) != 0,
-            reader.getInterfaces());
+            reader.getInterfaces(),
+            methods);
       }
     }
 
@@ -2084,6 +2109,10 @@ public final class ApkClassConverter {
       StringBuilder out =
           new StringBuilder(header.isInterface ? "I:" : "C:").append(header.superName);
       for (String iface : header.interfaces) out.append(',').append(iface);
+      // Which methods a supertype declares decides where a retargeted super call resolves.
+      int methods = 0;
+      for (String method : header.methods) methods += method.hashCode();
+      out.append('#').append(Integer.toHexString(methods));
       return out.toString();
     }
 
@@ -2152,6 +2181,58 @@ public final class ApkClassConverter {
     /** Whether [type] is [ancestor] or extends or implements it, through any path. */
     boolean isSubtypeOf(String type, String ancestor) {
       return isSubtypeOf(type, ancestor, new HashSet<>());
+    }
+
+    /**
+     * The type whose declaration of [method] (name + descriptor) the JVM selects for an {@code
+     * invokespecial} naming [type], per JVMS 5.4.3.3 / 5.4.3.4: the first declaration up a class's
+     * superclass chain, else the single maximally-specific superinterface declaring it. Null when
+     * nothing declares it or the choice is ambiguous.
+     */
+    String resolve(String type, String method) {
+      Header header = header(type);
+      if (header == null) return null;
+      if (header.methods.contains(method)) return type;
+      List<String> chain = new ArrayList<>();
+      if (!header.isInterface) {
+        Set<String> seen = new HashSet<>();
+        for (String c = header.superName; c != null && seen.add(c); c = superName(c)) {
+          Header superHeader = header(c);
+          if (superHeader == null) return null;
+          if (superHeader.methods.contains(method)) return c;
+          chain.add(c);
+        }
+      }
+      Set<String> declaring = new LinkedHashSet<>();
+      Set<String> visited = new HashSet<>();
+      collectDeclaring(type, method, declaring, visited);
+      for (String c : chain) collectDeclaring(c, method, declaring, visited);
+      List<String> maximal = new ArrayList<>();
+      for (String candidate : declaring) {
+        boolean shadowed = false;
+        for (String other : declaring) {
+          if (!other.equals(candidate) && isSubtypeOf(other, candidate)) {
+            shadowed = true;
+            break;
+          }
+        }
+        if (!shadowed) maximal.add(candidate);
+      }
+      return maximal.size() == 1 ? maximal.get(0) : null;
+    }
+
+    /** The superinterfaces of [type], transitively, that declare [method]. */
+    private void collectDeclaring(
+        String type, String method, Set<String> declaring, Set<String> visited) {
+      Header header = header(type);
+      if (header == null) return;
+      for (String iface : header.interfaces) {
+        if (!visited.add(iface)) continue;
+        Header ifaceHeader = header(iface);
+        if (ifaceHeader == null) continue;
+        if (ifaceHeader.methods.contains(method)) declaring.add(iface);
+        collectDeclaring(iface, method, declaring, visited);
+      }
     }
 
     private boolean isSubtypeOf(String type, String ancestor, Set<String> seen) {

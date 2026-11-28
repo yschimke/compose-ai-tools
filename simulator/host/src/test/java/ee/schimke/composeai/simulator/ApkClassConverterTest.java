@@ -122,6 +122,31 @@ public class ApkClassConverterTest {
   }
 
   @Test
+  public void aSuperCallIsNotRetargetedToASupertypeThatOverridesTheDefault() throws Exception {
+    // `Other` overrides `Api.value()`. `User extends Base implements Other` calling the rebound
+    // `Api.value` must reach the default `Base` inherits (42), not `Other`'s override (99), even
+    // though `Other` is a direct superinterface that extends `Api`.
+    byte[] api = defaultIface("test/Api", null);
+    byte[] base = plainClass("test/Base", "java/lang/Object", new String[] {"test/Api"});
+    byte[] other = defaultIface("test/Other", "test/Api", 99);
+    byte[] user = superCaller("test/User", "test/Base", new String[] {"test/Other"});
+    // With no superclass path to `Api`'s default, nothing can stand in: the call is left alone.
+    byte[] stuck = superCaller("test/Stuck", "java/lang/Object", new String[] {"test/Other"});
+    ApkClassConverter.ClassHierarchy hierarchy = hierarchy(api, base, other, user, stuck);
+
+    ApkClassConverter.Summary summary = new ApkClassConverter.Summary();
+    byte[] fixedUser = ApkClassConverter.rewrite(user, hierarchy, summary);
+    byte[] fixedStuck = ApkClassConverter.rewrite(stuck, hierarchy, summary);
+
+    assertEquals("test/Base", calls(fixedUser, "value").get(0).owner);
+    assertEquals("test/Api", calls(fixedStuck, "value").get(0).owner);
+    assertEquals(1, summary.interfaceCallsFixed);
+    Map<String, byte[]> classes =
+        Map.of("test/Api", api, "test/Base", base, "test/Other", other, "test/User", fixedUser);
+    assertEquals(43, invoke(classes, "test.User"));
+  }
+
+  @Test
   public void framesAndMaximaAreComputedForAVerifyingJvm() throws Exception {
     // `run` merges an ArrayList and a LinkedList into one local (needing a frame whose type is
     // their common superclass) and declares a max stack of 1 for code that needs 3.
@@ -512,6 +537,11 @@ public class ApkClassConverterTest {
 
   /** An interface with a default `int value()` returning 42, extending [parent] if given. */
   private static byte[] defaultIface(String name, String parent) {
+    return defaultIface(name, parent, parent == null ? 42 : null);
+  }
+
+  /** An interface extending [parent] if given, declaring a default `value()` if [value] is set. */
+  private static byte[] defaultIface(String name, String parent, Integer value) {
     ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
     writer.visit(
         Opcodes.V1_8,
@@ -520,10 +550,10 @@ public class ApkClassConverterTest {
         null,
         "java/lang/Object",
         parent != null ? new String[] {parent} : null);
-    if (parent == null) {
+    if (value != null) {
       MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "value", "()I", null, null);
       mv.visitCode();
-      mv.visitIntInsn(Opcodes.BIPUSH, 42);
+      mv.visitIntInsn(Opcodes.BIPUSH, value);
       mv.visitInsn(Opcodes.IRETURN);
       mv.visitMaxs(0, 0);
       mv.visitEnd();
