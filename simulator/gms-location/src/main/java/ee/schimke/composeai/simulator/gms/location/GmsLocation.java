@@ -112,7 +112,9 @@ public final class GmsLocation {
     final int maxUpdates;
     final long expiresAtElapsedMs;
     final float minDistanceMeters;
+    final long minUpdateIntervalMs;
     Location lastDelivered;
+    long lastDeliveredElapsedMs = Long.MIN_VALUE;
     int delivered;
 
     CallbackEntry(
@@ -120,12 +122,14 @@ public final class GmsLocation {
         Executor executor,
         int maxUpdates,
         long expiresAtElapsedMs,
-        float minDistanceMeters) {
+        float minDistanceMeters,
+        long minUpdateIntervalMs) {
       this.callback = callback;
       this.executor = executor;
       this.maxUpdates = maxUpdates;
       this.expiresAtElapsedMs = expiresAtElapsedMs;
       this.minDistanceMeters = minDistanceMeters;
+      this.minUpdateIntervalMs = minUpdateIntervalMs;
     }
 
     boolean isExpired(long nowElapsedMs) {
@@ -134,6 +138,10 @@ public final class GmsLocation {
 
     boolean passesDistance(Location fix) {
       return passesMinDistance(lastDelivered, fix, minDistanceMeters);
+    }
+
+    boolean passesInterval(long fixElapsedMs) {
+      return passesMinInterval(lastDeliveredElapsedMs, fixElapsedMs, minUpdateIntervalMs);
     }
   }
 
@@ -143,7 +151,9 @@ public final class GmsLocation {
     final int maxUpdates;
     final long expiresAtElapsedMs;
     final float minDistanceMeters;
+    final long minUpdateIntervalMs;
     Location lastDelivered;
+    long lastDeliveredElapsedMs = Long.MIN_VALUE;
     int delivered;
 
     ListenerEntry(
@@ -151,12 +161,14 @@ public final class GmsLocation {
         Executor executor,
         int maxUpdates,
         long expiresAtElapsedMs,
-        float minDistanceMeters) {
+        float minDistanceMeters,
+        long minUpdateIntervalMs) {
       this.listener = listener;
       this.executor = executor;
       this.maxUpdates = maxUpdates;
       this.expiresAtElapsedMs = expiresAtElapsedMs;
       this.minDistanceMeters = minDistanceMeters;
+      this.minUpdateIntervalMs = minUpdateIntervalMs;
     }
 
     boolean isExpired(long nowElapsedMs) {
@@ -165,6 +177,10 @@ public final class GmsLocation {
 
     boolean passesDistance(Location fix) {
       return passesMinDistance(lastDelivered, fix, minDistanceMeters);
+    }
+
+    boolean passesInterval(long fixElapsedMs) {
+      return passesMinInterval(lastDeliveredElapsedMs, fixElapsedMs, minUpdateIntervalMs);
     }
   }
 
@@ -173,18 +189,22 @@ public final class GmsLocation {
     final int maxUpdates;
     final long expiresAtElapsedMs;
     final float minDistanceMeters;
+    final long minUpdateIntervalMs;
     Location lastDelivered;
+    long lastDeliveredElapsedMs = Long.MIN_VALUE;
     int delivered;
 
     PendingIntentEntry(
         PendingIntent pendingIntent,
         int maxUpdates,
         long expiresAtElapsedMs,
-        float minDistanceMeters) {
+        float minDistanceMeters,
+        long minUpdateIntervalMs) {
       this.pendingIntent = pendingIntent;
       this.maxUpdates = maxUpdates;
       this.expiresAtElapsedMs = expiresAtElapsedMs;
       this.minDistanceMeters = minDistanceMeters;
+      this.minUpdateIntervalMs = minUpdateIntervalMs;
     }
 
     boolean isExpired(long nowElapsedMs) {
@@ -194,6 +214,10 @@ public final class GmsLocation {
     boolean passesDistance(Location fix) {
       return passesMinDistance(lastDelivered, fix, minDistanceMeters);
     }
+
+    boolean passesInterval(long fixElapsedMs) {
+      return passesMinInterval(lastDeliveredElapsedMs, fixElapsedMs, minUpdateIntervalMs);
+    }
   }
 
   private static boolean passesMinDistance(Location prev, Location next, float minDistanceMeters) {
@@ -201,6 +225,23 @@ public final class GmsLocation {
     return haversineMeters(
             prev.getLatitude(), prev.getLongitude(), next.getLatitude(), next.getLongitude())
         >= minDistanceMeters;
+  }
+
+  static boolean passesMinInterval(
+      long lastDeliveredElapsedMs, long nextElapsedMs, long minUpdateIntervalMs) {
+    if (minUpdateIntervalMs <= 0L || lastDeliveredElapsedMs == Long.MIN_VALUE) return true;
+    return nextElapsedMs - lastDeliveredElapsedMs >= minUpdateIntervalMs;
+  }
+
+  private static long fixElapsedRealtimeMillis(Location fix, long fallbackNowElapsedMs) {
+    if (fix != null) {
+      try {
+        long ns = fix.getElapsedRealtimeNanos();
+        if (ns > 0L) return ns / 1_000_000L;
+      } catch (RuntimeException | LinkageError ignored) {
+      }
+    }
+    return fallbackNowElapsedMs;
   }
 
   static final class GeofenceEntry {
@@ -338,7 +379,7 @@ public final class GmsLocation {
   }
 
   void registerLocationCallback(Object callback, Executor executor) {
-    registerLocationCallback(callback, executor, Integer.MAX_VALUE, Long.MAX_VALUE, 0f, true);
+    registerLocationCallback(callback, executor, Integer.MAX_VALUE, Long.MAX_VALUE, 0f, 0L, true);
   }
 
   void registerLocationCallback(
@@ -347,18 +388,26 @@ public final class GmsLocation {
       int maxUpdates,
       long durationMillis,
       float minDistanceMeters,
+      long minUpdateIntervalMillis,
       boolean replayCached) {
     if (callback == null || maxUpdates <= 0 || durationMillis <= 0) return;
     unregisterLocationCallback(callback);
     long expiresAt = deadlineFromDuration(durationMillis);
     CallbackEntry entry =
         new CallbackEntry(
-            callback, executor != null ? executor : main, maxUpdates, expiresAt, minDistanceMeters);
+            callback,
+            executor != null ? executor : main,
+            maxUpdates,
+            expiresAt,
+            minDistanceMeters,
+            Math.max(0L, minUpdateIntervalMillis));
     locationCallbacks.add(entry);
     // Deliver last location if already known and fresh enough for the subscription's maxUpdateAge.
     Location current = effectiveLastLocation();
     if (current != null && replayCached) {
+      long now = safeElapsedRealtimeMillis(SimulatorHooks.currentTimeMillis());
       entry.lastDelivered = current;
+      entry.lastDeliveredElapsedMs = fixElapsedRealtimeMillis(current, now);
       deliverToCallback(entry, current, locationAvailable);
       if (++entry.delivered >= entry.maxUpdates) {
         locationCallbacks.remove(entry);
@@ -375,13 +424,19 @@ public final class GmsLocation {
       Executor executor,
       int maxUpdates,
       long durationMillis,
-      float minDistanceMeters) {
+      float minDistanceMeters,
+      long minUpdateIntervalMillis) {
     if (listener == null || maxUpdates <= 0 || durationMillis <= 0) return;
     unregisterLocationListener(listener);
     long expiresAt = deadlineFromDuration(durationMillis);
     locationListeners.add(
         new ListenerEntry(
-            listener, executor != null ? executor : main, maxUpdates, expiresAt, minDistanceMeters));
+            listener,
+            executor != null ? executor : main,
+            maxUpdates,
+            expiresAt,
+            minDistanceMeters,
+            Math.max(0L, minUpdateIntervalMillis)));
   }
 
   void unregisterLocationListener(Object listener) {
@@ -392,12 +447,18 @@ public final class GmsLocation {
       PendingIntent pendingIntent,
       int maxUpdates,
       long durationMillis,
-      float minDistanceMeters) {
+      float minDistanceMeters,
+      long minUpdateIntervalMillis) {
     if (pendingIntent == null || maxUpdates <= 0 || durationMillis <= 0) return;
     unregisterLocationPendingIntent(pendingIntent);
     long expiresAt = deadlineFromDuration(durationMillis);
     locationPendingIntents.add(
-        new PendingIntentEntry(pendingIntent, maxUpdates, expiresAt, minDistanceMeters));
+        new PendingIntentEntry(
+            pendingIntent,
+            maxUpdates,
+            expiresAt,
+            minDistanceMeters,
+            Math.max(0L, minUpdateIntervalMillis)));
   }
 
   void unregisterLocationPendingIntent(PendingIntent pendingIntent) {
@@ -470,13 +531,15 @@ public final class GmsLocation {
 
   private void deliverLocation(Location fix) {
     long now = safeElapsedRealtimeMillis(SimulatorHooks.currentTimeMillis());
+    long fixElapsedMs = fixElapsedRealtimeMillis(fix, now);
     for (CallbackEntry entry : locationCallbacks) {
       if (entry.isExpired(now)) {
         locationCallbacks.remove(entry);
         continue;
       }
-      if (!entry.passesDistance(fix)) continue;
+      if (!entry.passesDistance(fix) || !entry.passesInterval(fixElapsedMs)) continue;
       entry.lastDelivered = fix;
+      entry.lastDeliveredElapsedMs = fixElapsedMs;
       deliverToCallback(entry, fix, locationAvailable);
       if (++entry.delivered >= entry.maxUpdates) {
         locationCallbacks.remove(entry);
@@ -487,8 +550,9 @@ public final class GmsLocation {
         locationListeners.remove(entry);
         continue;
       }
-      if (!entry.passesDistance(fix)) continue;
+      if (!entry.passesDistance(fix) || !entry.passesInterval(fixElapsedMs)) continue;
       entry.lastDelivered = fix;
+      entry.lastDeliveredElapsedMs = fixElapsedMs;
       entry.executor.execute(() -> invokeOnLocationChanged(entry.listener, fix));
       if (++entry.delivered >= entry.maxUpdates) {
         locationListeners.remove(entry);
@@ -503,8 +567,9 @@ public final class GmsLocation {
           locationPendingIntents.remove(entry);
           continue;
         }
-        if (!entry.passesDistance(fix)) continue;
+        if (!entry.passesDistance(fix) || !entry.passesInterval(fixElapsedMs)) continue;
         entry.lastDelivered = fix;
+        entry.lastDeliveredElapsedMs = fixElapsedMs;
         Intent fill = new Intent();
         if (result instanceof android.os.Parcelable) {
           fill.putExtra(

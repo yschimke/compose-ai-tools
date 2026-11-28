@@ -282,6 +282,7 @@ public final class GmsLocationClients {
       int maxUpdates = readMaxUpdates(req);
       long durationMs = readRequestDurationMillis(req);
       float minDistanceMeters = readMinDistanceMeters(req);
+      long minIntervalMs = readMinUpdateIntervalMillis(req);
       Location cached = engine.effectiveLastLocation();
       boolean replayCached = cached != null && isFreshEnough(cached, req);
       Executor exec = engine.mainExecutor();
@@ -297,20 +298,38 @@ public final class GmsLocationClients {
         if (arg == null) continue;
         if (arg instanceof PendingIntent) {
           engine.registerLocationPendingIntent(
-              (PendingIntent) arg, maxUpdates, durationMs, minDistanceMeters);
+              (PendingIntent) arg, maxUpdates, durationMs, minDistanceMeters, minIntervalMs);
           return ok(null);
         }
         if (isLocationCallback(arg)) {
           engine.registerLocationCallback(
-              arg, exec, maxUpdates, durationMs, minDistanceMeters, replayCached);
+              arg, exec, maxUpdates, durationMs, minDistanceMeters, minIntervalMs, replayCached);
           return ok(null);
         }
         if (isLocationListener(arg)) {
-          engine.registerLocationListener(arg, exec, maxUpdates, durationMs, minDistanceMeters);
+          engine.registerLocationListener(
+              arg, exec, maxUpdates, durationMs, minDistanceMeters, minIntervalMs);
           return ok(null);
         }
       }
       return ok(null);
+    }
+
+    private static long readMinUpdateIntervalMillis(Object request) {
+      if (request == null) return 0L;
+      for (String method : new String[] {"getMinUpdateIntervalMillis", "getFastestInterval"}) {
+        try {
+          Method m = request.getClass().getMethod(method);
+          m.setAccessible(true);
+          Object val = m.invoke(request);
+          if (val instanceof Number) {
+            long ms = ((Number) val).longValue();
+            return ms > 0L ? ms : 0L;
+          }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+      }
+      return 0L;
     }
 
     private static float readMinDistanceMeters(Object request) {

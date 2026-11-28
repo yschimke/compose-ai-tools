@@ -154,4 +154,13 @@ public class GmsLocationTest {
     location.command(new JSONObject().put("available", false));
     assertFalse("Non-public LocationCallback subclass must receive availability update", received.get());
   }
+
+  @Test
+  public void passesMinIntervalEnforcesMinimumUpdateInterval() {
+    assertTrue(GmsLocation.passesMinInterval(Long.MIN_VALUE, 1000L, 5000L));
+    assertFalse(GmsLocation.passesMinInterval(1000L, 4999L, 5000L));
+    assertFalse(GmsLocation.passesMinInterval(1000L, 5999L, 5000L));
+    assertTrue(GmsLocation.passesMinInterval(1000L, 6000L, 5000L));
+    assertTrue(GmsLocation.passesMinInterval(1000L, 1000L, 0L));
+  }
 }
