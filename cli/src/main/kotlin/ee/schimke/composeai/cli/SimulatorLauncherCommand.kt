@@ -28,7 +28,7 @@ internal class SimulatorLauncherCommand(
     }
     val forwarded = stripLauncherFlag(args)
     val pb = ProcessBuilder(listOf(choice.binary) + forwarded).inheritIO()
-    forwardSidecarEnv(pb)
+    forwardSidecarEnv(pb, forwarded)
     val exit =
       try {
         pb.runTiedToLauncher()
@@ -60,6 +60,32 @@ internal class SimulatorLauncherCommand(
       return found ?: provisionSimulator()
     }
 
+    /**
+     * Ensures `composeai.cli.libSimulatorDir` and `composeai.cli.libDex2jarDir` point at the
+     * standalone `android-simulator` distribution's sidecars when they are not already present on
+     * this CLI install, so `render-host`'s `DwfApkDaemonBridge` (`--wf-renderer dwf-apk`) can still
+     * launch `:simulator-host`.
+     */
+    internal fun ensureSimulatorSidecarsConfigured() {
+      val hasSim = locateBundleSidecarJars("lib-simulator").isNotEmpty()
+      val hasDex = locateBundleSidecarJars("lib-dex2jar").isNotEmpty()
+      if (hasSim && hasDex) return
+      val choice = resolveBinary() ?: return
+      val installRoot = File(choice.binary).canonicalFile.parentFile?.parentFile ?: return
+      if (!hasSim) {
+        val simDir = File(installRoot, "lib-simulator")
+        if (simDir.isDirectory) {
+          System.setProperty("composeai.cli.libSimulatorDir", simDir.absolutePath)
+        }
+      }
+      if (!hasDex) {
+        val dexDir = File(installRoot, "lib-dex2jar")
+        if (dexDir.isDirectory) {
+          System.setProperty("composeai.cli.libDex2jarDir", dexDir.absolutePath)
+        }
+      }
+    }
+
     private fun provisionSimulator(): ServerBinaryDiscovery.Choice? =
       ServerDistributionProvision.ensure(ReleasedDistribution.SIMULATOR)?.let {
         ServerBinaryDiscovery.Choice(it.path, ServerBinaryDiscovery.CACHE)
@@ -82,9 +108,18 @@ internal class SimulatorLauncherCommand(
       }
     }
 
-    private fun forwardSidecarEnv(pb: ProcessBuilder) {
+    internal fun needsAndroidSidecar(args: List<String>): Boolean {
+      val first = args.firstOrNull()
+      if (first == "dwf-runtime" || first == "host-natives") return false
+      if ("--pool-stop" in args || "--help" in args || "-h" in args) return false
+      return true
+    }
+
+    private fun forwardSidecarEnv(pb: ProcessBuilder, forwarded: List<String>) {
       val opts = mutableListOf<String>()
-      DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
+      if (needsAndroidSidecar(forwarded)) {
+        DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID)
+      }
       val androidDaemonDir = locateBundleSidecarJars("lib-daemon-android").firstOrNull()?.parentFile
       if (androidDaemonDir != null) {
         opts += "-Dcomposeai.cli.libDaemonAndroidDir=${androidDaemonDir.absolutePath}"
