@@ -584,6 +584,12 @@ internal object ComposePreviewTasks {
         // Data products (`@ScrollingPreview(modes = [LONG, GIF])`), declared as an output for
         // caching.
         dataProductsDir.set(previewOutputDir.map { it.dir("data") })
+        testBinaryResultsDir.set(
+          project.layout.buildDirectory.dir("test-results/composePreviewRender/binary"),
+        )
+        testHtmlReportDir.set(
+          project.layout.buildDirectory.dir("reports/compose-previews/composePreviewRender"),
+        )
         renderBackend.set("desktop")
         // Fork on a JDK new enough for the module's bytecode; desktop `javaexec` otherwise uses the
         // Gradle JVM. See [RenderJvmSelection]; null leaves the default.

@@ -1,10 +1,12 @@
 package ee.schimke.composeai.plugin
 
+import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
+import org.gradle.api.problems.Problems
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
@@ -25,6 +27,8 @@ import org.gradle.work.DisableCachingByDefault
 )
 abstract class ValidateComposeFloorTask : DefaultTask() {
 
+  @get:Inject abstract val problems: Problems
+
   @get:Internal abstract val runtimeClasspathRoot: Property<ResolvedComponentResult>
 
   init {
@@ -35,9 +39,24 @@ abstract class ValidateComposeFloorTask : DefaultTask() {
   @TaskAction
   fun validate() {
     val belowFloor = findBelowFloor(runtimeClasspathRoot.get()) ?: return
-    throw GradleException(
-      AndroidPreviewSupport.composeFloorOptOutMessage(belowFloor.module, belowFloor.version),
+    val message =
+      AndroidPreviewSupport.composeFloorOptOutMessage(belowFloor.module, belowFloor.version)
+    val failure = GradleException(message)
+    ComposePreviewProblems.reportValidationFailure(
+      problems = problems,
+      id = "compose-below-floor",
+      displayName = "Compose version below renderer floor",
+      contextualLabel =
+        "${belowFloor.module}:${belowFloor.version} is below the preview renderer's Compose floor",
+      details = message,
+      solutions =
+        listOf(
+          "Upgrade the Compose BOM / ${belowFloor.module} to meet the renderer floor.",
+          "Or let compose-ai-tools manage the render-classpath Compose floor automatically.",
+        ),
+      exception = failure,
     )
+    throw failure
   }
 
   internal data class ResolvedComposeModule(val module: String, val version: String)

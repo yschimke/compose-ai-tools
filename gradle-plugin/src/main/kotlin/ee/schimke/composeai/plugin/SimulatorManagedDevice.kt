@@ -107,9 +107,9 @@ abstract class SimulatorManagedDeviceImpl @Inject constructor(private val device
 }
 
 abstract class SimulatorTestRunInput : DeviceTestRunInput {
-  @get:Internal abstract val cliExecutable: Property<String>
+  @get:Input abstract val cliExecutable: Property<String>
 
-  @get:Internal abstract val javaHome: Property<String>
+  @get:Input @get:Optional abstract val javaHome: Property<String>
 
   @get:Input @get:Optional abstract val apiLevel: Property<Int>
 
@@ -303,7 +303,15 @@ internal object SimulatorManagedDeviceSupport {
     // (COMPOSE_PREVIEW_SIMULATOR_JAVA, its own JVM, JAVA_HOME).
     val toolchainJava = toolchains?.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
 
+    val concurrencyService = SimulatorConcurrencyService.registerIfAbsent(project)
+
     managedDevices.allDevices.withType(SimulatorManagedDevice::class.java).configureEach {
+      val deviceName = name
+      project.tasks.configureEach {
+        if (SimulatorConcurrencyService.isManagedDeviceTestTaskName(name, deviceName)) {
+          usesService(concurrencyService)
+        }
+      }
       cliExecutable.convention(
         providers
           .gradleProperty("composePreview.cli")

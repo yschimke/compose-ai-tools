@@ -2764,6 +2764,12 @@ internal object AndroidPreviewSupport {
         // resolves `renderOutput` relative to the compose-previews root.
         outputDir.set(previewOutputDir.map { it.dir(LOTTIE_RENDER_SUBDIR) })
         dataProductsDir.set(dataProductsDirectory)
+        testBinaryResultsDir.set(
+          project.layout.buildDirectory.dir("test-results/composePreviewRenderLottie/binary"),
+        )
+        testHtmlReportDir.set(
+          project.layout.buildDirectory.dir("reports/compose-previews/composePreviewRenderLottie"),
+        )
         dependsOn(discoverTask)
       }
 
@@ -2793,6 +2799,12 @@ internal object AndroidPreviewSupport {
         renderClasspath.from(androidLottieResourceDirs(project))
         outputDir.set(previewOutputDir.map { it.dir(SVG_RENDER_SUBDIR) })
         dataProductsDir.set(dataProductsDirectory)
+        testBinaryResultsDir.set(
+          project.layout.buildDirectory.dir("test-results/composePreviewRenderSvg/binary"),
+        )
+        testHtmlReportDir.set(
+          project.layout.buildDirectory.dir("reports/compose-previews/composePreviewRenderSvg"),
+        )
         dependsOn(discoverTask)
       }
 

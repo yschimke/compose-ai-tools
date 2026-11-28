@@ -183,7 +183,24 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:OutputDirectory
   abstract val dataProductsDir: DirectoryProperty
 
+  /**
+   * Optional Gradle binary test-results directory for [TestEventReporterFactory]. When set with
+   * [testHtmlReportDir], each rendered capture streams a native Gradle test event so IDEs and Build
+   * Scans show per-preview pass/fail results.
+   */
+  @get:org.gradle.api.tasks.Optional
+  @get:OutputDirectory
+  abstract val testBinaryResultsDir: DirectoryProperty
+
+  /** Optional Gradle HTML test-report directory paired with [testBinaryResultsDir]. */
+  @get:org.gradle.api.tasks.Optional
+  @get:OutputDirectory
+  abstract val testHtmlReportDir: DirectoryProperty
+
   @get:Inject abstract val execOperations: ExecOperations
+
+  @get:Inject
+  abstract val testEventReporterFactory: org.gradle.api.tasks.testing.TestEventReporterFactory
 
   /**
    * `java` binary for the render subprocess; unset uses the Gradle JVM. Set only when the bytecode
@@ -343,6 +360,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // never sees it.
     val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
     val attempted = mutableListOf<java.io.File>()
+    val testSession =
+      PreviewTestEventSession.open(
+        factory = testEventReporterFactory,
+        rootName = name,
+        binaryResultsDir = testBinaryResultsDir.orNull,
+        htmlReportDir = testHtmlReportDir.orNull,
+      )
+    var runFailure: String? = null
     try {
       renderCaptures(
         manifest,
@@ -352,8 +377,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
         mainClass,
         lane,
         attempted,
+        testSession,
       )
+      runFailure = emptyRunFailure(attempted)
+    } catch (t: Throwable) {
+      runFailure = t.message ?: t::class.java.simpleName
+      throw t
     } finally {
+      try {
+        testSession?.finishRoot(runFailure)
+      } finally {
+        testSession?.close()
+      }
       lane.pool?.let { pool ->
         pool.close()
         val warm = pool.servedWarm.get()
@@ -415,6 +450,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     mainClass: String,
     lane: RenderLane,
     attempted: MutableList<java.io.File>,
+    testSession: PreviewTestEventSession?,
   ) {
     for (preview in manifest.previews) {
       val spec =
@@ -447,31 +483,44 @@ abstract class RenderPreviewsTask : DefaultTask() {
 
       // Render every primary capture (scroll TOP/END, time fan-out, focus indices each have their
       // own path).
-      for (capture in preview.captures) {
+      for ((captureIndex, capture) in preview.captures.withIndex()) {
         // Relative to the compose-previews root, so tasks with a sibling `outputDir` (e.g.
         // `lottie-renders/`) can write there.
         val outputFile =
           if (capture.renderOutput.isNotEmpty()) previewsRoot.resolve(capture.renderOutput)
           else outDir.resolve("${preview.id}.png")
         attempted += outputFile
-        invokeRenderer(
-          mainClass = mainClass,
-          preview = preview,
-          spec = spec,
-          density = density,
-          widthPx = widthPx,
-          heightPx = heightPx,
+        val testName =
+          if (preview.captures.size == 1) preview.id else "${preview.id}[$captureIndex]"
+        val displayName =
+          if (preview.captures.size == 1) preview.functionName
+          else "${preview.functionName} (${outputFile.nameWithoutExtension})"
+        runReportedCapture(
+          testSession = testSession,
+          className = preview.className,
+          testName = testName,
+          displayName = displayName,
           outputFile = outputFile,
-          scroll = capture.scroll,
-          animation = capture.animation,
-          interaction = capture.interaction,
-          focus = capture.focus,
-          hover = capture.hover,
-          drag = capture.drag,
-          settle = capture.settle,
-          fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
-          lane = lane,
-        )
+        ) {
+          invokeRenderer(
+            mainClass = mainClass,
+            preview = preview,
+            spec = spec,
+            density = density,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            outputFile = outputFile,
+            scroll = capture.scroll,
+            animation = capture.animation,
+            interaction = capture.interaction,
+            focus = capture.focus,
+            hover = capture.hover,
+            drag = capture.drag,
+            settle = capture.settle,
+            fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
+            lane = lane,
+          )
+        }
       }
 
       // Data products (scrolling LONG/GIF), rendered with the same args; the renderer dispatches on
@@ -481,19 +530,56 @@ abstract class RenderPreviewsTask : DefaultTask() {
         if (product.output.isBlank()) continue
         val outputFile = previewsRoot.resolve(product.output)
         attempted += outputFile
-        invokeRenderer(
-          mainClass = mainClass,
-          preview = preview,
-          spec = spec,
-          density = density,
-          widthPx = widthPx,
-          heightPx = heightPx,
+        val testName = "${preview.id}:${product.kind.lowercase()}"
+        val displayName = "${preview.functionName} [${product.kind.lowercase()}]"
+        runReportedCapture(
+          testSession = testSession,
+          className = preview.className,
+          testName = testName,
+          displayName = displayName,
           outputFile = outputFile,
-          scroll = product.scroll,
-          fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
-          lane = lane,
-        )
+        ) {
+          invokeRenderer(
+            mainClass = mainClass,
+            preview = preview,
+            spec = spec,
+            density = density,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            outputFile = outputFile,
+            scroll = product.scroll,
+            fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
+            lane = lane,
+          )
+        }
       }
+    }
+  }
+
+  private inline fun runReportedCapture(
+    testSession: PreviewTestEventSession?,
+    className: String,
+    testName: String,
+    displayName: String,
+    outputFile: java.io.File,
+    block: () -> Unit,
+  ) {
+    val startTime = java.time.Instant.now()
+    var thrown: Throwable? = null
+    try {
+      block()
+    } catch (t: Throwable) {
+      thrown = t
+      throw t
+    } finally {
+      testSession?.recordCapture(
+        className = className,
+        testName = testName,
+        displayName = displayName,
+        startTime = startTime,
+        endTime = java.time.Instant.now(),
+        outcome = PreviewTestEventSession.evaluateCapture(outputFile, thrown),
+      )
     }
   }
 
