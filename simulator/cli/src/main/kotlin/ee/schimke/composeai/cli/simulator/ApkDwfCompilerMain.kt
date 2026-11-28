@@ -36,6 +36,7 @@ internal object ApkDwfCompilerMain {
     val cacheRoot = argOf(args, "--cache-root")?.let(::File) ?: composeAiCacheDir("simulator")
     val verbose = args.any { it == "--verbose" || it == "-v" }
 
+    val environment = SimulatorHostEnvironment.discover()
     val compiledDir =
       ApkDwfExtractor.extractAndCompile(
         apk = apk,
@@ -43,6 +44,7 @@ internal object ApkDwfCompilerMain {
         robolectricJars = robolectricJars,
         cacheRoot = cacheRoot,
         verbose = verbose,
+        prepareSkikoNative = environment.prepareSkikoNative,
       )
     if (compiledDir == null) {
       exitProcess(2)

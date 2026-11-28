@@ -1,6 +1,15 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.simulator.SimulatorHostEnvironment
+import ee.schimke.composeai.cli.simulator.SimulatorHostEnvironmentProvider
+
+/**
+ * ServiceLoader entry point so `:simulator-cli` helper mains (such as `ApkDwfCompilerMain`) inherit
+ * `:cli`'s Skiko and provisioning hooks when invoked on the CLI classpath.
+ */
+class CliSimulatorHostEnvironmentProvider : SimulatorHostEnvironmentProvider {
+  override fun create(): SimulatorHostEnvironment = cliSimulatorHostEnvironment()
+}
 
 /**
  * Wires `:simulator-cli`'s host hooks to `:cli`'s provisioning, network policy, and flag parser.
