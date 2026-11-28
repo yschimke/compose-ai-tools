@@ -1111,4 +1111,101 @@ public class ApkClassConverterTest {
       assertFalse("Exit advice must not discard Callable.call() with POP", popsReturn);
     }
   }
+
+  @Test
+  public void byteBuddyWritableAdvicePreservesReturnedOriginalParam() throws Exception {
+    // Writable advice that saves a parameter's original value, overwrites the parameter, and
+    // returns the original value. The pre-return store into slot 0 must not clobber the return.
+    String advice =
+        """
+        .class public Lapp/ReturnOrigAdvice;
+        .super Ljava/lang/Object;
+        .method public static enter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+          .registers 3
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 0
+              readOnly = false
+            .end annotation
+          .end param
+          move-object v0, p0
+          move-object p0, p1
+          return-object v0
+        .end method
+        """;
+    Path outApk = apk("return-orig-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("return-orig-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {outJar.toUri().toURL()}, null)) {
+      assertEquals(
+          "original",
+          loader
+              .loadClass("app.ReturnOrigAdvice")
+              .getMethod("enter", String.class, String.class)
+              .invoke(null, "original", "updated"));
+    }
+  }
+
+  @Test
+  public void byteBuddyWritableAdviceSwappingTwoParamsDoesNotClobber() throws Exception {
+    // Two writable advice parameters swapped before return: writing slot 0 must not clobber the
+    // source read for slot 1.
+    String advice =
+        """
+        .class public Lapp/SwapAdvice;
+        .super Ljava/lang/Object;
+        .method public static swap(Ljava/lang/String;Ljava/lang/String;)V
+          .registers 3
+          .annotation runtime Lnet/bytebuddy/asm/Advice$OnMethodEnter;
+          .end annotation
+          .param p0
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 0
+              readOnly = false
+            .end annotation
+          .end param
+          .param p1
+            .annotation runtime Lnet/bytebuddy/asm/Advice$Argument;
+              value = 1
+              readOnly = false
+            .end annotation
+          .end param
+          move-object v0, p0
+          move-object p0, p1
+          move-object p1, v0
+          return-void
+        .end method
+        """;
+    Path outApk = apk("swap-advice.apk", advice);
+    Path outJar = temp.getRoot().toPath().resolve("swap-advice.jar");
+    ApkClassConverter.Summary summary = ApkClassConverter.convert(outApk, outJar, emptyJar(), null);
+    assertEquals(0, summary.failedMethods);
+    assertEquals(0, summary.unframedClasses);
+    try (ZipFile zip = new ZipFile(outJar.toFile())) {
+      byte[] bytes = zip.getInputStream(zip.getEntry("app/SwapAdvice.class")).readAllBytes();
+      MethodNode swap = method(bytes, "swap");
+      // Track slot values symbolically through ALOAD/ASTORE to verify slot 0 ends as initial p1
+      // and slot 1 ends as initial p0.
+      Map<Integer, String> slots = new HashMap<>();
+      slots.put(0, "p0");
+      slots.put(1, "p1");
+      String tos = null;
+      for (org.objectweb.asm.tree.AbstractInsnNode insn : swap.instructions) {
+        if (insn instanceof org.objectweb.asm.tree.VarInsnNode v) {
+          if (v.getOpcode() == Opcodes.ALOAD) {
+            tos = slots.get(v.var);
+          } else if (v.getOpcode() == Opcodes.ASTORE) {
+            slots.put(v.var, tos);
+            tos = null;
+          }
+        }
+      }
+      assertEquals("p1", slots.get(0));
+      assertEquals("p0", slots.get(1));
+    }
+  }
 }

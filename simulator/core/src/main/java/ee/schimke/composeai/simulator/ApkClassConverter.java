@@ -1000,31 +1000,127 @@ public final class ApkClassConverter {
         IrMethod irMethod, List<WritableAdviceParam> params) {
       if (params.isEmpty()) return;
       Map<String, WritableAdviceParam> byName = new HashMap<>();
+      int nextSlot = 0;
       for (WritableAdviceParam wp : params) {
         byName.put("keep" + wp.jvmSlot, wp);
+        nextSlot = Math.max(nextSlot, wp.jvmSlot + (isWideType(wp.type) ? 2 : 1));
+      }
+      for (Local l : irMethod.locals) {
+        if (l.lsIndex >= 0) {
+          nextSlot = Math.max(nextSlot, l.lsIndex + (isWideType(l.valueType) ? 2 : 1));
+        }
       }
       List<Stmt> stmts = new ArrayList<>();
       for (Stmt s : irMethod.stmts) stmts.add(s);
       int seq = 0;
-      for (Stmt s : stmts) {
-        if (s.st != Stmt.ST.VOID_INVOKE) continue;
-        if (!(s.getOp() instanceof InvokeExpr inv)) continue;
-        if (!ADVICE_KEEP_OWNER.equals(inv.getOwner())) continue;
-        WritableAdviceParam wp = byName.get(inv.getName());
-        if (wp == null) continue;
-        Value[] ops = inv.getOps();
-        if (ops != null && ops.length == 1 && ops[0] != null) {
-          Value val = ops[0];
-          if (!(val instanceof Local l && l.lsIndex == wp.jvmSlot)) {
+      for (int i = 0; i < stmts.size(); i++) {
+        WritableAdviceParam first = matchAdviceKeep(stmts.get(i), byName);
+        if (first == null) continue;
+        int j = i + 1;
+        while (j < stmts.size() && matchAdviceKeep(stmts.get(j), byName) != null) {
+          j++;
+        }
+        // Collect all writes in this contiguous pre-return keep run.
+        List<WritableAdviceParam> writeParams = new ArrayList<>();
+        List<Value> writeSources = new ArrayList<>();
+        Set<Integer> writtenSlots = new HashSet<>();
+        for (int k = i; k < j; k++) {
+          Stmt keepStmt = stmts.get(k);
+          WritableAdviceParam wp = matchAdviceKeep(keepStmt, byName);
+          InvokeExpr inv = (InvokeExpr) keepStmt.getOp();
+          Value[] ops = inv.getOps();
+          if (ops != null && ops.length == 1 && ops[0] != null) {
+            Value val = ops[0];
+            if (!(val instanceof Local l && l.lsIndex == wp.jvmSlot)) {
+              writeParams.add(wp);
+              writeSources.add(val);
+              writtenSlots.add(wp.jvmSlot);
+              if (isWideType(wp.type)) writtenSlots.add(wp.jvmSlot + 1);
+            }
+          }
+        }
+        Stmt anchor = stmts.get(i);
+        if (!writtenSlots.isEmpty()) {
+          // If the following RETURN reads a slot we are about to overwrite (e.g. advice saves the
+          // original parameter, mutates it, and returns the original), copy the return value into
+          // a fresh temporary slot first.
+          Stmt after = j < stmts.size() ? stmts.get(j) : null;
+          if (after != null
+              && after.st == Stmt.ST.RETURN
+              && after.getOp() != null
+              && valueUsesAnySlot(after.getOp(), writtenSlots)) {
+            String retType =
+                after.getOp().valueType != null ? after.getOp().valueType : irMethod.ret;
+            Local retTmp = Exprs.nLocal("advice_ret_" + (seq++));
+            retTmp.lsIndex = nextSlot;
+            retTmp.valueType = retType;
+            nextSlot += isWideType(retType) ? 2 : 1;
+            irMethod.locals.add(retTmp);
+            irMethod.stmts.insertBefore(anchor, Stmts.nAssign(retTmp, after.getOp()));
+            after.setOp(retTmp);
+          }
+          // When multiple writable parameters are updated (e.g. swapped), materialize any source
+          // that reads a slot overwritten by the same run before emitting the stores.
+          if (writeParams.size() > 1) {
+            for (int w = 0; w < writeParams.size(); w++) {
+              Value src = writeSources.get(w);
+              if (valueUsesAnySlot(src, writtenSlots)) {
+                WritableAdviceParam wp = writeParams.get(w);
+                Local tmp = Exprs.nLocal("advice_tmp_" + (seq++));
+                tmp.lsIndex = nextSlot;
+                tmp.valueType = wp.type;
+                nextSlot += isWideType(wp.type) ? 2 : 1;
+                irMethod.locals.add(tmp);
+                irMethod.stmts.insertBefore(anchor, Stmts.nAssign(tmp, src));
+                writeSources.set(w, tmp);
+              }
+            }
+          }
+          for (int w = 0; w < writeParams.size(); w++) {
+            WritableAdviceParam wp = writeParams.get(w);
             Local dst = Exprs.nLocal("advice_out_" + (seq++));
             dst.lsIndex = wp.jvmSlot;
             dst.valueType = wp.type;
             irMethod.locals.add(dst);
-            irMethod.stmts.insertBefore(s, Stmts.nAssign(dst, val));
+            irMethod.stmts.insertBefore(anchor, Stmts.nAssign(dst, writeSources.get(w)));
           }
         }
-        irMethod.stmts.remove(s);
+        for (int k = i; k < j; k++) {
+          irMethod.stmts.remove(stmts.get(k));
+        }
+        i = j - 1;
       }
+    }
+
+    private static WritableAdviceParam matchAdviceKeep(
+        Stmt s, Map<String, WritableAdviceParam> byName) {
+      if (s.st != Stmt.ST.VOID_INVOKE) return null;
+      if (!(s.getOp() instanceof InvokeExpr inv)) return null;
+      if (!ADVICE_KEEP_OWNER.equals(inv.getOwner())) return null;
+      return byName.get(inv.getName());
+    }
+
+    private static boolean valueUsesAnySlot(Value v, Set<Integer> slots) {
+      if (v == null) return false;
+      if (v instanceof Local l) {
+        if (l.lsIndex < 0) return false;
+        if (slots.contains(l.lsIndex)) return true;
+        return isWideType(l.valueType) && slots.contains(l.lsIndex + 1);
+      }
+      return switch (v.et) {
+        case E0 -> false;
+        case E1 -> valueUsesAnySlot(v.getOp(), slots);
+        case E2 -> valueUsesAnySlot(v.getOp1(), slots) || valueUsesAnySlot(v.getOp2(), slots);
+        case En -> {
+          Value[] ops = v.getOps();
+          if (ops != null) {
+            for (Value op : ops) {
+              if (valueUsesAnySlot(op, slots)) yield true;
+            }
+          }
+          yield false;
+        }
+      };
     }
 
     private static boolean hasByteBuddyAdviceAnnotation(DexMethodNode methodNode) {
