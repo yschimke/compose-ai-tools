@@ -640,9 +640,11 @@ public final class GmsLocation {
     int initialTrigger = readInt(geofencingRequest, "getInitialTrigger", "zzb", GEOFENCE_TRANSITION_ENTER);
     List<?> list = extractGeofences(geofencingRequest);
     Location current = effectiveLastLocation();
+    long now = safeElapsedRealtimeMillis(SimulatorHooks.currentTimeMillis());
     for (Object gf : list) {
       GeofenceEntry entry = toGeofenceEntry(gf, pendingIntent);
       if (entry != null) {
+        if (entry.isExpired(now)) continue;
         geofences.put(entry.requestId, entry);
         if (current != null) {
           double dist =
@@ -654,6 +656,9 @@ public final class GmsLocation {
                 && (entry.transitionTypes & GEOFENCE_TRANSITION_ENTER) != 0) {
               fireGeofenceTransition(entry, GEOFENCE_TRANSITION_ENTER, current);
             }
+          } else if ((initialTrigger & GEOFENCE_TRANSITION_EXIT) != 0
+              && (entry.transitionTypes & GEOFENCE_TRANSITION_EXIT) != 0) {
+            fireGeofenceTransition(entry, GEOFENCE_TRANSITION_EXIT, current);
           }
         }
       }
