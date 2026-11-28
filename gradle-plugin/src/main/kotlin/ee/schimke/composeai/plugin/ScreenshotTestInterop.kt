@@ -930,8 +930,8 @@ constructor(
       val exception =
         GradleException(
           "Screenshot test validation for ${modulePath.get()} (${variantName.get()}) requires a " +
-            "full, unfiltered render (partial render active: $partialReason). Re-run without " +
-            "-PcomposePreview.tier=fast / filter / exclude flags.",
+            "full, unfiltered render (unsupported render flags active: $partialReason). Re-run " +
+            "without -PcomposePreview.tier=fast / filter / exclude / permutations flags.",
         )
       ComposePreviewProblems.reportValidationFailure(
         problems = problems,

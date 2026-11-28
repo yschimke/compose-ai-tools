@@ -2438,6 +2438,7 @@ internal object AndroidPreviewSupport {
     val screenshotIdFilters = ComposePreviewTasks.previewIdFilterProperty(project)
     val screenshotIdExcludes = ComposePreviewTasks.previewIdExcludeProperty(project)
     val screenshotRowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project)
+    val screenshotPermutations = ComposePreviewTasks.previewPermutationsProperty(project)
     val screenshotPartialRenderReason = renderTask.map { render ->
       val tier = screenshotTier.get()
       val reasons = buildList {
@@ -2465,6 +2466,12 @@ internal object AndroidPreviewSupport {
             screenshotRowExcludes.getOrElse(emptyList()).any { it.isNotBlank() }
         ) {
           add("composePreview.excludePreviewRows")
+        }
+        if (
+          PreviewPermutations.expandsAccessibility(render.permutations.getOrElse(emptyList())) ||
+            PreviewPermutations.expandsAccessibility(screenshotPermutations.getOrElse(emptyList()))
+        ) {
+          add("composePreview.permutations=accessibility")
         }
       }
       reasons.joinToString(", ")
