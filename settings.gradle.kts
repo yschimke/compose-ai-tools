@@ -226,6 +226,7 @@ project(":simulator-wear").projectDir = file("simulator/wear")
 include(":simulator-gms-auth")
 
 project(":simulator-gms-auth").projectDir = file("simulator/gms-auth")
+
 include(":simulator-gms-location")
 
 project(":simulator-gms-location").projectDir = file("simulator/gms-location")
