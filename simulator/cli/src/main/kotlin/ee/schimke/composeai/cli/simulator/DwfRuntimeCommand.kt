@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.simulator
 
-import ee.schimke.composeai.cli.CliFlags
-import ee.schimke.composeai.cli.flagValue
 import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.nio.ByteBuffer
@@ -25,11 +23,12 @@ import kotlinx.serialization.json.put
  * command pulls it only from a user's own local emulator/device or registers a local file into
  * `composeAiCacheDir("dwf-runtime")`.
  */
-internal class DwfRuntimeCommand(
+class DwfRuntimeCommand(
   private val args: List<String>,
   private val cacheRoot: File = composeAiCacheDir(CACHE_SUBDIR),
   private val env: (String) -> String? = System::getenv,
   private val adbRunner: AdbRunner = ProcessAdbRunner(env),
+  private val positionalsOf: (List<String>) -> List<String> = ::dwfRuntimePositionals,
 ) {
 
   fun run() {
@@ -39,7 +38,7 @@ internal class DwfRuntimeCommand(
     }
     val jsonOut = "--json" in args
     val verbose = "--verbose" in args || "-v" in args
-    val positionals = CliFlags.positionals(args)
+    val positionals = positionalsOf(args)
     val action = positionals.firstOrNull() ?: "status"
 
     when (action) {
@@ -221,14 +220,13 @@ internal class DwfRuntimeCommand(
     val hasDex: Boolean,
   )
 
-  internal interface AdbRunner {
+  interface AdbRunner {
     fun run(serial: String?, vararg adbArgs: String): CommandOutput
 
     data class CommandOutput(val exitCode: Int, val stdout: String, val stderr: String)
   }
 
-  internal class ProcessAdbRunner(private val env: (String) -> String? = System::getenv) :
-    AdbRunner {
+  class ProcessAdbRunner(private val env: (String) -> String? = System::getenv) : AdbRunner {
     private val adbBinary: String by lazy { findAdbBinary(env) }
 
     override fun run(serial: String?, vararg adbArgs: String): AdbRunner.CommandOutput {
