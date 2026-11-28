@@ -19,6 +19,8 @@ public interface IGoogleMapDelegate {
 
   void setOnMarkerClickListener(OnMarkerClickDelegate listener);
 
+  void setOnMapLoadedCallback(OnMapLoadedDelegate callback);
+
   void clear();
 
   interface IMarkerDelegate {
@@ -29,5 +31,9 @@ public interface IGoogleMapDelegate {
 
   interface OnMarkerClickDelegate {
     boolean onMarkerClick(IMarkerDelegate marker);
+  }
+
+  interface OnMapLoadedDelegate {
+    void onMapLoaded();
   }
 }

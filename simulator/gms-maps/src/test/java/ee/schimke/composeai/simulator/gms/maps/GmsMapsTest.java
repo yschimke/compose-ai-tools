@@ -171,4 +171,23 @@ public class GmsMapsTest {
     float[] across = maps.latLngToScreen(0.0, -179.9, 800, 800);
     assertTrue("Expected wrapped x near 401, got " + across[0], Math.abs(across[0] - 401.1f) < 2.0f);
   }
+
+  @Test
+  public void setOnMapLoadedCallbackDispatchesOnMainExecutor() {
+    java.util.ArrayDeque<Runnable> queue = new java.util.ArrayDeque<>();
+    GmsMaps queuedMaps = new GmsMaps(queue::add);
+    GoogleMap map =
+        (GoogleMap) GmsMapsDelegates.createGoogleMap(queuedMaps, getClass().getClassLoader());
+    java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+    map.delegate.setOnMapLoadedCallback(calls::incrementAndGet);
+    assertEquals("Callback must run asynchronously on main executor", 0, calls.get());
+    while (!queue.isEmpty()) queue.poll().run();
+    assertEquals(1, calls.get());
+
+    // Clearing the callback before main drains cancels delivery.
+    map.delegate.setOnMapLoadedCallback(calls::incrementAndGet);
+    map.delegate.setOnMapLoadedCallback(null);
+    while (!queue.isEmpty()) queue.poll().run();
+    assertEquals(1, calls.get());
+  }
 }

@@ -257,6 +257,7 @@ public final class GmsMapsDelegates {
     private final Object uiSettingsProxy;
     private final Map<String, Object> markerDelegates =
         Collections.synchronizedMap(new HashMap<>());
+    private volatile Object pendingMapLoadedCallback;
 
     GoogleMapDelegateHandler(GmsMaps engine, ClassLoader loader) {
       this.engine = engine;
@@ -315,6 +316,9 @@ public final class GmsMapsDelegates {
           return null;
         case "setOnCameraIdleListener":
           handleSetCameraIdleListener(safeArgs.length > 0 ? safeArgs[0] : null);
+          return null;
+        case "setOnMapLoadedCallback":
+          handleSetMapLoadedCallback(safeArgs.length > 0 ? safeArgs[0] : null);
           return null;
         default:
           return defaultReturn(method.getReturnType());
@@ -621,6 +625,29 @@ public final class GmsMapsDelegates {
               }
             }
           });
+    }
+
+    private void handleSetMapLoadedCallback(Object callback) {
+      pendingMapLoadedCallback = callback;
+      if (callback == null) return;
+      engine
+          .mainExecutor()
+          .execute(
+              () -> {
+                if (pendingMapLoadedCallback != callback) return;
+                pendingMapLoadedCallback = null;
+                for (Method m : callback.getClass().getMethods()) {
+                  if (m.getParameterCount() == 0
+                      && ("onMapLoaded".equals(m.getName()) || "zzb".equals(m.getName()))) {
+                    try {
+                      m.setAccessible(true);
+                      m.invoke(callback);
+                      return;
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+                  }
+                }
+              });
     }
   }
 
