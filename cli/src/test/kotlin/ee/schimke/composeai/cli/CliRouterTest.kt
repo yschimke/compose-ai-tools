@@ -229,7 +229,8 @@ class CliRouterTest {
       CliRouter.Route.Run("launch", listOf("app.apk")),
       CliRouter.route(arrayOf("capture", "launch", "app.apk")),
     )
-    assertTrue(LaunchCommand.USAGE.contains("compose-preview android-simulator <app.apk>"))
+    // The simulator's own usage is the standalone binary's; launch's points there.
+    assertTrue(LaunchCommand.USAGE.contains("an alias of `compose-preview android-simulator`"))
   }
 
   @Test
