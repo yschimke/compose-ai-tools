@@ -64,6 +64,8 @@ public class SimulatorShadowContextImpl extends ShadowContextImpl {
   @Implementation
   @Override
   protected android.content.ComponentName startService(Intent service) {
+    android.content.ComponentName intercepted = SimulatorHooks.interceptStartService(service);
+    if (intercepted != null) return intercepted;
     if (DeviceServices.ownerOf(service) != null) return DeviceServices.start(service, false);
     return super.startService(service);
   }

@@ -205,9 +205,10 @@ final class GatedSocketImpl extends SocketImpl {
       throw refusal;
     }
     pause(NetworkGate.latencyMs());
-    call(CONNECT_ADDRESS, address, timeout);
+    InetSocketAddress effective = NetworkGate.rewriteAddress(target);
+    call(CONNECT_ADDRESS, effective != null ? effective : address, timeout);
     host = name;
-    remote = target;
+    remote = effective != null ? effective : target;
     NetworkGate.opened(this);
   }
 

@@ -465,6 +465,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       }
       Startup.mark(Startup.PROVIDERS);
       Providers.installBeforeOnCreate(app);
+      // Wire Firebase emulators and FCM IPC right after FirebaseInitProvider and before
+      // Application.onCreate() so useEmulator() runs before app code starts Firestore/Auth.
+      ee.schimke.composeai.simulator.firebase.FirebaseServices.installEarly(app);
       super.callApplicationOnCreate(app);
       Startup.mark(Startup.APPLICATION);
     }

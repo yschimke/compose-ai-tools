@@ -759,6 +759,32 @@ class LaunchCommandTest {
   }
 
   @Test
+  fun `Firebase emulator and project options become system properties`() {
+    val cmd =
+      AndroidSimulatorCommand.simulatorCommand(
+        java = File("java"),
+        classpath = emptyList(),
+        apk = File("app.apk"),
+        classes = emptyList(),
+        options =
+          AndroidSimulatorCommand.Options(
+            sdk = 35,
+            qualifiers = AndroidSimulatorCommand.DEFAULT_QUALIFIERS,
+            fontScale = null,
+            headless = true,
+            control = true,
+            installProviders = true,
+            firebaseEmulator = "auto",
+            firebaseProject = "demo-proj",
+          ),
+        robolectricProperties = emptyMap(),
+        robolectricJvmArgs = emptyList(),
+      )
+    assertTrue("-Dcomposeai.simulator.firebase.emulators=auto" in cmd)
+    assertTrue("-Dcomposeai.simulator.firebase.project=demo-proj" in cmd)
+  }
+
+  @Test
   fun `a wear launch passes the round watch display and its form factor`() {
     val command =
       AndroidSimulatorCommand.simulatorCommand(
