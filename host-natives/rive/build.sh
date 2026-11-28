@@ -135,8 +135,12 @@ fi
 shims="$out/../rive-compilers"
 rm -rf "$shims"
 mkdir -p "$shims"
-printf '#!/bin/sh\nexec %s %s "$@"\n' "$(command -v "$cc")" "${CFLAGS:-}" >"$shims/clang"
-printf '#!/bin/sh\nexec %s %s "$@"\n' "$(command -v "$cxx")" "${CXXFLAGS:-}" >"$shims/clang++"
+# On macOS they also force-include <stdlib.h>: rive-runtime's simple_array.hpp calls malloc without
+# it, which Apple's libc++ headers do not bring in on every path that reaches it.
+shim_flags=""
+if $macos; then shim_flags="-include stdlib.h"; fi
+printf '#!/bin/sh\nexec %s %s %s "$@"\n' "$(command -v "$cc")" "${CFLAGS:-}" "$shim_flags" >"$shims/clang"
+printf '#!/bin/sh\nexec %s %s %s "$@"\n' "$(command -v "$cxx")" "${CXXFLAGS:-}" "$shim_flags" >"$shims/clang++"
 chmod +x "$shims/clang" "$shims/clang++"
 
 # Builds the runtime for <arch> (build_rive.sh's name: arm64 or x64; empty for the host's) and sets
