@@ -421,4 +421,62 @@ class ScreenshotTestInteropTest {
     val err = assertThrows(GradleException::class.java) { validateTask.validate() }
     assertThat(err.message).contains("1 of 2 failed")
   }
+
+  @Test
+  fun `validate and update reject partial renders and validate rejects undiscovered suites`() {
+    val projectDir = tempDir.newFolder("guards")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val refDir = File(projectDir, "src/screenshotTestDebug/reference")
+    writeSolidPng(File(refDir, "com/example/FooKt/Foo_a1b2c3d4_0.png"), 16, 16, Color.BLUE)
+
+    val emptyManifest = PreviewManifest(module = ":app", variant = "debug", previews = emptyList())
+    val manifestFile = File(projectDir, "build/compose-previews/manifest.json")
+    manifestFile.parentFile.mkdirs()
+    manifestFile.writeText(json.encodeToString(emptyManifest))
+
+    val validateUndiscovered =
+      project.tasks
+        .register("validateUndiscovered", ValidateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDir.set(refDir)
+          this.referenceDirFallbackPath.set(refDir.absolutePath)
+          this.imageDifferenceThreshold.set(0.01)
+          this.channelTolerance.set(2)
+          this.failOnMissingReferences.set(true)
+          this.requirePreviewTestAnnotation.set(false)
+          this.modulePath.set(":app")
+          this.variantName.set("debug")
+          this.reportFile.set(File(projectDir, "build/reports/undiscovered/report.json"))
+          this.diffsDir.set(File(projectDir, "build/reports/undiscovered/diffs"))
+          this.testBinaryResultsDir.set(File(projectDir, "build/test-results/u/binary"))
+          this.testHtmlReportDir.set(File(projectDir, "build/reports/tests/u"))
+        }
+        .get()
+    val undiscoveredErr =
+      assertThrows(GradleException::class.java) { validateUndiscovered.validate() }
+    assertThat(undiscoveredErr.message).contains("1 committed screenshot reference PNG(s)")
+    assertThat(undiscoveredErr.message).contains("enableScreenshotTest=true")
+
+    val updatePartial =
+      project.tasks
+        .register("updatePartial", UpdateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDirPath.set(refDir.absolutePath)
+          this.requirePreviewTestAnnotation.set(false)
+          this.partialRenderReason.set("composePreview.filter")
+        }
+        .get()
+    val partialUpdateErr = assertThrows(GradleException::class.java) { updatePartial.update() }
+    assertThat(partialUpdateErr.message).contains("full, unfiltered render")
+    assertThat(partialUpdateErr.message).contains("composePreview.filter")
+
+    validateUndiscovered.partialRenderReason.set("tier=fast")
+    val partialValidateErr =
+      assertThrows(GradleException::class.java) { validateUndiscovered.validate() }
+    assertThat(partialValidateErr.message).contains("full, unfiltered render")
+    assertThat(partialValidateErr.message).contains("tier=fast")
+  }
 }

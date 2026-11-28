@@ -2433,6 +2433,43 @@ internal object AndroidPreviewSupport {
         }
       }
 
+    val screenshotTier = resolveTier(project)
+    val screenshotNameFilters = ComposePreviewTasks.previewFilterProperty(project)
+    val screenshotIdFilters = ComposePreviewTasks.previewIdFilterProperty(project)
+    val screenshotIdExcludes = ComposePreviewTasks.previewIdExcludeProperty(project)
+    val screenshotRowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project)
+    val screenshotPartialRenderReason = renderTask.map { render ->
+      val tier = screenshotTier.get()
+      val reasons = buildList {
+        if (!tier.equals("full", ignoreCase = true)) add("tier=$tier")
+        if (
+          render.previewFilters.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotNameFilters.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.filter")
+        }
+        if (
+          render.previewIdFilters.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotIdFilters.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.previewIds")
+        }
+        if (
+          render.previewIdExcludes.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotIdExcludes.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.excludePreviewIds")
+        }
+        if (
+          render.previewRowExcludes.getOrElse(emptyList()).any { it.isNotBlank() } ||
+            screenshotRowExcludes.getOrElse(emptyList()).any { it.isNotBlank() }
+        ) {
+          add("composePreview.excludePreviewRows")
+        }
+      }
+      reasons.joinToString(", ")
+    }
+
     ScreenshotTestInterop.registerTasks(
       project = project,
       extension = extension,
@@ -2442,6 +2479,7 @@ internal object AndroidPreviewSupport {
       manifestFileProvider = discoverTask.flatMap { it.outputFile },
       rendersDirProvider = rendersDirectory,
       renderTask = renderTask,
+      partialRenderReasonProvider = screenshotPartialRenderReason,
     )
 
     // The JDK-aware Robolectric SDK ceiling must use the JVM the render actually forks into

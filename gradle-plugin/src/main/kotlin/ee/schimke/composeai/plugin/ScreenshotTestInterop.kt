@@ -74,6 +74,7 @@ internal object ScreenshotTestInterop {
     manifestFileProvider: Provider<RegularFile>,
     rendersDirProvider: Provider<Directory>,
     renderTask: TaskProvider<*>,
+    partialRenderReasonProvider: Provider<String> = project.providers.provider { "" },
   ) {
     if (!extension.enabled.get() || !extension.screenshotTest.enabled.get()) return
 
@@ -128,6 +129,7 @@ internal object ScreenshotTestInterop {
         channelTolerance.set(effectiveChannelTolerance)
         failOnMissingReferences.set(extension.screenshotTest.failOnMissingReferences)
         requirePreviewTestAnnotation.set(extension.screenshotTest.requirePreviewTestAnnotation)
+        partialRenderReason.set(partialRenderReasonProvider)
         modulePath.set(project.path)
         this.variantName.set(variantName)
         reportFile.set(reportsRoot.map { it.file("report.json") })
@@ -146,6 +148,7 @@ internal object ScreenshotTestInterop {
       rendersDir.set(rendersDirProvider)
       referenceDirPath.set(effectiveReferenceDir.map { it.asFile.absolutePath })
       requirePreviewTestAnnotation.set(extension.screenshotTest.requirePreviewTestAnnotation)
+      partialRenderReason.set(partialRenderReasonProvider)
       outputs.upToDateWhen { false }
     }
 
@@ -639,6 +642,8 @@ constructor(
 
   @get:Input abstract val requirePreviewTestAnnotation: Property<Boolean>
 
+  @get:Input @get:Optional abstract val partialRenderReason: Property<String>
+
   @get:Input abstract val modulePath: Property<String>
 
   @get:Input abstract val variantName: Property<String>
@@ -653,6 +658,27 @@ constructor(
 
   @TaskAction
   fun validate() {
+    val partialReason = partialRenderReason.orNull.orEmpty()
+    if (partialReason.isNotBlank()) {
+      val exception =
+        GradleException(
+          "Screenshot test validation for ${modulePath.get()} (${variantName.get()}) requires a " +
+            "full, unfiltered render (partial render active: $partialReason). Re-run without " +
+            "-PcomposePreview.tier=fast / filter / exclude flags.",
+        )
+      ComposePreviewProblems.reportValidationFailure(
+        problems = problems,
+        id = "screenshot-test-partial-render",
+        displayName = "Compose screenshot test requires full render",
+        contextualLabel =
+          "${modulePath.get()} (${variantName.get()}): partial render ($partialReason)",
+        details = exception.message ?: "",
+        solutions = listOf("Re-run without -PcomposePreview.tier=fast, filter, or exclude flags"),
+        exception = exception,
+      )
+      throw exception
+    }
+
     val manifest = ScreenshotTestInterop.parseManifest(manifestFile.get().asFile)
     val rendersRoot = rendersDir.get().asFile
     val refRoot =
@@ -671,6 +697,35 @@ constructor(
         previews = manifest.previews,
         requirePreviewTestAnnotation = requirePreviewTestAnnotation.get(),
       )
+
+    if (selected.isEmpty() && refRoot.isDirectory) {
+      val existingRefs =
+        refRoot.walkTopDown().count { it.isFile && it.extension.equals("png", ignoreCase = true) }
+      if (existingRefs > 0) {
+        val message =
+          "Found $existingRefs committed screenshot reference PNG(s) under ${refRoot.path}, " +
+            "but 0 screenshot-test previews were discovered for ${modulePath.get()} " +
+            "(${variantName.get()}). Ensure com.android.compose.screenshot is enabled " +
+            "(e.g. -Pandroid.experimental.enableScreenshotTest=true) and that previews in " +
+            "src/screenshotTest/ are annotated with @PreviewTest."
+        val exception = GradleException(message)
+        ComposePreviewProblems.reportValidationFailure(
+          problems = problems,
+          id = "screenshot-test-undiscovered-suite",
+          displayName = "Compose screenshot test suite not discovered",
+          contextualLabel =
+            "${modulePath.get()} (${variantName.get()}): $existingRefs reference(s), 0 discovered",
+          details = message,
+          solutions =
+            listOf(
+              "Enable com.android.compose.screenshot (for example, pass -Pandroid.experimental.enableScreenshotTest=true)",
+              "Verify screenshot-test previews under src/screenshotTest/ carry @com.android.tools.screenshot.PreviewTest",
+            ),
+          exception = exception,
+        )
+        throw exception
+      }
+    }
 
     val cases = mutableListOf<ScreenshotTestCaseReport>()
     val failures = mutableListOf<String>()
@@ -1005,8 +1060,19 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
 
   @get:Input abstract val requirePreviewTestAnnotation: Property<Boolean>
 
+  @get:Input @get:Optional abstract val partialRenderReason: Property<String>
+
   @TaskAction
   fun update() {
+    val partialReason = partialRenderReason.orNull.orEmpty()
+    if (partialReason.isNotBlank()) {
+      throw GradleException(
+        "Screenshot reference update requires a full, unfiltered render (partial render active: " +
+          "$partialReason). Re-run without -PcomposePreview.tier=fast / filter / exclude flags " +
+          "so stale PNGs are not copied into references.",
+      )
+    }
+
     val manifest = ScreenshotTestInterop.parseManifest(manifestFile.get().asFile)
     val rendersRoot = rendersDir.get().asFile
     val refRoot = File(referenceDirPath.get())
@@ -1015,6 +1081,20 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
         previews = manifest.previews,
         requirePreviewTestAnnotation = requirePreviewTestAnnotation.get(),
       )
+
+    if (selected.isEmpty() && refRoot.isDirectory) {
+      val existingRefs =
+        refRoot.walkTopDown().count { it.isFile && it.extension.equals("png", ignoreCase = true) }
+      if (existingRefs > 0) {
+        throw GradleException(
+          "Found $existingRefs committed screenshot reference PNG(s) under ${refRoot.path}, " +
+            "but 0 screenshot-test previews were discovered. Ensure " +
+            "com.android.compose.screenshot is enabled (e.g. " +
+            "-Pandroid.experimental.enableScreenshotTest=true) and that previews in " +
+            "src/screenshotTest/ are annotated with @PreviewTest.",
+        )
+      }
+    }
 
     val nameCounts =
       selected
