@@ -145,9 +145,10 @@ jobs:
           key: angle-macos-${{ steps.mac-toolchain.outputs.angle }}-${{ hashFiles('host-natives/filament/host/build-angle.sh') }}
 
       # Rive builds with clang through its own premake (bootstrapped from source by build.sh), with
-      # Ninja; glslang compiles the runtime's Vulkan shaders. manylinux_2_28's repositories have no
-      # glslang, so it is built here at a pinned release, without its optimizer (and so without
-      # SPIRV-Tools). As for Filament, clang needs pointing at gcc-toolset's libstdc++ (build.sh
+      # Ninja; glslang and SPIRV-Tools' spirv-opt compile the runtime's Vulkan shaders.
+      # manylinux_2_28's repositories have neither, so glslang is built here at a pinned release,
+      # with the SPIRV-Tools and SPIRV-Headers commits its known_good.json pins (which installs
+      # spirv-opt too). As for Filament, clang needs pointing at gcc-toolset's libstdc++ (build.sh
       # hands CFLAGS and CXXFLAGS to premake's compilers).
       - name: Install the Rive toolchain
         if: matrix.recipe == 'rive'
@@ -161,10 +162,12 @@ jobs:
           pipx install cmake
           git clone -q --depth 1 --branch "$GLSLANG_TAG" https://github.com/KhronosGroup/glslang /tmp/glslang
           test "$(git -C /tmp/glslang rev-parse HEAD)" = "$GLSLANG_COMMIT"
+          (cd /tmp/glslang && python3 update_glslang_sources.py)
           cmake -G Ninja -S /tmp/glslang -B /tmp/glslang/build -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+            -DGLSLANG_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
           ninja -C /tmp/glslang/build install
           glslangValidator --version | head -1
+          command -v spirv-opt
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
           gcc_root="$(dirname "$(dirname "$(command -v gcc)")")"
