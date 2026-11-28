@@ -143,4 +143,21 @@ public class GmsMapsTest {
     assertEquals(GmsMaps.MAP_TYPE_SATELLITE, maps.mapType());
     assertEquals(GmsMaps.MAP_TYPE_TERRAIN, second.mapType());
   }
+
+  @Test
+  public void hiddenMarkerPreservesInitialVisibilityAndBoundsFitZoom() {
+    GoogleMap map =
+        (GoogleMap) GmsMapsDelegates.createGoogleMap(maps, getClass().getClassLoader());
+    map.delegate.addMarker(
+        new com.google.android.gms.maps.model.MarkerOptions(
+            new com.google.android.gms.maps.model.LatLng(37.42, -122.08), "Hidden", "", false));
+    assertEquals(1, maps.markersSnapshot().size());
+    assertEquals(false, maps.markersSnapshot().get(0).visible);
+
+    // Wide country-scale bounds should zoom way out from default 12f.
+    maps.fitBounds(32.0, -124.0, 42.0, -114.0, 800, 800, 40);
+    assertEquals(37.0, maps.cameraLat(), 0.01);
+    assertEquals(-119.0, maps.cameraLng(), 0.01);
+    assertTrue("Expected zoom < 7 for 10-degree span, got " + maps.cameraZoom(), maps.cameraZoom() < 7f);
+  }
 }

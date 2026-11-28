@@ -235,9 +235,39 @@ public final class GmsMaps {
     if (idle != null) main.execute(idle);
   }
 
+  private volatile int viewportWidth = 1080;
+  private volatile int viewportHeight = 1080;
+
+  void setViewportSize(int width, int height) {
+    if (width > 0) this.viewportWidth = width;
+    if (height > 0) this.viewportHeight = height;
+  }
+
+  public void fitBounds(
+      double swLat, double swLng, double neLat, double neLng, int width, int height, int padding) {
+    double centerLat = (swLat + neLat) / 2.0;
+    double centerLng =
+        swLng <= neLng ? (swLng + neLng) / 2.0 : ((swLng + neLng + 360.0) / 2.0 + 180.0) % 360.0 - 180.0;
+    int w = Math.max(1, (width > 0 ? width : viewportWidth) - 2 * Math.max(0, padding));
+    int h = Math.max(1, (height > 0 ? height : viewportHeight) - 2 * Math.max(0, padding));
+    double dx = Math.abs(mercatorX(neLng) - mercatorX(swLng));
+    if (swLng > neLng) dx = 1.0 - dx;
+    double dy = Math.abs(mercatorY(swLat) - mercatorY(neLat));
+    float zoomX = dx > 1e-9 ? (float) (Math.log(w / (256.0 * dx)) / Math.log(2.0)) : 21f;
+    float zoomY = dy > 1e-9 ? (float) (Math.log(h / (256.0 * dy)) / Math.log(2.0)) : 21f;
+    float zoom = Math.max(0f, Math.min(21f, Math.min(zoomX, zoomY)));
+    setCamera(centerLat, centerLng, zoom, cameraTilt, cameraBearing);
+  }
+
   public MarkerRecord addMarker(double lat, double lng, String title, String snippet) {
+    return addMarker(lat, lng, title, snippet, true);
+  }
+
+  public MarkerRecord addMarker(
+      double lat, double lng, String title, String snippet, boolean visible) {
     String id = "m" + nextId.getAndIncrement();
     MarkerRecord rec = new MarkerRecord(id, lat, lng, title, snippet);
+    rec.visible = visible;
     markers.put(id, rec);
     notifyChanged();
     return rec;

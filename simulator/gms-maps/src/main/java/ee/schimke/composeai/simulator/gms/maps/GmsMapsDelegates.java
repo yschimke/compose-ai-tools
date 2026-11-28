@@ -149,9 +149,18 @@ public final class GmsMapsDelegates {
     return wrapCameraUpdate(loader, e -> e.setCamera(ll[0], ll[1], zoom, tilt, bearing));
   }
 
-  public static Object cameraUpdateNewLatLngBounds(Object bounds) {
+  public static Object cameraUpdateNewLatLngBounds(
+      Object bounds, int width, int height, int padding) {
     if (bounds == null) return null;
     ClassLoader loader = bounds.getClass().getClassLoader();
+    Object swObj = readField(bounds, "southwest");
+    Object neObj = readField(bounds, "northeast");
+    if (swObj != null && neObj != null) {
+      double[] sw = readLatLng(swObj);
+      double[] ne = readLatLng(neObj);
+      return wrapCameraUpdate(
+          loader, e -> e.fitBounds(sw[0], sw[1], ne[0], ne[1], width, height, padding));
+    }
     Object center = invokeNoArg(bounds, "getCenter");
     double[] ll = readLatLng(center);
     return wrapCameraUpdate(
@@ -314,7 +323,9 @@ public final class GmsMapsDelegates {
       double[] ll = readLatLng(invokeNoArg(opts, "getPosition"));
       String title = (String) invokeNoArg(opts, "getTitle");
       String snippet = (String) invokeNoArg(opts, "getSnippet");
-      GmsMaps.MarkerRecord rec = engine.addMarker(ll[0], ll[1], title, snippet);
+      Object visObj = invokeNoArg(opts, "isVisible");
+      boolean visible = !(visObj instanceof Boolean) || (Boolean) visObj;
+      GmsMaps.MarkerRecord rec = engine.addMarker(ll[0], ll[1], title, snippet, visible);
       if (!returnType.isInterface()) return null;
       Object markerProxy =
           Proxy.newProxyInstance(

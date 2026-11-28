@@ -69,6 +69,7 @@ final class SimulatedMapCanvasView extends View {
     int w = getWidth();
     int h = getHeight();
     if (w <= 0 || h <= 0) return;
+    engine.setViewportSize(w, h);
 
     // 1. Background palette by mapType.
     int bg;

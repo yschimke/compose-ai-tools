@@ -35,13 +35,13 @@ public class ShadowCameraUpdateFactory {
 
   @Implementation
   protected static Object newLatLngBounds(@ClassName(LAT_LNG_BOUNDS) Object bounds, int padding) {
-    return GmsMapsDelegates.cameraUpdateNewLatLngBounds(bounds);
+    return GmsMapsDelegates.cameraUpdateNewLatLngBounds(bounds, 0, 0, padding);
   }
 
   @Implementation
   protected static Object newLatLngBounds(
       @ClassName(LAT_LNG_BOUNDS) Object bounds, int width, int height, int padding) {
-    return GmsMapsDelegates.cameraUpdateNewLatLngBounds(bounds);
+    return GmsMapsDelegates.cameraUpdateNewLatLngBounds(bounds, width, height, padding);
   }
 
   @Implementation
