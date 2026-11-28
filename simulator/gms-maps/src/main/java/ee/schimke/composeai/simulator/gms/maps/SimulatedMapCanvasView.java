@@ -64,6 +64,24 @@ final class SimulatedMapCanvasView extends View {
   }
 
   @Override
+  protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+    super.onSizeChanged(w, h, oldw, oldh);
+    if (w > 0 && h > 0) {
+      engine.setViewportSize(w, h);
+    }
+  }
+
+  @Override
+  protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    super.onLayout(changed, left, top, right, bottom);
+    int w = right - left;
+    int h = bottom - top;
+    if (w > 0 && h > 0) {
+      engine.setViewportSize(w, h);
+    }
+  }
+
+  @Override
   protected void onDraw(Canvas canvas) {
     super.onDraw(canvas);
     int w = getWidth();
