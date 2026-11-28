@@ -169,6 +169,7 @@ public final class GmsLocation {
     final int transitionTypes;
     final PendingIntent pendingIntent;
     final Object rawGeofence;
+    final long expirationElapsedMs; // -1 = NEVER_EXPIRE
     boolean inside;
 
     GeofenceEntry(
@@ -178,7 +179,8 @@ public final class GmsLocation {
         float radiusMeters,
         int transitionTypes,
         PendingIntent pendingIntent,
-        Object rawGeofence) {
+        Object rawGeofence,
+        long expirationElapsedMs) {
       this.requestId = requestId;
       this.latitude = latitude;
       this.longitude = longitude;
@@ -186,6 +188,11 @@ public final class GmsLocation {
       this.transitionTypes = transitionTypes;
       this.pendingIntent = pendingIntent;
       this.rawGeofence = rawGeofence;
+      this.expirationElapsedMs = expirationElapsedMs;
+    }
+
+    boolean isExpired(long nowElapsedMs) {
+      return expirationElapsedMs > 0L && nowElapsedMs >= expirationElapsedMs;
     }
   }
 
@@ -505,9 +512,18 @@ public final class GmsLocation {
   }
 
   private void evaluateGeofences(Location fix) {
-    List<GeofenceEntry> snapshot;
+    long now = safeElapsedRealtimeMillis(SimulatorHooks.currentTimeMillis());
+    List<GeofenceEntry> snapshot = new ArrayList<>();
     synchronized (geofences) {
-      snapshot = new ArrayList<>(geofences.values());
+      Iterator<Map.Entry<String, GeofenceEntry>> it = geofences.entrySet().iterator();
+      while (it.hasNext()) {
+        GeofenceEntry entry = it.next().getValue();
+        if (entry.isExpired(now)) {
+          it.remove();
+        } else {
+          snapshot.add(entry);
+        }
+      }
     }
     for (GeofenceEntry gf : snapshot) {
       double distMeters =
@@ -1003,7 +1019,26 @@ public final class GmsLocation {
     float radius = (float) readDouble(gf, "getRadius", "zzf", 100.0);
     int transitions =
         readInt(gf, "getTransitionTypes", "zzg", GEOFENCE_TRANSITION_ENTER | GEOFENCE_TRANSITION_EXIT);
-    return new GeofenceEntry(id, lat, lng, radius, transitions, pi, gf);
+    long expiration = readLong(gf, "getExpirationTime", "zzb", -1L);
+    return new GeofenceEntry(id, lat, lng, radius, transitions, pi, gf, expiration);
+  }
+
+  private static long readLong(Object target, String method, String field, long fallback) {
+    try {
+      Method m = target.getClass().getMethod(method);
+      m.setAccessible(true);
+      Object v = m.invoke(target);
+      if (v instanceof Number) return ((Number) v).longValue();
+    } catch (ReflectiveOperationException ignored) {
+    }
+    try {
+      Field f = target.getClass().getDeclaredField(field);
+      f.setAccessible(true);
+      Object v = f.get(target);
+      if (v instanceof Number) return ((Number) v).longValue();
+    } catch (ReflectiveOperationException ignored) {
+    }
+    return fallback;
   }
 
   private static String readString(Object target, String method, String field) {

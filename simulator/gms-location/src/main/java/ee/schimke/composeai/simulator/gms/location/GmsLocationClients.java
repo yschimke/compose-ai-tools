@@ -127,7 +127,13 @@ public final class GmsLocationClients {
     Object handle(String name, Method method, Object[] args) {
       switch (name) {
         case "getLastLocation":
-          return ok(engine.effectiveLastLocation());
+          {
+            Location cached = engine.effectiveLastLocation();
+            if (cached != null && args.length > 0 && !isFreshEnough(cached, args[0])) {
+              return ok(null);
+            }
+            return ok(cached);
+          }
         case "getCurrentLocation":
           return handleGetCurrentLocation(args);
         case "getLocationAvailability":
