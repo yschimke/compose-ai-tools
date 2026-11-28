@@ -290,7 +290,7 @@ public final class GmsLocationClients {
           engine.unregisterActivityUpdates(pi);
           return ok(null);
         case "requestActivityTransitionUpdates":
-          engine.registerActivityTransitions(pi);
+          engine.registerActivityTransitions(args.length > 0 ? args[0] : null, pi);
           return ok(null);
         case "removeActivityTransitionUpdates":
           engine.unregisterActivityTransitions(pi);

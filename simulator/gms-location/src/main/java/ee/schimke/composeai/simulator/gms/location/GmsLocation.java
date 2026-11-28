@@ -69,7 +69,40 @@ public final class GmsLocation {
   private final Map<String, GeofenceEntry> geofences =
       Collections.synchronizedMap(new LinkedHashMap<>());
   private final List<PendingIntent> activityUpdateIntents = new CopyOnWriteArrayList<>();
-  private final List<PendingIntent> activityTransitionIntents = new CopyOnWriteArrayList<>();
+  private final List<ActivityTransitionRegistration> activityTransitionRegistrations =
+      new CopyOnWriteArrayList<>();
+
+  static final class TransitionFilter {
+    final int activityType;
+    final int transitionType; // 0 = ENTER, 1 = EXIT
+
+    TransitionFilter(int activityType, int transitionType) {
+      this.activityType = activityType;
+      this.transitionType = transitionType;
+    }
+
+    boolean matches(int type, int transition) {
+      return this.activityType == type && this.transitionType == transition;
+    }
+  }
+
+  static final class ActivityTransitionRegistration {
+    final PendingIntent pendingIntent;
+    final List<TransitionFilter> filters;
+
+    ActivityTransitionRegistration(PendingIntent pendingIntent, List<TransitionFilter> filters) {
+      this.pendingIntent = pendingIntent;
+      this.filters = filters;
+    }
+
+    boolean accepts(int activityType, int transitionType) {
+      if (filters.isEmpty()) return true;
+      for (TransitionFilter f : filters) {
+        if (f.matches(activityType, transitionType)) return true;
+      }
+      return false;
+    }
+  }
 
   static final class CallbackEntry {
     final Object callback;
@@ -414,14 +447,16 @@ public final class GmsLocation {
     activityUpdateIntents.remove(pendingIntent);
   }
 
-  void registerActivityTransitions(PendingIntent pendingIntent) {
-    if (pendingIntent != null && !activityTransitionIntents.contains(pendingIntent)) {
-      activityTransitionIntents.add(pendingIntent);
-    }
+  void registerActivityTransitions(Object request, PendingIntent pendingIntent) {
+    if (pendingIntent == null) return;
+    unregisterActivityTransitions(pendingIntent);
+    List<TransitionFilter> filters = extractTransitionFilters(request);
+    activityTransitionRegistrations.add(new ActivityTransitionRegistration(pendingIntent, filters));
   }
 
   void unregisterActivityTransitions(PendingIntent pendingIntent) {
-    activityTransitionIntents.remove(pendingIntent);
+    if (pendingIntent == null) return;
+    activityTransitionRegistrations.removeIf(reg -> pendingIntent.equals(reg.pendingIntent));
   }
 
   public void setActivity(int activityType, int confidence) {
@@ -442,19 +477,24 @@ public final class GmsLocation {
         sendPendingIntent(pi, fill);
       }
     }
-    if (prev != activityType && !activityTransitionIntents.isEmpty()) {
-      Object transResult = createActivityTransitionResult(loader, prev, activityType);
-      byte[] transBytes =
-          transResult instanceof android.os.Parcelable
-              ? marshallParcelable((android.os.Parcelable) transResult)
-              : null;
-      for (PendingIntent pi : activityTransitionIntents) {
+    if (prev != activityType && !activityTransitionRegistrations.isEmpty()) {
+      for (ActivityTransitionRegistration reg : activityTransitionRegistrations) {
+        boolean includeExit = reg.accepts(prev, 1 /* ACTIVITY_TRANSITION_EXIT */);
+        boolean includeEnter = reg.accepts(activityType, 0 /* ACTIVITY_TRANSITION_ENTER */);
+        if (!includeExit && !includeEnter) continue;
+        Object transResult =
+            createFilteredActivityTransitionResult(
+                loader, prev, includeExit, activityType, includeEnter);
+        byte[] transBytes =
+            transResult instanceof android.os.Parcelable
+                ? marshallParcelable((android.os.Parcelable) transResult)
+                : null;
         Intent fill = new Intent();
         if (transBytes != null) {
           fill.putExtra(
               "com.google.android.location.internal.EXTRA_ACTIVITY_TRANSITION_RESULT", transBytes);
         }
-        sendPendingIntent(pi, fill);
+        sendPendingIntent(reg.pendingIntent, fill);
       }
     }
   }
@@ -663,7 +703,54 @@ public final class GmsLocation {
     }
   }
 
-  static Object createActivityTransitionResult(ClassLoader loader, int prevType, int newType) {
+  static List<TransitionFilter> extractTransitionFilters(Object request) {
+    if (request == null) return Collections.emptyList();
+    List<TransitionFilter> out = new ArrayList<>();
+    try {
+      List<?> transitions = null;
+      for (Field f : request.getClass().getDeclaredFields()) {
+        f.setAccessible(true);
+        Object val = f.get(request);
+        if (val instanceof List<?>) {
+          List<?> candidate = (List<?>) val;
+          if (!candidate.isEmpty()
+              && "com.google.android.gms.location.ActivityTransition"
+                  .equals(candidate.get(0).getClass().getName())) {
+            transitions = candidate;
+            break;
+          }
+        }
+      }
+      if (transitions == null) {
+        try {
+          Method m = request.getClass().getMethod("getTransitions");
+          m.setAccessible(true);
+          Object val = m.invoke(request);
+          if (val instanceof List<?>) transitions = (List<?>) val;
+        } catch (ReflectiveOperationException ignored) {
+        }
+      }
+      if (transitions != null) {
+        for (Object t : transitions) {
+          if (t == null) continue;
+          int act = readInt(t, "getActivityType", "zza", -1);
+          int trans = readInt(t, "getActivityTransition", "zzb", -1);
+          if (act >= 0 && trans >= 0) {
+            out.add(new TransitionFilter(act, trans));
+          }
+        }
+      }
+    } catch (IllegalAccessException ignored) {
+    }
+    return out;
+  }
+
+  static Object createFilteredActivityTransitionResult(
+      ClassLoader loader,
+      int prevType,
+      boolean includeExit,
+      int newType,
+      boolean includeEnter) {
     try {
       Class<?> eventCls =
           Class.forName("com.google.android.gms.location.ActivityTransitionEvent", false, loader);
@@ -672,8 +759,13 @@ public final class GmsLocation {
       eventCtor.setAccessible(true);
       long nowNs = SimulatorHooks.currentTimeMillis() * 1_000_000L;
       List<Object> events = new ArrayList<>();
-      events.add(eventCtor.newInstance(prevType, 1 /* ACTIVITY_TRANSITION_EXIT */, nowNs));
-      events.add(eventCtor.newInstance(newType, 0 /* ACTIVITY_TRANSITION_ENTER */, nowNs));
+      if (includeExit) {
+        events.add(eventCtor.newInstance(prevType, 1 /* ACTIVITY_TRANSITION_EXIT */, nowNs));
+      }
+      if (includeEnter) {
+        events.add(eventCtor.newInstance(newType, 0 /* ACTIVITY_TRANSITION_ENTER */, nowNs));
+      }
+      if (events.isEmpty()) return null;
 
       Class<?> resCls =
           Class.forName("com.google.android.gms.location.ActivityTransitionResult", false, loader);
