@@ -1056,6 +1056,8 @@ data class PreviewInfo(
    * `@com.android.tools.screenshot.PreviewTest`: marks a `@Preview` discovered by AGP's Compose
    * Preview Screenshot Testing plugin (`com.android.compose.screenshot`).
    */
+  @OptIn(ExperimentalSerializationApi::class)
+  @EncodeDefault(EncodeDefault.Mode.NEVER)
   val previewTest: Boolean = false,
 )
 
