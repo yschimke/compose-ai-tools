@@ -556,6 +556,12 @@ internal object ScreenshotTestInterop {
     return digest.take(4).joinToString("") { "%02x".format(it) }
   }
 
+  internal fun shortHash(raw: String): String {
+    val digest =
+      java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+    return digest.take(4).joinToString("") { "%02x".format(it) }
+  }
+
   /**
    * Resolves the reference PNG path under [referenceDir] matching `com.android.compose.screenshot`
    * directory conventions (`<package/path>/<ClassName>/...`).
@@ -566,7 +572,8 @@ internal object ScreenshotTestInterop {
    * one golden directory across Google's screenshot plugin and Compose Preview. For labelled
    * `@PreviewParameter` rows, Google's numeric goldens are matched ONLY when [providerIndex] is
    * authoritatively known (recovered from unsharded render metadata or single-row fan-out) — never
-   * from alphabetical filename order.
+   * from alphabetical filename order — and generated labelled reference filenames include a digest
+   * of the raw [rowToken] so case-distinct labels (e.g. `Dark` vs `dark`) never collide.
    */
   internal fun resolveReferenceFile(
     referenceDir: File,
@@ -583,10 +590,16 @@ internal object ScreenshotTestInterop {
     val classDir = File(referenceDir, className.replace('.', File.separatorChar))
     val sanitizedName = sanitizeSegment(previewName)
     val sanitizedRow = rowToken?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
+    val rowDigest = rowToken?.takeIf { it.isNotEmpty() }?.let(::shortHash)
     val sanitizedCapture = captureKey?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
     val normalizedHash = configHash.trim().lowercase()
 
-    val tail = if (sanitizedRow != null) "${sanitizedRow}.png" else "${index}.png"
+    val tail =
+      when {
+        sanitizedRow != null && rowDigest != null -> "${sanitizedRow}_${rowDigest}.png"
+        rowDigest != null -> "${rowDigest}.png"
+        else -> "${index}.png"
+      }
     val hashedParts = buildList {
       add(functionName)
       if (sanitizedName.isNotEmpty()) add(sanitizedName)
@@ -628,7 +641,7 @@ internal object ScreenshotTestInterop {
 
     // For labelled `@PreviewParameter` rows, match Google Layoutlib's numeric golden ONLY when the
     // exact provider index is known (never guessed from alphabetical filename order).
-    if (sanitizedRow != null && providerIndex != null) {
+    if (rowToken != null && providerIndex != null) {
       matchLayoutlibGolden(existing, functionName, sanitizedName, "_${providerIndex}.png")?.let {
         return it
       }
@@ -1263,10 +1276,12 @@ constructor(
                     ?.let(ScreenshotTestInterop::sanitizeSegment)
                     ?.takeIf { it.isNotEmpty() }
                     ?.let(::add)
-                  rowToken
-                    ?.let(ScreenshotTestInterop::sanitizeSegment)
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let(::add)
+                  if (!rowToken.isNullOrEmpty()) {
+                    ScreenshotTestInterop.sanitizeSegment(rowToken)
+                      .takeIf { it.isNotEmpty() }
+                      ?.let(::add)
+                    add(ScreenshotTestInterop.shortHash(rowToken))
+                  }
                   add(index.toString())
                   add("diff")
                 }

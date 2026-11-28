@@ -672,4 +672,74 @@ class ScreenshotTestInteropTest {
     validateTask.validate()
     assertThat(reportFile.readText()).contains("\"passed\": 4")
   }
+
+  @Test
+  fun `case-distinct parameter labels keep collision-free reference files`() {
+    val projectDir = tempDir.newFolder("case-distinct-labels")
+    val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val refDir = File(projectDir, "src/screenshotTestDebug/reference")
+
+    val upperPng = File(rendersDir, "ThemePreview-cccc3333_Dark.png")
+    val lowerPng = File(rendersDir, "ThemePreview-cccc3333_dark.png")
+    writeSolidPng(upperPng, 16, 16, Color(10, 10, 10, 255))
+    writeSolidPng(lowerPng, 16, 16, Color(180, 180, 180, 255))
+
+    val preview =
+      PreviewInfo(
+        id = "com.example.ThemeKt.ThemePreview",
+        functionName = "ThemePreview",
+        className = "com.example.ThemeKt",
+        sourceFile = "src/screenshotTest/kotlin/com/example/Theme.kt",
+        params = PreviewParams(previewParameterProviderClassName = "com.example.ThemeProv"),
+        captures = listOf(Capture(renderOutput = "renders/ThemePreview-cccc3333.png")),
+        previewTest = true,
+      )
+    val manifest = PreviewManifest(module = ":app", variant = "debug", previews = listOf(preview))
+    val manifestFile = File(projectDir, "build/compose-previews/manifest.json")
+    manifestFile.parentFile.mkdirs()
+    manifestFile.writeText(json.encodeToString(manifest))
+
+    val updateTask =
+      project.tasks
+        .register("updateCaseLabels", UpdateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDirPath.set(refDir.absolutePath)
+          this.requirePreviewTestAnnotation.set(true)
+        }
+        .get()
+    updateTask.update()
+
+    val created = File(refDir, "com/example/ThemeKt").listFiles().orEmpty()
+    assertThat(created).hasLength(2)
+
+    val reportFile = File(projectDir, "build/reports/case-labels/report.json")
+    val validateTask =
+      project.tasks
+        .register("validateCaseLabels", ValidateScreenshotTestTask::class.java) {
+          this.manifestFile.set(manifestFile)
+          this.rendersDir.set(rendersDir)
+          this.referenceDir.set(refDir)
+          this.referenceDirFallbackPath.set(refDir.absolutePath)
+          this.imageDifferenceThreshold.set(0.01)
+          this.channelTolerance.set(2)
+          this.failOnMissingReferences.set(true)
+          this.requirePreviewTestAnnotation.set(true)
+          this.modulePath.set(":app")
+          this.variantName.set("debug")
+          this.reportFile.set(reportFile)
+          this.diffsDir.set(File(projectDir, "build/reports/case-labels/diffs"))
+          this.testBinaryResultsDir.set(File(projectDir, "build/test-results/cl/binary"))
+          this.testHtmlReportDir.set(File(projectDir, "build/reports/tests/cl"))
+        }
+        .get()
+    validateTask.validate()
+    assertThat(reportFile.readText()).contains("\"passed\": 2")
+
+    // Mutate only the lowercase `dark` render; only 1 of 2 must fail.
+    writeSolidPng(lowerPng, 16, 16, Color(240, 20, 20, 255))
+    val err = assertThrows(GradleException::class.java) { validateTask.validate() }
+    assertThat(err.message).contains("1 of 2 failed")
+  }
 }
