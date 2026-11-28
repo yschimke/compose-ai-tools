@@ -143,13 +143,36 @@ public final class NetworkGate {
     open.remove(socket);
   }
 
+  /** Android Emulator (AVD) alias for the host loopback interface. */
+  public static final String EMULATOR_HOST_ALIAS = "10.0.2.2";
+
+  /** Whether [host] is the AVD host-loopback alias ({@code 10.0.2.2}). */
+  public static boolean isEmulatorHostAlias(String host) {
+    return EMULATOR_HOST_ALIAS.equals(host);
+  }
+
+  /**
+   * Rewrites connections to the AVD host alias {@code 10.0.2.2} to {@code 127.0.0.1} so APKs built
+   * for Android Emulators (for example calling {@code useEmulator("10.0.2.2", 8080)}) reach local
+   * backends on the host directly.
+   */
+  static InetSocketAddress rewriteAddress(InetSocketAddress target) {
+    if (target == null) return null;
+    InetAddress ip = target.getAddress();
+    boolean alias =
+        isEmulatorHostAlias(target.getHostString())
+            || (ip != null && isEmulatorHostAlias(ip.getHostAddress()));
+    if (!alias) return target;
+    return new InetSocketAddress(InetAddress.getLoopbackAddress(), target.getPort());
+  }
+
   /** Whether a lookup or connection to [host] must fail now. */
   static boolean unreachable(String host) {
     if (host == null) return !internet;
     String name = host.toLowerCase(Locale.ROOT);
     if (isBlocked(name)) return true;
     if (internet) return false;
-    return !isLocalName(name);
+    return !isLocalName(name) && !isEmulatorHostAlias(name);
   }
 
   static boolean isBlocked(String host) {
@@ -180,7 +203,12 @@ public final class NetworkGate {
     InetAddress ip = address == null ? null : address.getAddress();
     if (ip != null && isBlocked(ip.getHostAddress())) return unreachable(ip, address.getPort());
     if (internet) return null;
-    boolean local = ip != null && (ip.isLoopbackAddress() || ip.isAnyLocalAddress());
+    boolean local =
+        (ip != null
+                && (ip.isLoopbackAddress()
+                    || ip.isAnyLocalAddress()
+                    || isEmulatorHostAlias(ip.getHostAddress())))
+            || isEmulatorHostAlias(host);
     if (local && !isProxy(address)) return null;
     if (!literal && !isLocalName(host.toLowerCase(Locale.ROOT))) return unknownHost(host);
     return unreachable(ip, address == null ? 0 : address.getPort());
@@ -251,7 +279,9 @@ public final class NetworkGate {
 
     @Override
     public List<java.net.Proxy> select(URI uri) {
-      if (delegate == null || unreachable(uri.getHost())) {
+      if (delegate == null
+          || unreachable(uri.getHost())
+          || isEmulatorHostAlias(uri.getHost())) {
         return Collections.singletonList(java.net.Proxy.NO_PROXY);
       }
       return delegate.select(uri);

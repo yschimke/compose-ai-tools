@@ -405,6 +405,18 @@ class AndroidSimulatorCommand(
           fail("--play-services takes ${PLAY_SERVICES_STATES.joinToString(" | ")}")
         }
       }
+    val firebaseProject = args.flagValue("--firebase-project")
+    val firebaseEmulator =
+      args.flagValue("--firebase-emulator")?.let { spec ->
+        runCatching {
+          FirebaseEmulatorProcess.resolve(
+            spec = spec,
+            projectId = firebaseProject,
+            verbose = verbose,
+          )
+        }
+          .getOrElse { fail(it.message ?: "invalid --firebase-emulator: $spec") }
+      }
     val wffApks =
       if (useDwfRuntime) listOfNotNull(apk, watchfaceApk).distinctBy { it.canonicalPath }
       else emptyList()
@@ -519,6 +531,8 @@ class AndroidSimulatorCommand(
         device = device,
         network = network,
         playServices = playServices,
+        firebaseEmulator = firebaseEmulator?.emulatorSpec,
+        firebaseProject = firebaseEmulator?.projectId ?: firebaseProject,
         fontScale = args.flagValue("--font-scale"),
         // A test run gets a device's fingerprint: Robolectric's ("robolectric") makes Compose's
         // test rule use Robolectric's idling strategy, which assumes the test thread is the main
@@ -1256,6 +1270,10 @@ class AndroidSimulatorCommand(
     val network: String? = null,
     /** One of [PLAY_SERVICES_STATES]; installed when null. */
     val playServices: String? = null,
+    /** Serialized `--firebase-emulator` spec passed to `:simulator-firebase-emulator`. */
+    val firebaseEmulator: String? = null,
+    /** Optional `--firebase-project` ID override passed to `:simulator-firebase-emulator`. */
+    val firebaseProject: String? = null,
     /** `Build.FINGERPRINT`, in place of Robolectric's `robolectric`. */
     val fingerprint: String? = null,
     /** The simulator JVM's `-Xmx` (each one, with `--pair`); the JVM's default when null. */
@@ -1836,6 +1854,8 @@ class AndroidSimulatorCommand(
       options.device?.let { properties["composeai.simulator.device"] = it }
       options.network?.let { properties["composeai.simulator.network"] = it }
       options.playServices?.let { properties["composeai.simulator.playServices"] = it }
+      options.firebaseEmulator?.let { properties["composeai.simulator.firebase.emulators"] = it }
+      options.firebaseProject?.let { properties["composeai.simulator.firebase.project"] = it }
       options.fontScale?.let { properties["composeai.simulator.fontScale"] = it }
       options.fingerprint?.let { properties["composeai.simulator.fingerprint"] = it }
       if (options.control) properties["composeai.simulator.control"] = "stdio"
@@ -1993,6 +2013,17 @@ class AndroidSimulatorCommand(
                               installed (default; SUCCESS, version 25.42.34), none
                               (SERVICE_MISSING), outdated, disabled or invalid, for an
                               app's error paths. With --pair, both devices.
+        --firebase-emulator <spec>
+                              Connect Firebase SDKs (Auth, Firestore, Realtime Database,
+                              Storage, Functions) to a real Firebase Local Emulator Suite:
+                              `auto` (discover via Hub at 127.0.0.1:4400), `hub=host:port`,
+                              `auth=9099,firestore=8080,...`, or a `firebase.json` path
+                              (starts and tears down `firebase emulators:start` if its Hub
+                              is not already running).
+        --firebase-project <id>
+                              Firebase project ID override for emulator admin/wiring
+                              (defaults to `.firebaserc`, the app's FirebaseOptions, or
+                              `demo-simulator`).
         --display <spec>      Connect a secondary display at launch (repeatable): a size in
                               dp with an optional density, then name=, type= (external,
                               virtual, rear) — e.g. 1280x720@mdpi,name=TV. Each gets its

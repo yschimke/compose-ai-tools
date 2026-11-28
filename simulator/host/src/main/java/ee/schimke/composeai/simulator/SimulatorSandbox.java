@@ -157,7 +157,11 @@ public final class SimulatorSandbox {
                 ShadowDisplayOffloadManager.class,
                 ShadowDisplayControlLock.class,
                 // Dynamic Material 3 system colors derived from the active watch face palette.
-                SimulatorShadowResources.class);
+                SimulatorShadowResources.class,
+                // Firebase Remote Config, Analytics and Crashlytics local capture (inert if SDK is absent).
+                ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseRemoteConfig.class,
+                ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseAnalytics.class,
+                ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseCrashlytics.class);
     // A paired launch answers the app's Play services Wearable calls itself (DataLayer).
     if (DataLayerLink.enabled()) {
       shadows.addShadowClasses(ShadowWearable.class);
@@ -355,6 +359,12 @@ public final class SimulatorSandbox {
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
     builder.addInstrumentedClass(ShadowDisplayOffloadManager.TARGET);
     builder.addInstrumentedClass(ShadowDisplayControlLock.TARGET);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseRemoteConfig.TARGET);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseAnalytics.TARGET);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.firebase.ShadowFirebaseCrashlytics.TARGET);
     // `android.jar` deliberately has no Wear SDK surface. Wear Compose calls this optional API
     // during scroll setup, so instrument the app-bundled signature classes and route the small
     // simulator-safe subset through explicit shadows. This is inert for phone apps.
