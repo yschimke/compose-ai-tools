@@ -481,31 +481,46 @@ class ScreenshotTestInteropTest {
   }
 
   @Test
-  fun `labelled parameter rows match existing Google numeric goldens and avoid PARAM index collisions`() {
+  fun `labelled parameter rows recover provider order from JUnit XML and reject sharded numeric swaps`() {
     val projectDir = tempDir.newFolder("labelled-google")
     val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
     val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val testResultsDir =
+      File(projectDir, "build/test-results/composePreviewRender").apply { mkdirs() }
     val refDir = File(projectDir, "src/screenshotTestDebug/reference")
     val classRefDir = File(refDir, "com/example/BadgesKt").apply { mkdirs() }
 
-    // Existing Google Layoutlib numeric goldens for a 2-row @PreviewParameter preview.
+    // Non-alphabetical provider order: index 0 = Zulu (blue), index 1 = Alpha (orange).
     val google0 = File(classRefDir, "BadgePreview_a1b2c3d4_0.png")
     val google1 = File(classRefDir, "BadgePreview_a1b2c3d4_1.png")
     writeSolidPng(google0, 16, 16, Color(20, 100, 200, 255))
     writeSolidPng(google1, 16, 16, Color(200, 100, 20, 255))
 
-    // Mixed fan-out: PARAM_0 (index 0) and labelled "Dark" (must take unused index 1, not 0).
     writeSolidPng(
-      File(rendersDir, "BadgePreview-11112222_PARAM_0.png"),
+      File(rendersDir, "BadgePreview-11112222_Zulu.png"),
       16,
       16,
       Color(20, 100, 200, 255),
     )
     writeSolidPng(
-      File(rendersDir, "BadgePreview-11112222_Dark.png"),
+      File(rendersDir, "BadgePreview-11112222_Alpha.png"),
       16,
       16,
       Color(200, 100, 20, 255),
+    )
+
+    // Unsharded JUnit XML records the exact provider order (Zulu = 0, Alpha = 1).
+    val unshardedXml =
+      File(testResultsDir, "TEST-ee.schimke.composeai.renderer.RobolectricRenderTest.xml")
+    unshardedXml.writeText(
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuite name="ee.schimke.composeai.renderer.RobolectricRenderTest" tests="2">
+        <testcase name="renderPreview[com.example.BadgesKt.BadgePreview_Zulu]" classname="ee.schimke.composeai.renderer.RobolectricRenderTest" time="0.1"/>
+        <testcase name="renderPreview[com.example.BadgesKt.BadgePreview_Alpha]" classname="ee.schimke.composeai.renderer.RobolectricRenderTest" time="0.1"/>
+      </testsuite>
+      """
+        .trimIndent(),
     )
 
     val manifest =
@@ -535,6 +550,7 @@ class ScreenshotTestInteropTest {
         .register("validateLabelled", ValidateScreenshotTestTask::class.java) {
           this.manifestFile.set(manifestFile)
           this.rendersDir.set(rendersDir)
+          this.renderTestResultsDir.set(testResultsDir)
           this.referenceDir.set(refDir)
           this.referenceDirFallbackPath.set(refDir.absolutePath)
           this.imageDifferenceThreshold.set(0.01)
@@ -552,18 +568,29 @@ class ScreenshotTestInteropTest {
     validateTask.validate()
     assertThat(reportFile.readText()).contains("\"passed\": 2")
 
-    // Updating refreshes the existing Google goldens in place without creating extra files.
+    // Updating refreshes the existing Google goldens in place without swapping or creating
+    // duplicates.
     val updateTask =
       project.tasks
         .register("updateLabelled", UpdateScreenshotTestTask::class.java) {
           this.manifestFile.set(manifestFile)
           this.rendersDir.set(rendersDir)
+          this.renderTestResultsDir.set(testResultsDir)
           this.referenceDirPath.set(refDir.absolutePath)
           this.requirePreviewTestAnnotation.set(true)
         }
         .get()
     updateTask.update()
     assertThat(classRefDir.listFiles()?.map { it.name }).containsExactly(google0.name, google1.name)
+
+    // When sharded (no authoritative provider order), both validate and update refuse to guess.
+    unshardedXml.delete()
+    File(testResultsDir, "TEST-ee.schimke.composeai.renderer.RobolectricRenderTest_Shard0.xml")
+      .writeText("<testsuite/>")
+    val shardedValidateErr = assertThrows(GradleException::class.java) { validateTask.validate() }
+    assertThat(shardedValidateErr.message).contains("composePreview.shards = 1")
+    val shardedUpdateErr = assertThrows(GradleException::class.java) { updateTask.update() }
+    assertThat(shardedUpdateErr.message).contains("composePreview.shards = 1")
   }
 
   @Test

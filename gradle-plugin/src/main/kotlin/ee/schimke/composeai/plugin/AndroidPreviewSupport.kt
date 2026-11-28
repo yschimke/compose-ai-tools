@@ -2480,6 +2480,7 @@ internal object AndroidPreviewSupport {
       rendersDirProvider = rendersDirectory,
       renderTask = renderTask,
       partialRenderReasonProvider = screenshotPartialRenderReason,
+      renderTestResultsDirProvider = renderTask.flatMap { it.reports.junitXml.outputLocation },
     )
 
     // The JDK-aware Robolectric SDK ceiling must use the JVM the render actually forks into

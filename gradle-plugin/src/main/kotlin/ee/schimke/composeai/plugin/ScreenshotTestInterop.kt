@@ -75,6 +75,7 @@ internal object ScreenshotTestInterop {
     rendersDirProvider: Provider<Directory>,
     renderTask: TaskProvider<*>,
     partialRenderReasonProvider: Provider<String> = project.providers.provider { "" },
+    renderTestResultsDirProvider: Provider<Directory>? = null,
   ) {
     if (!extension.enabled.get() || !extension.screenshotTest.enabled.get()) return
 
@@ -121,6 +122,9 @@ internal object ScreenshotTestInterop {
         dependsOn(renderTask)
         manifestFile.set(manifestFileProvider)
         rendersDir.set(rendersDirProvider)
+        if (renderTestResultsDirProvider != null) {
+          renderTestResultsDir.set(renderTestResultsDirProvider)
+        }
         referenceDir.set(
           providers.provider { effectiveReferenceDir.get().takeIf { it.asFile.isDirectory } },
         )
@@ -146,6 +150,9 @@ internal object ScreenshotTestInterop {
       dependsOn(renderTask)
       manifestFile.set(manifestFileProvider)
       rendersDir.set(rendersDirProvider)
+      if (renderTestResultsDirProvider != null) {
+        renderTestResultsDir.set(renderTestResultsDirProvider)
+      }
       referenceDirPath.set(effectiveReferenceDir.map { it.asFile.absolutePath })
       requirePreviewTestAnnotation.set(extension.screenshotTest.requirePreviewTestAnnotation)
       partialRenderReason.set(partialRenderReasonProvider)
@@ -228,9 +235,12 @@ internal object ScreenshotTestInterop {
     val rowToken: String?,
     val file: File,
     val captureKey: String? = null,
+    val providerIndex: Int? = index,
   )
 
   private const val PARAM_INDEX_PREFIX = "PARAM_"
+  private const val UNSHARDED_RENDER_XML =
+    "TEST-ee.schimke.composeai.renderer.RobolectricRenderTest.xml"
 
   private val rowTokenOrder: Comparator<String> = Comparator { a, b ->
     val ia =
@@ -246,6 +256,77 @@ internal object ScreenshotTestInterop {
   }
 
   /**
+   * Recovers exact 0-based `PreviewParameterProvider` indices for labelled fan-out rows from the
+   * unsharded `composePreviewRender` JUnit XML (`RobolectricRenderTest`).
+   *
+   * When `shards == 1`, `PreviewManifestLoader.loadShard` emits parameterized rows in exact
+   * provider iteration order (`0, 1, 2, ...`). When `shards > 1`, `assignToShard` re-sorts rows by
+   * cost and id across shard XMLs, so provider order cannot be inferred from JUnit XML — returns
+   * empty in that case so callers never silently pair swapped labels with Google numeric goldens.
+   */
+  internal fun recoverProviderIndicesFromJunitXml(
+    renderTestResultsDir: File?,
+    previews: List<PreviewInfo>,
+  ): Map<String, Map<String, Int>> {
+    if (renderTestResultsDir == null || !renderTestResultsDir.isDirectory) return emptyMap()
+    val xmlFiles =
+      renderTestResultsDir.listFiles()?.filter { it.isFile && it.extension.equals("xml", true) }
+        ?: return emptyMap()
+    if (xmlFiles.any { it.name.contains("RobolectricRenderTest_Shard") }) {
+      return emptyMap()
+    }
+    val unshardedXml = xmlFiles.firstOrNull { it.name == UNSHARDED_RENDER_XML } ?: return emptyMap()
+
+    val testcaseIds = runCatching {
+      val factory =
+        javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+          setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+          setFeature("http://xml.org/sax/features/external-general-entities", false)
+          setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        }
+      val doc = factory.newDocumentBuilder().parse(unshardedXml)
+      val nodes = doc.getElementsByTagName("testcase")
+      buildList {
+        for (i in 0 until nodes.length) {
+          val nameAttr = nodes.item(i).attributes?.getNamedItem("name")?.nodeValue ?: continue
+          val start = nameAttr.indexOf('[')
+          val end = nameAttr.lastIndexOf(']')
+          if (start >= 0 && end > start + 1) {
+            add(nameAttr.substring(start + 1, end))
+          }
+        }
+      }
+    }
+      .getOrElse {
+        return emptyMap()
+      }
+
+    val allIds = previews.map { it.id }.toSet()
+    val paramPreviews =
+      previews
+        .filter { !it.params.previewParameterProviderClassName.isNullOrBlank() }
+        .sortedByDescending { it.id.length }
+    if (paramPreviews.isEmpty()) return emptyMap()
+
+    val counters = mutableMapOf<String, Int>()
+    val result = mutableMapOf<String, MutableMap<String, Int>>()
+    for (tcId in testcaseIds) {
+      if (tcId in allIds) continue
+      // Longest-prefix match prevents `Foo` from claiming `Foo_Dark`'s row `Foo_Dark_Alpha`.
+      val owner =
+        paramPreviews.firstOrNull { p ->
+          tcId.startsWith("${p.id}_") && tcId.length > p.id.length + 1
+        } ?: continue
+      val token = tcId.substring(owner.id.length + 1)
+      val nextIdx = counters[owner.id] ?: 0
+      counters[owner.id] = nextIdx + 1
+      val map = result.getOrPut(owner.id) { linkedMapOf() }
+      map.putIfAbsent(token, nextIdx)
+    }
+    return result
+  }
+
+  /**
    * Resolves rendered PNG files for [preview]. Handles single-capture previews (`<stem>.png`),
    * multi-capture manifests (resolving `@PreviewParameter` fan-outs per capture), and
    * `@PreviewParameter` fan-outs (`<stem>_PARAM_<idx>.png` and labelled `<stem>_<label>.png`),
@@ -255,6 +336,7 @@ internal object ScreenshotTestInterop {
     preview: PreviewInfo,
     rendersDir: File,
     siblingOutputs: Set<String> = emptySet(),
+    providerIndices: Map<String, Int> = emptyMap(),
   ): List<RenderedCapture> {
     val pngCaptures = preview.captures.filter { it.renderOutput.endsWith(".png") }
     if (pngCaptures.isEmpty()) return emptyList()
@@ -281,6 +363,7 @@ internal object ScreenshotTestInterop {
           rendersDir = rendersDir,
           siblingOutputs = captureSiblings,
           captureKey = captureKey,
+          providerIndices = providerIndices,
         )
     }
     return resolved
@@ -312,12 +395,19 @@ internal object ScreenshotTestInterop {
     rendersDir: File,
     siblingOutputs: Set<String>,
     captureKey: String?,
+    providerIndices: Map<String, Int>,
   ): List<RenderedCapture> {
     val rel = templateOutput.removePrefix("renders/")
     val exact = File(rendersDir, rel)
     if (exact.isFile) {
       return listOf(
-        RenderedCapture(index = 0, rowToken = null, file = exact, captureKey = captureKey),
+        RenderedCapture(
+          index = 0,
+          rowToken = null,
+          file = exact,
+          captureKey = captureKey,
+          providerIndex = 0,
+        ),
       )
     }
 
@@ -360,34 +450,66 @@ internal object ScreenshotTestInterop {
 
     if (rawRows.isEmpty()) {
       return listOf(
-        RenderedCapture(index = 0, rowToken = null, file = exact, captureKey = captureKey),
+        RenderedCapture(
+          index = 0,
+          rowToken = null,
+          file = exact,
+          captureKey = captureKey,
+          providerIndex = 0,
+        ),
       )
     }
 
-    // Reserve explicit PARAM_<idx> indices so mixed [null, "Label"] fan-outs never collide on 0.
-    val usedIndices =
-      rawRows
-        .mapNotNull { (token, _, _) ->
-          token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
-            token.startsWith(PARAM_INDEX_PREFIX)
-          }
+    // Reserve explicit PARAM_<idx> and recovered JUnit XML provider indices.
+    val usedIndices = mutableSetOf<Int>()
+    for ((token, _, _) in rawRows) {
+      val paramIdx =
+        token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
+          token.startsWith(PARAM_INDEX_PREFIX)
         }
-        .toMutableSet()
+      if (paramIdx != null) usedIndices += paramIdx
+      providerIndices[token]?.let { usedIndices += it }
+    }
 
-    var nextLabelIndex = 0
-    return rawRows.map { (token, _, file) ->
+    var nextFallbackIndex = 0
+    val captures = rawRows.map { (token, _, file) ->
       val paramIdx =
         token.removePrefix(PARAM_INDEX_PREFIX).toIntOrNull()?.takeIf {
           token.startsWith(PARAM_INDEX_PREFIX)
         }
       if (paramIdx != null) {
-        RenderedCapture(index = paramIdx, rowToken = null, file = file, captureKey = captureKey)
+        RenderedCapture(
+          index = paramIdx,
+          rowToken = null,
+          file = file,
+          captureKey = captureKey,
+          providerIndex = paramIdx,
+        )
       } else {
-        while (nextLabelIndex in usedIndices) nextLabelIndex++
-        val idx = nextLabelIndex++
-        usedIndices += idx
-        RenderedCapture(index = idx, rowToken = token, file = file, captureKey = captureKey)
+        val authoritativeIdx = providerIndices[token] ?: if (rawRows.size == 1) 0 else null
+        val displayIdx =
+          if (authoritativeIdx != null) {
+            authoritativeIdx
+          } else {
+            while (nextFallbackIndex in usedIndices) nextFallbackIndex++
+            val idx = nextFallbackIndex++
+            usedIndices += idx
+            idx
+          }
+        RenderedCapture(
+          index = displayIdx,
+          rowToken = token,
+          file = file,
+          captureKey = captureKey,
+          providerIndex = authoritativeIdx,
+        )
       }
+    }
+
+    return if (captures.all { it.providerIndex != null }) {
+      captures.sortedBy { it.providerIndex }
+    } else {
+      captures
     }
   }
 
@@ -440,12 +562,11 @@ internal object ScreenshotTestInterop {
    *
    * When [ambiguousName] is `false` (unique `(className, functionName, sanitizedName)` among
    * selected previews), existing Layoutlib references (`<fn>_<previewName>_<hex8>_<index>.png` or
-   * `<fn>_<hex8>_<index>.png`, including numeric goldens for labelled `@PreviewParameter` rows) and
-   * unhashed legacy files are matched in place so teams can share one golden directory across
-   * Google's screenshot plugin and Compose Preview. When [ambiguousName] is `true` (multiple
-   * configurations on the same function share the same or empty name) or no existing reference
-   * matches, includes [configHash] (and [captureKey] for multi-capture previews) so distinct
-   * configurations/captures never overwrite or compare against one another's golden.
+   * `<fn>_<hex8>_<index>.png`) and unhashed legacy files are matched in place so teams can share
+   * one golden directory across Google's screenshot plugin and Compose Preview. For labelled
+   * `@PreviewParameter` rows, Google's numeric goldens are matched ONLY when [providerIndex] is
+   * authoritatively known (recovered from unsharded render metadata or single-row fan-out) — never
+   * from alphabetical filename order.
    */
   internal fun resolveReferenceFile(
     referenceDir: File,
@@ -457,6 +578,7 @@ internal object ScreenshotTestInterop {
     rowToken: String? = null,
     captureKey: String? = null,
     ambiguousName: Boolean = false,
+    providerIndex: Int? = if (rowToken == null) index else null,
   ): File {
     val classDir = File(referenceDir, className.replace('.', File.separatorChar))
     val sanitizedName = sanitizeSegment(previewName)
@@ -464,7 +586,7 @@ internal object ScreenshotTestInterop {
     val sanitizedCapture = captureKey?.let(::sanitizeSegment)?.takeIf { it.isNotEmpty() }
     val normalizedHash = configHash.trim().lowercase()
 
-    val tail = if (sanitizedRow != null) "${sanitizedRow}_${index}.png" else "${index}.png"
+    val tail = if (sanitizedRow != null) "${sanitizedRow}.png" else "${index}.png"
     val hashedParts = buildList {
       add(functionName)
       if (sanitizedName.isNotEmpty()) add(sanitizedName)
@@ -504,15 +626,50 @@ internal object ScreenshotTestInterop {
       return it
     }
 
-    // For labelled `@PreviewParameter` rows, also match Google Layoutlib's numeric golden
-    // (`<fn>[_<previewName>]_<hexHash>_<index>.png`) when one exists unambiguously on disk.
-    if (sanitizedRow != null) {
-      matchLayoutlibGolden(existing, functionName, sanitizedName, "_${index}.png")?.let {
+    // For labelled `@PreviewParameter` rows, match Google Layoutlib's numeric golden ONLY when the
+    // exact provider index is known (never guessed from alphabetical filename order).
+    if (sanitizedRow != null && providerIndex != null) {
+      matchLayoutlibGolden(existing, functionName, sanitizedName, "_${providerIndex}.png")?.let {
         return it
       }
     }
 
     return fallbackFile
+  }
+
+  /**
+   * Returns true if [referenceDir] contains Google Layoutlib numeric golden PNGs
+   * (`<fn>[_<previewName>]_<hexHash>_<digits>.png`) for the given preview. Used to fail loudly
+   * instead of silently swapping/duplicating goldens when a sharded render drops provider order for
+   * labelled `@PreviewParameter` rows.
+   */
+  internal fun hasNumericLayoutlibGoldens(
+    referenceDir: File,
+    className: String,
+    functionName: String,
+    previewName: String,
+  ): Boolean {
+    val classDir = File(referenceDir, className.replace('.', File.separatorChar))
+    val existing =
+      classDir.listFiles()?.filter { it.isFile && it.extension.equals("png", ignoreCase = true) }
+        ?: return false
+    val sanitizedName = sanitizeSegment(previewName)
+    val numericSuffixRegex = Regex("^(.*)_(\\d+)\\.png$")
+    val hashSuffixRegex = Regex("^(.*?)_[0-9a-fA-F]{6,12}$")
+    val bareHashRegex = Regex("^[0-9a-fA-F]{6,12}$")
+
+    return existing.any { file ->
+      if (!file.name.startsWith("${functionName}_")) return@any false
+      val match = numericSuffixRegex.matchEntire(file.name) ?: return@any false
+      val beforeIndex = match.groupValues[1].removePrefix("${functionName}_")
+      if (sanitizedName.isNotEmpty()) {
+        val stripped =
+          hashSuffixRegex.matchEntire(beforeIndex)?.groupValues?.get(1) ?: return@any false
+        sanitizeSegment(stripped) == sanitizedName
+      } else {
+        bareHashRegex.matches(beforeIndex)
+      }
+    }
   }
 
   private fun matchLayoutlibGolden(
@@ -722,6 +879,11 @@ constructor(
   @get:InputDirectory
   @get:Optional
   @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val renderTestResultsDir: DirectoryProperty
+
+  @get:InputDirectory
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val referenceDir: DirectoryProperty
 
   @get:Internal abstract val referenceDirFallbackPath: Property<String>
@@ -840,6 +1002,12 @@ constructor(
     var failedCount = 0
     var missingCount = 0
 
+    val providerIndicesByPreview =
+      ScreenshotTestInterop.recoverProviderIndicesFromJunitXml(
+        renderTestResultsDir = renderTestResultsDir.orNull?.asFile,
+        previews = manifest.previews,
+      )
+
     val nameCounts =
       selected
         .groupingBy { preview ->
@@ -869,11 +1037,17 @@ constructor(
             .flatMap { it.captures.asSequence().map { capture -> capture.renderOutput } }
             .toSet()
         val captures =
-          ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot, siblingOutputs)
+          ScreenshotTestInterop.resolveRenderedCaptures(
+            preview = preview,
+            rendersDir = rendersRoot,
+            siblingOutputs = siblingOutputs,
+            providerIndices = providerIndicesByPreview[preview.id].orEmpty(),
+          )
         for (capture in captures) {
           val index = capture.index
           val rowToken = capture.rowToken
           val captureKey = capture.captureKey
+          val providerIndex = capture.providerIndex
           val actualFile = capture.file
           val startedAt = Instant.now()
           val refFile =
@@ -887,6 +1061,7 @@ constructor(
               rowToken = rowToken,
               captureKey = captureKey,
               ambiguousName = ambiguousName,
+              providerIndex = providerIndex,
             )
           val testDisplayName = buildString {
             append(preview.functionName)
@@ -898,6 +1073,48 @@ constructor(
             } else if (index > 0 || captures.size > 1) {
               append("#$index")
             }
+          }
+
+          if (
+            rowToken != null &&
+              providerIndex == null &&
+              captureKey == null &&
+              !ambiguousName &&
+              !refFile.isFile &&
+              ScreenshotTestInterop.hasNumericLayoutlibGoldens(
+                referenceDir = refRoot,
+                className = preview.className,
+                functionName = preview.functionName,
+                previewName = previewName,
+              )
+          ) {
+            failedCount++
+            val msg =
+              "Cannot map labelled @PreviewParameter row '$rowToken' to existing Google numeric " +
+                "reference PNG(s) because provider order is unavailable from a sharded render; " +
+                "set composePreview.shards = 1 to preserve provider order."
+            failures += "${preview.className}.$testDisplayName: $msg"
+            cases +=
+              ScreenshotTestCaseReport(
+                id = preview.id,
+                className = preview.className,
+                functionName = preview.functionName,
+                previewName = previewName,
+                index = index,
+                status = "failed",
+                message = msg,
+                referencePath = refFile.path,
+                actualPath = actualFile.path,
+              )
+            testSession?.recordCapture(
+              className = preview.className,
+              testName = testDisplayName,
+              displayName = testDisplayName,
+              startTime = startedAt,
+              endTime = Instant.now(),
+              outcome = PreviewTestEventSession.CaptureOutcome.Failed(msg),
+            )
+            continue
           }
 
           if (!actualFile.isFile) {
@@ -1162,6 +1379,11 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val rendersDir: DirectoryProperty
 
+  @get:InputDirectory
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val renderTestResultsDir: DirectoryProperty
+
   @get:Internal abstract val referenceDirPath: Property<String>
 
   @get:Input abstract val requirePreviewTestAnnotation: Property<Boolean>
@@ -1202,6 +1424,12 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
       }
     }
 
+    val providerIndicesByPreview =
+      ScreenshotTestInterop.recoverProviderIndicesFromJunitXml(
+        renderTestResultsDir = renderTestResultsDir.orNull?.asFile,
+        previews = manifest.previews,
+      )
+
     val nameCounts =
       selected
         .groupingBy { preview ->
@@ -1233,11 +1461,17 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
           .flatMap { it.captures.asSequence().map { capture -> capture.renderOutput } }
           .toSet()
       val captures =
-        ScreenshotTestInterop.resolveRenderedCaptures(preview, rendersRoot, siblingOutputs)
+        ScreenshotTestInterop.resolveRenderedCaptures(
+          preview = preview,
+          rendersDir = rendersRoot,
+          siblingOutputs = siblingOutputs,
+          providerIndices = providerIndicesByPreview[preview.id].orEmpty(),
+        )
       for (capture in captures) {
         val index = capture.index
         val rowToken = capture.rowToken
         val captureKey = capture.captureKey
+        val providerIndex = capture.providerIndex
         val actualFile = capture.file
         if (!actualFile.isFile) {
           val suffixLabel =
@@ -1259,7 +1493,28 @@ abstract class UpdateScreenshotTestTask : DefaultTask() {
             rowToken = rowToken,
             captureKey = captureKey,
             ambiguousName = ambiguousName,
+            providerIndex = providerIndex,
           )
+        if (
+          rowToken != null &&
+            providerIndex == null &&
+            captureKey == null &&
+            !ambiguousName &&
+            !target.isFile &&
+            ScreenshotTestInterop.hasNumericLayoutlibGoldens(
+              referenceDir = refRoot,
+              className = preview.className,
+              functionName = preview.functionName,
+              previewName = previewName,
+            )
+        ) {
+          throw GradleException(
+            "Cannot map labelled @PreviewParameter row '$rowToken' of " +
+              "${preview.className}.${preview.functionName} to existing Google numeric reference " +
+              "PNG(s) because provider order is unavailable from a sharded render; set " +
+              "composePreview.shards = 1 to preserve provider order.",
+          )
+        }
         val existed = target.isFile
         target.parentFile?.mkdirs()
         Files.copy(actualFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
