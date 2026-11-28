@@ -92,11 +92,12 @@ class FirebaseEmulatorProcessTest {
       // Passing a non-existent binary proves resolve() reused the running Hub without spawning!
       FirebaseEmulatorProcess.resolve(
           spec = firebaseJson.absolutePath,
-          projectId = "reuse-project",
+          projectId = null,
           firebaseBinary = "/nonexistent/firebase-binary",
         )
         .use { resolved ->
-          assertEquals("reuse-project", resolved.projectId)
+          assertNull(resolved.projectId)
+          assertTrue(!resolved.emulatorSpec.contains("\"projectId\""))
           assertTrue(resolved.emulatorSpec.contains("\"auth\""))
           assertTrue(resolved.emulatorSpec.contains("9099"))
           assertTrue(resolved.emulatorSpec.contains("\"firestore\""))

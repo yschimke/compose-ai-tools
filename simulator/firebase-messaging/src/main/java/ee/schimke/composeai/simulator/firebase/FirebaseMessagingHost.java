@@ -212,10 +212,13 @@ public final class FirebaseMessagingHost {
       try {
         Class<?> starterClass =
             Class.forName("com.google.firebase.messaging.ServiceStarter", false, loader);
-        Object starter = starterClass.getMethod("getInstance").invoke(null);
+        java.lang.reflect.Method getInstance = starterClass.getDeclaredMethod("getInstance");
+        getInstance.setAccessible(true);
+        Object starter = getInstance.invoke(null);
         java.lang.reflect.Method start =
-            starterClass.getMethod(
+            starterClass.getDeclaredMethod(
                 "startMessagingService", android.content.Context.class, Intent.class);
+        start.setAccessible(true);
         start.invoke(starter, app, intent);
         return "serviceStarter";
       } catch (Throwable ignored) {

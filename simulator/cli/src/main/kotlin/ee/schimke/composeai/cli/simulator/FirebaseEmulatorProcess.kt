@@ -69,10 +69,9 @@ internal class FirebaseEmulatorProcess(
       }
 
       val parsed = parseFirebaseJson(configFile)
-      val effectiveProject =
-        projectId?.takeIf { it.isNotBlank() }
-          ?: readDefaultProjectFromFirebaserc(configFile)
-          ?: DEFAULT_PROJECT_ID
+      val explicitProject =
+        projectId?.takeIf { it.isNotBlank() } ?: readDefaultProjectFromFirebaserc(configFile)
+      val cliProject = explicitProject ?: DEFAULT_PROJECT_ID
       val hubHost = parsed.hubHost
       val hubPort = parsed.hubPort
 
@@ -85,12 +84,12 @@ internal class FirebaseEmulatorProcess(
           )
         }
         return FirebaseEmulatorProcess(
-          emulatorSpec = hubSpecJson(effectiveProject, hubHost, hubPort, existing),
-          projectId = effectiveProject,
+          emulatorSpec = hubSpecJson(explicitProject, hubHost, hubPort, existing),
+          projectId = explicitProject,
         )
       }
 
-      val command = buildStartCommand(firebaseBinary, configFile, effectiveProject)
+      val command = buildStartCommand(firebaseBinary, configFile, cliProject)
       if (verbose) {
         System.err.println(
           "compose-preview android-simulator: starting Firebase Emulator Suite: ${command.joinToString(" ")}",
@@ -136,10 +135,10 @@ internal class FirebaseEmulatorProcess(
       val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(STARTUP_TIMEOUT_MS)
       while (System.nanoTime() < deadline) {
         val discovered = probeHub(hubHost, hubPort)
-        if (discovered != null) {
+        if (discovered != null && hasAllConfiguredServices(discovered, parsed.configuredServices)) {
           return FirebaseEmulatorProcess(
-            emulatorSpec = hubSpecJson(effectiveProject, hubHost, hubPort, discovered),
-            projectId = effectiveProject,
+            emulatorSpec = hubSpecJson(explicitProject, hubHost, hubPort, discovered),
+            projectId = explicitProject,
             process = proc,
           )
         }
@@ -244,15 +243,22 @@ internal class FirebaseEmulatorProcess(
     }
       .getOrNull()
 
+    internal fun hasAllConfiguredServices(
+      hubResponse: JsonObject,
+      configuredServices: Set<String>,
+    ): Boolean = configuredServices.all { service ->
+      hubResponse[service]?.jsonObject?.get("port")?.jsonPrimitive?.intOrNull != null
+    }
+
     internal fun hubSpecJson(
-      projectId: String,
+      projectId: String?,
       hubHost: String,
       hubPort: Int,
       hubResponse: JsonObject,
     ): String {
       val known = listOf("auth", "firestore", "database", "storage", "functions", "dataconnect")
       val obj = buildJsonObject {
-        put("projectId", projectId)
+        if (!projectId.isNullOrBlank()) put("projectId", projectId)
         put(
           "hub",
           buildJsonObject {

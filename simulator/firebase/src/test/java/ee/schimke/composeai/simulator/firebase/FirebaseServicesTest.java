@@ -45,4 +45,19 @@ public class FirebaseServicesTest {
     JSONObject crash = services.handleCommand(new JSONObject().put("action", "crashlytics"));
     assertEquals(1, crash.getJSONArray("logs").length());
   }
+
+  @Test
+  public void derivesNamespaceFromDatabaseUrl() {
+    assertEquals(
+        "my-project",
+        FirebaseServices.namespaceFromDatabaseUrl("https://my-project.firebaseio.com"));
+    assertEquals(
+        "my-project-default-rtdb",
+        FirebaseServices.namespaceFromDatabaseUrl(
+            "https://my-project-default-rtdb.europe-west1.firebasedatabase.app"));
+    assertEquals(
+        "custom-ns",
+        FirebaseServices.namespaceFromDatabaseUrl("http://127.0.0.1:9000/?ns=custom-ns"));
+    assertEquals(null, FirebaseServices.namespaceFromDatabaseUrl("http://127.0.0.1:9000"));
+  }
 }

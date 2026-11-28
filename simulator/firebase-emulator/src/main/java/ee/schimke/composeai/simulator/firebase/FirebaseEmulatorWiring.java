@@ -105,7 +105,26 @@ public final class FirebaseEmulatorWiring {
       JSONObject results) {
     try {
       Class<?> sdkClass = Class.forName(className, false, loader);
-      Object instance = resolveInstance(sdkClass, appClass, defaultApp);
+      if (appClass != null && defaultApp == null) {
+        putStatus(results, service.key, "notInitialized", hp.authority());
+        return;
+      }
+      Object instance;
+      try {
+        instance = resolveInstance(sdkClass, appClass, defaultApp);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof IllegalStateException) {
+          putStatus(results, service.key, "notInitialized", hp.authority());
+        } else {
+          putStatus(
+              results,
+              service.key,
+              "error: " + (cause != null ? cause.getMessage() : e.getMessage()),
+              hp.authority());
+        }
+        return;
+      }
       if (instance == null) {
         putStatus(results, service.key, "notInitialized", hp.authority());
         return;

@@ -357,7 +357,45 @@ public final class FirebaseServices {
   private String resolveNamespace(JSONObject cmd) {
     String explicit = cmd != null ? optNonEmpty(cmd, "namespace") : null;
     if (explicit != null) return explicit;
+    ClassLoader loader = app != null ? app.getClassLoader() : getClass().getClassLoader();
+    JSONObject opts = FirebaseEmulatorWiring.readAppOptions(app, loader);
+    String fromUrl = namespaceFromDatabaseUrl(opts.optString("databaseUrl", null));
+    if (fromUrl != null) return fromUrl;
     return resolveProjectId(cmd) + "-default-rtdb";
+  }
+
+  /**
+   * Derives the Realtime Database namespace from a Firebase database URL, matching {@code
+   * FirebaseDatabase}'s own URL parser (e.g. {@code https://my-project.firebaseio.com} → {@code
+   * my-project}, {@code http://127.0.0.1:9000/?ns=my-ns} → {@code my-ns}).
+   */
+  static String namespaceFromDatabaseUrl(String databaseUrl) {
+    if (databaseUrl == null || databaseUrl.trim().isEmpty()) return null;
+    try {
+      java.net.URI uri = java.net.URI.create(databaseUrl.trim());
+      String query = uri.getRawQuery();
+      if (query != null) {
+        for (String param : query.split("&")) {
+          if (param.startsWith("ns=") && param.length() > 3) {
+            return java.net.URLDecoder.decode(
+                param.substring(3), java.nio.charset.StandardCharsets.UTF_8.name());
+          }
+        }
+      }
+      String host = uri.getHost();
+      if (host != null && !host.isEmpty()) {
+        int dot = host.indexOf('.');
+        if (dot > 0) {
+          String sub = host.substring(0, dot);
+          if (!"127".equals(sub) && !"localhost".equalsIgnoreCase(sub)) {
+            return sub;
+          }
+        }
+      }
+    } catch (Throwable ignored) {
+      // Fall back to projectId-default-rtdb.
+    }
+    return null;
   }
 
   private static String requireString(JSONObject obj, String key) {
