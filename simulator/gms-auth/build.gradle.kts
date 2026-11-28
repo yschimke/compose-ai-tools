@@ -37,9 +37,13 @@ val androidJar: Provider<File> =
         )
     }
 
+val gmsStubs: SourceSet = sourceSets.create("gmsStubs")
+
 dependencies {
   api(project(":simulator-core"))
   api(project(":simulator-wearable"))
+  "gmsStubsCompileOnly"(files(androidJar))
+  compileOnly(gmsStubs.output)
 
   val robolectricSlices: List<Provider<MinimalExternalModuleDependency>> =
     listOf(

@@ -25,7 +25,27 @@ interface AuthorizationClient {
 }
 
 interface CredentialSavingClient {
-  Task<Void> savePassword(Object request);
+  Task<SavePasswordResult> savePassword(Object request);
+
+  Task<SaveAccountLinkingTokenResult> saveAccountLinkingToken(Object request);
+
+  com.google.android.gms.common.api.Status getStatusFromIntent(Intent data);
+}
+
+final class SavePasswordResult {
+  public final PendingIntent pendingIntent;
+
+  public SavePasswordResult(PendingIntent pendingIntent) {
+    this.pendingIntent = pendingIntent;
+  }
+}
+
+final class SaveAccountLinkingTokenResult {
+  public final PendingIntent pendingIntent;
+
+  public SaveAccountLinkingTokenResult(PendingIntent pendingIntent) {
+    this.pendingIntent = pendingIntent;
+  }
 }
 
 final class BeginSignInResult {
