@@ -156,11 +156,14 @@ public final class GmsLocationClients {
 
     private Object handleGetCurrentLocation(Object[] args) {
       Location cached = engine.effectiveLastLocation();
-      if (cached != null) return ok(cached);
+      if (cached != null && isFreshEnough(cached, args.length > 0 ? args[0] : null)) {
+        return ok(cached);
+      }
       try {
         Class<?> tcsClass =
             Class.forName("com.google.android.gms.tasks.TaskCompletionSource", false, loader);
-        Object tcs = tcsClass.getDeclaredConstructor().newInstance();
+        Object token = args.length >= 2 ? args[1] : null;
+        Object tcs = newTaskCompletionSource(tcsClass, token, loader);
         Method trySetResult = tcsClass.getMethod("trySetResult", Object.class);
         Object task = tcsClass.getMethod("getTask").invoke(tcs);
         java.util.function.Consumer<Location> waiter =
@@ -175,8 +178,6 @@ public final class GmsLocationClients {
                           }
                         });
         engine.awaitNextLocation(waiter);
-        // Wire CancellationToken if supplied as the last argument.
-        Object token = args.length >= 2 ? args[1] : null;
         if (token != null) {
           try {
             Class<?> listenerIface =
@@ -188,11 +189,13 @@ public final class GmsLocationClients {
                     (p, m, a) -> {
                       if ("onCanceled".equals(m.getName())) {
                         engine.cancelPendingLocation(waiter);
-                        waiter.accept(null);
                       }
                       return null;
                     });
-            token.getClass().getMethod("onCanceledRequested", listenerIface).invoke(token, cancelListener);
+            token
+                .getClass()
+                .getMethod("onCanceledRequested", listenerIface)
+                .invoke(token, cancelListener);
           } catch (ReflectiveOperationException ignored) {
           }
         }
@@ -200,6 +203,41 @@ public final class GmsLocationClients {
       } catch (ReflectiveOperationException e) {
         return ok(null);
       }
+    }
+
+    private static boolean isFreshEnough(Location cached, Object request) {
+      if (request == null || request instanceof Integer) return true;
+      try {
+        Method m = request.getClass().getMethod("getMaxUpdateAgeMillis");
+        m.setAccessible(true);
+        Object val = m.invoke(request);
+        if (val instanceof Number) {
+          long maxAgeMs = ((Number) val).longValue();
+          if (maxAgeMs <= 0L) return false;
+          long fixElapsedNs = cached.getElapsedRealtimeNanos();
+          long nowElapsedNs = android.os.SystemClock.elapsedRealtimeNanos();
+          if (fixElapsedNs > 0L && nowElapsedNs >= fixElapsedNs) {
+            return (nowElapsedNs - fixElapsedNs) / 1_000_000L <= maxAgeMs;
+          }
+          long ageMs = System.currentTimeMillis() - cached.getTime();
+          return ageMs <= maxAgeMs;
+        }
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
+      return true;
+    }
+
+    private static Object newTaskCompletionSource(
+        Class<?> tcsClass, Object token, ClassLoader loader) throws ReflectiveOperationException {
+      if (token != null) {
+        try {
+          Class<?> tokenCls =
+              Class.forName("com.google.android.gms.tasks.CancellationToken", false, loader);
+          return tcsClass.getDeclaredConstructor(tokenCls).newInstance(token);
+        } catch (ReflectiveOperationException ignored) {
+        }
+      }
+      return tcsClass.getDeclaredConstructor().newInstance();
     }
 
     private Object handleRequestUpdates(Object[] args) {
