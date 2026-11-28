@@ -4,6 +4,7 @@ import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.view.Surface;
+import org.robolectric.annotation.Filter;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.RealObject;
@@ -36,6 +37,17 @@ public class SimulatorShadowSurface extends ShadowNativeSurface {
     texture = surfaceTexture;
     Shadow.invokeConstructor(
         Surface.class, surface, ClassParameter.from(SurfaceTexture.class, surfaceTexture));
+  }
+
+  /**
+   * {@link ShadowNativeSurface}'s own release, then this surface lets go of its texture, so it is
+   * no longer valid and locks a canvas no more, as a released surface on a device.
+   */
+  @Filter(order = Filter.Order.AFTER)
+  @Override
+  protected void release() {
+    super.release();
+    texture = null;
   }
 
   private TextureFrames.Target target() {

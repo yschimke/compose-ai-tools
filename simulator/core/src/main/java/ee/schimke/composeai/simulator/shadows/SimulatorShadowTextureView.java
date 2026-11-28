@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.view.TextureView;
@@ -88,6 +89,8 @@ public class SimulatorShadowTextureView extends ShadowTextureView {
     Bitmap frame = target != null ? target.frame() : null;
     if (frame != null) {
       Canvas canvas = new Canvas(bitmap);
+      // The frame replaces what a reused bitmap held, transparent pixels included.
+      canvas.drawColor(0, PorterDuff.Mode.CLEAR);
       canvas.concat(view.getTransform(null));
       canvas.drawBitmap(
           frame, null, new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight()), null);

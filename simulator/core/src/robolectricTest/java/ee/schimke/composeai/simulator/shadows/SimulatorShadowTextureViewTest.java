@@ -138,6 +138,26 @@ public class SimulatorShadowTextureViewTest {
   }
 
   @Test
+  public void aReleasedSurfaceIsNoLongerValid() {
+    TextureView view = add(200, 100);
+    Surface surface = new Surface(view.getSurfaceTexture());
+    assertTrue(surface.isValid());
+    surface.release();
+    assertFalse(surface.isValid());
+  }
+
+  @Test
+  public void getBitmapReplacesAReusedBitmap() {
+    TextureView view = add(200, 100);
+    Bitmap reused = Bitmap.createBitmap(200, 100, Bitmap.Config.ARGB_8888);
+    reused.eraseColor(Color.RED);
+    Surface surface = new Surface(view.getSurfaceTexture());
+    post(surface, Color.TRANSPARENT);
+
+    assertEquals(Color.TRANSPARENT, view.getBitmap(reused).getPixel(10, 10));
+  }
+
+  @Test
   public void anOrdinarySurfaceIsUnchanged() {
     // A surface from a texture no view shows is as Robolectric makes it: never valid.
     assertFalse(new Surface(new SurfaceTexture(false)).isValid());
