@@ -82,7 +82,6 @@ class SimulatorManagedDeviceFunctionalTest {
                           register<ee.schimke.composeai.plugin.SimulatorManagedDevice>("pixelApi35") {
                               apiLevel.set(35)
                               device.set("phone")
-                              qualifiers.set("w411dp-h914dp-xxhdpi")
                               shards.set(2)
                               pool.set(true)
                           }
@@ -127,7 +126,6 @@ class SimulatorManagedDeviceFunctionalTest {
     val recorded = argsLog.readLines()
     assertThat(recorded).containsAtLeast("--sdk", "35").inOrder()
     assertThat(recorded).containsAtLeast("--device", "phone").inOrder()
-    assertThat(recorded).containsAtLeast("--qualifiers", "w411dp-h914dp-xxhdpi").inOrder()
     assertThat(recorded).containsAtLeast("--shards", "2").inOrder()
     assertThat(recorded).contains("--pool")
 

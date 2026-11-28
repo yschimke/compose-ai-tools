@@ -666,64 +666,72 @@ internal object SimulatorManagedDeviceSupport {
     testsFilter: String? = null,
     coverageOutputDir: File? = null,
     additionalTestOutputDir: File? = null,
-  ): List<String> = buildList {
-    add(cliExecutable)
-    add("android-simulator")
-    add(appApk.absolutePath)
-    add("--instrument")
-    add(testApk.absolutePath)
-    add("--test-report")
-    add(xmlReport.absolutePath)
-    add("--test-json")
-    add(jsonReport.absolutePath)
-    javaHome
-      ?.takeIf { it.isNotBlank() }
-      ?.let {
-        add("--java")
-        add(it)
-      }
-    apiLevel?.let {
-      add("--sdk")
-      add(it.toString())
+  ): List<String> {
+    if (!device.isNullOrBlank() && !qualifiers.isNullOrBlank()) {
+      throw GradleException(
+        "SimulatorManagedDevice cannot set both `device` ($device) and `qualifiers` ($qualifiers); " +
+          "use either a device preset (`phone`, `foldable`, `tablet`, `desktop`) or explicit qualifiers.",
+      )
     }
-    device
-      ?.takeIf { it.isNotBlank() }
-      ?.let {
-        add("--device")
-        add(it)
-      }
-    formFactor
-      ?.takeIf { it.isNotBlank() }
-      ?.let {
-        add("--form-factor")
-        add(it)
-      }
-    qualifiers
-      ?.takeIf { it.isNotBlank() }
-      ?.let {
-        add("--qualifiers")
-        add(it)
-      }
-    shards
-      ?.takeIf { it > 1 }
-      ?.let {
-        add("--shards")
+    return buildList {
+      add(cliExecutable)
+      add("android-simulator")
+      add(appApk.absolutePath)
+      add("--instrument")
+      add(testApk.absolutePath)
+      add("--test-report")
+      add(xmlReport.absolutePath)
+      add("--test-json")
+      add(jsonReport.absolutePath)
+      javaHome
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add("--java")
+          add(it)
+        }
+      apiLevel?.let {
+        add("--sdk")
         add(it.toString())
       }
-    if (pool) add("--pool")
-    testsFilter
-      ?.takeIf { it.isNotBlank() }
-      ?.let {
-        add("--tests")
-        add(it)
+      device
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add("--device")
+          add(it)
+        }
+      formFactor
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add("--form-factor")
+          add(it)
+        }
+      qualifiers
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add("--qualifiers")
+          add(it)
+        }
+      shards
+        ?.takeIf { it > 1 }
+        ?.let {
+          add("--shards")
+          add(it.toString())
+        }
+      if (pool) add("--pool")
+      testsFilter
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          add("--tests")
+          add(it)
+        }
+      coverageOutputDir?.let {
+        add("--coverage-out")
+        add(it.absolutePath)
       }
-    coverageOutputDir?.let {
-      add("--coverage-out")
-      add(it.absolutePath)
-    }
-    additionalTestOutputDir?.let {
-      add("--additional-test-output-dir")
-      add(it.absolutePath)
+      additionalTestOutputDir?.let {
+        add("--additional-test-output-dir")
+        add(it.absolutePath)
+      }
     }
   }
 

@@ -2075,8 +2075,7 @@ android {
       allDevices {
         register<SimulatorManagedDevice>("pixelApi35") {
           apiLevel.set(35)
-          device.set("phone")
-          qualifiers.set("w411dp-h914dp-xxhdpi")
+          device.set("phone") // or qualifiers.set("w411dp-h914dp-xxhdpi") instead of device
           shards.set(2)
           pool.set(true)
         }

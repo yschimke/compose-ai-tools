@@ -59,7 +59,6 @@ class SimulatorManagedDeviceTest {
         apiLevel = 35,
         device = "phone",
         formFactor = "wear",
-        qualifiers = "w411dp-h914dp-xxhdpi",
         shards = 3,
         pool = true,
         testsFilter = "com.example.LoginTest,com.example.CartTest#checkout",
@@ -86,8 +85,6 @@ class SimulatorManagedDeviceTest {
         "phone",
         "--form-factor",
         "wear",
-        "--qualifiers",
-        "w411dp-h914dp-xxhdpi",
         "--shards",
         "3",
         "--pool",
@@ -99,6 +96,34 @@ class SimulatorManagedDeviceTest {
         File("/tmp/extra-out").absolutePath,
       )
       .inOrder()
+  }
+
+  @Test
+  fun `buildCommand forwards qualifiers and rejects setting both device and qualifiers`() {
+    val cmd =
+      SimulatorManagedDeviceSupport.buildCommand(
+        cliExecutable = "compose-preview",
+        appApk = File("/tmp/a.apk"),
+        testApk = File("/tmp/t.apk"),
+        xmlReport = File("/tmp/r.xml"),
+        jsonReport = File("/tmp/r.json"),
+        qualifiers = "w411dp-h914dp-xxhdpi",
+      )
+    assertThat(cmd).containsAtLeast("--qualifiers", "w411dp-h914dp-xxhdpi").inOrder()
+
+    val error =
+      org.junit.Assert.assertThrows(org.gradle.api.GradleException::class.java) {
+        SimulatorManagedDeviceSupport.buildCommand(
+          cliExecutable = "compose-preview",
+          appApk = File("/tmp/a.apk"),
+          testApk = File("/tmp/t.apk"),
+          xmlReport = File("/tmp/r.xml"),
+          jsonReport = File("/tmp/r.json"),
+          device = "phone",
+          qualifiers = "w411dp-h914dp-xxhdpi",
+        )
+      }
+    assertThat(error.message).contains("cannot set both `device`")
   }
 
   @Test
