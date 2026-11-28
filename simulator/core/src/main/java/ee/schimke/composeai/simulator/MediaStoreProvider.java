@@ -347,19 +347,22 @@ public final class MediaStoreProvider extends ContentProvider {
         clause = clause.substring(1, clause.length() - 1).trim();
       }
       int eq = clause.indexOf('=');
-      if (eq <= 0
-          || clause.indexOf('=', eq + 1) >= 0
-          || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
+      if (eq <= 0 || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
         throw new IllegalArgumentException("Unsupported MediaStore selection: " + selection);
       }
       String col = clause.substring(0, eq).trim();
       String rhs = clause.substring(eq + 1).trim();
+      if (rhs.startsWith("=")) {
+        throw new IllegalArgumentException("Unsupported MediaStore selection: " + selection);
+      }
       String expected;
       if ("?".equals(rhs)) {
         if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
         expected = selectionArgs[argIdx++];
       } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
         expected = rhs.substring(1, rhs.length() - 1);
+      } else if (rhs.indexOf('=') >= 0) {
+        throw new IllegalArgumentException("Unsupported MediaStore selection: " + selection);
       } else {
         expected = rhs;
       }

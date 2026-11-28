@@ -139,6 +139,25 @@ public final class CalendarProvider extends ContentProvider {
           && ("when".equals(segments.get(1)) || "whenbyday".equals(segments.get(1)))) {
         long rangeBegin = parseLong(segments.get(2), Long.MIN_VALUE);
         long rangeEnd = parseLong(segments.get(3), Long.MAX_VALUE);
+        if ("whenbyday".equals(segments.get(1))) {
+          // Julian day 2440588 is 1970-01-01 (Unix epoch day 0).
+          java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+          if (rangeBegin != Long.MIN_VALUE) {
+            rangeBegin =
+                java.time.LocalDate.ofEpochDay(rangeBegin - 2440588L)
+                    .atStartOfDay(zone)
+                    .toInstant()
+                    .toEpochMilli();
+          }
+          if (rangeEnd != Long.MAX_VALUE) {
+            rangeEnd =
+                java.time.LocalDate.ofEpochDay(rangeEnd - 2440588L + 1L)
+                        .atStartOfDay(zone)
+                        .toInstant()
+                        .toEpochMilli()
+                    - 1L;
+          }
+        }
         return matchingInstances(rangeBegin, rangeEnd, selection, selectionArgs);
       }
     }
@@ -202,19 +221,22 @@ public final class CalendarProvider extends ContentProvider {
         clause = clause.substring(1, clause.length() - 1).trim();
       }
       int eq = clause.indexOf('=');
-      if (eq <= 0
-          || clause.indexOf('=', eq + 1) >= 0
-          || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
+      if (eq <= 0 || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
         throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
       }
       String col = clause.substring(0, eq).trim();
       String rhs = clause.substring(eq + 1).trim();
+      if (rhs.startsWith("=")) {
+        throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
+      }
       String expected;
       if ("?".equals(rhs)) {
         if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
         expected = selectionArgs[argIdx++];
       } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
         expected = rhs.substring(1, rhs.length() - 1);
+      } else if (rhs.indexOf('=') >= 0) {
+        throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
       } else {
         expected = rhs;
       }
