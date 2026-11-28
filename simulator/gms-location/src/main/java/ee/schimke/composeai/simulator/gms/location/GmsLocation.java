@@ -244,7 +244,8 @@ public final class GmsLocation {
 
   void setMockLocation(Location location) {
     this.mockLocation = location;
-    if (mockMode && location != null) {
+    if (mockMode && location != null && locationAvailable) {
+      completePendingCurrentLocations(location);
       deliverLocation(location);
     }
   }
@@ -715,12 +716,29 @@ public final class GmsLocation {
       Class<?> resCls =
           Class.forName("com.google.android.gms.location.ActivityRecognitionResult", false, loader);
       long now = SimulatorHooks.currentTimeMillis();
+      long elapsedMs = safeElapsedRealtimeMillis(now);
       Constructor<?> resCtor =
           resCls.getDeclaredConstructor(detectedCls, long.class, long.class);
       resCtor.setAccessible(true);
-      return resCtor.newInstance(detected, now, now);
+      return resCtor.newInstance(detected, now, elapsedMs);
     } catch (ReflectiveOperationException e) {
       return null;
+    }
+  }
+
+  private static long safeElapsedRealtimeMillis(long fallbackMs) {
+    try {
+      return android.os.SystemClock.elapsedRealtime();
+    } catch (RuntimeException e) {
+      return fallbackMs;
+    }
+  }
+
+  private static long safeElapsedRealtimeNanos() {
+    try {
+      return android.os.SystemClock.elapsedRealtimeNanos();
+    } catch (RuntimeException e) {
+      return SimulatorHooks.currentTimeMillis() * 1_000_000L;
     }
   }
 
@@ -778,7 +796,7 @@ public final class GmsLocation {
       Constructor<?> eventCtor =
           eventCls.getDeclaredConstructor(int.class, int.class, long.class);
       eventCtor.setAccessible(true);
-      long nowNs = SimulatorHooks.currentTimeMillis() * 1_000_000L;
+      long nowNs = safeElapsedRealtimeNanos();
       List<Object> events = new ArrayList<>();
       if (includeExit) {
         events.add(eventCtor.newInstance(prevType, 1 /* ACTIVITY_TRANSITION_EXIT */, nowNs));
