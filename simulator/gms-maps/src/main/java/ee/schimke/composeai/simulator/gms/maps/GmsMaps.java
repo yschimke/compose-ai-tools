@@ -245,14 +245,16 @@ public final class GmsMaps {
 
   public void fitBounds(
       double swLat, double swLng, double neLat, double neLng, int width, int height, int padding) {
-    double centerLat = (swLat + neLat) / 2.0;
+    double mySouth = mercatorY(swLat);
+    double myNorth = mercatorY(neLat);
+    double centerLat = inverseMercatorY((mySouth + myNorth) / 2.0);
     double centerLng =
         swLng <= neLng ? (swLng + neLng) / 2.0 : ((swLng + neLng + 360.0) / 2.0 + 180.0) % 360.0 - 180.0;
     int w = Math.max(1, (width > 0 ? width : viewportWidth) - 2 * Math.max(0, padding));
     int h = Math.max(1, (height > 0 ? height : viewportHeight) - 2 * Math.max(0, padding));
     double dx = Math.abs(mercatorX(neLng) - mercatorX(swLng));
     if (swLng > neLng) dx = 1.0 - dx;
-    double dy = Math.abs(mercatorY(swLat) - mercatorY(neLat));
+    double dy = Math.abs(mySouth - myNorth);
     float zoomX = dx > 1e-9 ? (float) (Math.log(w / (256.0 * dx)) / Math.log(2.0)) : 21f;
     float zoomY = dy > 1e-9 ? (float) (Math.log(h / (256.0 * dy)) / Math.log(2.0)) : 21f;
     float zoom = Math.max(0f, Math.min(21f, Math.min(zoomX, zoomY)));
@@ -373,7 +375,10 @@ public final class GmsMaps {
     double cy = mercatorY(cameraLat) * scale;
     double px = mercatorX(lng) * scale;
     double py = mercatorY(lat) * scale;
-    return new float[] {(float) (width / 2.0 + (px - cx)), (float) (height / 2.0 + (py - cy))};
+    double dx = px - cx;
+    if (dx > scale / 2.0) dx -= scale;
+    else if (dx < -scale / 2.0) dx += scale;
+    return new float[] {(float) (width / 2.0 + dx), (float) (height / 2.0 + (py - cy))};
   }
 
   /** Unprojects pixel (x, y) within (width, height) back to (lat, lng). */
@@ -383,9 +388,8 @@ public final class GmsMaps {
     double cy = mercatorY(cameraLat) * scale;
     double nx = (cx + (x - width / 2.0)) / scale;
     double ny = (cy + (y - height / 2.0)) / scale;
-    double lng = nx * 360.0 - 180.0;
-    double latRad = Math.atan(Math.sinh(Math.PI * (1.0 - 2.0 * ny)));
-    return new double[] {Math.toDegrees(latRad), lng};
+    double lng = ((nx * 360.0) % 360.0 + 360.0) % 360.0 - 180.0;
+    return new double[] {inverseMercatorY(ny), lng};
   }
 
   private static double mercatorX(double lng) {
@@ -396,6 +400,11 @@ public final class GmsMaps {
     double clamped = Math.max(-85.0511, Math.min(85.0511, lat));
     double rad = Math.toRadians(clamped);
     return (1.0 - Math.log(Math.tan(rad) + 1.0 / Math.cos(rad)) / Math.PI) / 2.0;
+  }
+
+  private static double inverseMercatorY(double ny) {
+    double latRad = Math.atan(Math.sinh(Math.PI * (1.0 - 2.0 * ny)));
+    return Math.toDegrees(latRad);
   }
 
   // ---- Control-channel command ("maps") ----

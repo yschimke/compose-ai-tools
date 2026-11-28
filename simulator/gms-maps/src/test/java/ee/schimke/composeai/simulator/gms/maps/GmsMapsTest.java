@@ -156,8 +156,19 @@ public class GmsMapsTest {
 
     // Wide country-scale bounds should zoom way out from default 12f.
     maps.fitBounds(32.0, -124.0, 42.0, -114.0, 800, 800, 40);
-    assertEquals(37.0, maps.cameraLat(), 0.01);
     assertEquals(-119.0, maps.cameraLng(), 0.01);
     assertTrue("Expected zoom < 7 for 10-degree span, got " + maps.cameraZoom(), maps.cameraZoom() < 7f);
+
+    // High-latitude bounds must keep both south and north edges within the 40px padding.
+    maps.fitBounds(0.0, 0.0, 80.0, 1.0, 800, 800, 40);
+    float[] southPt = maps.latLngToScreen(0.0, 0.0, 800, 800);
+    float[] northPt = maps.latLngToScreen(80.0, 1.0, 800, 800);
+    assertEquals(760f, southPt[1], 1.0f);
+    assertEquals(40f, northPt[1], 1.0f);
+
+    // Antimeridian wrapping: marker at -179.9° is ~1px right of camera at 179.9° (zoom 3).
+    maps.setCamera(0.0, 179.9, 3f, 0f, 0f);
+    float[] across = maps.latLngToScreen(0.0, -179.9, 800, 800);
+    assertTrue("Expected wrapped x near 401, got " + across[0], Math.abs(across[0] - 401.1f) < 2.0f);
   }
 }
