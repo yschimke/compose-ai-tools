@@ -85,6 +85,7 @@ public final class Session {
   private final SystemPickers pickers;
   private final AppActions appActions;
   private final AppFunctions appFunctions;
+  private final ee.schimke.composeai.simulator.firebase.FirebaseServices firebase;
   private final AgentOverlay overlay = new AgentOverlay();
   private final TimeTick timeTick = new TimeTick();
   private final Queue<String> inbox = new ConcurrentLinkedQueue<>();
@@ -199,6 +200,8 @@ public final class Session {
     this.prompts = new SystemPrompts(app, protocol, navigator);
     Credentials.protocol = protocol;
     this.background = new BackgroundWork(app, protocol, navigator);
+    this.firebase = new ee.schimke.composeai.simulator.firebase.FirebaseServices(app);
+    this.firebase.install();
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
     // An activity of another of the device's apps (--app): that app comes on screen and starts it.
@@ -631,6 +634,12 @@ public final class Session {
       case "playServices":
         if (c.has("state")) PlayServicesPackages.change(app, c.getString("state"));
         return PlayServicesPackages.describe();
+      case "firebase":
+        try {
+          return firebase.handleCommand(c);
+        } catch (IOException e) {
+          throw new IllegalStateException(e.getMessage(), e);
+        }
       case "hierarchy":
         {
           List<Hierarchy.Node> windows = snapshot(displays.target(c));

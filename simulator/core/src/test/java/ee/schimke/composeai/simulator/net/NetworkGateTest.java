@@ -120,6 +120,29 @@ public class NetworkGateTest {
     }
   }
 
+  @Test
+  public void emulatorHostAliasRoutesToLoopback() throws Exception {
+    assertTrue(NetworkGate.isEmulatorHostAlias("10.0.2.2"));
+    InetSocketAddress rewritten =
+        NetworkGate.rewriteAddress(new InetSocketAddress("10.0.2.2", 8080));
+    assertTrue(rewritten.getAddress().isLoopbackAddress());
+    assertEquals(8080, rewritten.getPort());
+
+    NetworkGate.configure(false, 0, 0, Collections.emptyList());
+    assertTrue(!NetworkGate.unreachable("10.0.2.2"));
+    assertNull(NetworkGate.refusal("10.0.2.2", new InetSocketAddress("10.0.2.2", 8080)));
+
+    try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+      Thread echo = echo(server);
+      try (Socket socket = new Socket()) {
+        socket.connect(new InetSocketAddress("10.0.2.2", server.getLocalPort()), 2000);
+        socket.getOutputStream().write(42);
+        assertEquals(42, socket.getInputStream().read());
+      }
+      echo.interrupt();
+    }
+  }
+
   private static Thread echo(ServerSocket server) {
     Thread thread =
         new Thread(

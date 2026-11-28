@@ -227,6 +227,22 @@ include(":simulator-gms-auth")
 
 project(":simulator-gms-auth").projectDir = file("simulator/gms-auth")
 
+include(":simulator-firebase-emulator")
+
+project(":simulator-firebase-emulator").projectDir = file("simulator/firebase-emulator")
+
+include(":simulator-firebase-messaging")
+
+project(":simulator-firebase-messaging").projectDir = file("simulator/firebase-messaging")
+
+include(":simulator-firebase-telemetry")
+
+project(":simulator-firebase-telemetry").projectDir = file("simulator/firebase-telemetry")
+
+include(":simulator-firebase")
+
+project(":simulator-firebase").projectDir = file("simulator/firebase")
+
 include(":simulator-host")
 
 project(":simulator-host").projectDir = file("simulator/host")

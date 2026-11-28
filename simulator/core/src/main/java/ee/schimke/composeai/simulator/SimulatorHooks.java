@@ -37,29 +37,66 @@ public final class SimulatorHooks {
     boolean hold(Navigator.Entry sleeping);
   }
 
-  private static volatile UnaryOperator<Intent> bindIntentCanonicalizer;
-  private static volatile Predicate<Intent> broadcastInterceptor;
+  private static final java.util.List<UnaryOperator<Intent>> bindIntentCanonicalizers =
+      new java.util.concurrent.CopyOnWriteArrayList<>();
+  private static final java.util.List<Predicate<Intent>> broadcastInterceptors =
+      new java.util.concurrent.CopyOnWriteArrayList<>();
+  private static final java.util.List<
+          java.util.function.Function<Intent, android.content.ComponentName>>
+      startServiceInterceptors = new java.util.concurrent.CopyOnWriteArrayList<>();
   private static volatile LongSupplier clockSource;
   private static volatile WatchStateObserver watchStateObserver;
 
   private SimulatorHooks() {}
 
   public static void setBindIntentCanonicalizer(UnaryOperator<Intent> canonicalizer) {
-    bindIntentCanonicalizer = canonicalizer;
+    if (canonicalizer != null && !bindIntentCanonicalizers.contains(canonicalizer)) {
+      bindIntentCanonicalizers.add(canonicalizer);
+    }
+  }
+
+  public static void addBindIntentCanonicalizer(UnaryOperator<Intent> canonicalizer) {
+    if (canonicalizer != null) bindIntentCanonicalizers.add(canonicalizer);
   }
 
   public static Intent canonicalBindIntent(Intent intent) {
-    UnaryOperator<Intent> fn = bindIntentCanonicalizer;
-    return fn != null ? fn.apply(intent) : intent;
+    Intent current = intent;
+    for (UnaryOperator<Intent> fn : bindIntentCanonicalizers) {
+      Intent next = fn.apply(current);
+      if (next != null) current = next;
+    }
+    return current;
   }
 
   public static void setBroadcastInterceptor(Predicate<Intent> interceptor) {
-    broadcastInterceptor = interceptor;
+    if (interceptor != null && !broadcastInterceptors.contains(interceptor)) {
+      broadcastInterceptors.add(interceptor);
+    }
+  }
+
+  public static void addBroadcastInterceptor(Predicate<Intent> interceptor) {
+    if (interceptor != null) broadcastInterceptors.add(interceptor);
   }
 
   public static boolean interceptBroadcast(Intent intent) {
-    Predicate<Intent> fn = broadcastInterceptor;
-    return fn != null && fn.test(intent);
+    for (Predicate<Intent> fn : broadcastInterceptors) {
+      if (fn.test(intent)) return true;
+    }
+    return false;
+  }
+
+  public static void addStartServiceInterceptor(
+      java.util.function.Function<Intent, android.content.ComponentName> interceptor) {
+    if (interceptor != null) startServiceInterceptors.add(interceptor);
+  }
+
+  public static android.content.ComponentName interceptStartService(Intent intent) {
+    for (java.util.function.Function<Intent, android.content.ComponentName> fn :
+        startServiceInterceptors) {
+      android.content.ComponentName handled = fn.apply(intent);
+      if (handled != null) return handled;
+    }
+    return null;
   }
 
   public static void setClockSource(LongSupplier source) {

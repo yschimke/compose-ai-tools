@@ -271,6 +271,8 @@ internal object CliFlagValidation {
       "--adb",
       "--grpc-port",
       "--play-services",
+      "--firebase-emulator",
+      "--firebase-project",
       "--standby",
       "--no-standby",
       "--project",
