@@ -281,6 +281,9 @@ public final class GmsLocationClients {
       Object req = args.length > 0 ? args[0] : null;
       int maxUpdates = readMaxUpdates(req);
       long durationMs = readRequestDurationMillis(req);
+      float minDistanceMeters = readMinDistanceMeters(req);
+      Location cached = engine.effectiveLastLocation();
+      boolean replayCached = cached != null && isFreshEnough(cached, req);
       Executor exec = engine.mainExecutor();
       for (Object arg : args) {
         if (arg instanceof Executor) {
@@ -293,19 +296,38 @@ public final class GmsLocationClients {
       for (Object arg : args) {
         if (arg == null) continue;
         if (arg instanceof PendingIntent) {
-          engine.registerLocationPendingIntent((PendingIntent) arg, maxUpdates, durationMs);
+          engine.registerLocationPendingIntent(
+              (PendingIntent) arg, maxUpdates, durationMs, minDistanceMeters);
           return ok(null);
         }
         if (isLocationCallback(arg)) {
-          engine.registerLocationCallback(arg, exec, maxUpdates, durationMs);
+          engine.registerLocationCallback(
+              arg, exec, maxUpdates, durationMs, minDistanceMeters, replayCached);
           return ok(null);
         }
         if (isLocationListener(arg)) {
-          engine.registerLocationListener(arg, exec, maxUpdates, durationMs);
+          engine.registerLocationListener(arg, exec, maxUpdates, durationMs, minDistanceMeters);
           return ok(null);
         }
       }
       return ok(null);
+    }
+
+    private static float readMinDistanceMeters(Object request) {
+      if (request == null) return 0f;
+      for (String method : new String[] {"getMinUpdateDistanceMeters", "getSmallestDisplacement"}) {
+        try {
+          Method m = request.getClass().getMethod(method);
+          m.setAccessible(true);
+          Object val = m.invoke(request);
+          if (val instanceof Number) {
+            float d = ((Number) val).floatValue();
+            if (d > 0f) return d;
+          }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+      }
+      return 0f;
     }
 
     private static long readRequestDurationMillis(Object request) {
