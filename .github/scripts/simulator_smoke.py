@@ -2,7 +2,7 @@
 """Smoke-tests `compose-preview android-simulator` (`launch` is its trampoline): a sample APK in
 the simulator, headless, driven over the control channel the way an agent drives it.
 
-    simulator_smoke.py --cli <compose-preview> --apk <apk> --check surface-view|host-natives \\
+    simulator_smoke.py --cli <compose-preview> --apk <apk> --check surface-view|host-natives|rive \\
         [--sdk 35] [--java <JDK 21 home>] [--out <dir>]
 
 Every run checks that the control channel's stdout carries only JSON (one object a line) and that
@@ -13,6 +13,9 @@ the app reaches `ready`. Then, per sample:
                  behind its window, the hardware one on top).
   host-natives   samples/host-natives logs `HostNatives: DONE n/n passed` and no `FAIL`: every
                  native library in host-natives/index.json loaded and worked.
+  rive           samples/rive logs `RiveSample: DONE n/n passed` and no `FAIL`: each of its
+                 RiveAnimationViews drew through the host build of librive-android and the
+                 simulator's TextureView; a screenshot is kept beside the logs.
 
 Exits 0 on success, 1 with the reason (and the simulator's stderr tail) otherwise. Standard
 library only: the PNG is decoded here, not with Pillow.
@@ -230,30 +233,43 @@ def check_surface_view(sim: Simulator, out: Path) -> str:
     return f"both SurfaceViews composited ({width}x{height}); {halves}"
 
 
-DONE = re.compile(r"HostNatives: DONE (\d+)/(\d+) passed")
-
-
-def check_host_natives(sim: Simulator, out: Path) -> str:
+def wait_for_done(sim: Simulator, tag: str) -> str:
+    """Waits for `<tag>: DONE n/n passed` in the log, with no `<tag>: FAIL`; the PASS lines."""
+    done_line = re.compile(re.escape(tag) + r": DONE (\d+)/(\d+) passed")
     deadline = time.monotonic() + DONE_TIMEOUT_S
     while time.monotonic() < deadline:
         log = sim.log()
-        done = DONE.search(log)
+        done = done_line.search(log)
         if done:
-            failures = [line for line in log.splitlines() if "HostNatives: FAIL" in line]
-            passes = [line for line in log.splitlines() if "HostNatives: PASS" in line]
+            failures = [line for line in log.splitlines() if f"{tag}: FAIL" in line]
+            passes = [line for line in log.splitlines() if f"{tag}: PASS" in line]
             passed, total = int(done.group(1)), int(done.group(2))
             if failures or passed != total:
-                raise SmokeFailure(
-                    f"{passed}/{total} host-native checks passed:\n" + "\n".join(failures)
-                )
-            return f"{passed}/{total} host-native checks passed:\n" + "\n".join(passes)
+                raise SmokeFailure(f"{passed}/{total} {tag} checks passed:\n" + "\n".join(failures))
+            return f"{passed}/{total} {tag} checks passed:\n" + "\n".join(passes)
         if sim.process.poll() is not None:
-            raise SmokeFailure(f"the simulator ended before HostNatives: DONE (exit {sim.process.returncode})")
+            raise SmokeFailure(f"the simulator ended before {tag}: DONE (exit {sim.process.returncode})")
         time.sleep(1)
-    raise SmokeFailure(f"no `HostNatives: DONE` within {DONE_TIMEOUT_S}s")
+    raise SmokeFailure(f"no `{tag}: DONE` within {DONE_TIMEOUT_S}s")
 
 
-CHECKS = {"surface-view": check_surface_view, "host-natives": check_host_natives}
+def check_host_natives(sim: Simulator, out: Path) -> str:
+    return wait_for_done(sim, "HostNatives")
+
+
+def check_rive(sim: Simulator, out: Path) -> str:
+    summary = wait_for_done(sim, "RiveSample")
+    # Kept as evidence: the three files as Rive's Canvas renderer drew them.
+    shot = out / "rive.png"
+    sim.command("screenshot", path=str(shot))
+    return f"{summary}\nscreenshot: {shot}"
+
+
+CHECKS = {
+    "surface-view": check_surface_view,
+    "host-natives": check_host_natives,
+    "rive": check_rive,
+}
 
 
 def main() -> int:

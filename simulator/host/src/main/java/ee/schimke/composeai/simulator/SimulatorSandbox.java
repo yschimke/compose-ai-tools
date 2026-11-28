@@ -26,7 +26,9 @@ import ee.schimke.composeai.simulator.shadows.SimulatorShadowRemoteViewsAdapter;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResources;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResultReceiver;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSettings;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurface;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextureView;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTelephonyManager;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextToSpeech;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowWifiManager;
@@ -117,6 +119,10 @@ public final class SimulatorSandbox {
                 SimulatorShadowAppWidgetHostView.class,
                 // SurfaceView with a surface its app can draw into, shown on screen.
                 SimulatorShadowSurfaceView.class,
+                // TextureView with a texture its app can draw into (Rive's Canvas renderer), and
+                // the Surface a texture makes.
+                SimulatorShadowTextureView.class,
+                SimulatorShadowSurface.class,
                 SimulatorShadowRemoteViewsAdapter.class,
                 SimulatorShadowCompanionDeviceManager.class,
                 SimulatorShadowTextToSpeech.class,
