@@ -15,10 +15,39 @@ index 19de547..7830862 100644
        if (attachResult != JNI_OK)
        {
 diff --git a/src/bindings/bindings_render_context.cpp b/src/bindings/bindings_render_context.cpp
-index e0adc66..bfa83db 100644
+index e0adc66..4f50f87 100644
 --- a/src/bindings/bindings_render_context.cpp
 +++ b/src/bindings/bindings_render_context.cpp
-@@ -30,11 +30,18 @@ template <typename SurfaceT> jlong surfaceToLong(SurfaceT* surface)
+@@ -17,6 +17,28 @@ void throwRenderException(JNIEnv* env, const char* message)
+   env->ThrowNew(exceptionClass, message);
+ }
+ 
++// Host build: RiveRenderException is a Kotlin class whose message-only constructor is a default
++// argument, which JNI's ThrowNew cannot call; build it through (String, Throwable).
++void throwHostRenderException(JNIEnv* env, const char* message)
++{
++  jclass exceptionClass = env->FindClass("app/rive/RiveRenderException");
++  jmethodID constructor =
++      exceptionClass == nullptr
++          ? nullptr
++          : env->GetMethodID(exceptionClass,
++                             "<init>",
++                             "(Ljava/lang/String;Ljava/lang/Throwable;)V");
++  if (constructor == nullptr)
++  {
++    env->ExceptionClear();
++    env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), message);
++    return;
++  }
++  jstring text = env->NewStringUTF(message);
++  env->Throw(static_cast<jthrowable>(
++      env->NewObject(exceptionClass, constructor, text, nullptr)));
++}
++
+ /**
+  * Store surface JNI handles as RenderSurface pointers so later base-pointer
+  * recovery does not depend on concrete class inheritance layout.
+@@ -30,11 +52,18 @@ template <typename SurfaceT> jlong surfaceToLong(SurfaceT* surface)
  extern "C"
  {
    JNIEXPORT jlong JNICALL Java_app_rive_core_RenderContextGL_cppConstructor(
@@ -33,12 +62,12 @@ index e0adc66..bfa83db 100644
 +    // rather than call into an EGL that was never loaded.
 +    (void)display;
 +    (void)context;
-+    throwRenderException(env, "The Rive renderer has no GPU in this host build.");
++    throwHostRenderException(env, "The Rive renderer has no GPU in this host build.");
 +    return 0;
      auto eglDisplay = reinterpret_cast<EGLDisplay>(display);
      auto eglContext = reinterpret_cast<EGLContext>(context);
  
-@@ -96,10 +103,14 @@ extern "C"
+@@ -96,10 +125,14 @@ extern "C"
  
  #ifdef RIVE_VULKAN
    JNIEXPORT jlong JNICALL Java_app_rive_core_RenderContextVulkan_cppConstructor(
@@ -49,7 +78,7 @@ index e0adc66..bfa83db 100644
    {
 +    // Host build: no GPU, as for OpenGL above.
 +    (void)enableDebugNames;
-+    throwRenderException(env, "The Rive renderer has no GPU in this host build.");
++    throwHostRenderException(env, "The Rive renderer has no GPU in this host build.");
 +    return 0;
      auto* contextVulkan = new RenderContextVulkan(enableDebugNames == JNI_TRUE);
      return reinterpret_cast<jlong>(contextVulkan);

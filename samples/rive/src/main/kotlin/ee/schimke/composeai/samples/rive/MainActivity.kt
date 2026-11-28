@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ComposeView
+import app.rive.RiveRenderException
 import app.rive.rememberRiveWorkerOrNull
 import app.rive.runtime.kotlin.RiveAnimationView
 import app.rive.runtime.kotlin.core.Rive
@@ -85,8 +86,12 @@ class MainActivity : ComponentActivity() {
             composeResult =
               when {
                 worker != null -> "PASS compose: a GPU worker started"
-                error.value != null -> "PASS compose: no GPU, the worker failed with ${error.value}"
-                else -> null
+                error.value == null -> null
+                // Rive's own error for a device without the GPU it needs; anything else (a crash
+                // inside the runtime) is a failure.
+                generateSequence(error.value) { it.cause }.any { it is RiveRenderException } ->
+                  "PASS compose: no GPU, the worker failed with ${error.value}"
+                else -> "FAIL compose: the worker failed with ${error.value}"
               }
           }
         }
@@ -126,7 +131,7 @@ class MainActivity : ComponentActivity() {
       )
     }
     val compose = composeResult
-    if (compose != null) passed++
+    if (compose != null && compose.startsWith("PASS")) passed++
     Log.i(TAG, compose ?: "FAIL compose: the worker neither started nor failed")
     Log.i(TAG, "DONE $passed/${views.size + 1} passed")
   }
