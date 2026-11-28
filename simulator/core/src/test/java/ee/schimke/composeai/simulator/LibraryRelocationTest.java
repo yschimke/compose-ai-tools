@@ -111,6 +111,39 @@ public class LibraryRelocationTest {
   }
 
   @Test
+  public void aRuntimeSubclassOfARelocatedClassMovesWithIt() throws Exception {
+    // `b/B extends a/A`. The app calls `A.g()`, which only its copy has, so `a` moves. `B` passes
+    // on its own, but the app uses a `B` as an `A` (`A x = new B(); x.h()`), now its relocated
+    // `A`, which the runtime's `B` does not extend: `b` must move too.
+    String a = "com/google/common/a/A";
+    String b = "com/google/common/b/B";
+    Path runtime = jar("runtime", Map.of(a, base(a, false), b, plain(b, a)));
+    Path app =
+        jar(
+            "app",
+            Map.of(
+                a,
+                base(a, true),
+                b,
+                plain(b, a),
+                "app/Main",
+                main(
+                    mv -> {
+                      mv.visitMethodInsn(Opcodes.INVOKESTATIC, a, "g", "()I", false);
+                      mv.visitInsn(Opcodes.POP);
+                      mv.visitTypeInsn(Opcodes.NEW, b);
+                      mv.visitInsn(Opcodes.DUP);
+                      mv.visitMethodInsn(Opcodes.INVOKESPECIAL, b, "<init>", "()V", false);
+                      mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, a, "h", "()I", false);
+                    })));
+
+    LibraryRelocation.Result result = relocate(app, runtime, List.of());
+
+    assertEquals(Set.of("com/google/common/a", "com/google/common/b"), result.packages);
+    assertEquals(5, run(runtime, out(), "app.Main"));
+  }
+
+  @Test
   public void aTypeTheSimulatorsOwnCodeExchangesKeepsItsName() throws Exception {
     // The simulator's code calls `value()` on an app's `com/google/common/Fut` (as it handles Guava's
     // ListenableFuture for the AppSearch stand-in): the package moves, `Fut` does not.
@@ -313,6 +346,24 @@ public class LibraryRelocationTest {
     ClassWriter cw = classWriter(name, "java/lang/Object", null, Opcodes.ACC_PUBLIC);
     staticInt(cw, "f", value);
     if (withG) staticInt(cw, "g", value);
+    return cw.toByteArray();
+  }
+
+  /** `public class [name] extends [superName]` and nothing more. */
+  private static byte[] plain(String name, String superName) {
+    return classWriter(name, superName, null, Opcodes.ACC_PUBLIC).toByteArray();
+  }
+
+  /** A class with an instance `int h()` returning 5 and, if [withG], a static `g()`. */
+  private static byte[] base(String name, boolean withG) {
+    ClassWriter cw = classWriter(name, "java/lang/Object", null, Opcodes.ACC_PUBLIC);
+    MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "h", "()I", null, null);
+    mv.visitCode();
+    mv.visitInsn(Opcodes.ICONST_5);
+    mv.visitInsn(Opcodes.IRETURN);
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
+    if (withG) staticInt(cw, "g", 42);
     return cw.toByteArray();
   }
 

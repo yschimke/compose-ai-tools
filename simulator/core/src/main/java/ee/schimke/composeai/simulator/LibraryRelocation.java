@@ -433,7 +433,49 @@ public final class LibraryRelocation {
         }
         overrides(from, round);
       }
+      subtypes(round);
       return round;
+    }
+
+    /**
+     * A class still taken from the runtime whose app-side supertypes include a relocated one: the
+     * app's code uses it as that supertype, now the relocated class, which the runtime's copy does
+     * not extend. It moves too, or the relocation it would split from is blocked.
+     */
+    private void subtypes(Round round) {
+      for (String name : model.colliding) {
+        if (!fromRuntime(name)) continue;
+        String moved = relocatedSupertype(name, new HashSet<>());
+        if (moved == null) continue;
+        if (!pinned.contains(name) && relocatable(pkg(name))) {
+          round.relocate.add(pkg(name));
+          round.why.putIfAbsent(
+              pkg(name),
+              name.replace('/', '.')
+                  + " extends the app's own "
+                  + moved.replace('/', '.')
+                  + ", which the runtime's copy does not");
+        } else {
+          round.block(
+              pkg(moved),
+              "the shared " + name.replace('/', '.') + " extends " + moved.replace('/', '.'));
+        }
+      }
+    }
+
+    /** A relocated supertype of [name], as the app's classes declare them, or null. */
+    private String relocatedSupertype(String name, Set<String> seen) {
+      AppClass app = model.classes.get(name);
+      if (app == null || !seen.add(name)) return null;
+      List<String> supers = new ArrayList<>();
+      if (app.superName != null) supers.add(app.superName);
+      Collections.addAll(supers, app.interfaces);
+      for (String type : supers) {
+        if (model.classes.containsKey(type) && !renamed(type).equals(type)) return type;
+        String deeper = relocatedSupertype(type, seen);
+        if (deeper != null) return deeper;
+      }
+      return null;
     }
 
     /**
