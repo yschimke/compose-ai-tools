@@ -42,6 +42,10 @@ public class FirebaseMessagingHostTest {
     // and full Intent matching is exercised in Robolectric / runtime sessions.
     assertTrue(FirebaseMessagingHost.ACTION_C2DM_REGISTER.endsWith(".REGISTER"));
     assertTrue(FirebaseMessagingHost.ACTION_C2DM_UNREGISTER.endsWith(".UNREGISTER"));
+    assertEquals("com.google.iid.TOKEN_REQUEST", FirebaseMessagingHost.ACTION_IID_TOKEN_REQUEST);
     assertEquals("com.google.firebase.MESSAGING_EVENT", FirebaseMessagingHost.ACTION_MESSAGING_EVENT);
+    assertEquals(
+        "|ID|0|:tok-1", FirebaseMessagingHost.formatCorrelatedValue("|ID|0|", "tok-1"));
+    assertEquals("tok-1", FirebaseMessagingHost.formatCorrelatedValue(null, "tok-1"));
   }
 }

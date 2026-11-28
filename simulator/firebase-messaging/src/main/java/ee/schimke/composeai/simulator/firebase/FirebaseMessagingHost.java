@@ -314,7 +314,7 @@ public final class FirebaseMessagingHost {
 
   static String formatCorrelatedValue(String kid, String value) {
     if (kid != null && kid.startsWith("|ID|")) {
-      return ":" + kid + ":" + value;
+      return kid + ":" + value;
     }
     return value;
   }
