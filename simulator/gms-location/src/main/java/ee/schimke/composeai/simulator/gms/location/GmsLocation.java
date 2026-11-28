@@ -378,15 +378,27 @@ public final class GmsLocation {
 
   void addGeofences(Object geofencingRequest, PendingIntent pendingIntent) {
     if (geofencingRequest == null || pendingIntent == null) return;
+    int initialTrigger = readInt(geofencingRequest, "getInitialTrigger", "zzb", GEOFENCE_TRANSITION_ENTER);
     List<?> list = extractGeofences(geofencingRequest);
+    Location current = effectiveLastLocation();
     for (Object gf : list) {
       GeofenceEntry entry = toGeofenceEntry(gf, pendingIntent);
       if (entry != null) {
         geofences.put(entry.requestId, entry);
+        if (current != null) {
+          double dist =
+              haversineMeters(
+                  current.getLatitude(), current.getLongitude(), entry.latitude, entry.longitude);
+          if (dist <= entry.radiusMeters) {
+            entry.inside = true;
+            if ((initialTrigger & GEOFENCE_TRANSITION_ENTER) != 0
+                && (entry.transitionTypes & GEOFENCE_TRANSITION_ENTER) != 0) {
+              fireGeofenceTransition(entry, GEOFENCE_TRANSITION_ENTER, current);
+            }
+          }
+        }
       }
     }
-    Location current = effectiveLastLocation();
-    if (current != null) evaluateGeofences(current);
   }
 
   void removeGeofencesByIds(List<String> ids) {
