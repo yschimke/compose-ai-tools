@@ -195,6 +195,7 @@ public final class Session {
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
     ee.schimke.composeai.simulator.gms.auth.GmsAuth.install(app, navigator);
+    ee.schimke.composeai.simulator.play.billing.PlayBillingService.install(app);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
     this.prompts = new SystemPrompts(app, protocol, navigator);
@@ -528,6 +529,7 @@ public final class Session {
       case "setprop":
       case "sysprops":
       case "auth":
+      case "billing":
         return true;
       default:
         return false;
@@ -548,6 +550,11 @@ public final class Session {
         && "auth".equals(name)
         && ee.schimke.composeai.simulator.gms.auth.GmsAuth.current() != null) {
       emulated = ee.schimke.composeai.simulator.gms.auth.GmsAuth.current().command(c);
+    }
+    if (emulated == null
+        && "billing".equals(name)
+        && ee.schimke.composeai.simulator.play.billing.PlayBillingService.current() != null) {
+      emulated = ee.schimke.composeai.simulator.play.billing.PlayBillingService.current().command(c);
     }
     if (emulated == null && "health".equals(name) && fallbackSystemData != null) {
       emulated = fallbackSystemData.command(c);

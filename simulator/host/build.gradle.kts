@@ -44,6 +44,7 @@ dependencies {
   api(project(":simulator-wear"))
   api(project(":simulator-gms-auth"))
   api(project(":simulator-firebase"))
+  api(project(":simulator-play-billing"))
 
   val robolectricSlices: List<Provider<MinimalExternalModuleDependency>> =
     listOf(

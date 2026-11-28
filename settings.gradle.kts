@@ -226,6 +226,9 @@ project(":simulator-wear").projectDir = file("simulator/wear")
 include(":simulator-gms-auth")
 
 project(":simulator-gms-auth").projectDir = file("simulator/gms-auth")
+include(":simulator-play-billing")
+
+project(":simulator-play-billing").projectDir = file("simulator/play-billing")
 
 include(":simulator-firebase-emulator")
 
