@@ -133,6 +133,34 @@ public final class CalendarProvider extends ContentProvider {
 
   private static List<Map<String, Object>> matchingRows(
       Uri uri, String table, String selection, String[] selectionArgs) {
+    if ("instances".equals(table)) {
+      List<String> segments = uri.getPathSegments();
+      if (segments.size() >= 4
+          && ("when".equals(segments.get(1)) || "whenbyday".equals(segments.get(1)))) {
+        long rangeBegin = parseLong(segments.get(2), Long.MIN_VALUE);
+        long rangeEnd = parseLong(segments.get(3), Long.MAX_VALUE);
+        if ("whenbyday".equals(segments.get(1))) {
+          // Julian day 2440588 is 1970-01-01 (Unix epoch day 0).
+          java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+          if (rangeBegin != Long.MIN_VALUE) {
+            rangeBegin =
+                java.time.LocalDate.ofEpochDay(rangeBegin - 2440588L)
+                    .atStartOfDay(zone)
+                    .toInstant()
+                    .toEpochMilli();
+          }
+          if (rangeEnd != Long.MAX_VALUE) {
+            rangeEnd =
+                java.time.LocalDate.ofEpochDay(rangeEnd - 2440588L + 1L)
+                        .atStartOfDay(zone)
+                        .toInstant()
+                        .toEpochMilli()
+                    - 1L;
+          }
+        }
+        return matchingInstances(rangeBegin, rangeEnd, selection, selectionArgs);
+      }
+    }
     Map<Long, Map<String, Object>> map = tableMap(table);
     long id = parseId(uri);
     if (id >= 0) {
@@ -148,7 +176,40 @@ public final class CalendarProvider extends ContentProvider {
     return out;
   }
 
-  /** Evaluates simple AND-joined {@code col = ?} / {@code col = 'val'} predicates. */
+  private static List<Map<String, Object>> matchingInstances(
+      long rangeBegin, long rangeEnd, String selection, String[] selectionArgs) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (Map<String, Object> event : tableMap("events").values()) {
+      long dtStart = asLong(event.get(CalendarContract.Events.DTSTART), Long.MIN_VALUE);
+      long dtEnd = asLong(event.get(CalendarContract.Events.DTEND), dtStart);
+      if (dtStart == Long.MIN_VALUE) continue;
+      if (dtEnd < rangeBegin || dtStart > rangeEnd) continue;
+      Map<String, Object> instance = new LinkedHashMap<>(event);
+      instance.put(CalendarContract.Instances.EVENT_ID, event.get(BaseColumns._ID));
+      instance.put(CalendarContract.Instances.BEGIN, dtStart);
+      instance.put(CalendarContract.Instances.END, dtEnd);
+      if (matchesSelection(instance, selection, selectionArgs)) {
+        out.add(instance);
+      }
+    }
+    return out;
+  }
+
+  private static long parseLong(String s, long fallback) {
+    try {
+      return Long.parseLong(s);
+    } catch (NumberFormatException e) {
+      return fallback;
+    }
+  }
+
+  private static long asLong(Object value, long fallback) {
+    if (value instanceof Number n) return n.longValue();
+    if (value instanceof String s) return parseLong(s, fallback);
+    return fallback;
+  }
+
+  /** Evaluates AND-joined {@code col = ?} / {@code col = 'val'} predicates; rejects others. */
   private static boolean matchesSelection(
       Map<String, Object> row, String selection, String[] selectionArgs) {
     if (selection == null || selection.isBlank()) return true;
@@ -160,15 +221,22 @@ public final class CalendarProvider extends ContentProvider {
         clause = clause.substring(1, clause.length() - 1).trim();
       }
       int eq = clause.indexOf('=');
-      if (eq <= 0) continue;
+      if (eq <= 0 || "!<>".indexOf(clause.charAt(eq - 1)) >= 0) {
+        throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
+      }
       String col = clause.substring(0, eq).trim();
       String rhs = clause.substring(eq + 1).trim();
+      if (rhs.startsWith("=")) {
+        throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
+      }
       String expected;
       if ("?".equals(rhs)) {
         if (selectionArgs == null || argIdx >= selectionArgs.length) return false;
         expected = selectionArgs[argIdx++];
       } else if (rhs.startsWith("'") && rhs.endsWith("'") && rhs.length() >= 2) {
         expected = rhs.substring(1, rhs.length() - 1);
+      } else if (rhs.indexOf('=') >= 0) {
+        throw new IllegalArgumentException("Unsupported CalendarProvider selection: " + selection);
       } else {
         expected = rhs;
       }
