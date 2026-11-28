@@ -69,10 +69,23 @@ public final class GmsMapsDelegates {
                       Class.forName(
                           "com.google.android.gms.maps.MapsInitializer$Renderer", false, loader);
                   Object latest = Enum.valueOf(rendererCls.asSubclass(Enum.class), "LATEST");
-                  callback
-                      .getClass()
-                      .getMethod("onMapsSdkInitialized", rendererCls)
-                      .invoke(callback, latest);
+                  Method cbMethod = null;
+                  try {
+                    Class<?> cbIface =
+                        Class.forName(
+                            "com.google.android.gms.maps.OnMapsSdkInitializedCallback",
+                            false,
+                            loader);
+                    if (cbIface.isInstance(callback)) {
+                      cbMethod = cbIface.getMethod("onMapsSdkInitialized", rendererCls);
+                    }
+                  } catch (ClassNotFoundException ignored) {
+                  }
+                  if (cbMethod == null) {
+                    cbMethod = callback.getClass().getMethod("onMapsSdkInitialized", rendererCls);
+                  }
+                  cbMethod.setAccessible(true);
+                  cbMethod.invoke(callback, latest);
                 } catch (ReflectiveOperationException ignored) {
                 }
               });
@@ -389,7 +402,12 @@ public final class GmsMapsDelegates {
       }
       int color = readInt(invokeNoArg(opts, "getColor"), 0xFF1A73E8);
       float width = readFloat(invokeNoArg(opts, "getWidth"), 6f);
+      Object visObj = invokeNoArg(opts, "isVisible");
       GmsMaps.PolylineRecord rec = engine.addPolyline(pts, color, width);
+      if (visObj instanceof Boolean && !(Boolean) visObj) {
+        rec.visible = false;
+        engine.notifyChanged();
+      }
       if (!returnType.isInterface()) return null;
       return Proxy.newProxyInstance(
           loader,
@@ -422,7 +440,12 @@ public final class GmsMapsDelegates {
       double radius = readDouble(invokeNoArg(opts, "getRadius"), 100.0);
       int stroke = readInt(invokeNoArg(opts, "getStrokeColor"), 0xFF1A73E8);
       int fill = readInt(invokeNoArg(opts, "getFillColor"), 0x331A73E8);
+      Object visObj = invokeNoArg(opts, "isVisible");
       GmsMaps.CircleRecord rec = engine.addCircle(ll[0], ll[1], radius, stroke, fill);
+      if (visObj instanceof Boolean && !(Boolean) visObj) {
+        rec.visible = false;
+        engine.notifyChanged();
+      }
       if (!returnType.isInterface()) return null;
       return Proxy.newProxyInstance(
           loader,
@@ -433,6 +456,14 @@ public final class GmsMapsDelegates {
                 return rec.id;
               case "remove":
                 engine.removeCircle(rec.id);
+                return null;
+              case "isVisible":
+                return rec.visible;
+              case "setVisible":
+                if (a != null && a.length > 0 && a[0] instanceof Boolean) {
+                  rec.visible = (Boolean) a[0];
+                  engine.notifyChanged();
+                }
                 return null;
               default:
                 return defaultReturn(m.getReturnType());
