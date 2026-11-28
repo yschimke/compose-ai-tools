@@ -132,6 +132,11 @@ public final class SimulatorSandbox {
                 // Play services' availability checks, as a device with Play services answers.
                 ShadowGooglePlayServicesUtilLight.class,
                 ShadowGoogleApiAvailability.class,
+                // Play services Auth & Identity (Identity, GoogleSignIn, SmsRetriever, FIDO2).
+                ee.schimke.composeai.simulator.shadows.gms.ShadowIdentity.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.class,
                 // androidx.appsearch's storages, in memory (AppSearchSessions).
                 ShadowLocalStorage.class,
                 // Cross-app App Functions calls, over the device bus of --install.
@@ -309,6 +314,13 @@ public final class SimulatorSandbox {
     builder.doNotInstrumentClass("android.app.RecoverableSecurityException");
     builder.addInstrumentedClass(ShadowGooglePlayServicesUtilLight.UTIL_LIGHT);
     builder.addInstrumentedClass(ShadowGoogleApiAvailability.AVAILABILITY);
+    builder.addInstrumentedClass(ee.schimke.composeai.simulator.shadows.gms.ShadowIdentity.IDENTITY);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.GOOGLE_SIGN_IN);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.SMS_RETRIEVER_CLIENT);
+    builder.addInstrumentedClass(
+        ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.FIDO2_API_CLIENT);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
     builder.addInstrumentedClass(ShadowPlatformStorage.PLATFORM_STORAGE);
     builder.addInstrumentedClass(ShadowDisplayOffloadManager.TARGET);
