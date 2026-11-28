@@ -51,7 +51,12 @@ public final class LaunchMain {
           // An uncaught UnsatisfiedLinkError is the app failing to load Android native code.
           // Exit so a control client gets more than a bare status 1 with the cause only on a
           // thread that already ended.
-          if (thread == launcher || NativeCode.find(error) != null) System.exit(1);
+          boolean instrumenting =
+              System.getProperty("composeai.simulator.instrument") != null
+                  && !System.getProperty("composeai.simulator.instrument").isEmpty();
+          if (thread == launcher || (!instrumenting && NativeCode.find(error) != null)) {
+            System.exit(1);
+          }
         });
     if (args.length < 1) {
       System.err.println("usage: LaunchMain <apk> [extra jars]");

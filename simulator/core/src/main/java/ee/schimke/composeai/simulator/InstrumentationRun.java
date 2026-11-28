@@ -91,6 +91,13 @@ public final class InstrumentationRun {
   static final String ADDITIONAL_OUTPUT_DIR_PROPERTY =
       "composeai.simulator.instrument.additionalOutputDir";
 
+  /**
+   * When {@code "true"}, clears app SharedPreferences and private files between test classes,
+   * approximating Android Test Orchestrator's {@code clearPackageData} isolation.
+   */
+  static final String CLEAR_PACKAGE_DATA_PROPERTY =
+      "composeai.simulator.instrument.clearPackageData";
+
   static final String DEVICE_RUNNER =
       "androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner";
 
@@ -99,8 +106,11 @@ public final class InstrumentationRun {
     return jar != null && !jar.isEmpty();
   }
 
+  private static volatile Application activeApp;
+
   /** On the main thread, once the simulator loops: declares the test activities, starts the run. */
   static void start(Application app) {
+    activeApp = app;
     declareTestActivities(app);
     disableAnimations(app);
     ClassLoader sandbox = Thread.currentThread().getContextClassLoader();
@@ -131,6 +141,42 @@ public final class InstrumentationRun {
         cr, android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 0f);
     android.provider.Settings.Global.putFloat(
         cr, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f);
+  }
+
+  /**
+   * Clears app-private SharedPreferences, files, and cache directories between test classes when
+   * {@value #CLEAR_PACKAGE_DATA_PROPERTY} is enabled.
+   */
+  private static void clearPackageData(Application app) {
+    File dataDir = app.getDataDir();
+    if (dataDir == null) return;
+    File prefsDir = new File(dataDir, "shared_prefs");
+    File[] prefFiles = prefsDir.listFiles();
+    if (prefFiles != null) {
+      for (File f : prefFiles) {
+        String name = f.getName();
+        if (name.endsWith(".xml")) {
+          String prefName = name.substring(0, name.length() - 4);
+          app.getSharedPreferences(prefName, android.content.Context.MODE_PRIVATE)
+              .edit()
+              .clear()
+              .commit();
+        }
+        f.delete();
+      }
+    }
+    deleteChildren(app.getFilesDir());
+    deleteChildren(app.getCacheDir());
+  }
+
+  private static void deleteChildren(File dir) {
+    if (dir == null || !dir.isDirectory()) return;
+    File[] children = dir.listFiles();
+    if (children == null) return;
+    for (File child : children) {
+      if (child.isDirectory()) deleteChildren(child);
+      child.delete();
+    }
   }
 
   /**
@@ -408,9 +454,11 @@ public final class InstrumentationRun {
     core.addListener(reporter);
     // One request per class, each filtered only by its own `Class#method` selectors: a suite named
     // whole keeps every test under it, whatever classes those belong to.
+    boolean clearBetweenClasses = Boolean.getBoolean(CLEAR_PACKAGE_DATA_PROPERTY);
     int runCount = 0;
     int failures = 0;
     long millis = 0;
+    int classesRun = 0;
     for (int i = 0; i < classes.size(); i++) {
       org.junit.runner.Runner runner = runners.get(i);
       Filter filter = selection.filterFor(classes.get(i).getName());
@@ -425,6 +473,14 @@ public final class InstrumentationRun {
       } catch (org.junit.runner.manipulation.NoTestsRemainException e) {
         continue;
       }
+      if (clearBetweenClasses && classesRun > 0 && activeApp != null) {
+        MainThread.get(
+            () -> {
+              clearPackageData(activeApp);
+              return null;
+            });
+      }
+      classesRun++;
       Result result = core.run(Request.runner(runner));
       runCount += result.getRunCount();
       failures += result.getFailureCount();

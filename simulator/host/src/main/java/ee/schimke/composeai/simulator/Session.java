@@ -736,6 +736,10 @@ public final class Session {
       case "permissions":
         checkPackage(c);
         return navigator.permissions.command(c);
+      case "appops":
+        return appops(c);
+      case "accessibility":
+        return accessibilityDump();
       case "pick":
         return pickers.command(c);
       case "settings":
@@ -1557,6 +1561,113 @@ public final class Session {
       if (c.has(key)) selector.put(key, c.get(key));
     }
     return selector;
+  }
+
+  private JSONObject appops(JSONObject c) throws JSONException {
+    String action = c.getString("action");
+    String pkg = c.getString("package");
+    String op = c.optString("op", "");
+    String opStr = normalizeAppOp(op);
+    android.app.AppOpsManager aom =
+        (android.app.AppOpsManager) app.getSystemService(android.content.Context.APP_OPS_SERVICE);
+    int uid = app.getApplicationInfo().uid;
+    try {
+      uid = app.getPackageManager().getApplicationInfo(pkg, 0).uid;
+    } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+      // Fall back to current app uid.
+    }
+    if ("set".equals(action)) {
+      String modeName = c.getString("mode").toLowerCase(java.util.Locale.ROOT);
+      int mode =
+          switch (modeName) {
+            case "allow" -> android.app.AppOpsManager.MODE_ALLOWED;
+            case "ignore" -> android.app.AppOpsManager.MODE_IGNORED;
+            case "deny" -> android.app.AppOpsManager.MODE_ERRORED;
+            case "foreground" -> android.app.AppOpsManager.MODE_FOREGROUND;
+            default -> android.app.AppOpsManager.MODE_DEFAULT;
+          };
+      if (aom != null && !opStr.isEmpty()) {
+        org.robolectric.shadows.ShadowAppOpsManager shadow =
+            org.robolectric.shadow.api.Shadow.extract(aom);
+        shadow.setMode(opStr, uid, pkg, mode);
+      }
+      if ("MANAGE_EXTERNAL_STORAGE".equalsIgnoreCase(op)
+          || "android:manage_external_storage".equalsIgnoreCase(opStr)) {
+        boolean allow = mode == android.app.AppOpsManager.MODE_ALLOWED;
+        for (String setter :
+            new String[] {"setExternalStorageManager", "setIsExternalStorageManager"}) {
+          try {
+            org.robolectric.shadows.ShadowEnvironment.class
+                .getMethod(setter, boolean.class)
+                .invoke(null, allow);
+            break;
+          } catch (ReflectiveOperationException ignored) {
+            // Try next Robolectric method name.
+          }
+        }
+      }
+      return new Protocol.Json()
+          .put("package", pkg)
+          .put("op", opStr)
+          .put("mode", modeName)
+          .object();
+    }
+    int mode =
+        aom != null && !opStr.isEmpty()
+            ? aom.unsafeCheckOpNoThrow(opStr, uid, pkg)
+            : android.app.AppOpsManager.MODE_DEFAULT;
+    String modeName =
+        switch (mode) {
+          case android.app.AppOpsManager.MODE_ALLOWED -> "allow";
+          case android.app.AppOpsManager.MODE_IGNORED -> "ignore";
+          case android.app.AppOpsManager.MODE_ERRORED -> "deny";
+          case android.app.AppOpsManager.MODE_FOREGROUND -> "foreground";
+          default -> "default";
+        };
+    return new Protocol.Json()
+        .put("package", pkg)
+        .put("op", opStr)
+        .put("mode", modeName)
+        .put("output", op + ": " + modeName + "\n")
+        .object();
+  }
+
+  private static String normalizeAppOp(String op) {
+    if (op == null || op.isEmpty()) return "";
+    if (op.contains(":")) return op.toLowerCase(java.util.Locale.ROOT);
+    return "android:" + op.toLowerCase(java.util.Locale.ROOT);
+  }
+
+  private JSONObject accessibilityDump() throws JSONException {
+    String enabled =
+        android.provider.Settings.Secure.getString(
+            app.getContentResolver(),
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+    StringBuilder out = new StringBuilder();
+    JSONArray services = new JSONArray();
+    if (enabled != null && !enabled.isBlank()) {
+      for (String component : enabled.split(":")) {
+        String trimmed = component.trim();
+        if (trimmed.isEmpty()) continue;
+        services.put(trimmed);
+        android.content.ComponentName cn = android.content.ComponentName.unflattenFromString(trimmed);
+        String label = trimmed;
+        if (cn != null) {
+          try {
+            android.content.pm.ServiceInfo si = app.getPackageManager().getServiceInfo(cn, 0);
+            CharSequence l = si.loadLabel(app.getPackageManager());
+            if (l != null && l.length() > 0) label = l.toString();
+          } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+            // Keep component name as label.
+          }
+        }
+        out.append("Service[label=").append(label).append(", component=").append(trimmed).append("]\n");
+      }
+    }
+    return new Protocol.Json()
+        .put("services", services)
+        .put("output", out.toString())
+        .object();
   }
 
   private static String describe(Throwable t) {

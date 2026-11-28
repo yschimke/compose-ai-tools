@@ -160,6 +160,9 @@ final class AdbShell {
       case "pm":
         command = pm(a);
         break;
+      case "appops":
+        command = appops(a);
+        break;
       case "cmd":
         command = cmd(a);
         break;
@@ -1059,9 +1062,37 @@ final class AdbShell {
         return cmd("wifi");
       case "bluetooth_manager":
         return cmd("bluetooth");
+      case "accessibility":
+        a.rest();
+        return cmd("accessibility");
       default:
         throw new UnsupportedException("dumpsys " + service + " is not supported");
     }
+  }
+
+  private static Map<String, Object> appops(Args a) {
+    String action = a.required("appops action");
+    if (!action.equals("set") && !action.equals("get")) {
+      throw new UnsupportedException("appops " + action + " is not supported");
+    }
+    while (a.hasNext() && a.peek().startsWith("--")) {
+      String opt = a.next();
+      if (opt.equals("--user") || opt.equals("--uid")) {
+        a.required(opt);
+      } else {
+        throw new UnsupportedException("appops option " + opt + " is not supported");
+      }
+    }
+    Map<String, Object> command = cmd("appops");
+    command.put("action", action);
+    command.put("package", a.required("package"));
+    if (action.equals("set")) {
+      command.put("op", a.required("op"));
+      command.put("mode", a.required("mode"));
+    } else if (a.hasNext()) {
+      command.put("op", a.next());
+    }
+    return command;
   }
 
   /**

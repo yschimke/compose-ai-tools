@@ -443,6 +443,9 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       // The documents and photo pickers, camera, share sheet and browser an intent can reach.
       SystemApps.install(app);
       DocumentsStore.install(app);
+      MediaStoreProvider.install(app);
+      CalendarProvider.install(app);
+      seedSystemPackages(app);
       WearPlatformServices.install(app);
       Navigator.registerBindableServices(app);
       // The host's audio codecs (ffmpeg), in MediaCodecList before the app looks.
@@ -464,6 +467,24 @@ public class SimulatorTestEnvironment extends AndroidTestEnvironment {
       Providers.installBeforeOnCreate(app);
       super.callApplicationOnCreate(app);
       Startup.mark(Startup.APPLICATION);
+    }
+
+    private static void seedSystemPackages(Application app) {
+      org.robolectric.shadows.ShadowPackageManager pm = Shadow.extract(app.getPackageManager());
+      String[] systemPackages = {"android", "com.android.shell", "com.android.settings"};
+      for (String pkg : systemPackages) {
+        try {
+          app.getPackageManager().getPackageInfo(pkg, 0);
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+          android.content.pm.PackageInfo pi = new android.content.pm.PackageInfo();
+          pi.packageName = pkg;
+          android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
+          ai.packageName = pkg;
+          ai.flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM;
+          pi.applicationInfo = ai;
+          pm.installPackage(pi);
+        }
+      }
     }
   }
 }

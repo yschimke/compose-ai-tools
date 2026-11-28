@@ -172,6 +172,23 @@ public final class SimulatorSandbox {
             String.class,
             SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowInstrumentation"),
         ClassParameter.from(boolean.class, false));
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.media.MediaScannerConnection"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName()
+                + ".shadows.SimulatorShadowMediaScannerConnection"),
+        ClassParameter.from(boolean.class, false));
+    ReflectionHelpers.callInstanceMethod(
+        shadows,
+        "addShadowClass",
+        ClassParameter.from(String.class, "android.widget.Toast"),
+        ClassParameter.from(
+            String.class,
+            SimulatorSandbox.class.getPackageName() + ".shadows.SimulatorShadowToast"),
+        ClassParameter.from(boolean.class, false));
     // Wear SDK API version and global status bar settings (instrumented under com.google.wear.).
     ReflectionHelpers.callInstanceMethod(
         shadows,
