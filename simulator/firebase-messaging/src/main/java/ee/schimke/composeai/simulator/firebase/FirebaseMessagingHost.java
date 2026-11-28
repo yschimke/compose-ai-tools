@@ -104,11 +104,12 @@ public final class FirebaseMessagingHost {
 
     ComponentName target = resolveMessagingService();
     boolean delivered = false;
+    String deliveryPath = "none";
     if (target != null && app != null) {
       Intent intent = new Intent(ACTION_NEW_TOKEN);
       intent.setComponent(target);
       intent.putExtra("token", next);
-      app.startService(intent);
+      deliveryPath = deliverToMessagingService(intent);
       delivered = true;
     }
 
@@ -116,6 +117,7 @@ public final class FirebaseMessagingHost {
     try {
       out.put("token", next);
       out.put("delivered", delivered);
+      out.put("deliveryPath", deliveryPath);
       if (target != null) out.put("service", target.flattenToShortString());
     } catch (JSONException e) {
       throw new IllegalStateException(e);
@@ -124,8 +126,9 @@ public final class FirebaseMessagingHost {
   }
 
   /**
-   * Delivers a simulated FCM push/data message to the app's {@code FirebaseMessagingService} via a
-   * real {@code com.google.android.c2dm.intent.RECEIVE} service intent.
+   * Delivers a simulated FCM push/data message to the app's {@code FirebaseMessagingService} via
+   * {@code ServiceStarter.startMessagingService()} (so {@code getStartCommandIntent()} dequeues
+   * the payload) with fallback to direct {@code startService()}.
    */
   public JSONObject sendMessage(JSONObject request) {
     String messageId =
@@ -143,6 +146,7 @@ public final class FirebaseMessagingHost {
 
     ComponentName target = resolveMessagingService();
     boolean delivered = false;
+    String deliveryPath = "none";
     if (target != null && app != null) {
       Intent intent = new Intent(ACTION_C2DM_RECEIVE);
       intent.setComponent(target);
@@ -175,7 +179,7 @@ public final class FirebaseMessagingHost {
         putOptionalExtra(intent, "gcm.notification.sound", notification.optString("sound", null));
         putOptionalExtra(intent, "gcm.notification.image", notification.optString("imageUrl", null));
       }
-      app.startService(intent);
+      deliveryPath = deliverToMessagingService(intent);
       delivered = true;
     }
 
@@ -185,6 +189,7 @@ public final class FirebaseMessagingHost {
       record.put("from", from);
       record.put("sentTime", sentTime);
       record.put("delivered", delivered);
+      record.put("deliveryPath", deliveryPath);
       if (target != null) record.put("service", target.flattenToShortString());
       if (data != null) record.put("data", data);
       if (notification != null) record.put("notification", notification);
@@ -194,6 +199,31 @@ public final class FirebaseMessagingHost {
     sentMessages.add(record);
     while (sentMessages.size() > MAX_HISTORY) sentMessages.remove(0);
     return record;
+  }
+
+  /**
+   * Routes {@code intent} through {@code com.google.firebase.messaging.ServiceStarter}'s internal
+   * queue so {@code FirebaseMessagingService.getStartCommandIntent()} dequeues it, falling back to
+   * {@code app.startService(intent)} when the SDK class is not present.
+   */
+  String deliverToMessagingService(Intent intent) {
+    ClassLoader loader = app.getClassLoader();
+    if (loader != null) {
+      try {
+        Class<?> starterClass =
+            Class.forName("com.google.firebase.messaging.ServiceStarter", false, loader);
+        Object starter = starterClass.getMethod("getInstance").invoke(null);
+        java.lang.reflect.Method start =
+            starterClass.getMethod(
+                "startMessagingService", android.content.Context.class, Intent.class);
+        start.invoke(starter, app, intent);
+        return "serviceStarter";
+      } catch (Throwable ignored) {
+        // Fall through to direct startService for non-SDK services.
+      }
+    }
+    app.startService(intent);
+    return "startService";
   }
 
   /**

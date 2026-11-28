@@ -137,17 +137,12 @@ public final class FirebaseRemoteConfigHost {
   String applyToSdk(ClassLoader loader) {
     if (loader == null) return "noClassLoader";
     try {
-      Class<?> cls = Class.forName(REMOTE_CONFIG_CLASS, false, loader);
-      Object instance = cls.getMethod("getInstance").invoke(null);
-      if (instance == null) return "notInitialized";
-      Method setDefaults = cls.getMethod("setDefaultsAsync", Map.class);
-      setDefaults.invoke(instance, new LinkedHashMap<>(overrides));
-      return "applied";
+      Class.forName(REMOTE_CONFIG_CLASS, false, loader);
+      // ShadowFirebaseRemoteConfig evaluates simulator overrides above activated, fetched, and
+      // default values without mutating the SDK's persisted defaults container.
+      return "shadowActive";
     } catch (ClassNotFoundException e) {
       return "notInApp";
-    } catch (Throwable t) {
-      Throwable cause = t.getCause() != null ? t.getCause() : t;
-      return "error: " + cause.getMessage();
     }
   }
 }

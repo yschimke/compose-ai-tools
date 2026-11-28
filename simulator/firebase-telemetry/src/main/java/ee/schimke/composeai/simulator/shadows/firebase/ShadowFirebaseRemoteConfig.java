@@ -55,12 +55,53 @@ public class ShadowFirebaseRemoteConfig {
   }
 
   @Implementation
+  protected Object getValue(String key) {
+    if (FirebaseRemoteConfigHost.hasOverride(key)) {
+      Object proxy = createRemoteConfigValueProxy(key);
+      if (proxy != null) return proxy;
+    }
+    return invokeReal("getValue", ClassParameter.from(String.class, key));
+  }
+
+  @Implementation
   protected Set<String> getKeysByPrefix(String prefix) {
     Set<String> combined = new LinkedHashSet<>();
     Set<String> real = invokeReal("getKeysByPrefix", ClassParameter.from(String.class, prefix));
     if (real != null) combined.addAll(real);
     combined.addAll(FirebaseRemoteConfigHost.keysByPrefix(prefix));
     return combined;
+  }
+
+  private Object createRemoteConfigValueProxy(String key) {
+    try {
+      ClassLoader loader = realObject.getClass().getClassLoader();
+      Class<?> valueInterface =
+          Class.forName("com.google.firebase.remoteconfig.FirebaseRemoteConfigValue", false, loader);
+      return java.lang.reflect.Proxy.newProxyInstance(
+          loader,
+          new Class<?>[] {valueInterface},
+          (proxy, method, args) -> {
+            switch (method.getName()) {
+              case "asString":
+                return FirebaseRemoteConfigHost.getStringOverride(key);
+              case "asBoolean":
+                return FirebaseRemoteConfigHost.getBooleanOverride(key);
+              case "asLong":
+                return FirebaseRemoteConfigHost.getLongOverride(key);
+              case "asDouble":
+                return FirebaseRemoteConfigHost.getDoubleOverride(key);
+              case "asByteArray":
+                return FirebaseRemoteConfigHost.getStringOverride(key)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+              case "getSource":
+                return 2; // FirebaseRemoteConfig.VALUE_SOURCE_REMOTE
+              default:
+                return null;
+            }
+          });
+    } catch (Throwable ignored) {
+      return null;
+    }
   }
 
   @SuppressWarnings("unchecked")
