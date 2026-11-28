@@ -75,8 +75,12 @@ public final class PlayBillingService {
   static final int TX_IS_BILLING_SUPPORTED_EXTRA_PARAMS = 10;
   static final int TX_GET_PURCHASES_EXTRA_PARAMS = 11;
   static final int TX_CONSUME_PURCHASE_EXTRA_PARAMS = 12;
+  static final String BILLING_CONFIG_CALLBACK_DESCRIPTOR =
+      "com.android.vending.billing.IInAppBillingGetBillingConfigCallback";
+
   static final int TX_GET_SKU_DETAILS_EXTRA_PARAMS = 901;
   static final int TX_ACKNOWLEDGE_PURCHASE = 902;
+  static final int TX_GET_BILLING_CONFIG = 1301;
 
   private static volatile PlayBillingService active;
 
@@ -568,6 +572,14 @@ public final class PlayBillingService {
     }
   }
 
+  String billingConfigJson() {
+    try {
+      return new JSONObject().put("countryCode", countryCode).toString();
+    } catch (JSONException e) {
+      return "{\"countryCode\":\"US\"}";
+    }
+  }
+
   // ---- IInAppBillingService AIDL Binder ----
 
   private final class BillingBinder extends Binder {
@@ -696,9 +708,50 @@ public final class PlayBillingService {
             writeBundleReply(reply, b);
             return true;
           }
+        case TX_GET_BILLING_CONFIG:
+          {
+            data.readInt(); // apiVersion
+            data.readString(); // packageName
+            readNullableBundle(data); // extraParams
+            IBinder callback = data.readStrongBinder();
+            if ((flags & IBinder.FLAG_ONEWAY) == 0 && reply != null) {
+              reply.writeNoException();
+            }
+            if (callback != null) {
+              Bundle configBundle = buildBillingConfigBundle();
+              main.execute(
+                  () -> {
+                    Parcel cbData = Parcel.obtain();
+                    Parcel cbReply = Parcel.obtain();
+                    try {
+                      cbData.writeInterfaceToken(BILLING_CONFIG_CALLBACK_DESCRIPTOR);
+                      cbData.writeInt(1);
+                      configBundle.writeToParcel(cbData, 0);
+                      callback.transact(IBinder.FIRST_CALL_TRANSACTION, cbData, cbReply, 0);
+                      cbReply.readException();
+                    } catch (RemoteException | RuntimeException ignored) {
+                    } finally {
+                      cbData.recycle();
+                      cbReply.recycle();
+                    }
+                  });
+            }
+            return true;
+          }
         default:
           return super.onTransact(code, data, reply, flags);
       }
+    }
+
+    private Bundle buildBillingConfigBundle() {
+      Bundle out = new Bundle();
+      int status = checkBillingSupported();
+      out.putInt("RESPONSE_CODE", status);
+      out.putString("DEBUG_MESSAGE", "");
+      if (status == RESULT_OK) {
+        out.putString("BILLING_CONFIG", billingConfigJson());
+      }
+      return out;
     }
 
     private Bundle buildDetailsBundle(String type, Bundle skusBundle, boolean productDetails) {

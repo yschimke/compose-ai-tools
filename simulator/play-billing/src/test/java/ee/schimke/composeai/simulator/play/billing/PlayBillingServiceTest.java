@@ -133,5 +133,13 @@ public class PlayBillingServiceTest {
     assertEquals(11, PlayBillingService.TX_GET_PURCHASES_EXTRA_PARAMS);
     assertEquals(901, PlayBillingService.TX_GET_SKU_DETAILS_EXTRA_PARAMS);
     assertEquals(902, PlayBillingService.TX_ACKNOWLEDGE_PURCHASE);
+    assertEquals(1301, PlayBillingService.TX_GET_BILLING_CONFIG);
+  }
+
+  @Test
+  public void billingConfigJsonReflectsCountryCode() throws Exception {
+    assertEquals("US", new JSONObject(billing.billingConfigJson()).getString("countryCode"));
+    billing.command(new JSONObject().put("countryCode", "gb"));
+    assertEquals("GB", new JSONObject(billing.billingConfigJson()).getString("countryCode"));
   }
 }
