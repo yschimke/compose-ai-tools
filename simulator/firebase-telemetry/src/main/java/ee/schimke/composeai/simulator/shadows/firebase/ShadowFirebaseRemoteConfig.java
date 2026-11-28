@@ -64,6 +64,18 @@ public class ShadowFirebaseRemoteConfig {
   }
 
   @Implementation
+  protected java.util.Map<String, Object> getAll() {
+    java.util.Map<String, Object> merged = new java.util.LinkedHashMap<>();
+    java.util.Map<String, Object> real = invokeReal("getAll");
+    if (real != null) merged.putAll(real);
+    for (String key : FirebaseRemoteConfigHost.keysByPrefix("")) {
+      Object proxy = createRemoteConfigValueProxy(key);
+      if (proxy != null) merged.put(key, proxy);
+    }
+    return merged;
+  }
+
+  @Implementation
   protected Set<String> getKeysByPrefix(String prefix) {
     Set<String> combined = new LinkedHashSet<>();
     Set<String> real = invokeReal("getKeysByPrefix", ClassParameter.from(String.class, prefix));
