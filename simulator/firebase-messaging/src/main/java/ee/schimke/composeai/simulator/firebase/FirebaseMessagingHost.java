@@ -42,6 +42,7 @@ public final class FirebaseMessagingHost {
   static final String GMS_PACKAGE = "com.google.android.gms";
   static final String ACTION_C2DM_REGISTER = "com.google.android.c2dm.intent.REGISTER";
   static final String ACTION_C2DM_UNREGISTER = "com.google.android.c2dm.intent.UNREGISTER";
+  static final String ACTION_IID_TOKEN_REQUEST = "com.google.iid.TOKEN_REQUEST";
   static final String ACTION_C2DM_REGISTRATION = "com.google.android.c2dm.intent.REGISTRATION";
   static final String ACTION_C2DM_RECEIVE = "com.google.android.c2dm.intent.RECEIVE";
   static final String ACTION_MESSAGING_EVENT = "com.google.firebase.MESSAGING_EVENT";
@@ -268,7 +269,9 @@ public final class FirebaseMessagingHost {
   static boolean isC2dmRegistrationIntent(Intent intent) {
     if (intent == null) return false;
     String action = intent.getAction();
-    if (!ACTION_C2DM_REGISTER.equals(action) && !ACTION_C2DM_UNREGISTER.equals(action)) {
+    if (!ACTION_C2DM_REGISTER.equals(action)
+        && !ACTION_C2DM_UNREGISTER.equals(action)
+        && !ACTION_IID_TOKEN_REQUEST.equals(action)) {
       return false;
     }
     String pkg =
@@ -277,14 +280,18 @@ public final class FirebaseMessagingHost {
   }
 
   private void handleRegistration(Intent request) {
-    boolean unregister = ACTION_C2DM_UNREGISTER.equals(request.getAction());
+    boolean unregister =
+        ACTION_C2DM_UNREGISTER.equals(request.getAction())
+            || "1".equals(request.getStringExtra("delete"));
     Intent reply = new Intent(ACTION_C2DM_REGISTRATION);
     if (app != null) reply.setPackage(app.getPackageName());
+    String kid = request.getStringExtra("kid");
     if (unregister) {
-      reply.putExtra(EXTRA_UNREGISTERED, app != null ? app.getPackageName() : "app");
+      String value = app != null ? app.getPackageName() : "app";
+      reply.putExtra(EXTRA_UNREGISTERED, formatCorrelatedValue(kid, value));
     } else {
       registrationCount++;
-      reply.putExtra(EXTRA_REGISTRATION_ID, currentToken);
+      reply.putExtra(EXTRA_REGISTRATION_ID, formatCorrelatedValue(kid, currentToken));
     }
 
     Parcelable messengerExtra = request.getParcelableExtra(EXTRA_MESSENGER);
@@ -303,6 +310,13 @@ public final class FirebaseMessagingHost {
     if (app != null) {
       app.sendBroadcast(reply);
     }
+  }
+
+  static String formatCorrelatedValue(String kid, String value) {
+    if (kid != null && kid.startsWith("|ID|")) {
+      return ":" + kid + ":" + value;
+    }
+    return value;
   }
 
   private static void putOptionalExtra(Intent intent, String key, String value) {
