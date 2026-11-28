@@ -1,0 +1,9 @@
+rive-android and the Rive C++ runtime (rive-runtime): Copyright Rive. Licensed under the MIT License;
+the texts are in licenses/rive-android.txt and licenses/rive-runtime.txt.
+
+The changes to rive-android's sources are host/host.patch and the FindClass rewrite described in
+build.sh. host/HostAndroid.cpp, host/host_compat.h and the host/include stand-in headers are
+compose-ai-tools', under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+The runtime links third-party code into this library (HarfBuzz, SheenBidi, Yoga, miniaudio, Luau,
+libhydrogen, and Vulkan's headers and memory allocator); their licences are in licenses/.

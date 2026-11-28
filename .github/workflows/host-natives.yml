@@ -3,8 +3,8 @@ name: Host Natives
 # Builds the host (desktop) native libraries the simulator loads in place of an APK's Android-only
 # ones, on real Linux and macOS runners, and verifies them against Robolectric's native runtime on
 # the architecture each targets. Each library is a recipe, `host-natives/<recipe>/`: today
-# androidx.graphics:graphics-path's, and Filament's filament-jni (on macOS over ANGLE, which its
-# build compiles from source).
+# androidx.graphics:graphics-path's, Filament's filament-jni (on macOS over ANGLE, which its build
+# compiles from source), and rive-android's librive-android (Linux; Rive's Canvas renderer).
 #
 # Each recipe releases on its own line, keyed by the LIBRARY's version, not this repository's:
 # `host-natives-<recipe>-<version>` (`host-natives/build.sh release-tag <recipe>`), a prerelease never
@@ -90,6 +90,12 @@ jobs:
             platform: macos-universal
             container: ''
             timeout: 240
+          # The Rive C++ runtime (HarfBuzz, Luau, miniaudio and the rest) and rive-android's JNI layer.
+          - recipe: rive
+            runner: ubuntu-latest
+            platform: linux-x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            timeout: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -137,6 +143,38 @@ jobs:
         with:
           path: host-natives/build/filament/angle
           key: angle-macos-${{ steps.mac-toolchain.outputs.angle }}-${{ hashFiles('host-natives/filament/host/build-angle.sh') }}
+
+      # Rive builds with clang through its own premake (bootstrapped from source by build.sh), with
+      # Ninja; glslang and SPIRV-Tools' spirv-opt compile the runtime's Vulkan shaders.
+      # manylinux_2_28's repositories have neither, so glslang is built here at a pinned release,
+      # with the SPIRV-Tools and SPIRV-Headers commits its known_good.json pins (which installs
+      # spirv-opt too). As for Filament, clang needs pointing at gcc-toolset's libstdc++ (build.sh
+      # hands CFLAGS and CXXFLAGS to premake's compilers).
+      - name: Install the Rive toolchain
+        if: matrix.recipe == 'rive'
+        env:
+          GLSLANG_TAG: 16.6.0
+          GLSLANG_COMMIT: e1b562a8bed273a02f30b59b66a5d499793cede5
+        run: |
+          # libuuid-devel: premake's bootstrap includes <uuid/uuid.h>.
+          dnf install -y -q clang libuuid-devel
+          pipx install ninja
+          pipx install cmake
+          git clone -q --depth 1 --branch "$GLSLANG_TAG" https://github.com/KhronosGroup/glslang /tmp/glslang
+          test "$(git -C /tmp/glslang rev-parse HEAD)" = "$GLSLANG_COMMIT"
+          (cd /tmp/glslang && python3 update_glslang_sources.py)
+          cmake -G Ninja -S /tmp/glslang -B /tmp/glslang/build -DCMAKE_BUILD_TYPE=Release \
+            -DGLSLANG_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+          ninja -C /tmp/glslang/build install
+          glslangValidator --version | head -1
+          command -v spirv-opt
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+          gcc_root="$(dirname "$(dirname "$(command -v gcc)")")"
+          toolchain="--gcc-toolchain=$gcc_root -Wno-unused-command-line-argument"
+          echo "CFLAGS=$toolchain" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=$toolchain" >> "$GITHUB_ENV"
+          echo "LDFLAGS=$toolchain" >> "$GITHUB_ENV"
 
       - name: Build
         env:
@@ -255,9 +293,68 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: ./gradlew -p host-natives/verify verifyFilament -PfilamentDir="$PWD/host-natives/build/filament/$PLATFORM"
 
+  # librive-android in the simulator, end to end: samples/rive's RiveAnimationViews, drawn by Rive's
+  # Canvas renderer into the simulator's TextureViews, each checked for a frame
+  # (.github/scripts/simulator_smoke.py --check rive). The index here is the checkout's with this
+  # build added and its file already in the CLI's cache, so nothing is fetched from a release that
+  # does not exist yet.
+  verify-rive:
+    name: Verify rive linux-x86_64 in the simulator
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: host-natives-linux-x86_64-rive
+          path: dist
+
+      - name: Index and cache the build
+        run: |
+          set -euo pipefail
+          python3 host-natives/index.py add-release --dist dist
+          archive="$(ls dist/host-natives-rive-*-linux-x86_64.tar.gz)"
+          sha="$(sha256sum "$archive" | cut -d' ' -f1)"
+          files="$RUNNER_TEMP/cache/composeai/host-natives/files/$sha/linux-x86_64"
+          mkdir -p "$files"
+          tar -xzf "$archive" -C "$files" ./librive-android.so
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/cache" >> "$GITHUB_ENV"
+          echo "COMPOSE_PREVIEW_HOST_NATIVES_INDEX=$PWD/host-natives/index.json" >> "$GITHUB_ENV"
+
+      - name: Build the CLI and samples/rive
+        run: ./gradlew :cli:installDist :samples:rive:assembleDebug
+
+      - name: Rive in the simulator
+        run: >-
+          python3 .github/scripts/simulator_smoke.py
+          --cli cli/build/install/compose-preview/bin/compose-preview
+          --apk samples/rive/build/outputs/apk/debug/rive-debug.apk
+          --check rive --java "$JAVA_HOME" --out build/simulator-smoke
+
+      - name: Upload the screenshot and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rive-simulator
+          path: build/simulator-smoke
+          if-no-files-found: ignore
+
   publish:
     name: Publish
-    needs: [verify, verify-filament]
+    needs: [verify, verify-filament, verify-rive]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10

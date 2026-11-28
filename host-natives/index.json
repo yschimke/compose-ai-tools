@@ -1294,6 +1294,18 @@
           ]
         }
       ]
+    },
+    {
+      "library": "rive-android",
+      "artifact": "app.rive:rive-android",
+      "android": {
+        "artifact": "app.rive:rive-android",
+        "repository": "https://repo1.maven.org/maven2"
+      },
+      "release": {
+        "recipe": "rive"
+      },
+      "builds": []
     }
   ]
 }
