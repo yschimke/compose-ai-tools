@@ -151,6 +151,13 @@ public final class GmsLocationClients {
           }
           return ok(null);
         case "setMockLocation":
+          if (!engine.isMockMode()) {
+            return GmsLocationTasks.deferredFailure(
+                loader,
+                engine.mainExecutor(),
+                GmsLocationTasks.apiException(
+                    loader, 10, "Mock mode must be enabled before calling setMockLocation"));
+          }
           if (args.length > 0 && args[0] instanceof Location) {
             engine.setMockLocation((Location) args[0]);
           }

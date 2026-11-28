@@ -362,15 +362,20 @@ public final class GmsLocation {
     return settingsEnabled;
   }
 
+  boolean isMockMode() {
+    return mockMode;
+  }
+
   void setMockMode(boolean enabled) {
     this.mockMode = enabled;
     if (!enabled) this.mockLocation = null;
   }
 
   void setMockLocation(Location location) {
+    if (!mockMode) return;
     Location mock = copyAsMock(location);
     this.mockLocation = mock;
-    if (mockMode && mock != null) {
+    if (mock != null) {
       if (locationAvailable) {
         completePendingCurrentLocations(mock);
         deliverLocation(mock);

@@ -163,4 +163,20 @@ public class GmsLocationTest {
     assertTrue(GmsLocation.passesMinInterval(1000L, 6000L, 5000L));
     assertTrue(GmsLocation.passesMinInterval(1000L, 1000L, 0L));
   }
+
+  @Test
+  public void setMockLocationFailsWhenMockModeDisabled() throws Exception {
+    Object fused = GmsLocationClients.fusedClient(null, loader);
+    Task<?> task =
+        (Task<?>)
+            call(
+                fused,
+                "setMockLocation",
+                new Class<?>[] {android.location.Location.class},
+                (Object) null);
+    drain();
+    assertFalse(task.isSuccessful());
+    assertTrue(task.getException() instanceof ApiException);
+    assertEquals(10, ((ApiException) task.getException()).getStatusCode());
+  }
 }
