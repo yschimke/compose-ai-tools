@@ -1,5 +1,51 @@
 # Changelog
 
+## [2.105.0](https://github.com/yschimke/compose-ai-tools/compare/v2.104.0...v2.105.0) (2026-11-28)
+
+
+### Features
+
+* add Wear OS global status bar support to simulator ([#6738](https://github.com/yschimke/compose-ai-tools/issues/6738)) ([77ff794](https://github.com/yschimke/compose-ai-tools/commit/77ff794a44db84f62a3a6b8864d85ecd9d4932dd))
+* app-hosted widgets, frame-commit callbacks and am wait-for-broadcast-idle in the simulator ([#6715](https://github.com/yschimke/compose-ai-tools/issues/6715)) ([2939867](https://github.com/yschimke/compose-ai-tools/commit/2939867e2428036da2e7d8e57b4787866b3c5c2f))
+* audio files and codecs in the simulator, test-APK context and assets ([#6703](https://github.com/yschimke/compose-ai-tools/issues/6703)) ([0f67022](https://github.com/yschimke/compose-ai-tools/commit/0f67022152b54c196c8f1b8070ac590d26042bc3))
+* faster simulator instrumentation runs: remembered setup, --shards, --pool ([#6708](https://github.com/yschimke/compose-ai-tools/issues/6708)) ([b5637cc](https://github.com/yschimke/compose-ai-tools/commit/b5637cc4c2713cceade842d39cb83ee43af0f52e))
+* **gradle-plugin:** add AGP Compose Preview Screenshot Testing interop ([#6757](https://github.com/yschimke/compose-ai-tools/issues/6757)) ([b048049](https://github.com/yschimke/compose-ai-tools/commit/b048049e0a113138086d1215b893a73550666c14))
+* **gradle-plugin:** emit module jvmTarget in btaCompile and daemon sysprops ([#6720](https://github.com/yschimke/compose-ai-tools/issues/6720)) ([1082de5](https://github.com/yschimke/compose-ai-tools/commit/1082de564f9da82d74fe05ad9721f20f28d1ea22))
+* honour @SdkSuppress in simulator instrumentation runs; fix enum InnerClasses flags; optional XR stays a phone ([#6713](https://github.com/yschimke/compose-ai-tools/issues/6713)) ([a03c9d3](https://github.com/yschimke/compose-ai-tools/commit/a03c9d3a8a5fc9a76c4d71230f0a1ea526beed79))
+* simulator instrumentation runs honour the test runner's application, start at API 33, and find Google samples' tests ([#6717](https://github.com/yschimke/compose-ai-tools/issues/6717)) ([9b9b168](https://github.com/yschimke/compose-ai-tools/commit/9b9b1689dfce53ce18137ed20b30a9a30c096a11))
+* **simulator:** add comprehensive Wear Health Services support ([#6742](https://github.com/yschimke/compose-ai-tools/issues/6742)) ([3aef2b1](https://github.com/yschimke/compose-ai-tools/commit/3aef2b1ae5dc3ea06a402924fe13877416b567b5))
+* **simulator:** add MediaStore, CalendarProvider, Toast a11y events, appops, and test isolation ([#6754](https://github.com/yschimke/compose-ai-tools/issues/6754)) ([0bfd968](https://github.com/yschimke/compose-ai-tools/commit/0bfd968fe67344d05ab6ea36b9fce3fa8abe68b2))
+* **simulator:** add modular Firebase emulator and local IPC support ([#6748](https://github.com/yschimke/compose-ai-tools/issues/6748)) ([86cb0ac](https://github.com/yschimke/compose-ai-tools/commit/86cb0ac3d50df045fe512937c7b3411839f7d434))
+* **simulator:** add modular GMS Auth & Identity simulation (:simulator-gms-auth) ([#6750](https://github.com/yschimke/compose-ai-tools/issues/6750)) ([777f37b](https://github.com/yschimke/compose-ai-tools/commit/777f37b0307152f7f85bad3daf0cfd93fa302bd3))
+* **simulator:** build the Rive host library for macOS too ([#6759](https://github.com/yschimke/compose-ai-tools/issues/6759)) ([0bb7c17](https://github.com/yschimke/compose-ai-tools/commit/0bb7c173f8275e0548b45cc377074442ca97eed3))
+* **simulator:** curve Wear GSB along 12 o'clock arc with cached Google Sans Flex ([#6740](https://github.com/yschimke/compose-ai-tools/issues/6740)) ([ae16a71](https://github.com/yschimke/compose-ai-tools/commit/ae16a7189ebc69718e945340467d0d6879d16cfa))
+* **simulator:** integrate androidTest with AGP Gradle Managed Devices ([#6744](https://github.com/yschimke/compose-ai-tools/issues/6744)) ([21a114c](https://github.com/yschimke/compose-ai-tools/commit/21a114c0af89f5957fa35b034a959557d5627961))
+* **simulator:** run Rive apps, with a host librive-android and TextureView surfaces ([#6753](https://github.com/yschimke/compose-ai-tools/issues/6753)) ([69c5ccd](https://github.com/yschimke/compose-ai-tools/commit/69c5ccd8a2c1c9279866e87021a691c36a98a8fc))
+* UiAutomator and PixelCopy in simulator instrumentation runs; the simulated clock keeps up with real time ([#6710](https://github.com/yschimke/compose-ai-tools/issues/6710)) ([c6ab7a0](https://github.com/yschimke/compose-ai-tools/commit/c6ab7a06fdfddd074fe66d9b02807a68ee62ff42))
+
+
+### Bug Fixes
+
+* **deps:** update androidx to v1.0.0-rc01 ([#6714](https://github.com/yschimke/compose-ai-tools/issues/6714)) ([9eaca9a](https://github.com/yschimke/compose-ai-tools/commit/9eaca9ab0738f7886328c27aed9006c4a5d917e4))
+* **deps:** update androidx-compose ([#6724](https://github.com/yschimke/compose-ai-tools/issues/6724)) ([171b7ff](https://github.com/yschimke/compose-ai-tools/commit/171b7ff78eaa13111c1da5894aa3c02ff9d8450b))
+* **deps:** update androidx-wear to v1.7.2 ([#6723](https://github.com/yschimke/compose-ai-tools/issues/6723)) ([c8cdbc0](https://github.com/yschimke/compose-ai-tools/commit/c8cdbc0c06b3ab755811036c8d9a86527760ad29))
+* **deps:** update dependency com.android.tools.build:gradle to v9.5.2 ([#6735](https://github.com/yschimke/compose-ai-tools/issues/6735)) ([a0a611e](https://github.com/yschimke/compose-ai-tools/commit/a0a611e4b66a1ef675d578a58df931fb47cf05e4))
+* **deps:** update dependency com.android.tools.emulator:proto to v32.5.2 ([#6736](https://github.com/yschimke/compose-ai-tools/issues/6736)) ([80efe63](https://github.com/yschimke/compose-ai-tools/commit/80efe63f08933c834cffd5bab335bd170c7d628c))
+* **deps:** update dependency com.google.android.gms:play-services-basement to v18.12.1 ([#6726](https://github.com/yschimke/compose-ai-tools/issues/6726)) ([aa98100](https://github.com/yschimke/compose-ai-tools/commit/aa9810027161254ef7b5323679d38f4d08a5480e))
+* **deps:** update dependency ee.schimke.composeai:compose-preview-contracts-bom to v3.47.0 ([#6698](https://github.com/yschimke/compose-ai-tools/issues/6698)) ([b438de1](https://github.com/yschimke/compose-ai-tools/commit/b438de14121296577c4fc77fa1a35f9efc2b2a39))
+* **deps:** update dependency ee.schimke.composeai:rc-players-bom to v4 ([#6732](https://github.com/yschimke/compose-ai-tools/issues/6732)) ([a110c0a](https://github.com/yschimke/compose-ai-tools/commit/a110c0a3443bb0efcfe4ed8b394bb0676847872d))
+* **deps:** update dependency org.gradle:gradle-tooling-api to v9.9.2 ([#6727](https://github.com/yschimke/compose-ai-tools/issues/6727)) ([7cc06f6](https://github.com/yschimke/compose-ai-tools/commit/7cc06f604c25d4791d542688a1fd4820363bae84))
+* **deps:** update robolectric to v4.18.1 ([#6707](https://github.com/yschimke/compose-ai-tools/issues/6707)) ([9e34a8d](https://github.com/yschimke/compose-ai-tools/commit/9e34a8d802f3557852e6e109027a8b4519b26e2a))
+* **gradle-plugin:** include buildSrc and included builds in sourceWatch.buildFiles ([#6718](https://github.com/yschimke/compose-ai-tools/issues/6718)) ([fd0e1f4](https://github.com/yschimke/compose-ai-tools/commit/fd0e1f4e46c69a8b1257abd986c4f3a55833ee6c))
+* **simulator:** address [#6769](https://github.com/yschimke/compose-ai-tools/issues/6769) review findings for DWF sidecars, dwf-runtime offline mode, and host-natives watcher ([#6770](https://github.com/yschimke/compose-ai-tools/issues/6770)) ([f5a755e](https://github.com/yschimke/compose-ai-tools/commit/f5a755ef1093ee895c5f153e85036052882b4d01))
+* **simulator:** address Codex review findings for GMS Auth ([#6750](https://github.com/yschimke/compose-ai-tools/issues/6750)) ([#6752](https://github.com/yschimke/compose-ai-tools/issues/6752)) ([44dc25f](https://github.com/yschimke/compose-ai-tools/commit/44dc25f2a3194b08dd779f94df464ae8d4bd2348))
+* **simulator:** harden MediaStoreProvider selection/filenames and resolve CalendarContract.Instances ([#6755](https://github.com/yschimke/compose-ai-tools/issues/6755)) ([2b0f49b](https://github.com/yschimke/compose-ai-tools/commit/2b0f49bd03eceeeb3c7da31d4798d4be1fb17fc5))
+* **simulator:** join calendar visibility into instances and split AND selection clauses quote-awarely ([#6756](https://github.com/yschimke/compose-ai-tools/issues/6756)) ([8fa4323](https://github.com/yschimke/compose-ai-tools/commit/8fa432340d3680aa284de7166e2cf7fd582c7f80))
+* **simulator:** preserve Skiko native provisioning in ApkDwfCompilerMain ([#6763](https://github.com/yschimke/compose-ai-tools/issues/6763)) ([d302c6a](https://github.com/yschimke/compose-ai-tools/commit/d302c6add6da7ed66860cbc18ebf4e78276126da))
+* **simulator:** resolve APK converter and instrumentation runner bugs ([#6745](https://github.com/yschimke/compose-ai-tools/issues/6745)) ([04267bb](https://github.com/yschimke/compose-ai-tools/commit/04267bba2956145b1693eb2559624881c8596152))
+* **simulator:** retarget R8 super calls to indirect superinterface defaults ([#6758](https://github.com/yschimke/compose-ai-tools/issues/6758)) ([f0fc495](https://github.com/yschimke/compose-ai-tools/commit/f0fc495d669fc1fec4e4d70521d763edddd183b9))
+* **simulator:** Rive host build on glibc 2.28, and its Compose API fails cleanly ([#6760](https://github.com/yschimke/compose-ai-tools/issues/6760)) ([d4a651b](https://github.com/yschimke/compose-ai-tools/commit/d4a651b8344f9569df97d1ab8c72cf32d08acc9d))
+
 ## [2.104.0](https://github.com/yschimke/compose-ai-tools/compare/v2.103.1...v2.104.0) (2026-11-24)
 
 
