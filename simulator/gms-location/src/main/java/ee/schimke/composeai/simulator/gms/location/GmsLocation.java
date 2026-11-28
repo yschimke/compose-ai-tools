@@ -243,7 +243,7 @@ public final class GmsLocation {
 
   Location effectiveLastLocation() {
     if (!locationAvailable) return null;
-    return mockMode && mockLocation != null ? mockLocation : lastLocation;
+    return mockMode ? mockLocation : lastLocation;
   }
 
   boolean isLocationAvailable() {
@@ -261,9 +261,12 @@ public final class GmsLocation {
 
   void setMockLocation(Location location) {
     this.mockLocation = location;
-    if (mockMode && location != null && locationAvailable) {
-      completePendingCurrentLocations(location);
-      deliverLocation(location);
+    if (mockMode && location != null) {
+      if (locationAvailable) {
+        completePendingCurrentLocations(location);
+        deliverLocation(location);
+      }
+      evaluateGeofences(location);
     }
   }
 
@@ -331,11 +334,13 @@ public final class GmsLocation {
   public void onLocationUpdate(Location fix) {
     if (fix == null) return;
     this.lastLocation = fix;
-    if (!mockMode && locationAvailable) {
-      completePendingCurrentLocations(fix);
-      deliverLocation(fix);
+    if (!mockMode) {
+      if (locationAvailable) {
+        completePendingCurrentLocations(fix);
+        deliverLocation(fix);
+      }
+      evaluateGeofences(fix);
     }
-    evaluateGeofences(fix);
   }
 
   private void completePendingCurrentLocations(Location fix) {
