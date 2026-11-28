@@ -48,5 +48,17 @@ internal data class ReleasedDistribution(
         repository = PREVIEW_MCP_REPO,
         versionEnv = "COMPOSE_PREVIEW_MCP_VERSION",
       )
+
+    val SIMULATOR =
+      ReleasedDistribution(
+        binary = "android-simulator",
+        cacheDirName = "android-simulator",
+        label = "the Android simulator",
+        flag = "--simulator-binary",
+        env = "COMPOSE_PREVIEW_SIMULATOR",
+        usedBy = "compose-preview android-simulator and launch",
+        repository = ANDROID_SIMULATOR_REPO,
+        versionEnv = "COMPOSE_PREVIEW_SIMULATOR_VERSION",
+      )
   }
 }

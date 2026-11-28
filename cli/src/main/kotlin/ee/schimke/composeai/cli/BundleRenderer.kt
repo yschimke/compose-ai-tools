@@ -8,9 +8,9 @@ import ee.schimke.composeai.bundle.bundleSidecarSearchDescription
 import ee.schimke.composeai.bundle.coordinates.CoordinateResolver
 import ee.schimke.composeai.bundle.expandZipBytesSafely
 import ee.schimke.composeai.bundle.locateBundleSidecarJars
-import ee.schimke.composeai.cli.simulator.DwfRuntimeCommand
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.TemporaryDirectory
+import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.previewdata.PreviewInfo
 import ee.schimke.composeai.previewdata.PreviewManifest
 import java.io.ByteArrayInputStream
@@ -244,6 +244,16 @@ class BundleRenderer(
     return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
   }
 
+  private fun hasConfiguredDwfRuntimeApk(): Boolean {
+    val configuredPath =
+      System.getProperty("composeai.watchface.apkRenderer")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("COMPOSE_PREVIEW_DWF_RENDERER_APK")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("COMPOSE_PREVIEW_DWF_RUNTIME_APK")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DWF_RUNTIME_APK")?.takeIf { it.isNotBlank() }
+    if (configuredPath != null) return File(configuredPath).isFile
+    return File(composeAiCacheDir("dwf-runtime"), "DeclarativeWatchFaceRuntime.apk").isFile
+  }
+
   private fun renderDwfViaApkBackend(
     workDir: File,
     zipBytes: ByteArray,
@@ -259,7 +269,7 @@ class BundleRenderer(
       )
     // Provision the Android sidecar when a DWF runtime APK is configured on the host so `dwf-apk`
     // has Robolectric available on cold `bundle render` runs too.
-    if (explicitApk || DwfRuntimeCommand.resolveAuto(allowAdbPull = false) != null) {
+    if (explicitApk || hasConfiguredDwfRuntimeApk()) {
       DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID, log = logSink)
     }
     val sidecarsDir = workDir.resolve("previews-sidecars").apply { mkdirs() }

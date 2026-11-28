@@ -255,6 +255,7 @@ internal object CliFlags {
       "--play-services",
       "--firebase-emulator",
       "--firebase-project",
+      "--simulator-binary",
       // bundle externalize
       "--res-out",
       "--ext",

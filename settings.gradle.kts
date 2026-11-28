@@ -205,51 +205,8 @@ project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 include(":bundle-viewer")
 
-// `compose-preview android-simulator`: modular Java plugin and APK converter that run beside
-// Robolectric's simulator in the launched JVM, staged into the CLI distribution as `lib-simulator/`.
-include(":simulator-core")
-
-project(":simulator-core").projectDir = file("simulator/core")
-
-include(":simulator-wearable")
-
-project(":simulator-wearable").projectDir = file("simulator/wearable")
-
-include(":simulator-mobile")
-
-project(":simulator-mobile").projectDir = file("simulator/mobile")
-
-include(":simulator-wear")
-
-project(":simulator-wear").projectDir = file("simulator/wear")
-
-include(":simulator-gms-auth")
-
-project(":simulator-gms-auth").projectDir = file("simulator/gms-auth")
-
-include(":simulator-firebase-emulator")
-
-project(":simulator-firebase-emulator").projectDir = file("simulator/firebase-emulator")
-
-include(":simulator-firebase-messaging")
-
-project(":simulator-firebase-messaging").projectDir = file("simulator/firebase-messaging")
-
-include(":simulator-firebase-telemetry")
-
-project(":simulator-firebase-telemetry").projectDir = file("simulator/firebase-telemetry")
-
-include(":simulator-firebase")
-
-project(":simulator-firebase").projectDir = file("simulator/firebase")
-
-include(":simulator-host")
-
-project(":simulator-host").projectDir = file("simulator/host")
-
-include(":simulator-cli")
-
-project(":simulator-cli").projectDir = file("simulator/cli")
+// The Android simulator (`:simulator-*`) moved to `yschimke/android-simulator`; `compose-preview
+// android-simulator` / `launch` execs its released distribution (or `COMPOSE_PREVIEW_SIMULATOR`).
 
 include(":notification-preview-runtime")
 
