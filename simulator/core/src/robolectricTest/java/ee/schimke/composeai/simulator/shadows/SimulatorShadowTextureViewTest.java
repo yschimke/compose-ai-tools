@@ -109,6 +109,19 @@ public class SimulatorShadowTextureViewTest {
   }
 
   @Test
+  public void getBitmapIgnoresTheTransform() {
+    TextureView view = add(200, 100);
+    Surface surface = new Surface(view.getSurfaceTexture());
+    post(surface, Color.GREEN);
+    Matrix half = new Matrix();
+    half.setScale(0.5f, 1f);
+    view.setTransform(half);
+
+    // The whole frame, as the texture holds it; only drawing is scaled.
+    assertEquals(Color.GREEN, view.getBitmap().getPixel(150, 50));
+  }
+
+  @Test
   public void aResizeTellsTheListener() {
     TextureView view = add(200, 100);
     events.clear();

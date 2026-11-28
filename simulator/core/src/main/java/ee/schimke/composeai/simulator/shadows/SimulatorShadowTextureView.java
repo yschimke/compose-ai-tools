@@ -81,7 +81,11 @@ public class SimulatorShadowTextureView extends ShadowTextureView {
     canvas.restoreToCount(save);
   }
 
-  /** The last frame, scaled into [bitmap], as the texture layer would copy it. */
+  /**
+   * The last frame, scaled into [bitmap], as the texture layer copies it: without the view's
+   * {@code setTransform}, which applies to drawing only (hwui's readback copies the layer with
+   * {@code useLayerTransform} false).
+   */
   @Implementation
   public Bitmap getBitmap(Bitmap bitmap) {
     if (bitmap == null) return null;
@@ -91,7 +95,6 @@ public class SimulatorShadowTextureView extends ShadowTextureView {
       Canvas canvas = new Canvas(bitmap);
       // The frame replaces what a reused bitmap held, transparent pixels included.
       canvas.drawColor(0, PorterDuff.Mode.CLEAR);
-      canvas.concat(view.getTransform(null));
       canvas.drawBitmap(
           frame, null, new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight()), null);
     }
