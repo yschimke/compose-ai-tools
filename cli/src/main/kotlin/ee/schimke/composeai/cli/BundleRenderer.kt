@@ -271,6 +271,7 @@ class BundleRenderer(
     // has Robolectric available on cold `bundle render` runs too.
     if (explicitApk || hasConfiguredDwfRuntimeApk()) {
       DaemonSidecarProvision.install(DaemonSidecarProvision.Sidecar.ANDROID, log = logSink)
+      SimulatorLauncherCommand.ensureSimulatorSidecarsConfigured()
     }
     val sidecarsDir = workDir.resolve("previews-sidecars").apply { mkdirs() }
     ee.schimke.composeai.cli.serve.ServeBundleDaemon.extractKnobSidecars(
