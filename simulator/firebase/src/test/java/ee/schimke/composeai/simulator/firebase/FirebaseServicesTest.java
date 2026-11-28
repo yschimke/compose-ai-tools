@@ -11,6 +11,7 @@ public class FirebaseServicesTest {
 
   @Before
   public void reset() {
+    FirebaseRemoteConfigHost.reset();
     FirebaseAnalyticsHost.clear();
     FirebaseCrashlyticsHost.clear();
   }

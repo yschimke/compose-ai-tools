@@ -21,6 +21,7 @@ import org.json.JSONObject;
 public final class FirebaseServices {
 
   private static final String DEFAULT_PROJECT_ID = "demo-simulator";
+  private static volatile FirebaseServices current;
 
   private final Application app;
   private final FirebaseMessagingHost messaging;
@@ -28,6 +29,7 @@ public final class FirebaseServices {
   private volatile FirebaseEmulatorConfig config;
   private volatile JSONObject lastWiring = new JSONObject();
   private volatile String lastDiscoveryError;
+  private boolean installed;
 
   public FirebaseServices(Application app) {
     this.app = app;
@@ -35,11 +37,74 @@ public final class FirebaseServices {
     this.config = FirebaseEmulatorConfig.fromSystemProperties();
   }
 
+  /**
+   * Installs FCM IPC hooks and wires any {@code --firebase-emulator} endpoints immediately after
+   * manifest content providers ({@code FirebaseInitProvider}) and <em>before</em> {@code
+   * Application.onCreate()}, so {@code useEmulator()} runs before app code starts Firestore/Auth
+   * operations.
+   */
+  public static synchronized FirebaseServices installEarly(Application app) {
+    FirebaseServices services = new FirebaseServices(app);
+    services.install();
+    current = services;
+    return services;
+  }
+
+  /**
+   * Returns the early-installed instance for {@code app} (re-wiring any SDK that was not yet
+   * initialized before {@code Application.onCreate()}), or creates and installs a new one.
+   */
+  public static synchronized FirebaseServices forApp(Application app) {
+    FirebaseServices existing = current;
+    if (existing != null && existing.app == app) {
+      existing.wireUninitializedIfNeeded();
+      return existing;
+    }
+    FirebaseServices created = new FirebaseServices(app);
+    created.install();
+    current = created;
+    return created;
+  }
+
   /** Installs platform IPC hooks and wires any emulators configured at launch. */
-  public void install() {
+  public synchronized void install() {
+    if (installed) return;
+    installed = true;
     messaging.install();
     if (!config.isEmpty()) {
       resolveAndWire(config);
+    }
+  }
+
+  /**
+   * Retries wiring only for services whose status was {@code notInitialized} before {@code
+   * Application.onCreate()} (for apps that call {@code FirebaseApp.initializeApp()} manually).
+   */
+  private void wireUninitializedIfNeeded() {
+    if (config.isEmpty()) return;
+    boolean hasUninitialized = false;
+    java.util.Iterator<String> keys = lastWiring.keys();
+    while (keys.hasNext()) {
+      JSONObject entry = lastWiring.optJSONObject(keys.next());
+      if (entry != null && "notInitialized".equals(entry.optString("status"))) {
+        hasUninitialized = true;
+        break;
+      }
+    }
+    if (!hasUninitialized) return;
+    ClassLoader loader = app != null ? app.getClassLoader() : getClass().getClassLoader();
+    JSONObject retry = FirebaseEmulatorWiring.wireAll(app, loader, config);
+    java.util.Iterator<String> retryKeys = retry.keys();
+    while (retryKeys.hasNext()) {
+      String k = retryKeys.next();
+      JSONObject prev = lastWiring.optJSONObject(k);
+      if (prev == null || "notInitialized".equals(prev.optString("status"))) {
+        try {
+          lastWiring.put(k, retry.get(k));
+        } catch (JSONException ignored) {
+          // Keep previous entry.
+        }
+      }
     }
   }
 

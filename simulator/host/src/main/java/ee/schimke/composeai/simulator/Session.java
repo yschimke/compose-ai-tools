@@ -200,8 +200,7 @@ public final class Session {
     this.prompts = new SystemPrompts(app, protocol, navigator);
     Credentials.protocol = protocol;
     this.background = new BackgroundWork(app, protocol, navigator);
-    this.firebase = new ee.schimke.composeai.simulator.firebase.FirebaseServices(app);
-    this.firebase.install();
+    this.firebase = ee.schimke.composeai.simulator.firebase.FirebaseServices.forApp(app);
     // After the radios' dialogs: the system's pickers, then intents that leave the app.
     this.pickers = new SystemPickers(app, protocol, navigator, files);
     // An activity of another of the device's apps (--app): that app comes on screen and starts it.

@@ -14,6 +14,7 @@ public class FirebaseTelemetryHostTest {
 
   @Before
   public void reset() {
+    FirebaseRemoteConfigHost.reset();
     FirebaseAnalyticsHost.clear();
     FirebaseCrashlyticsHost.clear();
   }
@@ -23,15 +24,25 @@ public class FirebaseTelemetryHostTest {
     FirebaseRemoteConfigHost host = new FirebaseRemoteConfigHost();
     JSONObject res =
         host.setValues(
-            new JSONObject().put("dark_mode", true).put("max_items", 25).put("banner", "Hi"),
+            new JSONObject()
+                .put("dark_mode", true)
+                .put("max_items", 25)
+                .put("ratio", 1.5)
+                .put("banner", "Hi"),
             getClass().getClassLoader());
-    assertEquals(3, res.getInt("count"));
+    assertEquals(4, res.getInt("count"));
+    assertEquals("overrideAboveActivated", res.getString("precedence"));
     assertEquals("notInApp", res.getString("sdkStatus"));
-    assertEquals(true, host.values().get("dark_mode"));
+    assertTrue(FirebaseRemoteConfigHost.hasOverride("dark_mode"));
+    assertTrue(FirebaseRemoteConfigHost.getBooleanOverride("dark_mode"));
+    assertEquals(25L, FirebaseRemoteConfigHost.getLongOverride("max_items"));
+    assertEquals(1.5, FirebaseRemoteConfigHost.getDoubleOverride("ratio"), 0.0001);
+    assertEquals("Hi", FirebaseRemoteConfigHost.getStringOverride("banner"));
+    assertTrue(FirebaseRemoteConfigHost.keysByPrefix("max_").contains("max_items"));
 
     host.setValues(new JSONObject().put("banner", JSONObject.NULL), getClass().getClassLoader());
-    assertFalse(host.values().containsKey("banner"));
-    assertEquals(2, host.values().size());
+    assertFalse(FirebaseRemoteConfigHost.hasOverride("banner"));
+    assertEquals(3, host.values().size());
 
     host.clear(getClass().getClassLoader());
     assertTrue(host.values().isEmpty());

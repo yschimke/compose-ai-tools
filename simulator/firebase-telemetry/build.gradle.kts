@@ -41,6 +41,7 @@ dependencies {
     listOf(
       libs.robolectricAnnotations,
       libs.robolectricShadowapi,
+      libs.robolectricUtils,
     )
   for (slice in robolectricSlices) {
     compileOnly(slice) { isTransitive = false }
