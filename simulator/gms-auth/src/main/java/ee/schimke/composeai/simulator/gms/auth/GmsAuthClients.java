@@ -215,8 +215,18 @@ public final class GmsAuthClients {
     }
 
     @Override
-    Object handle(String name, Method method, Object[] args) {
-      return ok(null);
+    Object handle(String name, Method method, Object[] args) throws Exception {
+      switch (name) {
+        case "savePassword":
+          return ok(engine.buildSavePasswordResult(loader));
+        case "saveAccountLinkingToken":
+          return ok(engine.buildSaveAccountLinkingTokenResult(loader));
+        case "getStatusFromIntent":
+          return GmsAuthTasks.status(
+              loader, engine.errorCode(), engine.errorCode() == 0 ? "OK" : "ERROR");
+        default:
+          return ok(null);
+      }
     }
   }
 }

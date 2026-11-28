@@ -30,6 +30,8 @@ public final class GmsAuth {
   public static final String EXTRA_STATUS = "com.google.android.gms.auth.api.phone.EXTRA_STATUS";
   public static final String ACTION_SIGN_IN_RESULT =
       "ee.schimke.composeai.simulator.gms.auth.SIGN_IN_RESULT";
+  public static final String ACTION_CREDENTIAL_SAVE_RESULT =
+      "ee.schimke.composeai.simulator.gms.auth.CREDENTIAL_SAVE_RESULT";
 
   public static final int STATUS_SIGN_IN_REQUIRED = 4;
   public static final int STATUS_CANCELED = 16;
@@ -60,8 +62,39 @@ public final class GmsAuth {
   }
 
   public static GmsAuth install(Application app) {
+    return install(app, null);
+  }
+
+  /**
+   * Installs {@link GmsAuth} and registers a {@link
+   * ee.schimke.composeai.simulator.Navigator.SystemUi} handler so launching the {@code
+   * PendingIntent} from {@code beginSignIn}, {@code getSignInIntent}, or {@code
+   * CredentialSavingClient} delivers an activity result back to the caller.
+   */
+  public static GmsAuth install(
+      Application app, ee.schimke.composeai.simulator.Navigator navigator) {
     Handler handler = new Handler(Looper.getMainLooper());
     GmsAuth instance = new GmsAuth(app, handler::post);
+    if (navigator != null) {
+      navigator.addSystemUi(
+          (intent, requestCode, requester) -> {
+            if (intent == null) return false;
+            String action = intent.getAction();
+            if (!ACTION_SIGN_IN_RESULT.equals(action)
+                && !ACTION_CREDENTIAL_SAVE_RESULT.equals(action)) {
+              return false;
+            }
+            if (requester != null) {
+              boolean canceled = instance.errorCode == STATUS_CANCELED;
+              int resultCode =
+                  canceled
+                      ? android.app.Activity.RESULT_CANCELED
+                      : android.app.Activity.RESULT_OK;
+              navigator.deliverResult(requester, requestCode, resultCode, new Intent(action));
+            }
+            return true;
+          });
+    }
     active = instance;
     return instance;
   }
@@ -245,6 +278,38 @@ public final class GmsAuth {
     } catch (ReflectiveOperationException ignored) {
     }
     return null;
+  }
+
+  /** Constructs a {@code com.google.android.gms.auth.api.identity.SavePasswordResult}. */
+  Object buildSavePasswordResult(ClassLoader loader) {
+    return buildPendingIntentResult(
+        loader,
+        "com.google.android.gms.auth.api.identity.SavePasswordResult",
+        ACTION_CREDENTIAL_SAVE_RESULT);
+  }
+
+  /** Constructs a {@code com.google.android.gms.auth.api.identity.SaveAccountLinkingTokenResult}. */
+  Object buildSaveAccountLinkingTokenResult(ClassLoader loader) {
+    return buildPendingIntentResult(
+        loader,
+        "com.google.android.gms.auth.api.identity.SaveAccountLinkingTokenResult",
+        ACTION_CREDENTIAL_SAVE_RESULT);
+  }
+
+  private Object buildPendingIntentResult(ClassLoader loader, String className, String action) {
+    try {
+      Class<?> cls = Class.forName(className, false, loader);
+      PendingIntent pi =
+          context != null
+              ? PendingIntent.getActivity(
+                  context, 0, new Intent(action), PendingIntent.FLAG_IMMUTABLE)
+              : null;
+      Constructor<?> ctor = cls.getDeclaredConstructor(PendingIntent.class);
+      ctor.setAccessible(true);
+      return ctor.newInstance(pi);
+    } catch (ReflectiveOperationException ignored) {
+      return null;
+    }
   }
 
   private JSONObject accountJson() throws JSONException {

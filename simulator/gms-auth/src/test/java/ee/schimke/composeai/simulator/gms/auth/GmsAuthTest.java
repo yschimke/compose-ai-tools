@@ -127,4 +127,32 @@ public class GmsAuthTest {
     assertFalse(t.isSuccessful());
     assertEquals(GmsAuth.STATUS_CANCELED, ((ApiException) t.getException()).getStatusCode());
   }
+
+  @Test
+  public void credentialSavingClientReturnsTypedResultsAndSyncStatus() throws Exception {
+    Object saving = GmsAuthClients.credentialSavingClient(null, loader);
+
+    Task<?> savePw =
+        (Task<?>) call(saving, "savePassword", new Class<?>[] {Object.class}, new Object());
+    drain();
+    assertTrue(savePw.isSuccessful());
+    assertNotNull(savePw.getResult());
+    assertEquals(
+        "com.google.android.gms.auth.api.identity.SavePasswordResult",
+        savePw.getResult().getClass().getName());
+
+    Task<?> saveLink =
+        (Task<?>)
+            call(saving, "saveAccountLinkingToken", new Class<?>[] {Object.class}, new Object());
+    drain();
+    assertTrue(saveLink.isSuccessful());
+    assertNotNull(saveLink.getResult());
+    assertEquals(
+        "com.google.android.gms.auth.api.identity.SaveAccountLinkingTokenResult",
+        saveLink.getResult().getClass().getName());
+
+    Object status = call(saving, "getStatusFromIntent", new Class<?>[] {Intent.class}, (Object) null);
+    assertEquals(
+        "com.google.android.gms.common.api.Status", status.getClass().getName());
+  }
 }

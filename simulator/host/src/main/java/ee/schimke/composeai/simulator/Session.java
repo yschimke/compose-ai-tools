@@ -193,7 +193,7 @@ public final class Session {
     if (phoneUi != null) screen.lockScreen(phoneUi.lockScreen);
     // Only when paired: DataLayer needs the app's Play services classes to load at all.
     if (DataLayerLink.enabled()) DataLayer.attach(protocol);
-    ee.schimke.composeai.simulator.gms.auth.GmsAuth.install(app);
+    ee.schimke.composeai.simulator.gms.auth.GmsAuth.install(app, navigator);
     CompanionDevices.attach(protocol);
     this.radios = new Radios(app, protocol, navigator);
     this.prompts = new SystemPrompts(app, protocol, navigator);

@@ -143,7 +143,7 @@ public final class SimulatorSandbox {
                 // Play services Auth & Identity (Identity, GoogleSignIn, SmsRetriever, FIDO2).
                 ee.schimke.composeai.simulator.shadows.gms.ShadowIdentity.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.class,
-                ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.class,
+                ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.class,
                 ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.class,
                 // androidx.appsearch's storages, in memory (AppSearchSessions).
                 ShadowLocalStorage.class,
@@ -348,7 +348,7 @@ public final class SimulatorSandbox {
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.gms.ShadowGoogleSignIn.GOOGLE_SIGN_IN);
     builder.addInstrumentedClass(
-        ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetrieverClient.SMS_RETRIEVER_CLIENT);
+        ee.schimke.composeai.simulator.shadows.gms.ShadowSmsRetriever.SMS_RETRIEVER);
     builder.addInstrumentedClass(
         ee.schimke.composeai.simulator.shadows.gms.ShadowFido2ApiClient.FIDO2_API_CLIENT);
     builder.addInstrumentedClass(ShadowLocalStorage.LOCAL_STORAGE);
