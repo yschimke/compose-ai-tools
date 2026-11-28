@@ -35,7 +35,13 @@ import org.robolectric.annotation.GraphicsMode;
  * renderer draws a {@code RiveAnimationView}.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 34, shadows = {SimulatorShadowTextureView.class, SimulatorShadowSurface.class})
+@Config(
+    sdk = 34,
+    shadows = {
+      SimulatorShadowTextureView.class,
+      SimulatorShadowSurface.class,
+      SimulatorShadowSurfaceTexture.class
+    })
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class SimulatorShadowTextureViewTest {
 
@@ -168,6 +174,40 @@ public class SimulatorShadowTextureViewTest {
     post(surface, Color.TRANSPARENT);
 
     assertEquals(Color.TRANSPARENT, view.getBitmap(reused).getPixel(10, 10));
+  }
+
+  @Test
+  public void theViewsOwnCanvasPostsAFrame() {
+    TextureView view = add(200, 100);
+    Canvas canvas = view.lockCanvas();
+    assertNotNull(canvas);
+    canvas.drawColor(Color.MAGENTA);
+    view.unlockCanvasAndPost(canvas);
+    idle();
+
+    assertTrue(events.contains("updated"));
+    assertEquals(Color.MAGENTA, view.getBitmap().getPixel(100, 50));
+  }
+
+  @Test
+  public void theRequestedBufferSizeSizesTheCanvas() {
+    TextureView view = add(200, 100);
+    view.getSurfaceTexture().setDefaultBufferSize(400, 200);
+    Surface surface = new Surface(view.getSurfaceTexture());
+    Canvas canvas = surface.lockCanvas(null);
+    assertEquals(400, canvas.getWidth());
+    assertEquals(200, canvas.getHeight());
+    // Its bottom-right quarter, in buffer coordinates, is the view's bottom-right quarter.
+    canvas.drawColor(Color.WHITE);
+    android.graphics.Paint blue = new android.graphics.Paint();
+    blue.setColor(Color.BLUE);
+    canvas.drawRect(200, 100, 400, 200, blue);
+    surface.unlockCanvasAndPost(canvas);
+    idle();
+
+    Bitmap window = drawWindow();
+    assertEquals(Color.BLUE, window.getPixel(150, 75));
+    assertEquals(Color.WHITE, window.getPixel(50, 25));
   }
 
   @Test

@@ -27,6 +27,7 @@ import ee.schimke.composeai.simulator.shadows.SimulatorShadowResources;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowResultReceiver;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSettings;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurface;
+import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceTexture;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowSurfaceView;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTextureView;
 import ee.schimke.composeai.simulator.shadows.SimulatorShadowTelephonyManager;
@@ -123,6 +124,7 @@ public final class SimulatorSandbox {
                 // the Surface a texture makes.
                 SimulatorShadowTextureView.class,
                 SimulatorShadowSurface.class,
+                SimulatorShadowSurfaceTexture.class,
                 SimulatorShadowRemoteViewsAdapter.class,
                 SimulatorShadowCompanionDeviceManager.class,
                 SimulatorShadowTextToSpeech.class,

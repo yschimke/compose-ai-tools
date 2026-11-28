@@ -101,6 +101,24 @@ public class SimulatorShadowTextureView extends ShadowTextureView {
     return bitmap;
   }
 
+  /** The view's own canvas over its texture's next frame, as a {@code Surface} made from it gives. */
+  @Implementation
+  public Canvas lockCanvas() {
+    return lockCanvas(null);
+  }
+
+  @Implementation
+  public Canvas lockCanvas(Rect dirty) {
+    TextureFrames.Target target = TextureFrames.of(view.getSurfaceTexture());
+    return target != null ? target.lock(dirty) : null;
+  }
+
+  @Implementation
+  public void unlockCanvasAndPost(Canvas canvas) {
+    TextureFrames.Target target = TextureFrames.of(view.getSurfaceTexture());
+    if (target != null && target.owns(canvas)) target.post(canvas);
+  }
+
   /**
    * The view's texture, made at its first draw as {@code getTextureLayer} makes it: a view the app
    * gave a texture ({@code setSurfaceTexture}) keeps that one, and the listener hears only of one

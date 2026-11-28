@@ -25,6 +25,24 @@ final class TextureFrames {
 
   private static final Map<SurfaceTexture, Target> TARGETS = new WeakHashMap<>();
 
+  /** Each texture's requested buffer size ({@code setDefaultBufferSize}), as {width, height}. */
+  private static final Map<SurfaceTexture, int[]> SIZES = new WeakHashMap<>();
+
+  /** Records [texture]'s buffer size, which its next locked canvas takes. */
+  static void setBufferSize(SurfaceTexture texture, int width, int height) {
+    synchronized (SIZES) {
+      SIZES.put(texture, new int[] {width, height});
+    }
+  }
+
+  /** [texture]'s requested buffer size, or null when it has none. */
+  private static int[] bufferSize(SurfaceTexture texture) {
+    if (texture == null) return null;
+    synchronized (SIZES) {
+      return SIZES.get(texture);
+    }
+  }
+
   /** Gives [texture] frames drawn by [view], replacing whatever view had it before. */
   static Target register(SurfaceTexture texture, TextureView view) {
     synchronized (TARGETS) {
@@ -76,14 +94,16 @@ final class TextureFrames {
     }
 
     /**
-     * A canvas over the back buffer, at the view's size: the buffer is kept from frame to frame, as
-     * a device's is, and replaced only when the view's size changes.
+     * A canvas over the back buffer, at the texture's buffer size ({@code setDefaultBufferSize}, or
+     * the view's size when it has none): the buffer is kept from frame to frame, as a device's is,
+     * and replaced only when that size changes.
      */
     synchronized Canvas lock(Rect dirty) {
       TextureView current = view.get();
       if (current == null || locked != null) return null;
-      int width = current.getWidth();
-      int height = current.getHeight();
+      int[] size = bufferSize(texture.get());
+      int width = size != null ? size[0] : current.getWidth();
+      int height = size != null ? size[1] : current.getHeight();
       if (width <= 0 || height <= 0) return null;
       if (back == null || back.getWidth() != width || back.getHeight() != height) {
         back = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
